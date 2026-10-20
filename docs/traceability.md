@@ -51,8 +51,8 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | Gate | Artifact | Version | Pre-check | Decision | Date |
 | --- | --- | --- | --- | --- | --- |
 | G0 | docs/01-intent.md | 0.2 | PASS | Approved | 2026-10-21 |
-| G1 | docs/feature-list.md | 0.2 | PASS | | 2026-10-21 |
-| G2 | docs/plan.md | | | | |
+| G1 | docs/feature-list.md | 0.2 | PASS | Approved | 2026-10-21 |
+| G2 | docs/plan.md | 0.1 | PASS | Approved | 2026-10-21 |
 | Design CP | design/ | | | | |
 | G3 | docs/architecture-constitution.md | | | | |
 | G4–G7 | per story; see `docs/progress.md` | | | | |

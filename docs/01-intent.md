@@ -64,7 +64,7 @@ Roofing sales teams spend their outreach on properties chosen by drive-by or gue
 | BBB data | BBB listings were blocked (HTTP 403 challenge) when Task A measured them, and stay blocked (PO decision, 2026-10-21). A live BBB API is out of scope by the README. | No → show the BBB rating where Task A publishes it, and "not available" with the reason otherwise (README says "when available"). |
 | Access and accounts | AWS demo account (profile `assess`, region `eu-north-1`), GitHub fork and PR ready. LLM access: Bedrock is working (PO, 2026-10-21; earlier new-account quota of 0 is resolved). Vercel AI Gateway embeddings also work. | No. |
 | Cost | Free plan, $120 credits until 2027-04-16; access stops when credits run out. A hosted app with near-zero idle cost is possible. | No → watch credits; check the plan state before debugging "Access Denied". |
-| Time | 11 stories (B-01…B-11). Deadline: Thursday 2026-10-22 (PO, 2026-10-21). Planning (P1–P8) continues now; building does not start until the Oracle task (Task A) is complete. | Risk, not a blocker: build time depends on when Task A finishes, and the deadline is one day away. |
+| Time | 11 stories (B-01…B-11). Deadline: Thursday 2026-10-22 (PO, 2026-10-21). Planning (P1–P8) continues now; each build phase starts when the Task A story it copies from is done (A-03 → B-01, A-11 → B-02 full county, A-14 → B-09, A-18 → B-10; amended by the PO 2026-10-21, see `docs/plan.md`). | Risk, not a blocker: build time depends on when those Task A stories finish, and the deadline is one day away. |
 
 ## 7. Scope boundaries (mandatory)
 
@@ -94,7 +94,7 @@ README acceptance criteria → evaluation points (full matrix in `docs/traceabil
 - ASM-3: A permit is "open" when its source status is not final or closed, and its open duration is the time since it was issued. Confirmed against Task A's contract in B-05.
 - ASM-4: One shared test login, shared privately with the PR, is enough for the evaluator. Confirmed by the PO, 2026-10-21; no self sign-up.
 - ASM-5: Permit coverage is whatever Task A publishes; the CRM shows what it has and states the covered jurisdictions. Confirmed by the PO, 2026-10-21.
-- ASM-6: Building starts only after Task A is complete; until then only planning (P1–P8) proceeds. PO decision, 2026-10-21.
+- ASM-6: Each build phase starts when the Task A story it copies from is done (interleaved per the playbook), not after all of Task A. PO decision 2026-10-21, amending the earlier "wait for all of Task A" rule.
 - ASM-7: BBB stays blocked: no BBB source beyond what Task A publishes. PO decision, 2026-10-21.
 
 ## 10. Candidate directions (optional, not a committed design)

@@ -4,12 +4,12 @@ type: feature-list
 title: Roofing CRM: Initial Feature List
 parent: VIS-B
 owner: HebaGaber           # PO
-status: Draft                # Draft → In Review → Approved → Returned
+status: Approved                # Draft → In Review → Approved → Returned
 gate: G1
 version: 0.2
 created: 2026-10-21
-approved_by: []
-approved_date:
+approved_by: [HebaGaber]
+approved_date: 2026-10-21
 ---
 
 # Initial Feature List: Roofing CRM
@@ -105,18 +105,19 @@ Some features copy code that Task A builds, then adapt it (PO decision, 2026-10-
 - a `reuses:` field in its front matter naming the Task A story and the copied paths;
 - an acceptance criterion: *the Task A test cases for the copied part run in this repo, against this app's hosted URL, and pass; any test changed for the CRM is listed with the reason.*
 
-Only code is copied. Data still comes only from Task A's published CIDs or MCP (constitution B1). Copying starts once Task A is complete (C-4).
+Only code is copied, never linked: each repo is deployed and scored alone. Data still comes only from Task A's published CIDs or MCP (constitution B1). Copy with `../assessment-guide/scripts/copy-from-oracle.sh {path}`, which records the source commit in `docs/reuse-log.md`; the owning agent still reviews the copy. Mapping per the playbook (Part 3, "Reuse from Task A").
 
-| FEAT | Reused from (Task A) | What is copied | Tweaks expected | Task A tests to rerun here |
+| FEAT | Reused from (Task A) | What is copied | New in the CRM | Task A tests to rerun here |
 | --- | --- | --- | --- | --- |
-| FEAT-B01 | A-03 walking skeleton; A-17 admin login | Turborepo layout, CDK stacks, CI workflows, hosting; Cognito sign-in (self sign-up off) and JWT check on the API | Project name and tags `roofing-crm`, domain `crm.{domain}`, one shared CRM user instead of an admin group; **the map is new** (Task A has no map) | A-03 app smoke test on the hosted URL; A-17 sign-in and "unauthenticated request is refused" |
-| FEAT-B02 | A-13 `packages/query-core`; A-12 scheduler pattern | Typed queries over the published tables, read by CID; scheduled job with DLQ and alarm | Read Task A's latest manifest instead of publishing one; record `sourceManifestCid` | `query-core` unit tests; A-12 job idempotency test (pattern only) |
-| FEAT-B03…B06, B08 | A-13 Explorer filters and property drawer | Radius, roof-age and open/stalled-permit queries; property detail drawer with provenance | Drive from a pin or GPS on a map instead of the `at` point; add lead actions | A-13 Playwright tests for filters (radius, roof age, open permits) and the property drawer |
-| FEAT-B09 | A-14 agent | `agent.ask`, `getModel()` with `AI_PROVIDER`, citation format, place gazetteer, timeouts | Results open on the CRM map and can become leads (B-07) | A-14 golden queries G1–G6 against the deployed endpoint |
-| FEAT-B10 | A-18 "Coming soon" pattern | How planned features are shown, with no sample data | CRM sections: Campaigns, Estimates, Jobs, Invoices, Outreach | A-18 "Coming soon items render" test |
-| FEAT-B11 | A-16 zero idle cost | Cost document layout, CDK cost assertions | CRM components and their costs | A-16 `cdk synth` cost assertions |
+| FEAT-B01 | A-03, A-13 | Turborepo layout, `packages/{tsconfig, eslint-config, shared, api-client}`, `infra/` base (Powertools, X-Ray, log retention, DLQ alarm, budget, CDK assertions), GitHub Actions, Atlas `tokens.css`, app shell and app switcher, Playwright setup | Cognito user pool with the shared test user (**built here first**, then copied back to Task A for A-17), MapLibre map, CDK stacks named `Crm*` | A-03 app smoke test on the hosted URL; A-03/A-13 CDK assertions |
+| FEAT-B02 | A-02, A-11 | `packages/contract` (manifest and view-row Zod schemas), `packages/query-core` (`views.sql`, `bindManifest()`, `QueryEngine`), `scripts/verify-manifest.ts` | The sync job, the search index, embeddings | `contract` and `query-core` unit tests; `verify-manifest` on Task A's latest manifest |
+| FEAT-B03…B05 | A-02, A-13 | Gazetteer and area + radius logic in `query-core`, roof-age and open-days derivations, result-card signal chips | Map layer, radius ring, GPS | `query-core` radius, roof-age and open-days tests; A-13 Playwright filter tests |
+| FEAT-B06 | A-13 | PropertyDetail drawer, ContractorBadge, provenance line, CID with copy | "View lineage in Explorer" link | A-13 Playwright property-drawer test |
+| FEAT-B09 | A-14 | `getModel()` with `AI_PROVIDER`, `agent.ask` with its timeouts and $3/day cap, the Answer panel, `geocodePlace`, the golden-query Vitest harness | Vector search and `createLead` tools, map pins | A-14 golden queries against the deployed endpoint |
+| FEAT-B10 | A-18 | The "Coming soon" row and skeleton | The CRM's own section list | A-18 "Coming soon items render" test |
+| FEAT-B11 | A-13 | `smeargle` breakpoints config, container-query rules (`tablet.css`, `compact.css`) | Lead business metrics, the dashboard | A-13 `smeargle` suite at 390 / 768 / 1440 |
 
-FEAT-B04, B05 and B07 add CRM-only behavior on top (map layers, long-open badge, leads); FEAT-B07 (leads) and FEAT-B12 have nothing to copy.
+Not copied: Task A's MCP server; the CRM **uses** it (`donphan` in B-02). FEAT-B07 (leads), B08 (list) and B12 have nothing to copy.
 
 ## 5. Module index
 
@@ -156,7 +157,7 @@ FEAT-B04, B05 and B07 add CRM-only behavior on top (map layers, long-open badge,
 | C-1 | Constraint | AWS, CDK only, TypeScript only, region from config (demo `eu-north-1`), Turborepo monorepo | ✅ Agreed (constitution II–IV) |
 | C-2 | Constraint | Every LLM call goes through the Vercel AI SDK with `AI_PROVIDER`; Bedrock works as of 2026-10-21 | ✅ Agreed (constitution VI) |
 | C-3 | Constraint | Data only from Task A's published CIDs or MCP; no scraping, ingestion or internal stores | ✅ Agreed (constitution B1) |
-| C-4 | Constraint | Deadline Thursday 2026-10-22; building starts only after Task A is complete | ✅ Agreed (PO, 2026-10-21) |
+| C-4 | Constraint | Deadline Thursday 2026-10-22; each build phase starts when the Task A story it copies from is done (interleaved; see `docs/plan.md`) | ✅ Agreed (PO, 2026-10-21) |
 | C-5 | Constraint | UI uses only Atlas design-system tokens and components | ✅ Agreed (CLAUDE.md) |
 | C-6 | Constraint | AWS free plan, $120 credit until 2027-04-16; access stops when it runs out | ✅ Agreed |
 
@@ -165,12 +166,12 @@ FEAT-B04, B05 and B07 add CRM-only behavior on top (map layers, long-open badge,
 | DEP | Blocking | Blocked | Why |
 | --- | --- | --- | --- |
 | DEP-01 | Task A A-02 (`contract/v1`) | FEAT-B02 | The index needs the frozen data contract |
-| DEP-02 | Task A complete (A-03 CIDs … A-11 full county) | FEAT-B01…B11 | No build starts before Task A is complete (PO, 2026-10-21) |
+| DEP-02 | Task A A-03, A-11, A-13, A-14, A-18 done | FEAT-B01, B02, B03…B06, B09, B10 | Each phase starts when the Task A story it copies from is done (PO, 2026-10-21) |
 | DEP-03 | FEAT-B01 | FEAT-B02…B12 | Hosting, login and CI come first |
 | DEP-04 | FEAT-B02 | FEAT-B03…B06, B08, B09 | Searches, details and the agent read the index |
 | DEP-05 | FEAT-B03 | FEAT-B04, B05, B08 | Roof-age, permit and list results are scoped to the radius |
 | DEP-06 | FEAT-B07 | FEAT-B09, B12 | "Create lead" from the agent and the manager view need leads |
-| DEP-07 | Task A A-03, A-12, A-13, A-14, A-16, A-17, A-18 (code + tests) | FEAT-B01, B02, B03…B06, B08, B09, B10, B11 | These features copy and re-test Task A code (§ 4.6) |
+| DEP-07 | Task A A-02, A-03, A-11, A-13, A-14, A-18 (code + tests) | FEAT-B01, B02, B03…B06, B09, B10, B11 | These features copy and re-test Task A code (§ 4.6) |
 
 Critical path: B-01 → B-02 → B-03 / B-04 / B-05 → B-07 → B-09.
 
@@ -180,16 +181,16 @@ Critical path: B-01 → B-02 → B-03 / B-04 / B-05 → B-07 → B-09.
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G1-01 | Every feature has a sequential FEAT ID that matches its story ID | ☐ (AI: PASS) |
-| G1-02 | Each description is one unambiguous sentence of 20 words or fewer | ☐ (AI: PASS) |
-| G1-03 | Each feature has a MoSCoW priority and an evaluation point | ☐ (AI: PASS) |
-| G1-04 | Feature or Project classification recorded for every row | ☐ (AI: PASS) |
-| G1-05 | No ambiguous or duplicate features | ☐ (AI: PASS) |
-| G1-06 | Every row traces to VIS | ☐ (AI: PASS) |
-| G1-07 | Every README acceptance criterion and demo line is covered by at least one FEAT (see `docs/traceability.md`) | ☐ (AI: PASS) |
-| G1-08 | NFRs are measurable and no Must contradicts them | ☐ (AI: PASS) |
-| G1-09 | AI pre-check (`developmentsupport-g1-precheck`): PASS | ☐ |
+| G1-01 | Every feature has a sequential FEAT ID that matches its story ID | ☑ (AI: PASS) |
+| G1-02 | Each description is one unambiguous sentence of 20 words or fewer | ☑ (AI: PASS) |
+| G1-03 | Each feature has a MoSCoW priority and an evaluation point | ☑ (AI: PASS) |
+| G1-04 | Feature or Project classification recorded for every row | ☑ (AI: PASS) |
+| G1-05 | No ambiguous or duplicate features | ☑ (AI: PASS) |
+| G1-06 | Every row traces to VIS | ☑ (AI: PASS) |
+| G1-07 | Every README acceptance criterion and demo line is covered by at least one FEAT (see `docs/traceability.md`) | ☑ (AI: PASS) |
+| G1-08 | NFRs are measurable and no Must contradicts them | ☑ (AI: PASS) |
+| G1-09 | AI pre-check (`developmentsupport-g1-precheck`): PASS | ☑ |
 
 **AI pre-check report (2026-10-21):** PASS, 10 of 10 checks. Must share is 73% (guide ≤ 70%), justified in § 5. Three warnings for G3: choose an index that keeps zero idle cost (NFR-02); name a paging substitute (constitution IX); update constitution VI now that Bedrock works. Full report: `docs/gates/G1-FL-B-precheck.md`.
 
-**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-21
