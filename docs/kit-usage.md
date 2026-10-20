@@ -2,12 +2,48 @@
 
 Built with the [soofi-xyz team kit](https://github.com/soofi-xyz/soofi-xyz-team-kit), installed at project scope (see `.claude/settings.json`).
 
+Every story also loads `apply-engineering-guidelines`. Agents follow `../assessment-guide/AGENT-MAP.md` § 5, as updated after the P1 routing check below.
+
 | Story | Primary agent | Skills loaded | Reviewer | What the kit decided or produced |
 | --- | --- | --- | --- | --- |
-| {A-01} | `oracle` | `onboard-county`, `county-discovery`, `county-readiness-preflight` | — | {sources YAML, readiness PASS} |
+| B-01 Walking skeleton | `metagross` | `build-frontend-backends`, `integrate-ci-cd` | `metagross` | — |
+| B-02 Lead search index | `espeon` (index), `machamp` (batch); design with `alakazam` | `build-local-rag-pocs`, `build-rag-systems`, `build-batch-workflows`, `unify-metrics`, `use-elephant-mcp` | `espeon`, `alakazam`, `machamp`, `porygon`, `donphan` | — |
+| B-03 Radius search | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-04 Roof age | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-05 Open permits | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-06 Permit + contractor + BBB | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-07 Leads | `metagross`; design with `mew` | `build-frontend-backends`, `use-neutral-lexicon` | `metagross` | — |
+| B-08 Lead list | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-09 Agent | `alakazam` (retrieval), `ash` (runtime) | `build-rag-systems`, `build-ai-agents`, `use-elephant-mcp` | `alakazam`, `ash` | — |
+| B-10 Disabled sections | `metagross` | `build-frontend-backends` | `metagross`, `audino` | — |
+| B-11 Responsive + observable | `metagross`; design with `smeargle`, `porygon` | `responsive-design-tests`, `unify-metrics`, `build-frontend-backends` | `metagross`, `audino`, `porygon` | — |
+
+`smeargle` runs the responsive suite on every `ui: true` story. Whole-repo moments: `arceus` at P1, `slowking` at R6.
+
+## Routing decisions (P1, 2026-10-20)
+
+`arceus` was asked for the Task B routing without seeing the agent map (full answer in `docs/01-intent.md` § 13). Differences and decisions:
+
+| Agent or skill | Difference | Decision |
+| --- | --- | --- |
+| `donphan` | Named by arceus; the map used it in Task A only | Reviews B-02: confirms index count = Oracle count through the MCP |
+| `klefki` | Named by arceus; not in the map | Left out: a file-sharing portal builder. B-01 sign-in is a plain Cognito login built by `metagross` |
+| `porygon` | In the map; not named by arceus | Kept: reviews B-02 and B-11 (`unify-metrics`) |
+| `mew` | In the map; not named by arceus | Kept: designs the B-07 lead model (`use-neutral-lexicon`) |
+| `ash` | In the map; not named by arceus | Kept: builds the B-09 agent runtime with `alakazam` |
+| `use-elephant-mcp` | Named by arceus; not in the map for Task B | Added to B-02 and B-09 |
+
+Also left out, as arceus advised: `oracle` and the county ingestion skills (outside the access boundary), `kangaskhan`, `blissey`, `conkeldurr`, `uxie` (Prism platform products this app doesn't use).
 
 ## Reviewer scores before submission
 
 | Agent | Score (0–100) | Main deviations fixed |
 | --- | --- | --- |
-| {oracle} | {n} | {…} |
+| `metagross` | — | — |
+| `espeon` | — | — |
+| `alakazam` | — | — |
+| `machamp` | — | — |
+| `porygon` | — | — |
+| `donphan` | — | — |
+| `audino` | — | — |
+| `ash` | — | — |
