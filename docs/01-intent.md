@@ -99,14 +99,14 @@ README acceptance criteria → evaluation points (full matrix in `docs/traceabil
 
 ## 10. Candidate directions (optional, not a committed design)
 
-From the task guide's Golden Path (`../assessment-guide/reference/B-roofing-crm.md` § 3), to be decided in the architecture constitution (G3): a TypeScript monorepo with a web map UI and a serverless API, hosted at `crm.{domain}`; a search index built from Task A's published files and refreshed by CID; a lead store owned by the CRM; an agent built on the Vercel AI SDK that retrieves from the same index and Task A's MCP.
+From the task guide's Golden Path (`../assessment-guide/reference/B-roofing-crm.md` § 3), to be decided in the architecture constitution (G3): a TypeScript monorepo with a web map UI and a serverless API, hosted at `crm.aldarraj.com`; a search index built from Task A's published files and refreshed by CID; a lead store owned by the CRM; an agent built on the Vercel AI SDK that retrieves from the same index and Task A's MCP.
 
 ## 11. Gates (assessment)
 
 | Gate | How I will satisfy it |
 | --- | --- |
 | PR | PR from `HebaGaber/roofing-crm:feature/roofing-crm` to `prismteam-ai/roofing-crm:main` (never merged by me) |
-| Runtime | `https://crm.{domain}` (domain chosen in the publishing step), which needs no local setup |
+| Runtime | `https://crm.aldarraj.com` (PO, 2026-10-21), which needs no local setup |
 | Credentials | One shared test user, shared privately alongside the PR |
 | Demo | A 5–7 minute video of the 9 demo lines, linked from the PR |
 

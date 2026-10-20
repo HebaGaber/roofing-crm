@@ -8,7 +8,7 @@ classification: Project      # both assessment apps are Project-sized (new syste
 owner: HebaGaber
 status: Approved                # Draft → In Review → Approved → Returned
 gate: G2
-version: 0.1
+version: 0.2
 created: 2026-10-21
 approved_by: [HebaGaber]
 approved_date: 2026-10-21
@@ -107,7 +107,7 @@ flowchart LR
 | EXT-06 | External (Task A) | A-18 done: "Coming soon" pattern to copy | Phase 3 (B-10) | Pending |
 | EXT-07 | External | AWS account `assess`, `eu-north-1`, free plan $120 credit | Phase 0 | Available |
 | EXT-08 | External | Bedrock model access | Phase 3 | Available (PO, 2026-10-21) |
-| EXT-09 | External | Domain for `crm.` (Q-02) | Phase 0 | Pending |
+| EXT-09 | External | Domain `crm.aldarraj.com` (Namecheap CNAMEs, as Task A does for `countylens.aldarraj.com`) | Phase 0 | Decided (PO, 2026-10-21); DNS set up in B-01 |
 | EXT-10 | External | Search-index service available on the free plan (Q-04) | Phase 0 | Available (read-only check 2026-10-21; confirmed at first deploy) |
 | ORG-01 | Organisational | G1 approval of the feature list (Q-01) | P8 stories | Pending |
 | ORG-02 | Organisational | G3 approval of the architecture constitution (P6) | Phase 0 | Pending |
@@ -252,13 +252,14 @@ After Phase 3: the release steps (playbook Part 4, R1–R7): PR, hosted URL, cre
 | # | Question / gap | Raised to | Status |
 | --- | --- | --- | --- |
 | Q-01 | G1 decision on `docs/feature-list.md` is not recorded yet | PO | Open |
-| Q-02 | Which domain hosts `crm.`? Task A uses `countylens.aldarraj.com`, so `crm.aldarraj.com` is the likely choice | PO | Open |
-| Q-03 | Which search-index technology meets NFR-02 (zero idle cost) and serves geo + filters + vectors? | G3 (`alakazam`) | Proposed by `alakazam` (2026-10-21), to be decided at G3: Parquet index (properties sorted by geohash; permits with Titan v2 embeddings) queried by DuckDB in Lambda, reusing Task A's `query-core`; about $0 idle. Fallback: one `t3.small.search` OpenSearch domain for the evaluation window only (about $28–30/month idle), behind the same retrieval interface. Main risk: Lambda cold start vs. NFR-01 p95 < 3 s |
+| Q-02 | Which domain hosts `crm.`? | PO | Closed 2026-10-21: `crm.aldarraj.com` |
+| Q-03 | Which search-index technology meets NFR-02 (zero idle cost) and serves geo + filters + vectors? | G3 (`alakazam`) | Open until G3 (PO, 2026-10-21). Proposed by `alakazam` (2026-10-21), to be decided at G3: Parquet index (properties sorted by geohash; permits with Titan v2 embeddings) queried by DuckDB in Lambda, reusing Task A's `query-core`; about $0 idle. Fallback: one `t3.small.search` OpenSearch domain for the evaluation window only (about $28–30/month idle), behind the same retrieval interface. Main risk: Lambda cold start vs. NFR-01 p95 < 3 s |
 | Q-04 | Is that index service available on the AWS free plan in `eu-north-1`? | G3 (check in the account) | Checked 2026-10-21 (read-only): account 515618610572 is on the FREE plan, ACTIVE, $120.00 credit left, expires 2027-04-16. Lambda, S3, OpenSearch (`t3.small.search` offered) and S3 Vectors all answer in `eu-north-1`. A read-only check can't prove the free plan allows creating each resource; the first CDK deploy in B-01/B-02 confirms it |
-| Q-05 | Calendar dates: when are A-03, A-11, A-13, A-14 and A-18 expected to finish? Without them the 2026-10-22 deadline can't be checked | PO (Task A plan) | Open |
+| Q-05 | Calendar dates for A-03, A-11, A-13, A-14 and A-18, to check the 2026-10-22 deadline | PO (Task A plan) | Deferred by the PO 2026-10-21: keep the timeline flexible (relative days); revisit as each Task A story lands |
 
 ## 14. Change log
 
 | Version | Date | Change |
 | --- | --- | --- |
 | 0.1 | 2026-10-21 | Initial draft: playbook Part 3 order, relative days 4–8, interleaved with Task A (PO decision) |
+| 0.2 | 2026-10-21 | Q-02 closed (`crm.aldarraj.com`); Q-03 stays open until G3; Q-05 deferred (flexible timeline); Q-04 checked |
