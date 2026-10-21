@@ -8,6 +8,8 @@ Source: `README.md` at commit `f874802`. Evaluation points B1–B6 are defined i
 
 ## 1. Requirements matrix (README → evidence)
 
+*Story merge (2026-10-21, before P8):* the 11 stories run as 5 merged stories. Story IDs here are **part** IDs: B-10 → B-01 · B-04, B-05, B-06 → B-03 · B-08 → B-07 · B-11 → B-09. Evidence for a part goes in its merged story's file, one section per part (for example `docs/evidence/B-03.md` § B-04).
+
 Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or Description, OOS-n = out-of-scope items (proved by their absence or a mock), D-n = demo transcript lines.
 
 | # | README criterion / demo line | Eval point | FEAT | Story (US) | Spec FR | Test case | Evidence | Demo time |

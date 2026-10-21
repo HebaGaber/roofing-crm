@@ -130,8 +130,8 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 ### Phase 0: Foundation, walking skeleton and real data (Days 4–5)
 
 - **Objective:** a hosted CRM where the test user logs in to a Travis County map, backed by a search index built from Task A's real published CIDs.
-- **Features:** FEAT-B01, FEAT-B02
-- **Story branches:** `001-walking-skeleton`, `002-lead-index`
+- **Features:** FEAT-B01, FEAT-B10, FEAT-B02
+- **Story branches:** `001-crm-shell` (B-01 with part B-10), `002-lead-index`
 - **Starts when:** A-03 is done (EXT-02). B-02 first indexes A-03's real Austin permits, then re-syncs on the A-11 full-county manifest when it lands (EXT-03), with no code change.
 - **Duration:** 2 days (Day 4: B-01; Day 5: B-02)
 - **Exit criteria:** in a private window, the test user logs in on the hosted URL and the map opens on Travis County; `health.ping` shows a log in CloudWatch and a trace in X-Ray; the hosted API reports the index's `sourceManifestCid` and a record count equal to that manifest's count (checked by `porygon`, confirmed by `donphan` through the MCP).
@@ -140,7 +140,7 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 
 - **Objective:** the rep finds aged roofs and long-open roofing permits around a pin or GPS position and inspects them.
 - **Features:** FEAT-B03, FEAT-B04, FEAT-B05, FEAT-B06
-- **Story branches:** `003-radius-search`, `004-roof-age`, `005-open-permits`, `006-permit-details`
+- **Story branches:** `003-map-search` (B-03 with parts B-04, B-05, B-06)
 - **Starts when:** Phase 0 exit passes and A-13 is done (EXT-04).
 - **Duration:** 1 day
 - **Exit criteria:** on the hosted URL, a pin plus 5 mi redraws the ring and results; Playwright GPS (`setGeolocation`) works; changing the roof-age threshold from 15 to 25 changes the count; permits sort by open duration with an "open > 5 years" badge; the drawer shows status, open duration, contractor, BBB or "BBB not available", and a source link; copied A-13 tests pass here.
@@ -149,7 +149,7 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 
 - **Objective:** the rep turns matches into tracked leads and works a filterable list.
 - **Features:** FEAT-B07, FEAT-B08
-- **Story branches:** `007-leads`, `008-lead-list`
+- **Story branches:** `007-leads` (B-07 with part B-08)
 - **Starts when:** Phase 1 exit passes (no Task A dependency).
 - **Duration:** 1 day
 - **Exit criteria:** on the hosted URL, 3 leads are created (at least one from a property and one from a permit), a status changes and a note is added, and all of it survives a reload; adding the same property twice is refused; the list paginates, combines roof-age + permit status/duration + radius filters, and the URL reproduces the filters.
@@ -157,9 +157,9 @@ Order: Project-class enablers first, the walking skeleton live before feature wo
 ### Phase 3: Agent, expansion surface and hardening (Day 8)
 
 - **Objective:** plain-language opportunity search that creates leads; disabled future sections; responsive and observable in production.
-- **Features:** FEAT-B09, FEAT-B10, FEAT-B11; FEAT-B12 only if time allows
-- **Story branches:** `009-agent`, `010-disabled-sections`, `011-responsive-observable`; `012-manager-view` (optional)
-- **Starts when:** Phase 2 exit passes; B-09 needs A-14 (EXT-05), B-10 needs A-18 (EXT-06).
+- **Features:** FEAT-B09, FEAT-B11; FEAT-B12 only if time allows (FEAT-B10 moved to Phase 0)
+- **Story branches:** `009-agent-hardening` (B-09 with part B-11); `012-manager-view` (optional)
+- **Starts when:** Phase 2 exit passes; B-09 needs A-14 (EXT-05). B-10 (now part of B-01) is built without waiting for A-18's pattern (EXT-06 no longer blocks).
 - **Duration:** 1 day
 - **Exit criteria:** golden queries G1–G7 pass as Vitest against the deployed endpoint, with citations and an honest "no results"; an agent result opens on the map and becomes a lead; Campaigns, Estimates, Jobs, Invoices and Outreach are visible, `aria-disabled`, with a "coming soon" tooltip; the `smeargle` suite passes at 390 / 768 / 1440; Powertools business metrics, a DLQ alarm and a CloudWatch dashboard exist in CDK.
 
@@ -169,17 +169,17 @@ After Phase 3: the release steps (playbook Part 4, R1–R7): PR, hosted URL, cre
 
 | FEAT-ID | Feature | MoSCoW | Phase | Branch |
 | --- | --- | --- | --- | --- |
-| FEAT-B01 | Walking skeleton | Must | 0 | `001-walking-skeleton` |
+| FEAT-B01 | Walking skeleton | Must | 0 | `001-crm-shell` |
 | FEAT-B02 | Lead search index | Must | 0 | `002-lead-index` |
-| FEAT-B03 | Radius search | Must | 1 | `003-radius-search` |
-| FEAT-B04 | Aged roofs | Must | 1 | `004-roof-age` |
-| FEAT-B05 | Open permits | Must | 1 | `005-open-permits` |
-| FEAT-B06 | Permit, contractor and BBB detail | Must | 1 | `006-permit-details` |
+| FEAT-B03 | Radius search | Must | 1 | `003-map-search` |
+| FEAT-B04 | Aged roofs | Must | 1 | `003-map-search` (part B-04) |
+| FEAT-B05 | Open permits | Must | 1 | `003-map-search` (part B-05) |
+| FEAT-B06 | Permit, contractor and BBB detail | Must | 1 | `003-map-search` (part B-06) |
 | FEAT-B07 | Leads | Must | 2 | `007-leads` |
-| FEAT-B08 | Candidate and lead list | Must | 2 | `008-lead-list` |
-| FEAT-B09 | Grounded agent | Must | 3 | `009-agent` |
-| FEAT-B10 | Disabled future sections | Must | 3 | `010-disabled-sections` |
-| FEAT-B11 | Responsive and observable | Must | 3 | `011-responsive-observable` |
+| FEAT-B08 | Candidate and lead list | Must | 2 | `007-leads` (part B-08) |
+| FEAT-B09 | Grounded agent | Must | 3 | `009-agent-hardening` |
+| FEAT-B10 | Disabled future sections | Must | 0 | `001-crm-shell` (part B-10) |
+| FEAT-B11 | Responsive and observable | Must | 3 | `009-agent-hardening` (part B-11) |
 | FEAT-B12 | Manager lead view | Could | 3 (optional) | `012-manager-view` |
 | FEAT-B13…B15 | Outbound messaging, live BBB, more counties | Won't | — (not built) | — |
 
@@ -215,17 +215,11 @@ After Phase 3: the release steps (playbook Part 4, R1–R7): PR, hosted URL, cre
 
 | Spec dir / branch | Story | Phase | Command sequence |
 | --- | --- | --- | --- |
-| `specs/001-walking-skeleton` | B-01 | 0 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/001-crm-shell` | B-01 (parts B-01, B-10) | 0 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/002-lead-index` | B-02 | 0 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/003-radius-search` | B-03 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/004-roof-age` | B-04 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/005-open-permits` | B-05 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/006-permit-details` | B-06 | 1 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/007-leads` | B-07 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/008-lead-list` | B-08 | 2 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/009-agent` | B-09 | 3 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/010-disabled-sections` | B-10 | 3 | specify → clarify → plan → tasks → analyze → implement |
-| `specs/011-responsive-observable` | B-11 | 3 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/003-map-search` | B-03 (parts B-03, B-04, B-05, B-06) | 1 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/007-leads` | B-07 (parts B-07, B-08) | 2 | specify → clarify → plan → tasks → analyze → implement |
+| `specs/009-agent-hardening` | B-09 (parts B-09, B-11) | 3 | specify → clarify → plan → tasks → analyze → implement |
 | `specs/012-manager-view` (optional) | B-12 | 3 | specify → clarify → plan → tasks → analyze → implement |
 
 ## 12. Gate G2: Plan Approval
@@ -263,3 +257,4 @@ After Phase 3: the release steps (playbook Part 4, R1–R7): PR, hosted URL, cre
 | --- | --- | --- |
 | 0.1 | 2026-10-21 | Initial draft: playbook Part 3 order, relative days 4–8, interleaved with Task A (PO decision) |
 | 0.2 | 2026-10-21 | Q-02 closed (`crm.aldarraj.com`); Q-03 stays open until G3; Q-05 deferred (flexible timeline); Q-04 checked |
+| 0.2.1 | 2026-10-21 | Story merge before P8 (PO decision): 11 stories → 5 (B-10 → B-01 · B-04, B-05, B-06 → B-03 · B-08 → B-07 · B-11 → B-09), so the loop runs 5 times. FEAT-B10 moves to Phase 0 with the shell; branches and the Spec Kit mapping updated. No scope change; the G2 approval stands |

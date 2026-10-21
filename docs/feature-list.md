@@ -65,16 +65,16 @@ Rules: IDs are sequential and follow the story IDs (`FEAT-B01` = story B-01). Cl
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-B03 | B-03 | Feature | Radius search | User drops a pin or uses GPS, sets a radius, and sees the properties inside the circle. | Must | B1 | SCN-A | VIS-B |
-| FEAT-B04 | B-04 | Feature | Aged roofs | Results show properties whose roof exceeds an adjustable age threshold, default 15 years, with basis and confidence. | Must | B2 | SCN-A | VIS-B |
-| FEAT-B05 | B-05 | Feature | Open permits | The map highlights properties with open roofing permits, sorted by open duration, badging those open over five years. | Must | B3 | SCN-A | VIS-B |
-| FEAT-B06 | B-06 | Feature | Permit, contractor and BBB detail | A detail panel shows the property, permit status, open duration, contractor and BBB rating, or why one is missing. | Must | B3 | SCN-A | VIS-B |
+| FEAT-B04 | B-03 (part B-04) | Feature | Aged roofs | Results show properties whose roof exceeds an adjustable age threshold, default 15 years, with basis and confidence. | Must | B2 | SCN-A | VIS-B |
+| FEAT-B05 | B-03 (part B-05) | Feature | Open permits | The map highlights properties with open roofing permits, sorted by open duration, badging those open over five years. | Must | B3 | SCN-A | VIS-B |
+| FEAT-B06 | B-03 (part B-06) | Feature | Permit, contractor and BBB detail | A detail panel shows the property, permit status, open duration, contractor and BBB rating, or why one is missing. | Must | B3 | SCN-A | VIS-B |
 
 ### 4.3 Leads
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | FEAT-B07 | B-07 | Feature | Leads | User creates a lead from a property or permit, changes its status and adds notes; duplicates are refused. | Must | B4 | SCN-A, SCN-B | VIS-B |
-| FEAT-B08 | B-08 | Feature | Candidate and lead list | A paginated list mirrors the map results and filters by roof age, permit status, open duration and radius. | Must | B6 | SCN-C | VIS-B |
+| FEAT-B08 | B-07 (part B-08) | Feature | Candidate and lead list | A paginated list mirrors the map results and filters by roof age, permit status, open duration and radius. | Must | B6 | SCN-C | VIS-B |
 | FEAT-B12 | — (no story yet) | Feature | Manager lead view | A sales manager sees every rep's leads and their statuses in one list. | Could | B4 | SCN-C | VIS-B § 3 |
 
 ### 4.4 Agent
@@ -87,8 +87,8 @@ Rules: IDs are sequential and follow the story IDs (`FEAT-B01` = story B-01). Cl
 
 | FEAT-ID | Story | Class | Feature name | Description (≤ 20 words) | MoSCoW | Eval pt | Scenario | Vision ref |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| FEAT-B10 | B-10 | Feature | Disabled future sections | Navigation shows Campaigns, Estimates, Jobs, Invoices and Outreach as disabled, each with a "coming soon" tooltip. | Must | B6 | ALL | VIS-B |
-| FEAT-B11 | B-11 | Feature | Responsive and observable | The app passes mobile, tablet and desktop tests and emits Powertools logs, traces, metrics and DLQ alarms. | Must | ALL | ALL | VIS-B |
+| FEAT-B10 | B-01 (part B-10) | Feature | Disabled future sections | Navigation shows Campaigns, Estimates, Jobs, Invoices and Outreach as disabled, each with a "coming soon" tooltip. | Must | B6 | ALL | VIS-B |
+| FEAT-B11 | B-09 (part B-11) | Feature | Responsive and observable | The app passes mobile, tablet and desktop tests and emits Powertools logs, traces, metrics and DLQ alarms. | Must | ALL | ALL | VIS-B |
 | FEAT-B13 | — (deferred) | Feature | Outbound messaging | Real messages to property owners are not sent; Outreach stays a disabled section. | Won't | B6 | — | VIS-B § 7 |
 | FEAT-B14 | — (deferred) | Project | Live BBB lookups | No live BBB API is called; only ratings already in Task A's data are shown. | Won't | B3 | — | VIS-B § 7 |
 | FEAT-B15 | — (deferred) | Project | More counties and tenants | The CRM serves only Travis County and one company. | Won't | B1 | — | VIS-B § 7 |
@@ -173,7 +173,7 @@ Not copied: Task A's MCP server; the CRM **uses** it (`donphan` in B-02). FEAT-B
 | DEP-06 | FEAT-B07 | FEAT-B09, B12 | "Create lead" from the agent and the manager view need leads |
 | DEP-07 | Task A A-02, A-03, A-11, A-13, A-14, A-18 (code + tests) | FEAT-B01, B02, B03…B06, B09, B10, B11 | These features copy and re-test Task A code (§ 4.6) |
 
-Critical path: B-01 → B-02 → B-03 / B-04 / B-05 → B-07 → B-09.
+Critical path: B-01 → B-02 → B-03 / B-04 / B-05 → B-07 → B-09. Since the 2026-10-21 story merge: B-01 → B-02 → B-03 → B-07 → B-09.
 
 ---
 
@@ -194,3 +194,5 @@ Critical path: B-01 → B-02 → B-03 / B-04 / B-05 → B-07 → B-09.
 **AI pre-check report (2026-10-21):** PASS, 10 of 10 checks. Must share is 73% (guide ≤ 70%), justified in § 5. Three warnings for G3: choose an index that keeps zero idle cost (NFR-02); name a paging substitute (constitution IX); update constitution VI now that Bedrock works. Full report: `docs/gates/G1-FL-B-precheck.md`.
 
 **Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-21
+
+**Amendment 0.2.1 (2026-10-21, story merge only, no scope change, PO decision before P8):** the 11 stories were merged into 5 so the story loop runs 5 times instead of 11: B-10 → B-01 · B-04, B-05, B-06 → B-03 · B-08 → B-07 · B-11 → B-09. Every FEAT row stays; its story cell names the merged story and the part (for example `B-03 (part B-04)`). FEAT-B10 is now built in Phase 0 with the shell. The G1 approval stands.

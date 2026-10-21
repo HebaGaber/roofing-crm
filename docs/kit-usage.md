@@ -2,6 +2,8 @@
 
 Built with the [soofi-xyz team kit](https://github.com/soofi-xyz/soofi-xyz-team-kit), installed at project scope (see `.claude/settings.json`).
 
+*Story merge (2026-10-21, before P8):* the 11 stories run as 5 merged stories. Story IDs here are **part** IDs: B-10 → B-01 · B-04, B-05, B-06 → B-03 · B-08 → B-07 · B-11 → B-09. Evidence for a part goes in its merged story's file, one section per part (for example `docs/evidence/B-03.md` § B-04).
+
 Every story also loads `apply-engineering-guidelines`. Agents follow `../assessment-guide/AGENT-MAP.md` § 5, as updated after the P1 routing check below.
 
 | Story | Primary agent | Skills loaded | Reviewer | What the kit decided or produced |
