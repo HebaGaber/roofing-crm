@@ -1,0 +1,26 @@
+{
+  "name": "roofing-crm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "format": "prettier --check .",
+    "format:fix": "prettier --write .",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.50.1",
+    "prettier": "3.4.2",
+    "turbo": "2.3.3",
+    "typescript": "6.0.3"
+  }
+}
