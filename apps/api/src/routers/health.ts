@@ -10,8 +10,11 @@ export const HealthPingOutput = z.object({
 export type HealthPingOutput = z.infer<typeof HealthPingOutput>;
 
 export const healthRouter = router({
-  ping: publicProcedure.input(z.void()).output(HealthPingOutput).query(() => ({
-    ok: true as const,
-    timestamp: new Date().toISOString(),
-  })),
+  ping: publicProcedure
+    .input(z.void())
+    .output(HealthPingOutput)
+    .query(() => ({
+      ok: true as const,
+      timestamp: new Date().toISOString(),
+    })),
 });

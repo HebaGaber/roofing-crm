@@ -25,14 +25,16 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
 
   test("signing in with the seeded credentials lands on the Map screen", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page, SEEDED_PASSWORD!);
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
     await expect(page.locator('[data-route="map"]')).toBeVisible();
     await expect(page.getByTestId("crm-map")).toBeVisible();
   });
 
   test("the session survives a reload (stays on the Map screen)", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page, SEEDED_PASSWORD!);
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
     await page.reload();
     await expect(page.locator('[data-route="map"]')).toBeVisible();
   });
@@ -42,7 +44,8 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
 test.describe("AC-2: map bounds and health.ping trace", () => {
   test("health.ping responds from the Map screen within 3s of load", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page, SEEDED_PASSWORD!);
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
     const response = await page.waitForResponse(
       (res) => res.url().includes("/api/trpc/health.ping"),
       { timeout: 3000 },
@@ -74,8 +77,9 @@ test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", (
     page,
   }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    if (!SEEDED_PASSWORD) return;
     await page.route("**/demotiles.maplibre.org/**", (route) => route.abort());
-    await signIn(page, SEEDED_PASSWORD!);
+    await signIn(page, SEEDED_PASSWORD);
     await expect(page.locator('[data-state="CrmMapFailed390"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
@@ -88,7 +92,8 @@ test.describe("AC-4: disabled roadmap rows", () => {
 
   test("all 5 rows are aria-disabled with a Coming soon tooltip", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page, SEEDED_PASSWORD!);
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
     const moreTrigger = page.getByRole("button", { name: "More" });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
@@ -108,7 +113,8 @@ test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
     page,
   }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page, SEEDED_PASSWORD!);
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
     const moreTrigger = page.getByRole("button", { name: "More" });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();

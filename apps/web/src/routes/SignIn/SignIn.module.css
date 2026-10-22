@@ -10,7 +10,9 @@
 }
 
 .title {
-  font: var(--md-sys-typescale-headline-medium-weight) var(--md-sys-typescale-headline-medium-size)/var(--md-sys-typescale-headline-medium-line-height) var(--md-ref-typeface-brand);
+  font: var(--md-sys-typescale-headline-medium-weight)
+    var(--md-sys-typescale-headline-medium-size) /
+    var(--md-sys-typescale-headline-medium-line-height) var(--md-ref-typeface-brand);
   color: var(--md-sys-color-on-surface);
   margin-bottom: var(--space-6);
 }
@@ -28,7 +30,8 @@
 }
 
 .label {
-  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size)/var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
+    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
   color: var(--md-sys-color-on-surface-variant);
 }
 
@@ -36,7 +39,8 @@
   padding: var(--space-3);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-small);
-  font: var(--md-sys-typescale-body-large-weight) var(--md-sys-typescale-body-large-size)/var(--md-sys-typescale-body-large-line-height) var(--md-ref-typeface-plain);
+  font: var(--md-sys-typescale-body-large-weight) var(--md-sys-typescale-body-large-size) /
+    var(--md-sys-typescale-body-large-line-height) var(--md-ref-typeface-plain);
   color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface);
 }
@@ -51,7 +55,8 @@
   background: var(--status-danger-container);
   border-radius: var(--md-sys-shape-corner-small);
   padding: var(--space-3);
-  font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size)/var(--md-sys-typescale-body-medium-line-height) var(--md-ref-typeface-plain);
+  font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size) /
+    var(--md-sys-typescale-body-medium-line-height) var(--md-ref-typeface-plain);
 }
 
 .submit {
@@ -61,7 +66,8 @@
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size)/var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
+    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
   cursor: pointer;
 }
 

@@ -18,7 +18,10 @@ const HEALTH_HANDLER_ENTRY = "../../apps/api/src/handlers/health.ts";
 const LOCKOUT_HANDLER_ENTRY = "../../apps/api/src/auth/lockout-handler.ts";
 
 export function createCrmStacks(app: App, config: CrmAppConfig): void {
-  const env = { region: config.region, ...(config.account === undefined ? {} : { account: config.account }) };
+  const env = {
+    region: config.region,
+    ...(config.account === undefined ? {} : { account: config.account }),
+  };
 
   const dataStack = new CrmDataStack(app, "CrmData", { env });
   const syncStack = new CrmSyncStack(app, "CrmSync", { env });

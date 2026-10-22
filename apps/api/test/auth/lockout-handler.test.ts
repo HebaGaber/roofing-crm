@@ -41,8 +41,9 @@ describe("lockout state machine (data-model.md LockoutCounter)", () => {
     const counter = await store.get(USERNAME);
     expect(counter?.failedAttempts).toBe(MAX_FAILED_ATTEMPTS);
     expect(counter?.lockedUntil).not.toBeNull();
-    expect(counter!.lockedUntil! - Date.now()).toBeGreaterThan(LOCKOUT_COOLDOWN_MS - 1000);
-    expect(counter!.lockedUntil! - Date.now()).toBeLessThanOrEqual(LOCKOUT_COOLDOWN_MS);
+    if (!counter?.lockedUntil) throw new Error("expected lockedUntil to be set");
+    expect(counter.lockedUntil - Date.now()).toBeGreaterThan(LOCKOUT_COOLDOWN_MS - 1000);
+    expect(counter.lockedUntil - Date.now()).toBeLessThanOrEqual(LOCKOUT_COOLDOWN_MS);
   });
 
   it("a request during the cooldown is rejected with TooManyAttemptsError, never a generic error", async () => {

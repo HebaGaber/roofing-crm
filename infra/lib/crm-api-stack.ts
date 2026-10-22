@@ -51,11 +51,9 @@ export class CrmApiStack extends Stack {
     });
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
 
-    const authorizer = new authorizers.HttpUserPoolAuthorizer(
-      "CognitoAuthorizer",
-      props.userPool,
-      { userPoolClients: [props.userPoolClient] },
-    );
+    const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
+      userPoolClients: [props.userPoolClient],
+    });
 
     // Same-origin only via the Amplify /api/* rewrite (ARD-B §2.2/§8); corsPreflight is
     // deliberately omitted (no CORS surface), not set to undefined.

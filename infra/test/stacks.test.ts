@@ -17,12 +17,8 @@ const LOCKOUT_ENTRY = new URL("../../apps/api/src/auth/lockout-handler.ts", impo
 
 describe("CrmData / CrmSync (T005, stubbed)", () => {
   it("declare no resources yet", () => {
-    const dataTemplate = Template.fromStack(
-      new CrmDataStack(new App(), "CrmData", { env: ENV }),
-    );
-    const syncTemplate = Template.fromStack(
-      new CrmSyncStack(new App(), "CrmSync", { env: ENV }),
-    );
+    const dataTemplate = Template.fromStack(new CrmDataStack(new App(), "CrmData", { env: ENV }));
+    const syncTemplate = Template.fromStack(new CrmSyncStack(new App(), "CrmSync", { env: ENV }));
     expect(Object.keys(dataTemplate.toJSON().Resources ?? {})).toHaveLength(0);
     expect(Object.keys(syncTemplate.toJSON().Resources ?? {})).toHaveLength(0);
   });
@@ -131,12 +127,16 @@ describe("CrmApi (T007)", () => {
   it("the health.ping route has no authorizer attached", () => {
     const template = buildApi();
     const routes = template.findResources("AWS::ApiGatewayV2::Route");
-    const healthRoutes = Object.values(routes).filter(
-      (r: any) => typeof r.Properties?.RouteKey === "string" && r.Properties.RouteKey.includes("health.ping"),
+    interface RouteResource {
+      Properties: { RouteKey?: string; AuthorizationType?: string };
+    }
+    const healthRoutes = Object.values(routes as Record<string, RouteResource>).filter(
+      (r) =>
+        typeof r.Properties.RouteKey === "string" && r.Properties.RouteKey.includes("health.ping"),
     );
     expect(healthRoutes.length).toBeGreaterThan(0);
     for (const route of healthRoutes) {
-      expect((route as any).Properties.AuthorizationType ?? "NONE").not.toBe("JWT");
+      expect(route.Properties.AuthorizationType ?? "NONE").not.toBe("JWT");
     }
   });
 });

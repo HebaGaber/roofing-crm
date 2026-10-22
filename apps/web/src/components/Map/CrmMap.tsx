@@ -62,11 +62,7 @@ export function CrmMap({ styleUrl = DEFAULT_STYLE }: CrmMapProps): ReactElement 
     <div className={styles.wrapper}>
       <div ref={containerRef} className={styles.map} data-testid="crm-map" />
       {failed && (
-        <div
-          role="alert"
-          data-state="CrmMapFailed390"
-          className={styles.failed}
-        >
+        <div role="alert" data-state="CrmMapFailed390" className={styles.failed}>
           <p className={styles.failedMessage}>Map tiles failed to load.</p>
           <button type="button" className={styles.retry} onClick={onRetry}>
             Retry

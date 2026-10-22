@@ -35,7 +35,9 @@ export const LOCKOUT_COOLDOWN_MS = 5 * 60 * 1000;
 export class TooManyAttemptsError extends Error {
   readonly code = "TooManyAttemptsError";
   constructor(retryAt: number) {
-    super(`Too many attempts — try again in 5 minutes (retry at ${new Date(retryAt).toISOString()}).`);
+    super(
+      `Too many attempts — try again in 5 minutes (retry at ${new Date(retryAt).toISOString()}).`,
+    );
     this.name = "TooManyAttemptsError";
   }
 }
@@ -63,7 +65,8 @@ export async function preAuthentication(store: LockoutStore, username: string): 
 export async function recordFailedAttempt(store: LockoutStore, username: string): Promise<void> {
   const counter = (await store.get(username)) ?? emptyCounter(username);
   const failedAttempts = counter.failedAttempts + 1;
-  const lockedUntil = failedAttempts >= MAX_FAILED_ATTEMPTS ? Date.now() + LOCKOUT_COOLDOWN_MS : null;
+  const lockedUntil =
+    failedAttempts >= MAX_FAILED_ATTEMPTS ? Date.now() + LOCKOUT_COOLDOWN_MS : null;
   await store.put({ username, failedAttempts, lockedUntil });
 }
 

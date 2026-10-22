@@ -8,7 +8,8 @@
     "synth": "cdk synth --strict",
     "deploy": "cdk deploy --require-approval never",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@crm/config": "workspace:*",

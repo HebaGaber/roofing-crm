@@ -1,15 +1,8 @@
 // The DynamoDB adapter for data-model.md's `LockoutCounter` table (`CrmOps` stack, T017). Split
 // out from lockout-handler.ts so the state-machine logic (T011/T018) is unit-testable against an
 // in-memory fake, with the real adapter exercised only by cdk-nag/integration, not by vitest.
-import {
-  DynamoDBClient,
-  type DynamoDBClientConfig,
-} from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { DynamoDBClient, type DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 
 export interface LockoutCounter {
   readonly username: string;
@@ -30,9 +23,7 @@ export function createDynamoLockoutStore(
   const client = DynamoDBDocumentClient.from(new DynamoDBClient(clientConfig));
   return {
     async get(username) {
-      const result = await client.send(
-        new GetCommand({ TableName: tableName, Key: { username } }),
-      );
+      const result = await client.send(new GetCommand({ TableName: tableName, Key: { username } }));
       return result.Item as LockoutCounter | undefined;
     },
     async put(counter) {
@@ -42,9 +33,7 @@ export function createDynamoLockoutStore(
 }
 
 /** An in-memory `LockoutStore` for unit tests (T011) — no network, no AWS credentials needed. */
-export function createInMemoryLockoutStore(
-  seed: readonly LockoutCounter[] = [],
-): LockoutStore {
+export function createInMemoryLockoutStore(seed: readonly LockoutCounter[] = []): LockoutStore {
   const table = new Map<string, LockoutCounter>(seed.map((c) => [c.username, c]));
   return {
     async get(username) {

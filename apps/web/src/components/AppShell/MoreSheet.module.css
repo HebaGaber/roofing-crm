@@ -15,7 +15,8 @@
   border: none;
   background: none;
   color: var(--md-sys-color-on-surface-variant);
-  font: var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-ref-typeface-plain);
+  font: var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size) /
+    var(--md-sys-typescale-label-medium-line-height) var(--md-ref-typeface-plain);
   cursor: pointer;
 }
 
