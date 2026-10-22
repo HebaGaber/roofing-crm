@@ -1,0 +1,36 @@
+/* Visible below 768px; the NavRail takes over at 768px and 1440px (T028). */
+.wrapper {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .wrapper {
+    display: none;
+  }
+}
+
+.trigger {
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size)/var(--md-sys-typescale-label-medium-line-height) var(--md-ref-typeface-plain);
+  cursor: pointer;
+}
+
+.panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--md-sys-color-surface-container-high);
+  border-top-left-radius: var(--md-sys-shape-corner-large);
+  border-top-right-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level3);
+  z-index: 2;
+}

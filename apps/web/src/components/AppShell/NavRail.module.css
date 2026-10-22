@@ -1,0 +1,14 @@
+/* Hidden below 768px (MoreSheet takes over there); visible at 768px and 1440px (T028). */
+.rail {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 0 var(--space-2);
+}
+
+@media (min-width: 768px) {
+  .rail {
+    display: flex;
+  }
+}

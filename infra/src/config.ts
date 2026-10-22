@@ -11,11 +11,7 @@ export interface CrmAppConfig extends RuntimeConfig {
 
 export type ContextGetter = (key: string) => unknown;
 
-export interface LoadConfigEnv {
-  readonly CDK_DEFAULT_REGION?: string;
-  readonly AWS_REGION?: string;
-  readonly CDK_DEFAULT_ACCOUNT?: string;
-}
+export type LoadConfigEnv = Record<string, string | undefined>;
 
 export function loadConfig(env: LoadConfigEnv, getContext: ContextGetter): CrmAppConfig {
   const runtime = loadRuntimeConfig(env);

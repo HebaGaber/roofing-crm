@@ -14,10 +14,7 @@ export const RuntimeConfig = z.object({
 });
 export type RuntimeConfig = z.infer<typeof RuntimeConfig>;
 
-export interface LoadConfigEnv {
-  readonly CDK_DEFAULT_REGION?: string;
-  readonly AWS_REGION?: string;
-}
+export type LoadConfigEnv = Record<string, string | undefined>;
 
 /**
  * Resolves and validates the runtime region. Reads `CDK_DEFAULT_REGION` first (set by the CDK CLI

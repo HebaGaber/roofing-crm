@@ -1,0 +1,48 @@
+// research.md "client-side MapLibre bounds guarantee, no server round trip": minZoom is computed
+// once from map.cameraForBounds(countyBbox); maxBounds is left unset so pan/zoom stays
+// unrestricted (AC-2's "no artificial limit" + "always renders at least the county box"). Split
+// out from CrmMap.tsx so T012's unit test exercises this pure logic without a real WebGL canvas.
+// Tuples are mutable (not `readonly`) so they structurally satisfy maplibre-gl's own
+// `LngLatLike`/`LngLatBoundsLike` types without a cast.
+export const TRAVIS_COUNTY_CENTER: [number, number] = [-97.7431, 30.2672];
+
+/** Travis County, TX bounding box: southwest, northeast (spec.md, agent-design.md §3). */
+export const TRAVIS_COUNTY_BOUNDS: [[number, number], [number, number]] = [
+  [-98.17, 30.09],
+  [-97.33, 30.52],
+];
+
+export interface CameraForBoundsResult {
+  readonly zoom?: number;
+}
+
+/** The subset of maplibre-gl's Map type this module needs — kept narrow so it's mockable. */
+export interface CameraForBoundsMap {
+  cameraForBounds(
+    bounds: [[number, number], [number, number]],
+  ): CameraForBoundsResult | null | undefined;
+}
+
+/**
+ * The minimum zoom that still shows the whole county — derived once from `cameraForBounds`, not
+ * a literal. Returns `undefined` (no minZoom set) if MapLibre can't compute a camera for the
+ * bounds, rather than guessing a value.
+ */
+export function computeMinZoom(map: CameraForBoundsMap): number | undefined {
+  const camera = map.cameraForBounds(TRAVIS_COUNTY_BOUNDS);
+  return camera?.zoom;
+}
+
+/**
+ * The MapLibre `Map` constructor options this story requires: a fixed center, no `maxBounds`
+ * (free pan/zoom — AC-2's "no artificial limit"). `minZoom` is added separately on `load`/resize
+ * once `computeMinZoom` can run against the real map instance.
+ */
+export interface CrmMapInitOptions {
+  readonly center: [number, number];
+  readonly maxBounds?: never;
+}
+
+export function buildMapInitOptions(): CrmMapInitOptions {
+  return { center: TRAVIS_COUNTY_CENTER };
+}

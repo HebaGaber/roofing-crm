@@ -1,5 +1,7 @@
-// A-13 T041 (G3): Coming soon (US10, AC-13, FR-013; TC-060…TC-070) and ComingSoonSkeleton.
-import { PAGE_TEXTS } from "@crm/shared";
+// T029 (B-01): adapted from A-13 T041 for the CRM's own 5 roadmap sections and the
+// /coming-soon/:section route (AC-5). ComingSoonSkeleton assertions are unchanged (generic,
+// Task-A-independent); the route tests are rewritten for campaigns/estimates/jobs/invoices/
+// outreach and a "Back to Map" action instead of Task A's county-explore logic.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -13,12 +15,12 @@ const skeletonCss = (): string =>
 
 afterEach(cleanup);
 
-async function renderItem(item: string): Promise<HTMLElement> {
+async function renderSection(section: string): Promise<HTMLElement> {
   const { Component } = await import("../src/routes/ComingSoon");
   render(
-    <MemoryRouter initialEntries={[`/soon/${item}`]}>
+    <MemoryRouter initialEntries={[`/coming-soon/${section}`]}>
       <Routes>
-        <Route path="/soon/:item" element={<Component />} />
+        <Route path="/coming-soon/:section" element={<Component />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -47,29 +49,26 @@ describe("ComingSoonSkeleton", () => {
   });
 });
 
-describe("ComingSoon route", () => {
+describe("ComingSoon route (T029, AC-5)", () => {
   for (const item of COMING_SOON_ITEMS.filter((i) => i.linked)) {
-    it(`${item.id}: heading, label, exactly one sentence, a skeleton outside the text`, async () => {
-      const page = await renderItem(item.id);
+    it(`${item.id}: heading, label, exactly one sentence, a skeleton, and a Back to Map link`, async () => {
+      const page = await renderSection(item.id);
       expect(page.getAttribute("data-route")).toBe("coming-soon");
       expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(item.title);
-      expect(screen.getByText(PAGE_TEXTS.comingSoon)).toBeTruthy();
+      expect(screen.getByText("Coming soon")).toBeTruthy();
       expect(screen.getByText(item.sentence)).toBeTruthy();
       const skeleton = page.querySelector("[aria-hidden=true][data-skeleton]");
       expect(skeleton).not.toBeNull();
       expect(skeleton?.textContent).toBe("");
+      const backLink = screen.getByRole("link", { name: "Back to Map" });
+      expect(backLink.getAttribute("href")).toBe("/");
     });
   }
 
-  it("AI-user sign-in is not linked anywhere: its id has no page", async () => {
-    const page = await renderItem("ai-user-sign-in");
+  it("an unknown section is not found, with a Back to Map link, never a 404 (AC-5)", async () => {
+    const page = await renderSection("nope");
     expect(page.getAttribute("data-state")).toBe("not-found");
-    expect(page.querySelector("[data-skeleton]")).toBeNull();
-  });
-
-  it("an unknown item is not found, with a link back to the Hub", async () => {
-    const page = await renderItem("nope");
-    expect(page.getAttribute("data-state")).toBe("not-found");
-    expect(page.querySelector("a")?.getAttribute("href")).toBe("/");
+    const backLink = screen.getByRole("link", { name: "Back to Map" });
+    expect(backLink.getAttribute("href")).toBe("/");
   });
 });

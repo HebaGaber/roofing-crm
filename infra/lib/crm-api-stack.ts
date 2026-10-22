@@ -57,9 +57,10 @@ export class CrmApiStack extends Stack {
       { userPoolClients: [props.userPoolClient] },
     );
 
+    // Same-origin only via the Amplify /api/* rewrite (ARD-B §2.2/§8); corsPreflight is
+    // deliberately omitted (no CORS surface), not set to undefined.
     this.httpApi = new apigwv2.HttpApi(this, "HttpApi", {
       apiName: "crm-api",
-      corsPreflight: undefined, // Same-origin only via the Amplify /api/* rewrite (ARD-B §2.2/§8); no CORS surface.
     });
 
     // AwsSolutions-APIG1: access logging on the default stage, via the L1 escape hatch (the L2
