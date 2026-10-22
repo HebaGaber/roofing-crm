@@ -90,8 +90,8 @@ description: "Task list for B-01 CRM shell with disabled roadmap sections"
 
 ## Phase N: Polish & Cross-Cutting Concerns (pre-deploy only — no RUNTIME_URL needed yet)
 
-- [ ] TN01 Confirm each stack file — `infra/lib/crm-api-stack.ts` (T007), `infra/lib/crm-web-stack.ts` (T009), `infra/lib/crm-domain-stack.ts` (T010), `infra/lib/crm-ops-stack.ts` (T017) — applies `cdk.Tags.of(stack).add('project_name', 'roofing-crm')` per constitution Article III; add the tag where missing
-- [ ] TN02 Run `cdk synth --strict` with `cdk-nag` from `infra/`, enumerating each stack explicitly (`infra/lib/crm-data-stack.ts`, `crm-sync-stack.ts`, `crm-api-stack.ts`, `crm-web-stack.ts`, `crm-domain-stack.ts`, `crm-ops-stack.ts`), clean on all 6. **Not [P] with TN01**: TN02 re-synthesizes the same files TN01 may have just edited (to add tags), so TN01 must finish first.
+- [x] TN01 Confirm each stack file — `infra/lib/crm-api-stack.ts` (T007), `infra/lib/crm-web-stack.ts` (T009), `infra/lib/crm-domain-stack.ts` (T010), `infra/lib/crm-ops-stack.ts` (T017) — applies `cdk.Tags.of(stack).add('project_name', 'roofing-crm')` per constitution Article III; add the tag where missing
+- [x] TN02 Run `cdk synth --strict` with `cdk-nag` from `infra/`, enumerating each stack explicitly (`infra/lib/crm-data-stack.ts`, `crm-sync-stack.ts`, `crm-api-stack.ts`, `crm-web-stack.ts`, `crm-domain-stack.ts`, `crm-ops-stack.ts`), clean on all 6. **Not [P] with TN01**: TN02 re-synthesizes the same files TN01 may have just edited (to add tags), so TN01 must finish first.
 
 *(`quickstart.md`'s scenarios are the same ACs `tests/e2e/B-01.spec.ts` already covers; it is exercised by TZ03 below, not as a separate pre-deploy task — it needs RUNTIME_URL, which does not exist until TZ02.)*
 
