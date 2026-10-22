@@ -1,0 +1,14 @@
+{
+  "name": "@crm/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests"
+  },
+  "dependencies": {
+    "@crm/contract": "workspace:*"
+  }
+}
