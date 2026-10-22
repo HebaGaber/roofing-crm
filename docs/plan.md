@@ -109,6 +109,8 @@ flowchart LR
 | EXT-08 | External | Bedrock model access | Phase 3 | Available (PO, 2026-10-21) |
 | EXT-09 | External | Domain `crm.aldarraj.com` (Namecheap CNAMEs, as Task A does for `countylens.aldarraj.com`) | Phase 0 | Decided (PO, 2026-10-21); DNS set up in B-01 |
 | EXT-10 | External | Search-index service available on the free plan (Q-04) | Phase 0 | Available (read-only check 2026-10-21; confirmed at first deploy) |
+| EXT-11 | External (Task A) | Situs address (`unnormalized_address`, `city_name`, `postal_code`) published in `contract/v1.1`, in a Task A story after A-04 (Task A follow-up FU-A-01) | Phase 1 drawer and cards; until then the TCAD-id fallback | Pending (PO, 2026-10-21) |
+| EXT-12 | External (Task A) | Contractor name as printed (`contractor_name_raw`) published in `contract/v1.1` (Task A follow-up FU-A-01) | Phase 1 drawer (demo line 5); until then "Contractor not published" | Pending (PO, 2026-10-21) |
 | ORG-01 | Organisational | G1 approval of the feature list (Q-01) | P8 stories | Pending |
 | ORG-02 | Organisational | G3 approval of the architecture constitution (P6) | Phase 0 | Pending |
 | ORG-03 | Organisational | Assessor questions | — | Resolved: answered by the PO 2026-10-21 (VIS-B § 12) |

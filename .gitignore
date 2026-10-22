@@ -14,3 +14,4 @@ test-results/
 # raw source downloads and local pipeline state (never commit)
 pipeline/data/
 *.car
+.DS_Store
