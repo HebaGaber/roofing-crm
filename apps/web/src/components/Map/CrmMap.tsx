@@ -44,8 +44,20 @@ export function CrmMap({ styleUrl = DEFAULT_STYLE }: CrmMapProps): ReactElement 
       }
     };
 
-    const onError = (_event: MapLibreEvent & { error?: Error }): void => {
-      setFailed(true);
+    const onError = (event: MapLibreEvent & { error?: Error }): void => {
+      // MapLibre's "error" event fires for any internal failure (a malformed style, a lost
+      // WebGL context, a bad minZoom call), not only a tile-load failure — treating every one
+      // as CrmMapFailed390 with a "Retry" button would mislead the user for causes a reload can
+      // never fix (found in code review, CR-B-01). A tile-load failure is a network fetch
+      // failure, which MapLibre surfaces as a TypeError/AbortError-shaped message; anything else
+      // is logged instead of shown as the named tile-failure state.
+      const message = event.error?.message ?? "";
+      const isTileFailure = /fetch|network|abort|load/i.test(message);
+      if (isTileFailure) {
+        setFailed(true);
+      } else {
+        console.error("MapLibre error (not a tile-load failure):", event.error);
+      }
     };
 
     map.on("load", applyMinZoom);

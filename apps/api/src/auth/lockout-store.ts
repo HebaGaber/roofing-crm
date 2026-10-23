@@ -3,13 +3,15 @@
 // in-memory fake, with the real adapter exercised only by cdk-nag/integration, not by vitest.
 import { DynamoDBClient, type DynamoDBClientConfig } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
+import { z } from "zod";
 
-export interface LockoutCounter {
-  readonly username: string;
-  readonly failedAttempts: number;
+export const LockoutCounter = z.object({
+  username: z.string().min(1),
+  failedAttempts: z.number().int().nonnegative(),
   /** Epoch milliseconds, or null when not locked (data-model.md). */
-  readonly lockedUntil: number | null;
-}
+  lockedUntil: z.number().int().positive().nullable(),
+});
+export type LockoutCounter = z.infer<typeof LockoutCounter>;
 
 export interface LockoutStore {
   get(username: string): Promise<LockoutCounter | undefined>;
@@ -24,7 +26,14 @@ export function createDynamoLockoutStore(
   return {
     async get(username) {
       const result = await client.send(new GetCommand({ TableName: tableName, Key: { username } }));
-      return result.Item as LockoutCounter | undefined;
+      if (result.Item === undefined) return undefined;
+      // A malformed item (a partially-written row from a failed put, or manual tampering) must
+      // not silently defeat the lock: `{...}.failedAttempts + 1` on a bad shape could produce
+      // NaN, and `NaN >= MAX_FAILED_ATTEMPTS` is always false (found in code review, CR-B-01).
+      // Treat it as absent instead — the caller's `?? emptyCounter(username)` fallback then
+      // starts counting cleanly from 0 rather than failing open on a corrupt value.
+      const parsed = LockoutCounter.safeParse(result.Item);
+      return parsed.success ? parsed.data : undefined;
     },
     async put(counter) {
       await client.send(new PutCommand({ TableName: tableName, Item: counter }));

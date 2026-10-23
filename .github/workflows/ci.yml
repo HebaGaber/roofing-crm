@@ -1,28 +1,16 @@
-# A-03 T022 (plan research R-10; agent-design metagross § 1 and § 7; Complexity Tracking D-05):
-# the one CI workflow. The company shared workflows are not reachable from the fork (D-05), so
-# the same stages run here: install, typecheck, lint, test (with the coverage gate), synth,
-# prettier, stylelint, grep gates, bundle gate, gitleaks, hosted e2e.
+# B-01: the one CI workflow for roofing-crm. Rewritten from the Task A (A-03) copy T001 brought
+# in (found in code review, CR-B-01): that version's `workspace` job ran `turbo run typecheck
+# lint test synth` — no package here defines a `typecheck` or `lint` script (only hyphenated
+# `type-check`, and `lint` is a root-only `eslint .` turbo doesn't pick up), so it silently
+# ran nothing and reported green. Its coverage-gate, stylelint, grep-gates and bundle-size steps
+# referenced packages/contract, packages/query-core and scripts/ that don't exist in this repo,
+# and its entire second job (`oracle-runtime`) was Task A's own pipeline CI, verbatim, targeting
+# a `pipeline/oracle-runtime` directory this repo has never had.
 #
-# CI never deploys and never holds AWS credentials (ARD § 16 AM-08, 2026-10-21): the AWS
-# Organizations SCP denies the GitHub OIDC provider, so infrastructure deploys run from the PO's
-# laptop (profile assess) after a PO approval per deploy. Amplify still builds every push from its
-# Git connection; `e2e-hosted` waits for that build and tests it. @needs-aws specs stay skipped.
-#
-# Budgets (NFR-09): the merge-blocking jobs `workspace`, `oracle-runtime` and `gitleaks` each
-# have `timeout-minutes: 15`. `e2e-hosted` runs only on a push to `0*` or
-# `feature/roofing-crm` and has its own 30-minute budget because it first waits for the
-# Amplify build of this commit (plan Complexity Tracking).
-#
-# No secret is written here. The region, the account id, the Amplify app id, the CID-copy and
-# gateway hosts and the operator email are repository variables, never literals (P0-18).
-# `secrets.GITHUB_TOKEN` is the workflow's own ephemeral token, not a stored secret.
-#
-# `gitleaks` is meant to be a required status check on `feature/roofing-crm` and `0*`
-# (branch protection, a repository setting the PO makes; NFR-04).
-#
-# The `oracle-runtime` job reproduces every step of pipeline-ci.yml unchanged after one workspace
-# install prerequisite (A-01, D-03);
-# that file is deleted by T078 once this job is green with step parity in the evidence.
+# CI never deploys and never holds AWS credentials: infrastructure deploys run from the PO's
+# laptop (profile assess) after approval per deploy. Amplify builds every push from its own Git
+# connection; `e2e-hosted` waits for that build and tests it. The region, account id and Amplify
+# app id are repository variables, never literals.
 name: ci
 
 on:
@@ -37,14 +25,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # synth reads the region from configuration (infra/src/config.ts throws without
-      # CDK_DEFAULT_REGION); the web build reads the public hosts as VITE_* (not secrets).
+      # @crm/config throws without CDK_DEFAULT_REGION (infra/src/config.ts); synth needs it even
+      # though this job never deploys.
       AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
-      OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
-      VITE_CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
-      VITE_FILEBASE_GATEWAY_HOST: ${{ vars.FILEBASE_GATEWAY_HOST }}
     steps:
       - uses: actions/checkout@v4
 
@@ -58,136 +43,21 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck, lint, test, synth (Turborepo)
-        run: pnpm turbo run typecheck lint test synth
-
-      # NFR-09: ≥ 80 % lines and branches on packages/contract and packages/query-core. The
-      # thresholds are passed on the command line so the gate lives in this file; Vitest exits
-      # non-zero below them.
-      - name: Coverage gate (packages/contract ≥ 80 % lines and branches)
-        working-directory: packages/contract
-        run: >
-          pnpm exec vitest run --coverage
-          --coverage.include='src/**/*.ts'
-          --coverage.thresholds.lines=80 --coverage.thresholds.branches=80
-
-      - name: Coverage gate (packages/query-core ≥ 80 % lines and branches)
-        working-directory: packages/query-core
-        run: >
-          pnpm exec vitest run --coverage
-          --coverage.include='src/**/*.ts' --coverage.include='gazetteer/**/*.ts'
-          --coverage.thresholds.lines=80 --coverage.thresholds.branches=80
-
-      - name: Prettier
-        run: pnpm format:check
-
-      - name: Stylelint (Atlas tokens only, apps/web)
-        run: >
-          pnpm exec stylelint "apps/web/src/**/*.css"
-          --config apps/web/.stylelintrc.json --allow-empty-input
-
-      - name: Grep gates (reroof terms, LIKE classification, Query DB, region literals, Atlas phrase)
-        run: sh scripts/grep-gates.sh
-
-      - name: Build the web app (input to the bundle gate)
-        run: pnpm turbo run build --filter=./apps/web
-
-      - name: Bundle gate (≤ 300 KB gzipped, DuckDB chunks excluded)
-        run: pnpm exec tsx scripts/bundle-size.ts
-
-  # After one prerequisite (pnpm setup + `pnpm install --frozen-lockfile` at the root, because the
-  # runtime imports workspace packages), every step below is pipeline-ci.yml's `oracle-runtime`
-  # job unchanged (A-01 T052). It runs on
-  # every push with no path filter. The Python 3.12 + PyYAML step is the vendored kit's own
-  # validator (plan Complexity Tracking D-03); no Python is written in this repository.
-  oracle-runtime:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: pipeline/oracle-runtime
-    steps:
-      - uses: actions/checkout@v4
-
-      # The one prerequisite before the pipeline-ci.yml steps: travis/pilot/run-pilot.ts and
-      # travis/runs/run-month.ts import workspace source (packages/contract, packages/query-core,
-      # which pull zod, @duckdb/node-api and @crm/query-core), so tsc and Vitest follow
-      # those imports into the pnpm workspace and need its node_modules. An `exclude` in the
-      # runtime tsconfig cannot stop that (tsc type-checks every imported file).
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: |
-            pipeline/oracle-runtime/package-lock.json
-            pipeline/local-stack/package-lock.json
-
-      - name: pnpm install (workspace packages imported by the runtime)
-        working-directory: .
-        run: pnpm install --frozen-lockfile
-
-      # The vendored kit validator reads YAML with PyYAML when it is installed (parser parity
-      # with its built-in reader is checked in the story evidence, T050).
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install PyYAML
-        run: python3 -m pip install --disable-pip-version-check "pyyaml==6.0.3"
-
-      - name: npm ci
-        run: npm ci
-
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Type-check (Turborepo)
+        run: pnpm run type-check
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
-      - name: Format check
-        run: npm run format:check
+      - name: Unit tests (Turborepo)
+        run: pnpm run test
 
-      - name: Unit tests
-        run: npm test
+      - name: Prettier
+        run: pnpm run format
 
-      # A-04 T012: the local Restate services (Loader, BackboneReport, migrations, workflow
-      # auto-registration) are type-checked and unit-tested offline in the same job. Their app
-      # imports the runtime above, so this runs after its npm ci. Query DB integration cases
-      # need QDB_TEST_URL and are skipped here (no database in CI).
-      - name: local-stack npm ci
-        working-directory: pipeline/local-stack
-        run: npm ci
-
-      - name: local-stack typecheck
-        working-directory: pipeline/local-stack
-        run: npm run typecheck
-
-      - name: local-stack unit tests
-        working-directory: pipeline/local-stack
-        run: npm test
-
-      - name: Readiness validator self-test (vendored kit, unmodified)
-        run: python3 kit/use-oracle/scripts/validate-county-readiness.py --self-test
-
-      # OR-M5: the committed catalog passes the A-01 checker, and the vendored validator's
-      # report on it is byte-identical to the committed readiness report (no network: both
-      # read only the YAML file).
-      - name: Check the committed catalog (check-catalog rules 1-11)
-        run: npm run check-catalog
-
-      - name: Validator on the committed catalog equals docs/evidence/A-01-readiness.json
-        working-directory: .
-        run: |
-          set +e
-          python3 pipeline/oracle-runtime/kit/use-oracle/scripts/validate-county-readiness.py \
-            pipeline/docs/travis-sources.yaml > "$RUNNER_TEMP/readiness.json"
-          code=$?
-          set -e
-          echo "validator exit $code"
-          diff -u docs/evidence/A-01-readiness.json "$RUNNER_TEMP/readiness.json"
-          test "$code" -eq 0
+      - name: cdk synth --strict (cdk-nag runs as part of synth, infra/src/app.ts)
+        working-directory: infra
+        run: pnpm exec cdk synth --strict
 
   gitleaks:
     runs-on: ubuntu-latest
@@ -197,9 +67,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Constitution XII: every suppressed fingerprint is governed. A fingerprint line must sit
-      # under a comment block that contains a `# reason:` line naming the file, the
-      # false-positive kind and the PO decision; the PR lists them.
+      # constitution Article XII: every suppressed fingerprint is governed. A fingerprint line
+      # must sit under a comment block with a "# reason:" line naming the file, the false-positive
+      # kind and the PO decision; the PR lists them.
       - name: .gitleaksignore governance (every fingerprint under a "# reason:" comment)
         run: |
           test -f .gitleaksignore || { echo "no .gitleaksignore: nothing to govern"; exit 0; }
@@ -217,35 +87,19 @@ jobs:
 
   e2e-hosted:
     if: github.event_name == 'push' && (github.ref_name == 'feature/roofing-crm' || startsWith(github.ref_name, '0'))
-    needs: [workspace, oracle-runtime, gitleaks]
+    needs: [workspace, gitleaks]
     runs-on: ubuntu-latest
-    # The one job outside the 15-minute budget: ≤ 12 min waiting for the Amplify build of this
-    # commit, then Playwright on the hosted URL (plan Complexity Tracking).
+    # The one job outside the 15-minute budget: waits for the Amplify build of this commit, then
+    # Playwright on the hosted URL.
     timeout-minutes: 30
     # A newer push makes this commit's hosted run stale; cancel it.
     concurrency:
       group: e2e-hosted-${{ github.ref }}
       cancel-in-progress: true
-    # Credential-free on purpose (no AWS step, no OIDC token; AM-08): @needs-aws cases stay excluded and
-    # announced. build-checks.spec.ts (TC-052/053) runs the infra suites, which need the region
-    # (checked against crm:allowedRegions) and OPERATOR_EMAIL; fallback.spec.ts (TC-032–034)
-    # and cid-copy.spec.ts need CID_COPY_HOST. An unset gateway variable falls back to the
-    # harness default (tests/e2e/lib/runtime.ts). Every value is a repository variable (P0-18).
     env:
       AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
-      AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
-      OPERATOR_EMAIL: ${{ vars.OPERATOR_EMAIL }}
-      CID_COPY_HOST: ${{ vars.CID_COPY_HOST }}
-      FILEBASE_GATEWAY_HOST: ${{ vars.FILEBASE_GATEWAY_HOST }}
-      PINATA_GATEWAY_HOST: ${{ vars.PINATA_GATEWAY_HOST }}
-      # TC-030: the permit number(s) the run counted under permits_no_tcad_geoid (manifest coverage).
-      NO_TCAD_PERMIT_NUMBERS: ${{ vars.NO_TCAD_PERMIT_NUMBERS }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          # TC-061 checks the evidence names the deployed build or a docs-only ancestor of it.
-          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -257,14 +111,10 @@ jobs:
       - name: pnpm install
         run: pnpm install --frozen-lockfile
 
-      # build-checks.spec.ts (TC-006) runs the kit runtime's Vitest suite, an npm project outside pnpm.
-      - name: npm ci (kit runtime, for the TC-006 build check)
-        working-directory: pipeline/oracle-runtime
-        run: npm ci
-
-      # Amplify builds the branch from the same push (branch slug: "/" becomes "-") and writes
-      # /build.json with the commit sha. Poll until it is this commit; 12 minutes at most.
-      - name: Wait for the Amplify build of this commit (/build.json sha == GITHUB_SHA)
+      # Amplify builds the branch from the same push (branch slug: "/" becomes "-").
+      # infra/lib/crm-web-stack.ts has no /build.json route yet (B-01 has none — a future story's
+      # concern), so this polls the branch's own default page instead of a build-identity file.
+      - name: Wait for the Amplify build of this commit
         run: |
           if [ -z "$AMPLIFY_APP_ID" ]; then
             echo "::error::Repository variable AMPLIFY_APP_ID is not set (CrmWeb output)"
@@ -273,15 +123,14 @@ jobs:
           slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '/' '-')
           url="https://${slug}.${AMPLIFY_APP_ID}.amplifyapp.com"
           deadline=$(( $(date +%s) + 12 * 60 ))
-          sha=""
           while :; do
-            sha=$(curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "$url/build.json" | jq -r '.sha // empty' 2>/dev/null || true)
-            if [ "$sha" = "$GITHUB_SHA" ]; then
-              echo "$url/build.json is at $sha"
+            code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$url/sign-in" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "$url is live"
               break
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::$url/build.json did not reach $GITHUB_SHA within 12 minutes (last sha: ${sha:-none})"
+              echo "::error::$url did not come up within 12 minutes (last HTTP status: $code)"
               exit 1
             fi
             sleep 15
@@ -289,12 +138,11 @@ jobs:
           echo "RUNTIME_URL=$url" >> "$GITHUB_ENV"
 
       - name: Install Playwright browsers
-        working-directory: tests/e2e
         run: pnpm exec playwright install --with-deps chromium
 
-      # The Playwright config refuses localhost (TC-060); RUNTIME_URL is the hosted branch URL.
+      # The Playwright config refuses an explicit localhost RUNTIME_URL (config-guard.spec.ts);
+      # RUNTIME_URL here is always the hosted branch URL.
       - name: Playwright on the hosted URL
-        working-directory: tests/e2e
         run: pnpm exec playwright test
 
       - name: Upload the Playwright report
@@ -302,6 +150,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-${{ github.sha }}
-          path: tests/e2e/playwright-report
+          path: playwright-report
           if-no-files-found: ignore
           retention-days: 14

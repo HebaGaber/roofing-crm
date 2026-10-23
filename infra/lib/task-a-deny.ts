@@ -15,8 +15,8 @@ export function taskADenyStatement(stack: Stack): PolicyStatement {
     actions: ["s3:*", "ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
     resources: [
       // Task A's CID-copy bucket (CloudFront origin), every object in it.
-      `arn:aws:s3:::countylensdata-*`,
-      `arn:aws:s3:::countylensdata-*/*`,
+      `arn:${stack.partition}:s3:::countylensdata-*`,
+      `arn:${stack.partition}:s3:::countylensdata-*/*`,
       // Task A's SSM parameter namespace (architecture-constitution.md § 7: "no reading
       // /countylens/* SSM parameters").
       `arn:${stack.partition}:ssm:${stack.region}:${stack.account}:parameter/countylens/*`,

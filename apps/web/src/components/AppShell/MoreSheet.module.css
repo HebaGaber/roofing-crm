@@ -1,9 +1,11 @@
-/* Visible below 768px; the NavRail takes over at 768px and 1440px (T028). */
+/* Visible below 600px; the NavRail takes over from 600px (T028) — matches AppShell.module.css's
+   own grid breakpoint and NavRail.module.css's (found in code review, CR-B-01: this previously
+   said 768px, disagreeing with both). */
 .wrapper {
   display: block;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 600px) {
   .wrapper {
     display: none;
   }

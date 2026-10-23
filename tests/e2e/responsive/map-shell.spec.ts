@@ -1,9 +1,11 @@
 // B-01 TZ04 (NFR-002, TC-NF-02; AC-4 breakpoint behaviour): responsive coverage for the signed-in
 // Map screen and its roadmap navigation shell at 390/768/1440 px, run via playwright.config.ts's
 // three viewport projects against RUNTIME_URL. Covers AppShell.module.css's row->column switch
-// at the 600px rail breakpoint and NavRail/MoreSheet's complementary visibility switch at 768px
-// (NavRail.module.css, MoreSheet.module.css) — not sign-in or navigation business logic, which
-// B-01.spec.ts's AC-1/AC-4/AC-5 cases already cover.
+// and NavRail/MoreSheet's visibility switch, both at the single 600px rail breakpoint
+// (NavRail.module.css, MoreSheet.module.css, AppShell.module.css — all three previously
+// disagreed, 768px vs 600px vs 600px, found in code review CR-B-01: none of the fixed 390/768/
+// 1440px test viewports sample the untested 600-767px band where that showed up) — not sign-in
+// or navigation business logic, which B-01.spec.ts's AC-1/AC-4/AC-5 cases already cover.
 import { expect, test } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
 
@@ -33,12 +35,12 @@ test.describe("Responsive design: Map screen and navigation shell", () => {
     expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
   });
 
-  test("shows the roadmap sections in the surface this breakpoint owns (More sheet below 768px, nav rail from 768px)", async ({
+  test("shows the roadmap sections in the surface this breakpoint owns (More sheet below 600px, nav rail from 600px)", async ({
     page,
   }) => {
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const isCompact = (viewport?.width ?? 0) < 768;
+    const isCompact = (viewport?.width ?? 0) < 600;
 
     const moreTrigger = page.getByRole("button", { name: "More" });
     const navRail = page.locator('[aria-label="Roadmap sections (not yet built)"]');

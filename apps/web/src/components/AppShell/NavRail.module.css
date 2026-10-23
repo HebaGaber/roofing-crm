@@ -1,4 +1,8 @@
-/* Hidden below 768px (MoreSheet takes over there); visible at 768px and 1440px (T028). */
+/* Hidden below 600px (MoreSheet takes over there); visible from 600px (T028). 600px is Atlas's
+   own navigation-rail breakpoint (AppShell.module.css's grid switches at the same point) — this
+   previously said 768px, which disagreed with the shell's own layout switch and squeezed
+   MoreSheet's bottom-sheet trigger into the narrow rail column in the untested 600-767px band
+   (found in code review, CR-B-01; no Playwright project samples that range). */
 .rail {
   display: none;
   flex-direction: column;
@@ -7,7 +11,7 @@
   padding: 0 var(--space-2);
 }
 
-@media (min-width: 768px) {
+@media (min-width: 600px) {
   .rail {
     display: flex;
   }
