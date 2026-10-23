@@ -1,21 +1,30 @@
-// A-03-TC-060: Playwright config refuses localhost (FR-010, hosted-runtime rule). The case
-// spawns the real `playwright test --list` with the loopback values and with RUNTIME_URL
-// unset, and asserts the exact fixed texts, a non-zero exit and that nothing was listed.
+// A-03-TC-060: Playwright config refuses an explicit loopback RUNTIME_URL (constitution Article I
+// "localhost is never evidence"). The case spawns the real `playwright test --list` with the
+// loopback values and asserts the exact fixed text, a non-zero exit and that nothing was listed.
+// Deviation from the copied A-03 test, disclosed: that story's original "unset" case is dropped —
+// A-03 has no local-dev-server testing phase, so it refuses RUNTIME_URL being unset at all; B-01
+// intentionally runs pre-deploy tests against the local Turborepo dev server with RUNTIME_URL
+// unset (plan.md's Complexity Tracking row on Article XXI), so playwright.config.ts exempts the
+// unset case by design, not by omission — asserting it here would contradict that decision.
 import { createRequire } from "node:module";
 import { expect, test } from "@playwright/test";
-import { RUNTIME_URL_UNSET_TEXT, runtimeUrlLocalhostText } from "./lib/runtime-url.js";
-import { e2eRoot } from "./lib/runtime.js";
+import { runtimeUrlLocalhostText } from "./lib/runtime-url.js";
+import { repoRoot } from "./lib/runtime.js";
 import { childEnv, run, type RunResult } from "./lib/spawn.js";
 
 const require = createRequire(import.meta.url);
 const playwrightCli = require.resolve("@playwright/test/cli");
 
-/** `playwright test --list` in this package with RUNTIME_URL set to `value` (or removed). */
+/**
+ * `playwright test --list` with RUNTIME_URL set to `value` (or removed). cwd is the repo root
+ * (playwright.config.ts lives there, not under tests/e2e — found running this spec: the Task A
+ * copy assumed a different layout).
+ */
 function listTests(value: string | undefined): Promise<RunResult> {
   return run(
     process.execPath,
     [playwrightCli, "test", "--list", "--config", "playwright.config.ts", "--reporter=list"],
-    { cwd: e2eRoot, env: childEnv({ RUNTIME_URL: value }), timeoutMs: 180_000 },
+    { cwd: repoRoot, env: childEnv({ RUNTIME_URL: value }), timeoutMs: 180_000 },
   );
 }
 
@@ -35,7 +44,6 @@ const CASES: { label: string; value: string | undefined; expected: string }[] = 
     value: "http://[::1]:3000",
     expected: runtimeUrlLocalhostText("http://[::1]:3000"),
   },
-  { label: "unset", value: undefined, expected: RUNTIME_URL_UNSET_TEXT },
 ];
 
 test.describe("A-03-TC-060 Playwright config refuses localhost", () => {

@@ -100,6 +100,11 @@ test.describe("AC-4: disabled roadmap rows", () => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
     await signIn(page, SEEDED_PASSWORD);
+    // Found deploying (same cause as the "survives a reload" fix above): `moreTrigger.isVisible()`
+    // is a one-shot synchronous check, not a retrying `expect` — checked before the SRP round
+    // trip finishes, it always saw the sign-in page (no "More" button yet) and silently skipped
+    // the click, leaving the sheet closed for the rest of the test.
+    await expect(page.locator('[data-route="map"]')).toBeVisible();
     const moreTrigger = page.getByRole("button", { name: "More" });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
@@ -121,6 +126,9 @@ test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
     await signIn(page, SEEDED_PASSWORD);
+    // Same fix as AC-4 above: wait for the SRP round trip to actually land before checking for
+    // "More" (found deploying).
+    await expect(page.locator('[data-route="map"]')).toBeVisible();
     const moreTrigger = page.getByRole("button", { name: "More" });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
