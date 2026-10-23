@@ -213,6 +213,15 @@ export class CrmApiStack extends Stack {
             "The wildcard is CDK's own auto-generated log-group-scoped policy (NodejsFunction/LogRetention), not an app-authored grant; it is scoped to this function's own log group by the construct, not to all resources.",
           appliesTo: ["Resource::*"],
         },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "B-03: the wildcards are CDK's own auto-generated, resource-scoped grant from Bucket.grantRead (s3:GetObject*, s3:GetBucket*, s3:List* scoped to this stack's own imported index bucket) — the same pattern already accepted in crm-sync-stack.ts for the same bucket.",
+          appliesTo: [
+            { regex: "/^Action::s3:(GetObject|GetBucket|List)\\*$/" },
+            { regex: "/^Resource::arn:aws:s3:::<IndexBucket[A-Za-z0-9]+>\\/\\*$/" },
+          ],
+        },
       ],
       true,
     );
