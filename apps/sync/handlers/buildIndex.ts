@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import { contentAddressedKey } from "./fetchPart.js";
 import { withObservability, type Observability } from "@crm/observability";
 import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
 import { bindManifest } from "@crm/oracle-views";
@@ -168,13 +169,21 @@ export async function buildIndexCore(
   };
 }
 
+export interface BuildIndexPart {
+  /** e.g. tables/county/property/part-00000.parquet (Plan's PlanPart.path, verbatim). */
+  path: string;
+}
+
 export interface BuildIndexEvent {
   bucket: string;
   manifestCid: string;
   /** S3 key of the raw manifest JSON bytes, already verified by FetchPart. */
   manifestKey: string;
-  /** S3 keys of this run's verified table parts, e.g. raw/{manifestCid}/tables/county/property/part-00000.parquet. */
-  partKeys: string[];
+  /** This run's verified table parts (Plan.parts, the same list FetchPart's Map iterated over).
+   *  Each part's S3 key is derived here with the identical content-addressed formula FetchPart
+   *  used to write it (`sha256(manifestCid + path)`) — never a separately-recorded key, so the
+   *  two steps can never drift out of sync on where a part actually landed. */
+  parts: BuildIndexPart[];
 }
 
 export interface BuildIndexOutput {
@@ -194,11 +203,12 @@ async function downloadToFile(bucket: string, key: string, destPath: string): Pr
   await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
 }
 
-/** `raw/{manifestCid}/tables/county/property/part-00000.parquet` -> `{group}/{table}/{part}`, the
- *  local layout bindManifest's default partUrl expects under `tablesDir`. */
-function localPartPath(key: string): string {
-  const match = /tables\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(key);
-  if (!match) throw new Error(`BuildIndex: part key "${key}" is not tables/{group}/{table}/{part}`);
+/** `tables/county/property/part-00000.parquet` -> `{group}/{table}/{part}`, the local layout
+ *  bindManifest's default partUrl expects under `tablesDir`. */
+function localPartPath(path: string): string {
+  const match = /tables\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path);
+  if (!match)
+    throw new Error(`BuildIndex: part path "${path}" is not tables/{group}/{table}/{part}`);
   const [, group, table, part] = match;
   return join(String(group), String(table), String(part));
 }
@@ -225,11 +235,12 @@ async function buildIndexCoreFromEvent(
     await downloadToFile(event.bucket, event.manifestKey, manifestPath);
     const manifestBytes = new Uint8Array(await readFile(manifestPath));
 
-    for (const key of event.partKeys) {
-      const relative = localPartPath(key);
+    for (const part of event.parts) {
+      const relative = localPartPath(part.path);
       const destPath = join(tmpDir, relative);
       await mkdir(join(destPath, ".."), { recursive: true });
-      await downloadToFile(event.bucket, key, destPath);
+      const s3Key = contentAddressedKey(event.manifestCid, part.path);
+      await downloadToFile(event.bucket, s3Key, destPath);
     }
 
     await bindManifest(manifestBytes, tmpDir, engine);

@@ -5,12 +5,25 @@
 // `__testForceDigestMismatch` test hook (T008's own pattern) rather than crafting a tampered
 // manifest file, since the digest comparison itself is the thing under test, not manifest
 // parsing.
-import { describe, expect, it } from "vitest";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { mockClient } from "aws-sdk-client-mock";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { planHandler } from "../handlers/plan.js";
 
 const SAMPLE_MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
+const s3Mock = mockClient(S3Client);
 
 describe("Plan: digest guard (ADR-07)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(PutObjectCommand).resolves({});
+    process.env.CRM_INDEX_BUCKET_NAME = "crm-index-test";
+  });
+
+  afterEach(() => {
+    delete process.env.CRM_INDEX_BUCKET_NAME;
+  });
+
   it("holds, never throws uncaught, when the vendored profile digest does not match the manifest's", async () => {
     const result = await planHandler({
       manifestCidHint: SAMPLE_MANIFEST_CID,

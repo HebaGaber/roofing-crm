@@ -10,6 +10,12 @@ import { RunManifestV1 } from "@crm/oracle-contract";
 import { PROFILE } from "@crm/oracle-profile-travis-austin";
 import { gazetteer } from "@crm/oracle-views";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
+import { contentAddressedKey } from "./fetchPart.js";
+
+/** The manifest's own downloadable data files (`kind: "table"` — never the `car`/`directory`
+ *  container-level artifacts, which nothing in this pipeline fetches directly). FetchPart's Map
+ *  iterates this list, one per Step Functions Map item (contracts/sync-pipeline.md). */
+const PART_KIND = "table";
 
 const PLACES_PROFILE_NAME = "travis-places";
 
@@ -39,12 +45,25 @@ export interface PlanProfileRef {
   sha256: string;
 }
 
+/** One manifest table artifact FetchPart will fetch. `path` doubles as this story's content-
+ *  addressed S3 key input (`sha256(manifestCid + path)`, shared with FetchPart) and the row
+ *  BuildIndex writes the downloaded bytes to under its local tablesDir layout. */
+export interface PlanPart {
+  path: string;
+}
+
 export interface PlanResult {
   // Present (undefined) so callers (and T008's own fixture test) can read `.status`/
   // `.heldReason` off the PlanResult | PlanHeld union without narrowing first.
   status?: undefined;
   heldReason?: undefined;
   manifestCid: string;
+  /** The S3 bucket every later step (FetchPart, BuildIndex, Validate) reads/writes. */
+  bucket: string;
+  /** S3 key of the verified manifest JSON bytes, written by this step (BuildIndex downloads it
+   *  from here rather than re-fetching from a gateway). */
+  manifestKey: string;
+  parts: PlanPart[];
   profiles: PlanProfileRef[];
   costEstimate: PlanCostEstimate;
   /** This run's start timestamp — Promote (T022) reads this back to compute SyncDurationMs. */
@@ -130,8 +149,26 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     return { status: "Held", heldReason: "cost_gate_exceeded", manifestCid };
   }
 
+  const bucket = process.env.CRM_INDEX_BUCKET_NAME;
+  if (bucket === undefined || bucket === "") {
+    throw new Error("Plan: CRM_INDEX_BUCKET_NAME is not set");
+  }
+  const manifestKey = contentAddressedKey(manifestCid, "manifest.json");
+  // Content-addressed, If-None-Match write — same idempotency boundary as FetchPart's own parts
+  // (AC-4/FR-004): a re-run against an already-indexed manifestCid writes this key once, not
+  // twice (apps/sync/src/s3PartWriter.ts's PreconditionFailed → written:false, never thrown).
+  const { createS3PartWriter } = await import("../src/s3PartWriter.js");
+  await createS3PartWriter(bucket).putIfAbsent(manifestKey, manifestBytes);
+
+  const parts: PlanPart[] = manifest.artifacts
+    .filter((artifact) => artifact.kind === PART_KIND)
+    .map((artifact) => ({ path: artifact.name }));
+
   return {
     manifestCid,
+    bucket,
+    manifestKey,
+    parts,
     profiles: manifest.profiles.map((p) => ({
       name: p.name,
       version: p.version,

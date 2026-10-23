@@ -174,7 +174,7 @@ export class CrmSyncStack extends Stack {
       "PlanFunction",
       "crm-sync-plan",
       props.planHandlerEntry,
-      {},
+      { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
       "planHandler",
     );
     const fetchPartFn = makeHandler(
@@ -207,6 +207,7 @@ export class CrmSyncStack extends Stack {
       "promoteHandler",
     );
 
+    indexBucket.grantWrite(planFn);
     indexBucket.grantReadWrite(fetchPartFn);
     indexBucket.grantReadWrite(buildIndexFn);
     indexBucket.grantRead(validateFn);
@@ -218,14 +219,10 @@ export class CrmSyncStack extends Stack {
 
     // --- Step Functions definition (architecture-constitution.md §2.3) ---
     //
-    // The Map's itemsPath is a deliberate simplification: contracts/sync-pipeline.md's PlanResult
-    // shape ({manifestCid, profiles, costEstimate}) doesn't itself enumerate per-part fetch
-    // targets, and the exact manifest-to-parts expansion is Plan's own concern (T024, espeon),
-    // not this stack's. Wiring the Map over `$.profiles` keeps this file's state-machine shape
-    // (Plan → Map(FetchPart) → BuildIndex → Validate → Promote, with Held/DLQ branches) provably
-    // correct against the C4-3 diagram and this story's own tests, while leaving Plan free to
-    // return a richer parts list under the same key once T024 lands — a recorded simplification,
-    // not a silent gap (flagged in this handoff's report).
+    // The Map iterates Plan's `parts` (the manifest's own table artifacts, not `profiles` — a
+    // profile is a vendored code reference checked by the digest guard, never a fetch target).
+    // Each item is one PlanPart ({path}); itemSelector pairs it with the run's manifestCid so
+    // FetchPart receives the {manifestCid, part} shape its contract requires.
 
     const planTask = new tasks.LambdaInvoke(this, "Plan", {
       lambdaFunction: planFn,
@@ -258,7 +255,11 @@ export class CrmSyncStack extends Stack {
     const fetchPartsMap = new sfn.Map(this, "FetchPartsMap", {
       // ADR-02 / NFR-002: bounded concurrency 2–3 parallel fetches.
       maxConcurrency: FETCH_PART_MAP_CONCURRENCY,
-      itemsPath: sfn.JsonPath.stringAt("$.profiles"),
+      itemsPath: sfn.JsonPath.stringAt("$.parts"),
+      itemSelector: {
+        "manifestCid.$": "$.manifestCid",
+        "part.$": "$$.Map.Item.Value",
+      },
       resultPath: sfn.JsonPath.DISCARD,
     });
     fetchPartsMap.itemProcessor(fetchPartInvoke.next(fetchPartResultChoice));

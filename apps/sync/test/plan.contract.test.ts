@@ -1,16 +1,33 @@
 // T008 (Phase 2 Foundational): the Plan step's output shape and digest-guard behavior, per
 // contracts/sync-pipeline.md. T024 (Phase 3, espeon) implements apps/sync/handlers/plan.ts to
 // make this pass — intentionally failing now (no handler exists yet).
-import { describe, expect, it } from "vitest";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { mockClient } from "aws-sdk-client-mock";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { planHandler } from "../handlers/plan.js";
 
+const s3Mock = mockClient(S3Client);
+
 describe("Plan", () => {
-  it("returns PlanResult's shape: manifestCid, profiles, costEstimate", async () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(PutObjectCommand).resolves({});
+    process.env.CRM_INDEX_BUCKET_NAME = "crm-index-test";
+  });
+
+  afterEach(() => {
+    delete process.env.CRM_INDEX_BUCKET_NAME;
+  });
+
+  it("returns PlanResult's shape: manifestCid, bucket, manifestKey, parts, profiles, costEstimate", async () => {
     const result = await planHandler({
       manifestCidHint: "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i",
     });
     expect(result).toMatchObject({
       manifestCid: expect.any(String),
+      bucket: "crm-index-test",
+      manifestKey: expect.any(String),
+      parts: expect.arrayContaining([expect.objectContaining({ path: expect.any(String) })]),
       profiles: expect.any(Array),
       costEstimate: {
         predictedSpendUsd: expect.any(Number),
