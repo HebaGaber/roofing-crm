@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     name: "api-client",
     environment: "node",
-    include: ["test/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "test/**/*.test.tsx"],
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
