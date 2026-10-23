@@ -233,6 +233,17 @@ export class CrmApiStack extends Stack {
             { regex: "/^Resource::arn:aws:s3:::<IndexBucket[A-Za-z0-9]+>\\/\\*$/" },
           ],
         },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; no Scan, no DeleteItem (see the grant comment above).",
+          appliesTo: [
+            {
+              regex:
+                "/^Resource::arn:aws:dynamodb:eu-north-1:(<AWS::AccountId>|[0-9]{12}):table\\/crm-leads\\/index\\/\\*$/",
+            },
+          ],
+        },
       ],
       true,
     );
