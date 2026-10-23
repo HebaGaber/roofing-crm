@@ -23,8 +23,10 @@
     "@aws-sdk/client-s3": "3.709.0",
     "@aws-sdk/lib-dynamodb": "3.709.0",
     "@duckdb/node-api": "1.5.6-r.2",
+    "@crm/domain": "workspace:*",
     "@crm/index-schema": "workspace:*",
     "@crm/observability": "workspace:*",
+    "@crm/oracle-contract": "workspace:*",
     "@crm/shared": "workspace:*",
     "@trpc/server": "11.19.0",
     "zod": "3.24.1"

@@ -13,8 +13,12 @@
   },
   "dependencies": {
     "@crm/api-client": "workspace:*",
+    "@crm/domain": "workspace:*",
+    "@crm/index-schema": "workspace:*",
+    "@crm/oracle-contract": "workspace:*",
     "@crm/shared": "workspace:*",
     "@crm/ui": "workspace:*",
+    "@tanstack/react-query": "5.104.5",
     "amazon-cognito-identity-js": "6.3.12",
     "maplibre-gl": "4.7.1",
     "react": "19.3.1",

@@ -12,6 +12,7 @@ import { GetObjectCommand, S3Client, type GetObjectCommandOutput } from "@aws-sd
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { CrmPermit, CrmProperty } from "@crm/index-schema";
+import { distanceMeters, milesToMeters } from "@crm/domain";
 import { createObservability } from "@crm/observability";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -353,6 +354,39 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
 
   it("searchProperties limit caps the rows returned", async () => {
     expect(await makeIndex().searchProperties({ limit: 1 })).toHaveLength(1);
+  });
+
+  // T007 (B-03, US1): the extended SearchPropertiesQuery's center/radiusMi — a bbox prefilter via
+  // packages/domain's bboxFor, then the exact-circle cut via distanceMeters, nearest-first sort
+  // (contracts/search-api.md step 3; plan.md T012). P1 (30.2672, -97.7431) and P2 (30.3, -97.7)
+  // are a known distance apart (~3.4 mi); a radius just short of it excludes P2, just past it
+  // includes both, nearest first.
+  it("searchProperties center/radiusMi applies the exact-circle cut, nearest first, over the bbox prefilter", async () => {
+    const p1p2MilesApart =
+      distanceMeters({ lat: 30.2672, lng: -97.7431 }, { lat: 30.3, lng: -97.7 }) / milesToMeters(1);
+    expect(p1p2MilesApart).toBeGreaterThan(0); // sanity: a real, non-zero distance
+
+    const justShort = await makeIndex().searchProperties({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: Math.max(0.5, p1p2MilesApart - 0.5),
+    });
+    expect(propertyCids(justShort)).toEqual([P1]); // P2 and P3 (no coordinates) are excluded
+
+    const bothIn = await makeIndex().searchProperties({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: Math.min(25, p1p2MilesApart + 0.5),
+    });
+    expect(propertyCids(bothIn)).toEqual([P1, P2].sort());
+    // Nearest first: P1 is the center itself (distance 0), so it comes before P2.
+    expect(bothIn[0]?.propertyCid).toBe(P1);
+  });
+
+  it("searchProperties center/radiusMi never includes a property with no coordinates", async () => {
+    const rows = await makeIndex().searchProperties({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: 25,
+    });
+    expect(propertyCids(rows)).not.toContain(P3);
   });
 
   it("searchPermits isOpen reads the stored statusClass verbatim", async () => {

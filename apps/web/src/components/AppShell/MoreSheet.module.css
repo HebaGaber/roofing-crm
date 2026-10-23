@@ -13,6 +13,10 @@
 
 .trigger {
   width: 100%;
+  /* min-height 48px: this nav bar's own tap target was under the 48px minimum (found in
+     smeargle's B-03 responsive review, CR-B-03 — a pre-existing B-01 gap, surfaced because the
+     Map screen is in scope for this review). */
+  min-height: 48px;
   padding: var(--space-2);
   border: none;
   background: none;

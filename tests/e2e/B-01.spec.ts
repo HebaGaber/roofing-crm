@@ -163,7 +163,11 @@ test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", (
   }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
-    await page.route("**/demotiles.maplibre.org/**", (route) => route.abort());
+    // B-03: CrmMap.tsx's DEFAULT_STYLE moved from demotiles.maplibre.org to
+    // tiles.openfreemap.org (the former had no detail at city-level zoom, found live) — this
+    // route pattern follows it so the tile-failure edge case still actually aborts the map's
+    // real requests, not a dead host.
+    await page.route("**/tiles.openfreemap.org/**", (route) => route.abort());
     await signIn(page, SEEDED_PASSWORD);
     await expect(page.locator('[data-state="CrmMapFailed390"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
