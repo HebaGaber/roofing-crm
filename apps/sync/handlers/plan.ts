@@ -49,7 +49,10 @@ export interface PlanProfileRef {
  *  addressed S3 key input (`sha256(manifestCid + path)`, shared with FetchPart) and the row
  *  BuildIndex writes the downloaded bytes to under its local tablesDir layout. */
 export interface PlanPart {
+  name: string;
   path: string;
+  cid: string;
+  sha256: string;
 }
 
 export interface PlanResult {
@@ -162,7 +165,12 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
 
   const parts: PlanPart[] = manifest.artifacts
     .filter((artifact) => artifact.kind === PART_KIND)
-    .map((artifact) => ({ path: artifact.name }));
+    .map((artifact) => ({
+      name: artifact.name,
+      path: artifact.name,
+      cid: artifact.cid,
+      sha256: artifact.sha256,
+    }));
 
   return {
     manifestCid,

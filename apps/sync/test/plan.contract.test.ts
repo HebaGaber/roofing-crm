@@ -27,7 +27,16 @@ describe("Plan", () => {
       manifestCid: expect.any(String),
       bucket: "crm-index-test",
       manifestKey: expect.any(String),
-      parts: expect.arrayContaining([expect.objectContaining({ path: expect.any(String) })]),
+      // Found live: an earlier version of this shape dropped cid/sha256, so FetchPart fetched
+      // literally "/ipfs/undefined" for every part. Asserted explicitly so a regression here
+      // fails this test, not a live state machine run.
+      parts: expect.arrayContaining([
+        expect.objectContaining({
+          path: expect.any(String),
+          cid: expect.any(String),
+          sha256: expect.any(String),
+        }),
+      ]),
       profiles: expect.any(Array),
       costEstimate: {
         predictedSpendUsd: expect.any(Number),
