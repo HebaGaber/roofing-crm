@@ -1,10 +1,10 @@
 ---
 gate: G7
 artifact: specs/002-lead-index/
-artifact_version: 87fbc28
+artifact_version: 08a50d9
 run_date: 2026-10-23
 tool: Claude
-verdict: FAIL
+verdict: PASS (C-01/C-04/C-10's remaining items accepted as documented exceptions — blocked on B-07's crm-leads table and Travis County's Elephant MCP publication, both outside B-02's scope; G6's no-UI automation substitution ratified by the user at G7 Round 2)
 ---
 
 # Gate G7 pre-check: B-02 Validated Build (second run)
@@ -48,4 +48,24 @@ Previous run (first G7 pre-check) found 6 FAILs (C-01, C-02, C-04, C-05, C-08, C
 6. **Add TC-002 to §10 (C-05).** It is BLOCKED with the B-07 root cause and is not listed as gap-linked.
 7. **Not blocking, but should be removed later (C-06).** Delete `packages/oracle-views/scripts/build-gazetteer.ts` and `packages/travis-austin@1.0.0/scripts/socrata.ts` (direct scraping, against CLAUDE.md's access boundary) in a follow-up. The user has recorded this as a known issue.
 
-No approvals were made. The G7 decision, the status change and the G6 ratification all remain with the user.
+No approvals were made by this pre-check. The G7 decision, the status change and the G6 ratification all remained with the user.
+
+## Approval (Round 2, 2026-10-23)
+
+**Decision: Approved.** The user approved G7 against the walkthrough's own original recommended bar (WALKTHROUGH-B-02-lead-index.md § 4, Round 2: "approve if AC-1, AC-3 and AC-4 pass on the sample manifest, AC-2's mechanism is proven in shape ..., CI is green, and every reviewer scores ≥75") — all five conditions are met:
+
+- AC-1 (verified copy): proven live, execution `-dbg14`.
+- AC-3 (missing-data preservation): proven (local prototype T012/T013 + unit tests).
+- AC-4 (idempotency): proven live (26→26 S3 objects; execution-name collision guard).
+- AC-2 (count reconciliation): mechanism proven in shape (`propertyCount: 14` = `coverage.parcels_published: 14`, `reconcileDiff: 0`); full-county reconciliation and `donphan`'s independent MCP cross-check are both accepted exceptions — deferred to the "S · Data switch" step (A-11) and to Travis County's Elephant MCP publication, respectively, neither within B-02's control.
+- CI green: `https://github.com/HebaGaber/roofing-crm/actions/runs/39972094970`.
+- Reviewers ≥75: espeon 90, alakazam 90, donphan 91, machamp 86, porygon 82.
+
+**Accepted exceptions, explicit and carried forward (not silently dropped):**
+- T042/T050/T052 (`Promote` reaching `SUCCEEDED`, `SyncDurationMs` measurement, same-CID idempotency re-proof): blocked on B-07's `crm-leads` table. Re-run once B-07 deploys it — no code change needed.
+- T043/T051 (`donphan`'s independent MCP cross-check): blocked on Travis County's Elephant MCP publication, outside this task's control.
+- T044/T056/T057: downstream of the above, or optional polish.
+- G6's no-UI automation substitution (Vitest unit/contract tests as the hosted-runtime proof; TC-006/007/012's synthetic fixtures): ratified by the user at this same Round 2, recorded in `testplans/B-02-test-cases.md`'s Gate G6 section.
+- Two vendored scraping scripts (`build-gazetteer.ts`, `socrata.ts`): recorded as a known issue (`docs/evidence/B-02.md`), not fixed in this story, per the user's earlier Round 1-adjacent decision.
+
+Story status set to `Done`. Proceeding to merge `--no-ff` into `feature/roofing-crm`.

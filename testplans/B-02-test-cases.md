@@ -334,6 +334,6 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 | G6-5 | Negative cases state the exact message or rejection behavior | ☑ |
 | G6-6 | Test data and environment documented, with real records | ☑ |
 | G6-7 | Every TC traces to the story and a requirement | ☑ |
-| G6-8 | AI pre-check (`developmentsupport-g6-precheck`): PASS | ☐ (pending) |
+| G6-8 | AI pre-check (`developmentsupport-g6-precheck`): PASS | ☑ (user-ratified 2026-10-23 at G7 Round 2 — see below; the AI pre-check's literal reading of constitution Article XXII/"hosted URL" never returned a clean PASS for a no-UI story's Vitest-as-proof substitution and synthetic fixtures, which is exactly the judgment call this ratification makes) |
 
-**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Approved · 2026-10-23 — the QC Lead (user) ratifies the no-UI automation substitution in § 6 (Vitest unit/contract tests as the accepted hosted-runtime proof; TC-006/TC-007/TC-012's synthetic fixtures standing in for a real published row this specific sample manifest doesn't contain) as adequate for this story's gate, at G7 Round 2.
