@@ -30,6 +30,10 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+      # B-02: @crm/config also throws without DATA_MANIFEST_CID (never a hard-coded constant in
+      # app code, per the story's own rule) — a repo variable, not a secret: it's the public
+      # sample manifest CID this whole story is pinned to.
+      DATA_MANIFEST_CID: ${{ vars.DATA_MANIFEST_CID }}
     steps:
       - uses: actions/checkout@v4
 
