@@ -6,6 +6,7 @@ import { loadConfig as loadRuntimeConfig, type RuntimeConfig } from "@crm/config
 export interface CrmAppConfig extends RuntimeConfig {
   readonly githubRepository: string;
   readonly githubRef: string;
+  readonly additionalBranches: readonly string[];
   readonly account?: string;
 }
 
@@ -23,10 +24,15 @@ export function loadConfig(env: LoadConfigEnv, getContext: ContextGetter): CrmAp
   if (typeof githubRef !== "string" || githubRef === "") {
     throw new Error("cdk.json context crm:githubRef is required");
   }
+  const additionalBranchesRaw = getContext("crm:additionalBranches");
+  const additionalBranches = Array.isArray(additionalBranchesRaw)
+    ? additionalBranchesRaw.filter((b): b is string => typeof b === "string")
+    : [];
   return {
     ...runtime,
     githubRepository,
     githubRef,
+    additionalBranches,
     ...(env.CDK_DEFAULT_ACCOUNT === undefined ? {} : { account: env.CDK_DEFAULT_ACCOUNT }),
   };
 }

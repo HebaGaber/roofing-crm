@@ -65,6 +65,7 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     env,
     githubRepository: config.githubRepository,
     githubRef: config.githubRef,
+    additionalBranches: config.additionalBranches,
     apiUrl: apiStack.apiUrl,
     userPoolId: opsStack.userPool.userPoolId,
     userPoolClientId: opsStack.userPoolClient.userPoolClientId,
