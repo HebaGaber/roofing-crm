@@ -49,9 +49,11 @@ async function promoteCore(
         // Guarded on the previous value: either the item does not exist yet (first-ever
         // promotion) or its current pointer is not already this manifestCid — a second Promote
         // call for an already-promoted manifestCid fails this condition and is a no-op, never a
-        // duplicate write.
-        UpdateExpression: "SET previous = current, current = :next",
-        ConditionExpression: "attribute_not_exists(current) OR current <> :next",
+        // duplicate write. "current"/"previous" are both DynamoDB reserved keywords (found live:
+        // ValidationException), hence the #-aliases.
+        UpdateExpression: "SET #previous = #current, #current = :next",
+        ConditionExpression: "attribute_not_exists(#current) OR #current <> :next",
+        ExpressionAttributeNames: { "#current": "current", "#previous": "previous" },
         ExpressionAttributeValues: { ":next": input.indexMeta.manifestCid },
       }),
     );
