@@ -130,7 +130,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
   1. **Query** the deployed index's property-record count via `indexInfo()`.
   2. **Compare** it to the sample manifest's `coverage.parcels_published` value.
   3. **If they differ**, verify `docs/evidence/B-02.md` records every difference with a reason, per FR-002.
-- **Expected result:** counts match exactly, or every difference is documented with a stated reason — never an unexplained gap. *(Known gap: this proves the mechanism in shape against 35 sample rows; real full-county reconciliation is a separate step, not re-tested here until then.)*
+- **Expected result:** counts match exactly, or the difference is at most 0.1% of the manifest's published count, documented in `docs/evidence/B-02.md` with its reason — a difference over 0.1%, or any undocumented difference, is a FAIL. *(Known gap: this proves the mechanism in shape against 35 sample rows; real full-county reconciliation is a separate step, not re-tested here until then.)*
 
 ### B-02-TC-005: `donphan` independently confirms the count through the Oracle MCP
 

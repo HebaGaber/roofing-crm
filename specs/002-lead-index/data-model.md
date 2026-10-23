@@ -68,4 +68,4 @@ Held → [*]              (current run keeps serving; an operator resolves the h
 - Every `crm_property`/`crm_permit` row MUST carry `sourceManifestCid` — zero rows without provenance (FR-001, constitution P0-3).
 - A null field MUST carry its exact published `missing` reason — never invented (FR-003, constitution P0-4).
 - A re-run of an already-indexed `manifestCid` MUST create zero new S3 objects (FR-004).
-- `propertyCount` MUST equal the manifest's `coverage.parcels_published` exactly, or every difference is documented (FR-002) — the exact tolerance wording is one of the two items still open for Round 1 (see plan.md's Complexity Tracking).
+- `propertyCount` MUST equal the manifest's `coverage.parcels_published` exactly, or differ by at most 0.1% with the difference documented (FR-002, Round 1 decision 2026-10-23, tightened to match constitution §10's index-fidelity NFR) — a larger or undocumented difference is a `Held` run, never a silent pass.

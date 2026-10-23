@@ -41,7 +41,7 @@ As the CRM, the system reconciles its own record count against the count Task A 
 
 **Acceptance Scenarios**:
 
-1. **Given** the full Travis County run manifest (not a sample), **When** the sync completes and its internal validation passes, **Then** the index's property record count equals the manifest's published coverage count exactly, or every difference is written to a documented evidence record, and an independent check confirms the count against Task A's own data.
+1. **Given** the full Travis County run manifest (not a sample), **When** the sync completes and its internal validation passes, **Then** the index's property record count equals the manifest's published coverage count exactly, or the difference is at most 0.1% of that count, with every such difference written to a documented evidence record and its reason stated — a difference over 0.1% is a failure, not a documented pass — and an independent check confirms the count against Task A's own data.
 2. **Given** a new run's record count drops more than 5% from the previous run, **When** validation runs, **Then** promotion is held for operator review, never silently promoted.
 
 ---
@@ -86,7 +86,7 @@ As the CRM, the system is safe to re-run the sync against a manifest it has alre
 ### Functional Requirements
 
 - **FR-001**: System MUST fetch Task A's published property and roofing-permit tables only by their content identifier (CID), verify every byte against that identifier before use, and never call Task A's internal API, database, or any non-published store. *(AC-1)*
-- **FR-002**: System MUST record its own property-record count against Task A's published coverage count for the same run, and flag any undocumented mismatch rather than silently accepting it. *(AC-2)*
+- **FR-002**: System MUST record its own property-record count against Task A's published coverage count for the same run, accept only an exact match or a documented difference of at most 0.1% of that count, and flag any larger or undocumented mismatch as a failure rather than silently accepting it. *(AC-2)*
 - **FR-003**: System MUST preserve every "missing" reason code published by Task A for a field it cannot determine, rather than inventing, guessing, or interpolating a replacement value. *(AC-3)*
 - **FR-004**: System MUST be safe to re-run against a manifest identifier it has already indexed, creating no duplicate or new records on a repeat run of the same identifier. *(AC-4)*
 
@@ -102,7 +102,7 @@ As the CRM, the system is safe to re-run the sync against a manifest it has alre
 ### Measurable Outcomes
 
 - **SC-001**: Every record in the index carries the source manifest identifier it came from; an evaluator can trace any record back to Task A's published data.
-- **SC-002**: The index's property-record count matches Task A's published coverage count exactly for a given run, or every difference is documented with a reason.
+- **SC-002**: The index's property-record count matches Task A's published coverage count exactly for a given run, or differs by at most 0.1% with every such difference documented with a reason — a larger difference fails this criterion outright.
 - **SC-003**: Zero records in the index show a guessed or invented value where Task A published a "missing" reason instead — every missing field states why it is missing.
 - **SC-004**: Re-running the sync against an already-indexed manifest identifier creates zero new stored records, confirmed on two consecutive runs.
 - **SC-005**: A sync run against a manifest the size of Task A's initial published sample completes end to end in under 5 minutes; a full-county run completes in under 30 minutes.
