@@ -126,6 +126,7 @@ export class CrmSyncStack extends Stack {
       environment: Record<string, string>,
       handlerExportName: string,
       nodeModules: string[] = [],
+      architecture: lambda.Architecture = lambda.Architecture.X86_64,
     ): NodejsFunction => {
       // An explicit LogGroup (rather than NodejsFunction's `logRetention` prop) avoids spinning
       // up CDK's LogRetention custom-resource Lambda per function — keeping this stack's Lambda
@@ -139,6 +140,7 @@ export class CrmSyncStack extends Stack {
       const fn = new NodejsFunction(this, id, {
         functionName,
         runtime: lambda.Runtime.NODEJS_22_X,
+        architecture,
         entry,
         handler: handlerExportName,
         memorySize: HANDLER_MEMORY_MB,
@@ -197,6 +199,11 @@ export class CrmSyncStack extends Stack {
       { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
       "buildIndexHandler",
       ["@duckdb/node-api"],
+      // ARM64, not the X86_64 default: Docker bundling on this Apple Silicon host runs native
+      // arm64 containers with no emulation, so the native DuckDB binding it installs is
+      // linux-arm64 — matching this architecture, not X86_64 (ARM64 Lambda is also the AWS-
+      // recommended, cheaper default; nothing else in this stack requires X86_64).
+      lambda.Architecture.ARM_64,
     );
     const validateFn = makeHandler(
       "ValidateFunction",
