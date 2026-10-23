@@ -20,8 +20,8 @@ agents:
   verify: "Playwright login on the hosted URL · disabled sections are aria-disabled with a coming-soon tooltip"
 skills: [build-frontend-backends, integrate-ci-cd, apply-engineering-guidelines]
 ui: true
-status: Draft
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: false
 created: 2026-10-23
 reuses:
