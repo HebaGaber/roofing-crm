@@ -3,9 +3,22 @@
 // `DuckDbParquetLeadIndex.searchProperties` (T012) — this router only validates input, calls the
 // port twice (with and without roofAgeMinYears, so `counts` is always fresh over the full
 // matching set, never a cached subset — FR-004/AC-4) and shapes the response.
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { isLongOpen, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { publicProcedure, requireLeadIndex, router } from "../trpc.js";
+import { IndexNotReadyError } from "../adapters/duckDbParquet.js";
+
+/** Same mapping as routers/property.ts: a typed, honest "index not ready" response (never a bare
+ *  500) when no run has ever been promoted — found live (B-03): crm-leads is B-07's table
+ *  (architecture-constitution.md §9) and doesn't exist in this environment yet, so every search
+ *  currently hits this path, not just a rare edge case. */
+function mapIndexNotReady(error: unknown): never {
+  if (error instanceof IndexNotReadyError) {
+    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
+  }
+  throw error;
+}
 
 const LatLngInput = z.object({
   lat: z.number().min(-90).max(90),
@@ -24,34 +37,39 @@ const SearchPropertiesInput = z.object({
 export const searchRouter = router({
   properties: publicProcedure.input(SearchPropertiesInput).query(async ({ input, ctx }) => {
     const leadIndex = requireLeadIndex(ctx);
-    const { manifestCid } = await leadIndex.indexInfo();
+    try {
+      const { manifestCid } = await leadIndex.indexInfo();
 
-    // Both counts run over the full radius-matching set, with no SQL LIMIT applied (the adapter
-    // only applies `limit` to the final exact-circle-cut result) — contracts/search-api.md step 4.
-    const afterRadius = await leadIndex.searchProperties({
-      center: input.center,
-      radiusMi: input.radiusMi,
-    });
-    const afterRoofAge =
-      input.roofAgeMinYears === undefined
-        ? afterRadius
-        : await leadIndex.searchProperties({
-            center: input.center,
-            radiusMi: input.radiusMi,
-            roofAgeMinYears: input.roofAgeMinYears,
-          });
+      // Both counts run over the full radius-matching set, with no SQL LIMIT applied (the
+      // adapter only applies `limit` to the final exact-circle-cut result) —
+      // contracts/search-api.md step 4.
+      const afterRadius = await leadIndex.searchProperties({
+        center: input.center,
+        radiusMi: input.radiusMi,
+      });
+      const afterRoofAge =
+        input.roofAgeMinYears === undefined
+          ? afterRadius
+          : await leadIndex.searchProperties({
+              center: input.center,
+              radiusMi: input.radiusMi,
+              roofAgeMinYears: input.roofAgeMinYears,
+            });
 
-    const properties = afterRoofAge.slice(0, input.limit ?? 100);
+      const properties = afterRoofAge.slice(0, input.limit ?? 100);
 
-    return {
-      properties,
-      counts: {
-        afterRadius: afterRadius.length,
-        afterRoofAge: afterRoofAge.length,
-      },
-      manifestCid,
-      traceId: ctx.requestId,
-    };
+      return {
+        properties,
+        counts: {
+          afterRadius: afterRadius.length,
+          afterRoofAge: afterRoofAge.length,
+        },
+        manifestCid,
+        traceId: ctx.requestId,
+      };
+    } catch (error) {
+      mapIndexNotReady(error);
+    }
   }),
 
   // T028 (B-03, US3): search.permits per contracts/search-api.md. Joins through the same
@@ -68,20 +86,27 @@ export const searchRouter = router({
     )
     .query(async ({ input, ctx }) => {
       const leadIndex = requireLeadIndex(ctx);
-      const { manifestCid } = await leadIndex.indexInfo();
+      try {
+        const { manifestCid } = await leadIndex.indexInfo();
 
-      const inRadius = await leadIndex.searchProperties({
-        center: input.center,
-        radiusMi: input.radiusMi,
-      });
-      const propertyCids = inRadius.map((p) => p.propertyCid);
+        const inRadius = await leadIndex.searchProperties({
+          center: input.center,
+          radiusMi: input.radiusMi,
+        });
+        const propertyCids = inRadius.map((p) => p.propertyCid);
 
-      const permits = await leadIndex.searchPermits({ propertyCids, sort: "openDays" });
+        const permits = await leadIndex.searchPermits({ propertyCids, sort: "openDays" });
 
-      return {
-        permits: permits.map((permit) => ({ ...permit, isLongOpen: isLongOpen(permit.openDays) })),
-        manifestCid,
-        traceId: ctx.requestId,
-      };
+        return {
+          permits: permits.map((permit) => ({
+            ...permit,
+            isLongOpen: isLongOpen(permit.openDays),
+          })),
+          manifestCid,
+          traceId: ctx.requestId,
+        };
+      } catch (error) {
+        mapIndexNotReady(error);
+      }
     }),
 });

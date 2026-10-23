@@ -14,8 +14,12 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from "rea
 import { buildMapInitOptions, computeMinZoom } from "./bounds.js";
 import styles from "./CrmMap.module.css";
 
-/** Default demo style: no API key required (maplibre demotiles); swap for a provider style later. */
-const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
+/** Default demo style: no API key required. MapLibre's own "demotiles" (the original default
+ *  here) only carries data at world/country zoom — at this story's city-level radius-search zoom
+ *  it rendered as a flat, featureless color block with no streets or landmarks (found live on
+ *  the B-03 hosted preview). OpenFreeMap's "liberty" style is a full OSM-derived vector style,
+ *  free and keyless, with real detail at every zoom this app uses. */
+const DEFAULT_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
 export interface LatLng {
   readonly lat: number;
