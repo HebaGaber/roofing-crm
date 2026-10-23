@@ -35,6 +35,12 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
     await signIn(page, SEEDED_PASSWORD);
+    // Wait for sign-in to actually land (the SRP round trip + lockout-gate Lambda take a few
+    // seconds) before reloading — found deploying: reloading mid-flight wipes the in-progress
+    // sign-in and lands back on /sign-in, which looked like a session-persistence bug but
+    // wasn't one; signIn() itself can't wait for this since it's reused by the AC-3 lockout
+    // test, which expects wrong-password attempts to never reach the map at all.
+    await expect(page.locator('[data-route="map"]')).toBeVisible();
     await page.reload();
     await expect(page.locator('[data-route="map"]')).toBeVisible();
   });
@@ -119,7 +125,12 @@ test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
     }
-    await page.getByRole("button", { name: /Campaigns/ }).click();
+    // force: true — the row is deliberately `aria-disabled="true"` (AC-4's own requirement) but
+    // must still be clickable (AC-5: tapping it opens Coming Soon, never a 404); Playwright's
+    // default actionability check treats aria-disabled as a real disabled state and refuses to
+    // click, which found this product's own intentional "disabled-looking but interactive" NavRow
+    // pattern rather than an app bug.
+    await page.getByRole("button", { name: /Campaigns/ }).click({ force: true });
     await expect(page.locator('[data-route="coming-soon"]')).toBeVisible();
     await page.getByRole("link", { name: "Back to Map" }).click();
     await expect(page.locator('[data-route="map"]')).toBeVisible();
