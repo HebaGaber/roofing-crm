@@ -38,7 +38,8 @@ export interface ApiClientOptions {
   readonly url?: string;
   /** Injected for tests and non-browser callers; defaults to the global fetch. */
   readonly fetch?: ApiFetch;
-  /** Extra request headers (none in A-03: the API is public and read-only, FR-013). */
+  /** Extra request headers — every app passes an `Authorization: Bearer {idToken}` getter here
+   *  once a session exists (apps/web/src/main.tsx); the port itself stays transport-agnostic. */
   readonly headers?: HTTPHeaders | (() => HTTPHeaders | Promise<HTTPHeaders>);
 }
 
