@@ -16,9 +16,9 @@ No `NEEDS CLARIFICATION` remained in the plan's Technical Context — the design
 
 ## Decision: Status/assignee projection update
 
-- **Decision**: The `sk=LEAD` item's `status`/`assignee` fields are updated transactionally alongside each `EVT#{sequence}` append (not read separately and replayed on every read).
-- **Rationale**: `metagross`'s answer allows either approach ("either is fine, not both independently"); updating in the same transaction as the event write is simpler to test for the 20-concurrent-create NFR (one code path, one transaction) than a separate replay step, and still satisfies "a projection replayed from events" since the event log remains the source of truth and the projection is derived from it at write time.
-- **Alternatives considered**: Pure read-time replay of all `EVT#` items on every `leads.list`/`leads.get` call (rejected for this story — adds read latency and query complexity for no behavioral difference the ACs require; the event log is still authoritative and a future story could switch to full replay without changing the public contract).
+- **Decision**: `status`/`assignee` are stored on the `LEAD` item, written only inside the same `TransactWriteItems` call that appends the triggering `EVT#{sequence}` — never independently, never via a separate mutable `version` field.
+- **Rationale**: This is a technical necessity, not a style preference (see plan.md's Complexity Tracking table): GSI1 (`assignee`) and GSI2 (`status`), already fixed by `metagross`'s design consult, index a stored attribute — DynamoDB cannot build a GSI over a value derived by replaying an item collection on read. Writing both fields only inside the event-append transaction keeps ADR-04's actual concern (no out-of-band write that can race or go stale against the event log) fully satisfied: the two are written together, atomically, every time, so they can never diverge from the event log that is still the sole source of truth.
+- **Alternatives considered**: Pure read-time replay of every `EVT#` item on every `leads.get`/`leads.list` call (ADR-04's literal wording) — correct for a single-key `leads.get`, but cannot serve `leads.list`'s GSI-backed queries without first materializing the same value DynamoDB needs indexed anyway, so it was rejected as incompatible with the already-approved GSI design rather than as a worse implementation choice.
 
 ## Decision: Roof-age/permit-status/radius filtering path
 

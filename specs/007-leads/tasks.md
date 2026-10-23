@@ -24,7 +24,7 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm the existing `packages/shared`, `packages/domain`, `apps/api`, `apps/web` workspaces build and test clean on branch `007-leads` before adding anything: run `pnpm turbo run build test --filter=@crm/shared --filter=@crm/domain --filter=@crm/api --filter=@crm/web` from the repo root
+- [ ] T001 No file change — verification only: run `pnpm turbo run build test --filter=@crm/shared --filter=@crm/domain --filter=@crm/api --filter=@crm/web` from the repo root and confirm it is green on branch `007-leads` before T002 adds anything
 - [ ] T002 [P] Add the `crm-leads` DynamoDB table construct skeleton (name only, no attributes/GSIs yet) to `infra/lib/crm-data-stack.ts`, tagged `project_name=roofing-crm`, region read from `infra/src/config.ts` (never hard-coded)
 
 ---
@@ -83,14 +83,14 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 - [ ] T024 [GB] `LeadsList.tsx`: paginated list consuming `leads.list` via `packages/api-client`, Atlas tokens only, filter UI reusing the map's existing filter components where shared — `apps/web/src/routes/Leads/LeadsList.tsx`
 - [ ] T025 [GB] `LeadDetail.tsx`: status/assignee/notes/history view consuming `leads.get`, `MissingValue` for `notInCurrentRun` — `apps/web/src/routes/Leads/LeadDetail.tsx`
 - [ ] T026 [GB] `LeadCreateAction.tsx`: "Create lead" action calling `leads.create`, showing "Already a lead" on `ALREADY_EXISTS` — new file `apps/web/src/routes/Leads/LeadCreateAction.tsx`, wired into the existing drawer at `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx` (edit, add the action point; do not restructure the existing drawer)
-- [ ] T027 [GB] Register the `/leads` and `/leads/:leadId` routes: edit `apps/web/src/routes/index.tsx` (or the app's existing router file) and add a "Leads" nav entry in `apps/web/src/components/AppShell/AppShell.tsx`
+- [ ] T027 [GB] Register the `/leads` and `/leads/:leadId` routes: edit `apps/web/src/App.tsx` (the app's existing router) and add a "Leads" nav entry in `apps/web/src/components/AppShell/AppShell.tsx`
 
 ---
 
 ## Phase N: Polish & Cross-Cutting Concerns
 
-- [ ] T028 [P] Run `tsc`, ESLint and Prettier across `apps/api`, `apps/web`, `packages/shared`, `packages/domain` and fix all findings
-- [ ] T029 Run `specs/007-leads/quickstart.md`'s six scenarios locally against a dev deploy (not the final hosted-URL proof — that is Phase D/TZ03) to catch integration issues before the review round
+- [ ] T028 [P] No file change — verification only: run `pnpm turbo run lint type-check format` (ESLint, `tsc`, Prettier per the `justfile`'s recipes) across `apps/api`, `apps/web`, `packages/shared`, `packages/domain`; fix any findings in the files they point to
+- [ ] T029 No new file — manual/scripted run: execute `specs/007-leads/quickstart.md`'s six scenarios locally against a dev deploy (not the final hosted-URL proof — that is Phase D/TZ03) to catch integration issues before the review round; record the outcome in `specs/007-leads/run-log.md`
 - [ ] T030 [P] Update `docs/kit-usage.md` with one line for this story's agent usage (mew, metagross, audino) once Group GA/GB are both merged into the branch
 
 ---
@@ -121,8 +121,8 @@ MVP = Group GA alone (AC-1/AC-2/AC-3, the independent test in stories/B-07-leads
 **Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
 
 - [ ] TZ01 Run the reviewer agents (`metagross`, `audino`) read-only; record scores in `docs/reviews/CR-B-07.md` (each ≥ 75 or justified)
-- [ ] TZ02 Deploy to the hosted runtime (`pnpm --filter api cdk deploy` if the backend changed; Amplify branch preview for `007-leads`); record the preview URL
-- [ ] TZ03 Run the Playwright scenario tests (`tests/e2e/B-07.spec.ts`, one per TC in `testplans/B-07-test-cases.md`) against the preview URL; screenshots to `docs/evidence/img/`
-- [ ] TZ04 Run `smeargle` responsive-design-tests at 390 / 768 / 1440 on the hosted URL (UI story)
-- [ ] TZ05 Run this story's `agents.verify` check: the Playwright create/update/reload + URL-filter suite itself (per stories/B-07-leads.md front matter — this story has no separate golden-query/coverage-SQL verify step)
-- [ ] TZ06 Write `docs/reports/UT-B-07.md`, `docs/evidence/B-07.md` (§ B-08 for the list part), the `docs/traceability.md` row and one `docs/kit-usage.md` line
+- [ ] TZ02 Deploy to the hosted runtime (`pnpm --filter api cdk deploy --all` if the backend changed; Amplify branch preview for `007-leads`); record the preview URL in `specs/007-leads/run-log.md`
+- [ ] TZ03 Write and run the Playwright scenario tests at `tests/e2e/B-07.spec.ts` against `RUNTIME_URL` (the `007-leads` Amplify preview, never localhost), one per TC in `testplans/B-07-test-cases.md`; screenshots to `docs/evidence/img/B-07-*.png`
+- [ ] TZ04 Run `smeargle` responsive-design-tests at 390 / 768 / 1440 on `RUNTIME_URL` for the Leads list and detail screens (UI story); report to `docs/evidence/B-07.md`
+- [ ] TZ05 This story's `agents.verify` (stories/B-07-leads.md front matter: "Playwright: create, update, reload; URL-encoded combined filters") is the same suite as TZ03 — no separate golden-query/coverage-SQL step for this story
+- [ ] TZ06 Write `docs/reports/UT-B-07.md`, `docs/evidence/B-07.md` (§ B-08 for the list part), the B-07/B-08 rows of `docs/traceability.md`, and one line in `docs/kit-usage.md`
