@@ -4,15 +4,23 @@ Branch `002-lead-index`, diff against `feature/roofing-crm`. One round: `/code-r
 
 ## Scores
 
-| Reviewer | Angle | Score (Round 1) | Score (after E2) | ≥75 |
-| --- | --- | --- | --- | --- |
-| espeon | INDEX (Plan/BuildIndex/Validate/Promote, schema, local prototype) | 80 | — | ✅ |
-| alakazam | Retrieval/index design, provenance, missing-data | 76 | — | ✅ |
-| machamp | Batch workflow: queue/DLQ/backoff/cost-gate/idempotency | 70 | **86** | ✅ |
-| porygon | Metrics/count-reconciliation trustworthiness | 58 | **82** | ✅ |
-| donphan | Oracle/Atlas access boundary + MCP cross-check | 88 | — | ✅ |
+| Reviewer | Angle | Score (Round 1) | Score (after E2) | Score (after convergence, `1a86a3d`/`f57624e`) | ≥75 |
+| --- | --- | --- | --- | --- | --- |
+| espeon | INDEX (Plan/BuildIndex/Validate/Promote, schema, local prototype) | 80 | — | **90** | ✅ |
+| alakazam | Retrieval/index design, provenance, missing-data | 76 | — | **90** | ✅ |
+| machamp | Batch workflow: queue/DLQ/backoff/cost-gate/idempotency | 70 | **86** | 86 (unchanged — convergence round touched `plan.ts`/`duckDbParquet.ts`, outside machamp's SYNC angle) | ✅ |
+| porygon | Metrics/count-reconciliation trustworthiness | 58 | **82** | 82 (unchanged — convergence round didn't touch `promote.ts`/count-reconciliation logic) | ✅ |
+| donphan | Oracle/Atlas access boundary + MCP cross-check | 88 | — | **91** | ✅ |
 
-Two reviewers were under 75 after Round 1 (machamp, porygon). The E2 fixer (commit `06a25c1`) resolved every in-scope finding; both were re-scored directly against the fixed code (not the evidence doc's prose) and now pass. **All five reviewers ≥75 — E1/E2 complete.**
+Two reviewers were under 75 after Round 1 (machamp, porygon). The E2 fixer (commit `06a25c1`) resolved every in-scope finding; both were re-scored directly against the fixed code (not the evidence doc's prose) and now pass. A later `/speckit-converge` fixer round (`1a86a3d`, `f57624e`) changed `apps/sync/handlers/plan.ts` (manifest-bytes-against-own-CID verification; SSM/`runs/index.json` authoritative CID resolution) and `apps/api/src/adapters/duckDbParquet.ts` (Powertools wrapping) after the original E1 scores — espeon, alakazam and donphan (whose review angles cover exactly those files) were re-scored directly against the current code; machamp and porygon's angles (SYNC batch mechanics, count-reconciliation) weren't touched by that round, so their E2 scores stand unchanged. **All five reviewers ≥75 — E1/E2/convergence re-score complete.**
+
+### Convergence re-score notes (2026-10-23)
+
+**espeon (80→90):** both original findings (propertyCount persistence, SQL escaping) confirmed fixed by direct code read. The convergence round's two additions — manifest-CID verification and SSM/runs-index authoritative resolution — both fail closed (`Held`, never an uncaught throw) and strengthen exactly the provenance axis this review covers. Not higher: the cold-load race fix's attempt-counter mechanism is correct but not independently re-run by this reviewer.
+
+**alakazam (76→90):** both original findings confirmed fixed, verified directly (not from the evidence doc). The convergence round's manifest-CID check and SSM/runs-index fallback chain are both genuine completeness fixes with sensible fallback behavior. Not higher: the three-deep fallback chain (SSM → runs-index → hint) only logs on disagreement rather than alerting, noted as a future improvement, not a current defect.
+
+**donphan (88→91):** AC-2's MCP cross-check remains blocked (Travis County not published) — unchanged, still honestly disclosed. The convergence round's manifest-CID verification and SSM/runs-index resolution are real provenance/correctness improvements, fail-closed, no new access-boundary issues. Not higher: the one gap this reviewer's score reflects (the MCP cross-check) is still open and outside this round's scope.
 
 ### E2 re-score notes
 
