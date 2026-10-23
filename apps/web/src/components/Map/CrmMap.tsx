@@ -10,8 +10,8 @@
 // `packages/domain`'s exact `distanceMeters` haversine cut, never this preview math).
 import { Map as MapLibreMap, Marker, type MapLibreEvent, type MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
-import { buildMapInitOptions, computeMinZoom } from "./bounds.js";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { buildMapInitOptions, computeMinZoom, TRAVIS_COUNTY_CENTER } from "./bounds.js";
 import styles from "./CrmMap.module.css";
 
 /** Default demo style: no API key required. MapLibre's own "demotiles" (the original default
@@ -73,6 +73,41 @@ function ringGeoJson(center: LatLng, radiusMi: number): GeoJSON.Feature<GeoJSON.
   };
 }
 
+/** A roofed property shown as a Layers → "Aged roofs" marker (E-72). Only the fields the marker
+ *  needs to place and color itself — never a re-derivation of `isAgedRoof`'s own threshold logic,
+ *  which stays the server's/FilterSheet's job; this component only reads `roofAgeConfidence` to
+ *  pick a dot shade, exactly as `data-model.md` already carries it. */
+export interface RoofMarkerPoint {
+  readonly propertyCid: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly roofAgeConfidence: "high" | "medium" | "low" | "none";
+}
+
+/** A permit shown as a Layers → "Open and stalled permits" marker (E-72): coloured by
+ *  `statusClass`, ringed when `isLongOpen` already flagged it ("Open > 5 yrs", never recomputed
+ *  here — `packages/domain`'s `isLongOpen` is the only source, computed by the caller). */
+export interface PermitMarkerPoint {
+  readonly permitCid: string;
+  readonly lat: number;
+  readonly lng: number;
+  readonly statusClass: string | null;
+  readonly isLongOpen: boolean;
+}
+
+export interface CrmMapLayers {
+  readonly roofs: boolean;
+  readonly permits: boolean;
+}
+
+export interface CrmMapHandle {
+  readonly zoomIn: () => void;
+  readonly zoomOut: () => void;
+  /** Re-centres and zooms to fit `center`/`radiusMi` (the pin/GPS view), or — with no center —
+   *  resets to the whole-county view (E-67's "Recentre returns to the county view"). */
+  readonly recenter: () => void;
+}
+
 export interface CrmMapProps {
   readonly styleUrl?: string;
   /** The current search pin/GPS point (AC-1); `null`/`undefined` renders no pin, no ring. */
@@ -81,14 +116,51 @@ export interface CrmMapProps {
   readonly radiusMi?: number;
   /** Fired when the map is clicked (AC-1's pin-drop). */
   readonly onPinDrop?: (point: LatLng) => void;
+  /** E-72 Layers: aged-roof markers, shown when `layers.roofs` is on. */
+  readonly roofMarkers?: readonly RoofMarkerPoint[];
+  /** E-72 Layers: open/stalled permit markers, shown when `layers.permits` is on. */
+  readonly permitMarkers?: readonly PermitMarkerPoint[];
+  readonly layers?: CrmMapLayers;
 }
 
-export function CrmMap({
-  styleUrl = DEFAULT_STYLE,
-  center = null,
-  radiusMi,
-  onPinDrop,
-}: CrmMapProps): ReactElement {
+const ROOF_MARKER_COLOR: Readonly<Record<RoofMarkerPoint["roofAgeConfidence"], string>> = {
+  high: "#B3261E",
+  medium: "#E8730A",
+  low: "#8E6A00",
+  none: "#747775",
+};
+
+const PERMIT_MARKER_COLOR: Readonly<Record<string, string>> = {
+  open: "#0B57D0",
+  stalled: "#8E6A00",
+};
+
+function dot(color: string, ringed: boolean): HTMLDivElement {
+  const el = document.createElement("div");
+  el.style.width = "14px";
+  el.style.height = "14px";
+  el.style.borderRadius = "50%";
+  el.style.background = color;
+  el.style.boxSizing = "border-box";
+  el.style.border = ringed ? "3px solid #000" : "2px solid #fff";
+  // 24px hit area around the 14px visible dot (CRM-HANDOFF §10 fix 3: markers keep their 14px
+  // look with a 24px hit area).
+  el.style.outline = "5px solid transparent";
+  return el;
+}
+
+export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
+  {
+    styleUrl = DEFAULT_STYLE,
+    center = null,
+    radiusMi,
+    onPinDrop,
+    roofMarkers = [],
+    permitMarkers = [],
+    layers = { roofs: true, permits: true },
+  }: CrmMapProps,
+  ref,
+) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markerRef = useRef<Marker | null>(null);
@@ -221,6 +293,60 @@ export function CrmMap({
     });
   }, [center?.lat, center?.lng, radiusMi, styleReady]);
 
+  // E-72 Layers: aged-roof markers. Re-created whenever the result set or the layer toggle
+  // changes — the marker list is short (a radius search, never the whole county), so a full
+  // remove/re-add is simpler and cheap enough, unlike the single pin marker above.
+  const roofMarkerRefs = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const marker of roofMarkerRefs.current) marker.remove();
+    roofMarkerRefs.current = [];
+    if (map === null || !styleReady || !layers.roofs) return;
+    for (const point of roofMarkers) {
+      const marker = new Marker({ element: dot(ROOF_MARKER_COLOR[point.roofAgeConfidence], false) })
+        .setLngLat([point.lng, point.lat])
+        .addTo(map);
+      roofMarkerRefs.current.push(marker);
+    }
+  }, [roofMarkers, layers.roofs, styleReady]);
+
+  // E-72 Layers: open/stalled permit markers, ringed when `isLongOpen` already flagged the
+  // permit ("Open > 5 yrs" — the flag itself comes from `packages/domain`'s `isLongOpen` via the
+  // caller, never recomputed here).
+  const permitMarkerRefs = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const marker of permitMarkerRefs.current) marker.remove();
+    permitMarkerRefs.current = [];
+    if (map === null || !styleReady || !layers.permits) return;
+    for (const point of permitMarkers) {
+      const color = PERMIT_MARKER_COLOR[point.statusClass ?? ""] ?? "#747775";
+      const marker = new Marker({ element: dot(color, point.isLongOpen) })
+        .setLngLat([point.lng, point.lat])
+        .addTo(map);
+      permitMarkerRefs.current.push(marker);
+    }
+  }, [permitMarkers, layers.permits, styleReady]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      zoomIn: () => mapRef.current?.zoomIn(),
+      zoomOut: () => mapRef.current?.zoomOut(),
+      recenter: () => {
+        const map = mapRef.current;
+        if (map === null) return;
+        if (center === null) {
+          map.setCenter(TRAVIS_COUNTY_CENTER);
+          map.setZoom(9);
+          return;
+        }
+        map.flyTo({ center: [center.lng, center.lat], zoom: 12 });
+      },
+    }),
+    [center?.lat, center?.lng],
+  );
+
   return (
     <div className={styles.wrapper}>
       <div ref={containerRef} className={styles.map} data-testid="crm-map" />
@@ -234,4 +360,4 @@ export function CrmMap({
       )}
     </div>
   );
-}
+});

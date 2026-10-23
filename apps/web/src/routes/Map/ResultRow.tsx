@@ -6,12 +6,87 @@
 // recomputed, data-model.md) — plus provenance (constitution XI) via the copied `@crm/ui`
 // components. A missing roof age always shows its stated reason (constitution P0-4), never `0`,
 // blank or `null`.
+import { distanceMeters, type LatLng } from "@crm/domain";
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
 import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
-import { CidDisplay, MissingReason, Provenance } from "@crm/ui";
+import { CidDisplay, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
 import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
 import { PermitChip } from "./PermitChip.js";
 import styles from "./ResultRow.module.css";
+
+const METERS_PER_MILE = 1609.344;
+
+/** The card's title: this contract never publishes a street address (§9.1/E-93 — no lexicon
+ *  carrier for it yet, FU-A-01), so every row shows its TCAD account id instead of a fabricated
+ *  address and never the raw lat/lon as if it were one (constitution P0-4, task brief "never raw
+ *  lat/lon as a fake address"). */
+export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  return (
+    <span className={styles.titleStack}>
+      <span className={styles.titleMain}>{`TCAD ${row.requestIdentifier}`}</span>
+      <span className={styles.titleSub}>
+        Address not published
+        {row.latitude === null || row.longitude === null
+          ? ""
+          : ` · ${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)}`}
+      </span>
+    </span>
+  );
+}
+
+/** Distance from the search centre (AC-1: "we DO have lat/lon, so real distance via
+ *  packages/domain's distanceMeters is fine" — never the display-only ring math in CrmMap.tsx). */
+function RowDistance({
+  row,
+  center,
+}: {
+  readonly row: Provenanced<CrmProperty>;
+  readonly center: LatLng;
+}): ReactElement | null {
+  if (row.latitude === null || row.longitude === null) return null;
+  const miles = distanceMeters(center, { lat: row.latitude, lng: row.longitude }) / METERS_PER_MILE;
+  return <span className={styles.distance}>{`${miles.toFixed(1)} mi`}</span>;
+}
+
+export function TypePill({ propertyType }: { readonly propertyType: string | null }): ReactElement {
+  if (propertyType === null) {
+    return <StatusPill status="unavailable" text="Type not published" />;
+  }
+  return (
+    <span className={styles.typePill}>
+      <Icon
+        name={propertyType.toLowerCase() === "commercial" ? "storefront" : "home"}
+        size="small"
+      />
+      {propertyType}
+    </span>
+  );
+}
+
+function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  if (row.roofAgeYears === null) {
+    const entry =
+      row.missingReasons.find((m) => m.field === "roofAgeYears") ??
+      row.missingReasons.find((m) => m.field === "roof_age_years");
+    return entry === undefined ? (
+      <StatusPill status="unavailable" text="Roof age not available" />
+    ) : (
+      <MissingReason field={entry.field} reason={entry.reason as Reason} />
+    );
+  }
+  const confidenceStatus =
+    row.roofAgeConfidence === "high"
+      ? "verified"
+      : row.roofAgeConfidence === "none"
+        ? "unavailable"
+        : "warning";
+  return (
+    <span className={styles.roofBadges}>
+      <StatusPill status="info" text={`Roof ${row.roofAgeYears} yrs`} icon="roofing" />
+      <StatusPill status={confidenceStatus} text={`Confidence ${row.roofAgeConfidence}`} />
+    </span>
+  );
+}
 
 function missingFor(row: Provenanced<CrmProperty>, field: string): Missing | undefined {
   return row.missingReasons.find((m) => m.field === field);
@@ -108,6 +183,9 @@ export interface ResultRowProps {
    *  the permit-view toggle is on. `undefined`/empty renders nothing extra — permit view off
    *  never fetches or shows permits at all. */
   readonly permits?: readonly Provenanced<CrmPermit>[];
+  /** The current search centre, for the card's distance line (AC-1). `undefined` renders no
+   *  distance (no centre has been chosen yet). */
+  readonly center?: LatLng;
 }
 
 export function ResultRow({
@@ -115,6 +193,7 @@ export function ResultRow({
   onSelect,
   selected = false,
   permits,
+  center,
 }: ResultRowProps): ReactElement {
   const select = (): void => onSelect?.(row.propertyCid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
@@ -141,14 +220,27 @@ export function ResultRow({
     >
       <header className={styles.head}>
         <h4 id={titleId} className={styles.title}>
-          Property <CidDisplay cid={row.propertyCid} />
+          <RowTitle row={row} />
         </h4>
+        {center === undefined ? null : <RowDistance row={row} center={center} />}
         {onSelect === undefined ? null : (
-          <button type="button" className={styles.details} onClick={select}>
-            Details
+          <button
+            type="button"
+            className={styles.details}
+            onClick={select}
+            aria-label="Open details"
+          >
+            <Icon name="chevron_right" size="medium" />
           </button>
         )}
       </header>
+      <div className={styles.badgeRow}>
+        <RoofBadge row={row} />
+        <TypePill propertyType={row.propertyType} />
+      </div>
+      <p className={styles.cidLine}>
+        Property <CidDisplay cid={row.propertyCid} />
+      </p>
       <PropertyFields row={row} />
       {permits !== undefined && permits.length > 0 ? (
         <ul className={styles.permits} aria-label="Permits">

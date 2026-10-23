@@ -16,6 +16,9 @@ export interface RadiusControlProps {
   readonly onChange: (radiusMi: number) => void;
   readonly min?: number;
   readonly max?: number;
+  /** The card caption, e.g. "From Dropped pin" / "From Your location" (CrmMapPin390's "From
+   *  Dropped pin · all query modes"). Omitted renders no caption line. */
+  readonly originLabel?: string;
 }
 
 function parseRadius(raw: string, min: number, max: number): number | null {
@@ -29,6 +32,7 @@ export function RadiusControl({
   onChange,
   min = RADIUS_MIN_MI,
   max = RADIUS_MAX_MI,
+  originLabel,
 }: RadiusControlProps): ReactElement {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
@@ -56,31 +60,46 @@ export function RadiusControl({
   };
 
   return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={id}>
-        Radius
-      </label>
-      <span className={styles.inputRow}>
-        <input
-          id={id}
-          className={styles.input}
-          type="number"
-          inputMode="decimal"
-          step="0.5"
-          min={min}
-          max={max}
-          value={draft ?? String(radiusMi)}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={(event) => commit(event.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        <span className={styles.unit}>mi</span>
-      </span>
-      {rejected ? (
-        <p role="alert" className={styles.hint}>
-          {`Radius must be between ${min} and ${max} mi`}
-        </p>
-      ) : null}
+    <div className={styles.card}>
+      <div className={styles.field}>
+        <label className={styles.label} htmlFor={id}>
+          Radius
+        </label>
+        <span className={styles.inputRow}>
+          <input
+            type="range"
+            className={styles.slider}
+            step="0.5"
+            min={min}
+            max={max}
+            value={radiusMi}
+            aria-label="Radius (slider)"
+            onChange={(event) => onChange(Number(event.target.value))}
+          />
+          <input
+            id={id}
+            className={styles.input}
+            type="number"
+            inputMode="decimal"
+            step="0.5"
+            min={min}
+            max={max}
+            value={draft ?? String(radiusMi)}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={(event) => commit(event.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <span className={styles.unit}>mi</span>
+        </span>
+        {rejected ? (
+          <p role="alert" className={styles.hint}>
+            {`Radius must be between ${min} and ${max} mi`}
+          </p>
+        ) : null}
+      </div>
+      {originLabel === undefined ? null : (
+        <p className={styles.origin}>{`From ${originLabel} · all query modes`}</p>
+      )}
     </div>
   );
 }
