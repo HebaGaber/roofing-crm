@@ -127,3 +127,21 @@ No `[NEEDS CLARIFICATION]` remaining.
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ — `docs/gates/G4-B-03-precheck.md` (written below); its 3 findings (NFR traceability, prototype paths, AC-4 wording) fixed in this file |
 
 **Decision:** ☑ Ready ☐ Returned · HebaGaber · 2026-10-23 (Round 1: the A-13 dependency wording above — G7-approved but merge held for A-11's order, reachable via `ORACLE-u` — is accepted as not a blocker)
+
+---
+
+## Gate G7: Validated Build
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| G7-1 | Tasks done | ☑ |
+| G7-2 | Unit tests: report attached, CI green, coverage ≥ 80% of new code | ☑ `docs/reports/UT-B-03.md` — 708 tests, 100% pass rate; `apps/web` coverage raised 85.33%→96.88% stmts (two under-80% files fixed) |
+| G7-3 | Code review: every `agents.reviewers` score ≥ 75, zero open Critical | ☑ `metagross` 80, `audino` 48→84→81 (two rounds), `/code-review medium` — `docs/reviews/CR-B-03.md` |
+| G7-4 | Every TC executed on the hosted URL, build sha recorded | ☑ with exceptions — `testplans/B-03-test-cases.md` § 11; 16 TCs BLOCKED on GAP-7 (`crm-leads`/B-07 not deployed), 4 TCs tracked as follow-up, 9 TCs + the responsive suite genuinely PASS live |
+| G7-5 | Defects closed, no open Critical | ☑ — no `docs/defects/ERR-*.md` files; every finding fixed same session |
+| G7-6 | Evidence: URL, counts, screenshots, trace id | ☑ `docs/evidence/B-03.md` |
+| G7-7 | Traceability and kit-usage rows complete | ☑ |
+| G7-8 | Commits start with the story ID, no secrets | ☑ |
+| G7-9 | AI pre-check (`developmentsupport-g7-precheck`): PASS | ☑ `docs/gates/G7-B-03-precheck.md` — 2 findings (tasks.md checkboxes, apps/web coverage), both fixed |
+
+**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
