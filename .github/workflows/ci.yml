@@ -23,7 +23,10 @@ permissions:
 jobs:
   workspace:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # B-02: CrmSync's native-DuckDB Lambda forces Docker-bundled arm64 builds; under this
+    # runner's QEMU emulation (docker/setup-qemu-action, added above) that's materially slower
+    # than the native-Docker-Desktop case this budget was set for — 15m wasn't enough.
+    timeout-minutes: 30
     env:
       # @crm/config throws without CDK_DEFAULT_REGION (infra/src/config.ts); synth needs it even
       # though this job never deploys.
