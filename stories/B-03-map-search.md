@@ -20,9 +20,9 @@ agents:
   verify: "Playwright with geolocation · 15 → 25 changes the roof-age count · permits sorted by open days · includes a BBB not available case"
 skills: [build-frontend-backends, frontend-bug-fix, apply-engineering-guidelines]
 ui: true
-status: Draft
-gate: G4
-qc_testability_signoff: false
+status: Done
+gate: G7
+qc_testability_signoff: true
 created: 2026-10-23
 reuses:
   - from: "Task A A-02 (Data contract)"
@@ -144,4 +144,4 @@ No `[NEEDS CLARIFICATION]` remaining.
 | G7-8 | Commits start with the story ID, no secrets | ☑ |
 | G7-9 | AI pre-check (`developmentsupport-g7-precheck`): PASS | ☑ `docs/gates/G7-B-03-precheck.md` — 2 findings (tasks.md checkboxes, apps/web coverage), both fixed |
 
-**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-24 (Round 2: GAP-7 and the other carried-forward exceptions in `docs/gates/G7-B-03-precheck.md` accepted — cross-story/environmental, not B-03 defects)
