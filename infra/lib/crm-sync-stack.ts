@@ -199,7 +199,17 @@ export class CrmSyncStack extends Stack {
       "FetchPartFunction",
       "crm-sync-fetch-part",
       props.fetchPartHandlerEntry,
-      { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      {
+        CRM_INDEX_BUCKET_NAME: props.indexBucketName,
+        // Found live: these were never wired, so productionFetchers() always returned an empty
+        // list and every part went straight to the DLQ. Filebase + Pinata only, matching Plan's
+        // own hardcoded manifest-fetch gateway list (research.md) — CloudFront's distribution
+        // serves at `/{cid}`, not the `/ipfs/{cid}` path every gateway fetcher here uses, so it
+        // isn't wired through this shared template (ADR-02's fallback order still holds; this is
+        // the same choice Plan already made, not a new deviation).
+        GATEWAY_FILEBASE_BASE_URL: "https://ipfs.filebase.io",
+        GATEWAY_PINATA_BASE_URL: "https://gateway.pinata.cloud",
+      },
       "handler",
     );
     const buildIndexFn = makeHandler(
