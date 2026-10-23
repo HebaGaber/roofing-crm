@@ -40,10 +40,10 @@ Copied from the story front matter (`stories/B-07-leads.md`) and `specs/007-lead
 | Verify | Playwright | — | create, duplicate-refusal, status/note persistence across reload, combined URL filters, "not in Run {n}", 20-concurrent-create test — all against the hosted preview URL |
 
 **Patterns the code must show** (from the builder's answer):
-- `TransactWriteItems` conditional dedupe on `pk`, never read-then-write — `apps/api/src/adapters/leadRepo.ts` (new)
+- `TransactWriteItems` conditional dedupe on `pk`, never read-then-write — `apps/api/src/adapters/leadRepo.ts` (new, Data layer)
 - Gapless `EVT#{sequence}` append, condition-checked against current max — same file
-- tRPC routers delegate only, no business rule inline — `apps/api/src/routers/leads.ts` (new), rules in `packages/domain/src/leads.ts` (new)
-- URL-state filter codec shared with the map's existing pattern — `packages/domain/src/leadFilters.ts` (new), consumed by `apps/web/src/routes/Leads/*`
+- tRPC routers delegate only, no business rule inline — `apps/api/src/routers/leads.ts` (new) calls the Application service `apps/api/src/services/leads.ts` (new), which orchestrates `leadRepo` (Data) and `packages/domain/src/leads.ts` (new, pure rules) per architecture-constitution.md §4/§9's layering (Entry → Application → Domain → Data)
+- URL-state filter codec shared with the map's existing pattern — `apps/web/src/routes/Leads/leadFilters.state.ts` (new), mirroring `apps/web/src/routes/Map/ExploreFilters.state.ts` (web-layer state, not `packages/domain` — the map's existing codec lives in the web app, not domain, and this story follows that precedent)
 - Atlas-only components, `MissingValue` for "not in Run {n}", no fetch/business logic inside `packages/ui` components
 
 ## Constitution Check
@@ -87,8 +87,9 @@ specs/007-leads/
 
 ```text
 apps/api/
-├── src/routers/leads.ts            # new: leads.create / updateStatus / addNote / list
-├── src/adapters/leadRepo.ts        # new: DynamoDB TransactWriteItems, GSI1/GSI2 queries
+├── src/routers/leads.ts            # new: leads.create / updateStatus / addNote / list / get — Zod parse + delegate only
+├── src/services/leads.ts           # new: Application layer — orchestrates leadRepo + packages/domain rules (architecture-constitution.md §4/§9)
+├── src/adapters/leadRepo.ts        # new: DynamoDB TransactWriteItems, GSI1/GSI2 queries — Data layer
 └── src/routers/index.ts            # edit: register the leads router on AppRouter
 
 apps/web/
@@ -104,8 +105,8 @@ packages/domain/
 packages/shared/
 └── src/schemas/lead.ts              # new: Lead, LeadEvent, LeadSignals Zod schemas (browser-safe, per packages/shared's existing convention — see research.md)
 
-infra/ (CDK)
-└── CrmData stack: add the crm-leads table + GSI1/GSI2 (typed construct, least-privilege grant to the API Lambda)
+infra/
+└── lib/crm-data-stack.ts            # edit: add the crm-leads table construct + GSI1/GSI2 (typed construct, least-privilege grant to the API Lambda)
 
 tests/
 ├── apps/api (Vitest: leadRepo transaction semantics, routers)
@@ -115,4 +116,8 @@ tests/
 
 ## Complexity Tracking
 
-*No Constitution Check violations — table not needed.*
+*No Constitution Check violations requiring justification. One implementation-detail choice is recorded here for traceability, not because it breaks a gate:*
+
+| Violation | Why Needed | Simpler Alternative Rejected Because |
+|-----------|------------|-------------------------------------|
+| `status`/`assignee` on the `LEAD` item are updated transactionally alongside each `EVT#{sequence}` append, rather than always replayed fresh from the full event log on every read (ADR-04's literal "a projection replayed from events") | Keeps 20-concurrent-create and update-conflict handling to one transaction, one code path, matching NFR-001's "exactly 1 winner, 0 lost updates" test directly | Full read-time replay of every `EVT#` item on every `leads.list`/`leads.get` call adds query cost and complexity the ACs don't require; `mew`'s design consult (`agent-design.md`) explicitly allows this ("either is fine, not both independently") — the event log stays authoritative and a future story can switch to full replay without changing the public contract |
