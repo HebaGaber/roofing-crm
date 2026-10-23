@@ -283,7 +283,16 @@ export class CrmSyncStack extends Stack {
       .otherwise(heldNoPromotion);
 
     const planResultChoice = new sfn.Choice(this, "PlanResultChoice")
-      .when(sfn.Condition.stringEquals("$.status", "Held"), heldNoPromotion)
+      // Plan's success shape (contracts/sync-pipeline.md's PlanResult) never sets `status` at all
+      // — Condition.stringEquals on a path that's genuinely absent throws rather than evaluating
+      // to false, so `isPresent` must gate it first.
+      .when(
+        sfn.Condition.and(
+          sfn.Condition.isPresent("$.status"),
+          sfn.Condition.stringEquals("$.status", "Held"),
+        ),
+        heldNoPromotion,
+      )
       .otherwise(fetchPartsMap.next(buildIndexTask).next(validateTask).next(validateResultChoice));
 
     const definition = planTask.next(planResultChoice);
