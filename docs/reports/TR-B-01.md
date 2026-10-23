@@ -73,7 +73,9 @@ All found live, against the real deployed stack — none caught by `cdk synth`/`
 | ERR-7 | — (deploy-time, no TC) | Critical | Fixed + re-tested ✅ (Cognito pool/client IDs never reached the Amplify build's env vars — sign-in hung forever) | `3dc09fd` |
 | ERR-8 | TC-NF-02 | Medium | Fixed + re-tested ✅ (sign-in title's un-reset UA margin; MapLibre third-party CSS scoped out of the Atlas audit) | `16c488d`, `3846509` |
 
-**Known, documented, non-blocking:** one intermittent Playwright failure (an unused `StatusPill` component's Atlas-token audit, mobile-390 only, inside the full combined 61-case suite — never reproduces in isolation across 4 separate confirmations). Traced to a component genuinely unused by any current route; most likely a CDN/browser-cache artifact from this session's unusually rapid redeploy cadence (10 Amplify builds), not a functional or design regression. Documented in `specs/001-crm-shell/run-log.md`, not masked.
+| ERR-9 | — (code review CR-B-01, Critical) | Critical | Fixed + re-tested ✅ (`auth.reportFailedAttempt` was fully public with no proof a real sign-in attempt happened — a credential-free DoS against the admin account; rate-limited per a 3-option user decision, residual risk disclosed and accepted for this demo account) | `139cded` |
+
+**Known, documented, non-blocking:** one intermittent Playwright failure (an unused `StatusPill` component's Atlas-token audit, mobile-390 only, inside the full combined 60-case suite — never reproduces in isolation or in most full-suite runs; reproduced once more out of 3 further full-suite runs after ERR-9's fix, consistent with the existing hypothesis rather than a new cause). Traced to a component genuinely unused by any current route; most likely a CDN/browser-cache artifact from this session's unusually rapid redeploy cadence (12 Amplify builds), not a functional or design regression. Documented in `specs/001-crm-shell/run-log.md`, not masked.
 
 ## Sign-off
 
