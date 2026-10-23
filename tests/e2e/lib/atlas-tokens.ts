@@ -15,13 +15,13 @@
 // Border colours are read only for sides with a non-zero width. Glyphs of the Material Symbols
 // icon font (`.material-symbols-rounded`, declared in tokens.css) are exempt from the font-family
 // and font-size checks; their colour, spacing and radius are still checked.
-// Everything MapLibre GL JS injects inside `[data-testid="crm-map"]` (its canvas, zoom/attribution
-// controls) is entirely third-party markup styled by MapLibre's own bundled stylesheet — this app
-// authors no CSS for it and has no token to apply (found by TZ04's smeargle pass; not relaxed to
-// make a test pass, this exclusion predates that finding only in the sense that it's the same
-// scoping principle already used for the icon font above, applied to vendor-injected DOM instead
-// of a vendor-injected font). The container div itself is still audited; only its descendants are
-// exempt.
+// `[data-testid="crm-map"]` and everything MapLibre GL JS injects inside it (its canvas,
+// zoom/attribution controls) are styled by MapLibre's own bundled stylesheet, which sets a
+// `font-family` directly on that container element (its `.maplibregl-map` base rule) as well as
+// on every element it injects inside it — all of it third-party markup this app authors no CSS
+// for and has no token to apply (found by TZ04's smeargle pass; the same scoping principle
+// already used for the icon font exemption above, applied to vendor-injected DOM instead of a
+// vendor-injected font).
 
 export interface TokenViolation {
   selector: string;
@@ -139,7 +139,7 @@ export function atlasTokenAudit(properties: readonly string[]): TokenAudit {
   for (const el of Array.from(document.body.querySelectorAll("*")).concat(document.body)) {
     if (skipTags.has(el.tagName) || el instanceof SVGElement) continue;
     if (el.getClientRects().length === 0) continue; // not rendered
-    if (mapContainer !== null && mapContainer !== el && mapContainer.contains(el)) continue;
+    if (mapContainer !== null && mapContainer.contains(el)) continue;
     const style = getComputedStyle(el);
     if (style.visibility === "hidden") continue;
     checkedElements += 1;
