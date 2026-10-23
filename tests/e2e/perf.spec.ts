@@ -1,235 +1,95 @@
-// A-03 browser read-path timings on the hosted Permits page (T061; AC-4, FR-004, NFR-001).
-//
-// The page exposes no debug hook. Its engine emits User Timing entries (apps/web/src/engine/
-// timing.ts) that carry names and times only: the measure `crm:duckdb:init` (between the
-// marks `crm:duckdb:init:start` / `…:end`), the listing `crm:query:list` and the
-// page's own COUNT `crm:query:count`. The specs read them with
-// `performance.getEntriesByType('measure')` after each load.
-//
-// - TC-NF-01: 20 cold first loads (a fresh browser context each, so nothing is cached), each
-//   timed from navigation start to the first rendered permit row, with the `Loading permits`
-//   progress bar seen in between; every load ≤ 8,000 ms. The DuckDB init measure of each load is
-//   recorded beside it.
-// - TC-NF-02: in one context, one untimed warm-up load, then 20 reloads (the page re-runs its
-//   COUNT and listing on each); the `crm:query:count` and `crm:query:list`
-//   measures of each reload are the timings; each p95 < 3,000 ms. Every reload must end `ready`
-//   (the page itself fails when its COUNT or row count differs from the manifest) and show
-//   `permits_emitted` rows.
-// Timings are attached as JSON for docs/evidence/A-03.md and docs/decisions/0001-read-path.md.
-import type { Page } from "@playwright/test";
-import { checkpoint } from "./lib/evidence.js";
-import { expect, test } from "./lib/fixtures.js";
-import {
-  LIMITS,
-  SELECTORS,
-  TIMED_RUNS,
-  permitsEmitted as permitsEmittedOf,
-  summarize,
-} from "./lib/perf.js";
+// T018a (B-03): adapted from the A-03/B-02 copy of this file (its own header recorded that
+// history) for this story's NFR-001 — radius/threshold-change latency on `search.properties`/
+// `search.permits`, not Task A's Permits-page User Timing marks (this app has no such
+// instrumentation; `crm:duckdb:init`/`crm:query:list`/`crm:query:count` were never ported here).
+// Black-box timing instead: `performance.now()` around the change event, until the results list
+// (`[data-testid="search-results"]`) settles — the same shape as
+// testplans/B-03-test-cases.md's B-03-TC-NF-01 (radius change 5→25 mi, then a threshold change),
+// 20 timed runs after one untimed warm-up, p95 < 3,000 ms (architecture-constitution.md §10).
+import { expect, test } from "@playwright/test";
 import { runtimeUrl } from "./lib/runtime.js";
 
-/** The User Timing names the Permits engine emits (apps/web/src/engine/timing.ts). */
-const MEASURES = {
-  init: "crm:duckdb:init",
-  list: "crm:query:list",
-  count: "crm:query:count",
-} as const;
-type MeasureName = (typeof MEASURES)[keyof typeof MEASURES];
+const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
+const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+const TIMED_RUNS = 20;
+const P95_LIMIT_MS = 3_000;
 
-const COLD_LOADS = TIMED_RUNS;
-
-interface FirstLoadProbe {
-  progressAt: number | null;
-  firstRowAt: number | null;
+interface Summary {
+  n: number;
+  p50Ms: number;
+  p95Ms: number;
 }
 
-declare global {
-  interface Window {
-    __nf01?: FirstLoadProbe;
-  }
+function summarize(valuesMs: number[]): Summary {
+  const sorted = [...valuesMs].sort((a, b) => a - b);
+  const pick = (p: number): number =>
+    sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] ?? 0;
+  return { n: sorted.length, p50Ms: pick(0.5), p95Ms: pick(0.95) };
 }
 
-/** Durations (ms) of this document's measures with the given names, waiting until each exists. */
-async function readMeasures(
-  page: Page,
-  names: readonly MeasureName[],
-): Promise<Record<MeasureName, number>> {
-  await page.waitForFunction(
-    (wanted) => {
-      const have = new Set(performance.getEntriesByType("measure").map((m) => m.name));
-      return wanted.every((n) => have.has(n));
-    },
-    names,
-    { timeout: 30_000 },
-  );
-  const entries = await page.evaluate(() =>
-    performance.getEntriesByType("measure").map((m) => ({ name: m.name, duration: m.duration })),
-  );
-  const out = {} as Record<MeasureName, number>;
-  for (const name of names) {
-    // The last entry of that name: a retry in the same document measures again.
-    const last = entries.filter((e) => e.name === name).at(-1);
-    out[name] = Math.round((last?.duration ?? Number.NaN) * 10) / 10;
-  }
-  return out;
+async function signIn(page: import("@playwright/test").Page, password: string): Promise<void> {
+  await page.goto("/sign-in");
+  await page.getByLabel("Username").fill(SEEDED_USERNAME);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: /Sign in/ }).click();
+  await expect(page.locator('[data-route="map"]')).toBeVisible();
 }
 
-test.describe("A-03-TC-NF-01 browser first load ≤ 8 s with a progress bar", () => {
-  test.describe.configure({ timeout: 15 * 60_000 });
+/** Clicks the map at the Pflugerville pin (AC-1) and returns once a search response landed. */
+async function dropPinAndWait(page: import("@playwright/test").Page): Promise<void> {
+  await page.getByTestId("crm-map").click();
+  await page
+    .locator('[data-testid="search-results"], [data-state="CrmMapNoResults390"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 });
+}
 
-  test("@scenario:A-03-TC-NF-01", async ({ browser, run }, testInfo) => {
-    const permitsEmitted = permitsEmittedOf(run.manifest);
-    expect(permitsEmitted, "the run publishes permits (rows to time)").toBeGreaterThan(0);
+/** One timed run: changes the radius, waits for the results region to re-render, returns the
+ *  elapsed time in ms. Marked `[Skip="live run only"]` in Phase Z's evidence, per NF-01's note. */
+async function timedRadiusChange(
+  page: import("@playwright/test").Page,
+  toRadiusMi: number,
+): Promise<number> {
+  const started = await page.evaluate(() => performance.now());
+  const radius = page.getByLabel("Radius");
+  await radius.fill(String(toRadiusMi));
+  await radius.blur();
+  await page
+    .locator('[data-testid="search-results"], [data-state="CrmMapNoResults390"]')
+    .first()
+    .waitFor({ state: "visible", timeout: 10_000 });
+  const ended = await page.evaluate(() => performance.now());
+  return ended - started;
+}
 
-    const loads: (FirstLoadProbe & { load: number; duckdbInitMs: number })[] = [];
-    for (let load = 1; load <= COLD_LOADS; load += 1) {
-      const context = await browser.newContext({ colorScheme: "light" });
-      try {
-        // Times are milliseconds since navigation start (performance.timeOrigin of the document).
-        await context.addInitScript(
-          ({ progress, row }) => {
-            const probe: FirstLoadProbe = { progressAt: null, firstRowAt: null };
-            window.__nf01 = probe;
-            const check = (): void => {
-              if (probe.progressAt === null && document.querySelector(progress)) {
-                probe.progressAt = performance.now();
-              }
-              if (probe.firstRowAt === null && document.querySelector(row)) {
-                probe.firstRowAt = performance.now();
-                observer.disconnect();
-              }
-            };
-            const observer = new MutationObserver(check);
-            observer.observe(document, { childList: true, subtree: true, attributes: true });
-          },
-          { progress: SELECTORS.permitsProgress, row: SELECTORS.permitRow },
-        );
-        const page = await context.newPage();
-        await page.goto(`${runtimeUrl()}/permits`, { waitUntil: "commit" });
-        await page
-          .locator(SELECTORS.permitRow)
-          .first()
-          .waitFor({ state: "visible", timeout: 60_000 });
-        if (load === 1) await checkpoint(page, "NF-01", "load-1-first-row");
-        const probe = await page.evaluate(() => window.__nf01 ?? null);
-        expect(probe, `load ${load}: the first-load probe ran`).not.toBeNull();
-        const measured = await readMeasures(page, [MEASURES.init]);
-        loads.push({
-          load,
-          progressAt: probe?.progressAt ?? null,
-          firstRowAt: probe?.firstRowAt ?? null,
-          duckdbInitMs: measured[MEASURES.init],
-        });
-      } finally {
-        await context.close();
-      }
+test.describe("B-03-TC-NF-01: radius change p95 < 3 s end to end, 20 runs", () => {
+  test.describe.configure({ timeout: 10 * 60_000 });
+
+  test("@scenario:B-03-TC-NF-01", async ({ page }, testInfo) => {
+    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    if (!SEEDED_PASSWORD) return;
+
+    await signIn(page, SEEDED_PASSWORD);
+    await dropPinAndWait(page);
+
+    // One untimed warm-up (the first search fills the browser's HTTP cache).
+    await timedRadiusChange(page, 6);
+
+    const timingsMs: number[] = [];
+    for (let i = 1; i <= TIMED_RUNS; i += 1) {
+      // Alternates 25 <-> 6 mi so each run is a real re-fetch, never a no-op (B-03-TC-015's
+      // "repeated changes" shape applied to this NFR instead of to counts.afterRoofAge).
+      const toRadiusMi = i % 2 === 0 ? 6 : 25;
+      timingsMs.push(await timedRadiusChange(page, toRadiusMi));
     }
 
-    const timings = loads.map((l) => Math.round(l.firstRowAt ?? Number.POSITIVE_INFINITY));
-    const firstLoad = summarize(timings);
-    const duckdbInit = summarize(loads.map((l) => l.duckdbInitMs));
-    await testInfo.attach("tc-nf-01-first-loads.json", {
-      body: JSON.stringify(
-        { url: `${runtimeUrl()}/permits`, loads, timingsMs: timings, firstLoad, duckdbInit },
-        null,
-        2,
-      ),
-      contentType: "application/json",
-    });
-    for (const l of loads) {
-      expect
-        .soft(l.progressAt, `load ${l.load}: progress bar "Loading permits" shown`)
-        .not.toBeNull();
-      expect.soft(l.firstRowAt, `load ${l.load}: a permit row rendered`).not.toBeNull();
-      if (l.progressAt !== null && l.firstRowAt !== null) {
-        expect
-          .soft(l.progressAt, `load ${l.load}: progress bar before the first row`)
-          .toBeLessThan(l.firstRowAt);
-      }
-      expect
-        .soft(l.duckdbInitMs, `load ${l.load}: ${MEASURES.init} measured`)
-        .toBeGreaterThanOrEqual(0);
-      expect
-        .soft(
-          Math.round(l.firstRowAt ?? Number.POSITIVE_INFINITY),
-          `load ${l.load}: first load ≤ ${LIMITS.firstLoadMs} ms`,
-        )
-        .toBeLessThanOrEqual(LIMITS.firstLoadMs);
-    }
-    expect(loads).toHaveLength(COLD_LOADS);
-  });
-});
-
-test.describe("A-03-TC-NF-02 COUNT and listing p95 < 3 s in the browser (20 runs)", () => {
-  test.describe.configure({ timeout: 15 * 60_000 });
-
-  test("@scenario:A-03-TC-NF-02", async ({ browser, run }, testInfo) => {
-    const permitsEmitted = permitsEmittedOf(run.manifest);
-    const context = await browser.newContext({ colorScheme: "light" });
-    const runs: { run: number; countMs: number; listMs: number; rows: number }[] = [];
-    let warmup: Record<MeasureName, number> | undefined;
-    try {
-      const page = await context.newPage();
-      /** One page load: wait for `ready`, then read the two query measures of this document. */
-      const loadOnce = async (
-        navigate: () => Promise<unknown>,
-      ): Promise<{ measured: Record<MeasureName, number>; rows: number }> => {
-        await navigate();
-        await page.locator(SELECTORS.permitsReady).waitFor({ state: "visible", timeout: 60_000 });
-        const measured = await readMeasures(page, [MEASURES.count, MEASURES.list]);
-        return { measured, rows: await page.locator(SELECTORS.permitRow).count() };
-      };
-
-      // Untimed warm-up: the first load fills the HTTP cache (WASM, worker, parts).
-      warmup = (
-        await loadOnce(() =>
-          page.goto(`${runtimeUrl()}/permits`, { waitUntil: "domcontentloaded" }),
-        )
-      ).measured;
-      for (let i = 1; i <= TIMED_RUNS; i += 1) {
-        const { measured, rows } = await loadOnce(() =>
-          page.reload({ waitUntil: "domcontentloaded" }),
-        );
-        runs.push({
-          run: i,
-          countMs: measured[MEASURES.count],
-          listMs: measured[MEASURES.list],
-          rows,
-        });
-      }
-      await checkpoint(page, "NF-02", `after-${TIMED_RUNS}-reloads-listing`);
-    } finally {
-      await context.close();
-    }
-
-    const count = summarize(runs.map((r) => r.countMs));
-    const list = summarize(runs.map((r) => r.listMs));
-    await testInfo.attach("tc-nf-02-timings.json", {
-      body: JSON.stringify(
-        {
-          url: `${runtimeUrl()}/permits`,
-          manifestCid: run.manifestCid,
-          source: "performance.getEntriesByType('measure')",
-          measures: { count: MEASURES.count, list: MEASURES.list },
-          warmupMs: warmup,
-          runs,
-          count,
-          list,
-        },
-        null,
-        2,
-      ),
+    const summary = summarize(timingsMs);
+    await testInfo.attach("tc-nf-01-radius-change-timings.json", {
+      body: JSON.stringify({ url: `${runtimeUrl()}/`, timingsMs, summary }, null, 2),
       contentType: "application/json",
     });
 
-    expect(count.n).toBe(TIMED_RUNS);
-    expect(list.n).toBe(TIMED_RUNS);
-    for (const r of runs) {
-      expect
-        .soft(r.rows, `run ${r.run}: the listing shows every published row (permits_emitted)`)
-        .toBe(permitsEmitted);
-    }
-    expect.soft(count.p95Ms, `COUNT p95 < ${LIMITS.queryP95Ms} ms`).toBeLessThan(LIMITS.queryP95Ms);
-    expect(list.p95Ms, `listing p95 < ${LIMITS.queryP95Ms} ms`).toBeLessThan(LIMITS.queryP95Ms);
+    expect(summary.n).toBe(TIMED_RUNS);
+    expect(summary.p95Ms, `radius-change p95 < ${P95_LIMIT_MS} ms`).toBeLessThan(P95_LIMIT_MS);
   });
 });

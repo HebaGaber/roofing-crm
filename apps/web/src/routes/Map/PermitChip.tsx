@@ -1,47 +1,36 @@
-// The permit chip of an Explore row and the Property drawer (A-13 T027; AC-5, FR-005; contracts/
-// ui-routes.md). An open or stalled roofing permit reads "Stalled {x} yrs · …" / "Open {x} yrs ·
-// …" with {x} = the row's `open_years`; while `status_raw` has no lexicon carrier (ADR-0002) the
-// status part is "source status not published · no lexicon carrier", and once a carrier exists
-// "source says {status_raw}" ("Expired" for a stalled permit). `data-permit-chip` carries the
-// status class and `data-open-days` the row's exact `open_days`. Any
-// other permit shows its number and status class as published (no chip hook). Render-only.
-import type { ExplorePermit } from "@crm/oracle-views";
-import { EXPLORE_TEXTS } from "@countylens/shared";
+// B-03 permit chip (tasks.md T029; AC-5, FR-005). Replaces the A-13/ORACLE-u version this file
+// was copied from (C1 copy, 2026-10-23): that file read `ExplorePermit`'s `open_years`/
+// `status_class` plus a source-text lookup (`@countylens/shared`'s EXPLORE_TEXTS) that doesn't
+// exist in this repo. This version reads this story's own `CrmPermit` fields (`openDays`,
+// `statusClass`) verbatim and renders the long-open badge from `packages/domain`'s `isLongOpen`
+// (data-model.md: "a display-layer flag... never recomputed from issueDate") — it never
+// recomputes the badge itself. `data-permit-chip` carries the status class, `data-open-days` the
+// exact value, `data-long-open` whether the badge fired — the real assertions B-03-TC-016/017/018
+// read. Render-only.
+import { isLongOpen, openDurationLabel } from "@crm/domain";
+import { StatusPill } from "@crm/ui";
+import type { CrmPermit } from "@crm/index-schema";
 import type { ReactElement } from "react";
-import { StatusPill } from "../../components/StatusPill";
 
 export interface PermitChipProps {
-  readonly permit: ExplorePermit;
-  /** The source's status text once a lexicon carrier exists; null/absent while it has none. */
-  readonly statusRaw?: string | null;
+  readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber">;
 }
 
-export function permitChipText(permit: ExplorePermit, statusRaw: string | null): string | null {
-  const x = permit.open_years;
-  if (x === null) return null;
-  if (permit.status_class === "stalled") {
-    return statusRaw === null ? EXPLORE_TEXTS.stalledNoCarrier(x) : EXPLORE_TEXTS.stalledExpired(x);
-  }
-  if (permit.status_class === "open") {
-    return statusRaw === null
-      ? EXPLORE_TEXTS.openNoCarrier(x)
-      : EXPLORE_TEXTS.openSourceSays(x, statusRaw);
-  }
-  return null;
-}
-
-export function PermitChip({ permit, statusRaw = null }: PermitChipProps): ReactElement {
-  const text = permitChipText(permit, statusRaw);
-  if (text === null) {
-    return (
-      <span>
-        {permit.number ?? "permit"} · {permit.status_class ?? "status class not published"}
-      </span>
-    );
-  }
+export function PermitChip({ permit }: PermitChipProps): ReactElement {
+  const longOpen = isLongOpen(permit.openDays);
+  const label = openDurationLabel(permit.openDays);
+  const statusLabel = permit.statusClass ?? "status class not available";
   return (
-    <span data-permit-chip={permit.status_class ?? ""} data-open-days={permit.open_days ?? ""}>
-      <StatusPill status={permit.status_class === "stalled" ? "warning" : "info"} text={text} />
+    <span
+      data-permit-chip={permit.statusClass ?? ""}
+      data-open-days={permit.openDays ?? ""}
+      data-long-open={longOpen}
+    >
+      <StatusPill
+        status={longOpen ? "warning" : permit.openDays === null ? "unavailable" : "info"}
+        text={`${statusLabel} · ${label}`}
+      />
+      {longOpen ? <StatusPill status="warning" text="Long-open" icon="schedule" /> : null}
     </span>
   );
 }

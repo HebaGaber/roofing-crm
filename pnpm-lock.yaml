@@ -56,12 +56,18 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: 3.709.0
         version: 3.709.0(@aws-sdk/client-dynamodb@3.709.0)
+      '@crm/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
       '@crm/index-schema':
         specifier: workspace:*
         version: link:../../packages/index-schema
       '@crm/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@crm/oracle-contract':
+        specifier: workspace:*
+        version: link:../../packages/oracle-contract
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -169,12 +175,24 @@ importers:
       '@crm/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@crm/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@crm/index-schema':
+        specifier: workspace:*
+        version: link:../../packages/index-schema
+      '@crm/oracle-contract':
+        specifier: workspace:*
+        version: link:../../packages/oracle-contract
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@crm/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      '@tanstack/react-query':
+        specifier: 5.104.5
+        version: 5.104.5(@types/react@19.3.0)(react@19.3.1)
       amazon-cognito-identity-js:
         specifier: 6.3.12
         version: 6.3.12
@@ -304,6 +322,18 @@ importers:
       zod:
         specifier: 3.24.1
         version: 3.24.1
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.5
+        version: 22.10.5
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(@types/node@22.10.5)(tsx@4.19.2))
+
+  packages/domain:
     devDependencies:
       '@types/node':
         specifier: 22.10.5
@@ -464,6 +494,9 @@ importers:
 
   packages/ui:
     dependencies:
+      '@crm/oracle-contract':
+        specifier: workspace:*
+        version: link:../oracle-contract
       react-router:
         specifier: 7.1.1
         version: 7.1.1(react-dom@19.3.1(react@19.3.1))(react@19.3.1)

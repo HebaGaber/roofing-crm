@@ -1,146 +1,87 @@
-// Explore URL state (A-13 T025, FR-004a, contracts/ui-routes.md: `at`, `r`, `roof`, `permit`,
-// `openYrs`, `tenure`, `ooa`, `sort`, `sel`, `mode`, `place`, `view=list`; no `z`; `view=map`
-// falls back to the list). Values outside the explore.search bounds (query-core EXPLORE_BOUNDS)
-// are dropped, never clamped into a different question. Without `place` or `at` the page asks
-// about DEFAULT_PLACE, a Travis County gazetteer entry (static text, not data). `permit` keeps
-// its URL spelling: `open_stalled` / `open_or_stalled` → open_or_stalled, `open`, `stalled`;
-// anything else (e.g. `any`) means no permit filter.
-import {
-  EXPLORE_BOUNDS,
-  EXPLORE_SORTS,
-  type ExploreSort,
-  type PermitFilter,
-} from "@crm/oracle-views";
-import type { ExploreUrlParam } from "@countylens/shared/routes";
+// B-03 Map URL state (plan.md "Patterns the code must show": "radius/threshold/permit-view are
+// shareable and restorable from the URL"). Replaces the A-13/ORACLE-u Explore-page version this
+// file was copied from (C1 copy, 2026-10-23): that version's `place`/`tenure`/`ooa`/`sort`/
+// gazetteer machinery belongs to Task A's place-based Explorer, not this story's pin/GPS +
+// radius Map (B-03 has no place search, no tenure or out-of-area-owner filter — ADR-03 keeps
+// owner data out of this story entirely). Kept: the URL-param pattern itself and the file's
+// location/name (tasks.md T023a).
+//
+// URL keys: `lat`,`lng` (the search center pin/GPS point), `r` (radiusMi, 0.5-25),
+// `roof` (roofAgeMinYears), `permits` (permit-view toggle, "1"), `sel` (the selected
+// propertyCid, opens the detail drawer). Values outside bounds are dropped, never clamped into a
+// different question (FR-001/FR-003, matching the pattern the original file used).
+import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
 
-/** The area asked about when the URL names none (the county seat, a gazetteer place). */
-export const DEFAULT_PLACE = "Austin";
 export const DEFAULT_RADIUS_MI = 5;
-/** The value the "Open or stalled" switch writes. */
-export const OPEN_STALLED = "open_stalled";
-/** The search debounce of every control (research R1). */
-export const SEARCH_DEBOUNCE_MS = 250;
+export const RADIUS_BOUNDS: readonly [number, number] = [0.5, 25];
+/** architecture-constitution.md §6's page-limit bound. */
+export const MAX_RESULTS = 100;
 
-export interface ExploreQuery {
-  readonly place: string | null;
-  readonly at: { readonly lat: number; readonly lon: number } | null;
-  readonly r: number;
-  readonly roof: number | undefined;
-  /** The raw URL value (the controls show it); `permitFilter` maps it for the search. */
-  readonly permit: string | undefined;
-  readonly openYrs: number | undefined;
-  readonly tenure: number | undefined;
-  readonly ooa: boolean;
-  readonly sort: ExploreSort;
+export interface MapCenter {
+  readonly lat: number;
+  readonly lng: number;
+}
+
+export interface MapQuery {
+  readonly center: MapCenter | null;
+  readonly radiusMi: number;
+  readonly roofAgeMinYears: number | undefined;
+  readonly permitView: boolean;
   readonly sel: string | null;
-  readonly mode: "filters" | "sql";
 }
 
 const inRange = (value: number, [min, max]: readonly [number, number]): boolean =>
   Number.isFinite(value) && value >= min && value <= max;
 
-function num(
-  params: URLSearchParams,
-  key: ExploreUrlParam,
-  range: readonly [number, number],
-  integer = false,
-): number | undefined {
-  const raw = params.get(key);
+function parseCenter(params: URLSearchParams): MapCenter | null {
+  const lat = params.get("lat");
+  const lng = params.get("lng");
+  if (lat === null || lng === null) return null;
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!inRange(latNum, [-90, 90]) || !inRange(lngNum, [-180, 180])) return null;
+  return { lat: latNum, lng: lngNum };
+}
+
+function parseRadius(params: URLSearchParams): number {
+  const raw = params.get("r");
+  if (raw === null || raw.trim() === "") return DEFAULT_RADIUS_MI;
+  const value = Number(raw);
+  return inRange(value, RADIUS_BOUNDS) ? value : DEFAULT_RADIUS_MI;
+}
+
+function parseRoofAgeMinYears(params: URLSearchParams): number | undefined {
+  const raw = params.get("roof");
   if (raw === null || raw.trim() === "") return undefined;
   const value = Number(raw);
-  if (!inRange(value, range) || (integer && !Number.isInteger(value))) return undefined;
-  return value;
+  return Number.isInteger(value) && value >= 0 ? value : DEFAULT_ROOF_AGE_YEARS;
 }
 
-function parseAt(raw: string | null): ExploreQuery["at"] {
-  if (raw === null) return null;
-  const [lat, lon] = raw.split(",").map((part) => Number(part.trim()));
-  if (lat === undefined || lon === undefined) return null;
-  return inRange(lat, EXPLORE_BOUNDS.lat) && inRange(lon, EXPLORE_BOUNDS.lon) ? { lat, lon } : null;
-}
-
-export function parseExploreQuery(params: URLSearchParams): ExploreQuery {
-  const at = parseAt(params.get("at"));
-  const place = params.get("place")?.trim() || null;
-  const sortRaw = params.get("sort");
-  const sort = (EXPLORE_SORTS as readonly string[]).includes(sortRaw ?? "")
-    ? (sortRaw as ExploreSort)
-    : "nearest";
-  const ooa = params.get("ooa");
+export function parseMapQuery(params: URLSearchParams): MapQuery {
   return {
-    place: place ?? (at === null ? DEFAULT_PLACE : null),
-    at: place === null ? at : null,
-    r: num(params, "r", EXPLORE_BOUNDS.radiusMi) ?? DEFAULT_RADIUS_MI,
-    roof: num(params, "roof", EXPLORE_BOUNDS.roof, true),
-    permit: params.get("permit") ?? undefined,
-    openYrs: num(params, "openYrs", EXPLORE_BOUNDS.openYrs),
-    tenure: num(params, "tenure", EXPLORE_BOUNDS.tenure, true),
-    ooa: ooa === "1" || ooa === "true",
-    sort,
+    center: parseCenter(params),
+    radiusMi: parseRadius(params),
+    roofAgeMinYears: parseRoofAgeMinYears(params),
+    permitView: params.get("permits") === "1",
     sel: params.get("sel"),
-    mode: params.get("mode") === "sql" ? "sql" : "filters",
   };
 }
 
-export function permitFilter(raw: string | undefined): PermitFilter | undefined {
-  switch (raw) {
-    case "open_stalled":
-    case "open_or_stalled":
-      return "open_or_stalled";
-    case "open":
-    case "stalled":
-      return raw;
-    default:
-      return undefined;
-  }
-}
+export type MapQueryPatch = Partial<{
+  lat: number | null;
+  lng: number | null;
+  r: number | null;
+  roof: number | null;
+  permits: boolean | null;
+  sel: string | null;
+}>;
 
-export function isOpenOrStalled(raw: string | undefined): boolean {
-  return permitFilter(raw) === "open_or_stalled";
-}
-
-/** The explore.search input of a query for the bound run (contracts/explore-search.md). */
-export interface ExploreSearchRequest {
-  readonly manifestCid: string;
-  readonly area: { readonly place: string } | { readonly at: { lat: number; lon: number } };
-  readonly radius_mi: number;
-  readonly roof?: number;
-  readonly permit?: PermitFilter;
-  readonly openYrs?: number;
-  readonly tenure?: number;
-  readonly ooa?: boolean;
-  readonly sort: ExploreSort;
-  readonly limit: number;
-}
-
-export const EXPLORE_PAGE_ROWS = 200;
-
-export function searchRequest(query: ExploreQuery, manifestCid: string): ExploreSearchRequest {
-  const permit = permitFilter(query.permit);
-  return {
-    manifestCid,
-    area: query.place !== null ? { place: query.place } : { at: query.at ?? { lat: 0, lon: 0 } },
-    radius_mi: query.r,
-    ...(query.roof === undefined ? {} : { roof: query.roof }),
-    ...(permit === undefined ? {} : { permit }),
-    ...(permit === undefined || query.openYrs === undefined ? {} : { openYrs: query.openYrs }),
-    ...(query.tenure === undefined ? {} : { tenure: query.tenure }),
-    ...(query.ooa ? { ooa: true } : {}),
-    sort: query.sort,
-    limit: EXPLORE_PAGE_ROWS,
-  };
-}
-
-/** Applies a patch of URL values (undefined/null/"" removes the key); `view` is always `list`. */
-export function patchParams(
-  params: URLSearchParams,
-  patch: Partial<Record<ExploreUrlParam, string | number | boolean | null | undefined>>,
-): URLSearchParams {
+/** Applies a patch of URL values (undefined/null/false removes the key). */
+export function patchMapParams(params: URLSearchParams, patch: MapQueryPatch): URLSearchParams {
   const next = new URLSearchParams(params);
   for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined || value === null || value === "" || value === false) next.delete(key);
+    if (value === undefined || value === null || value === false) next.delete(key);
     else next.set(key, value === true ? "1" : String(value));
   }
-  if (next.get("view") === "map") next.set("view", "list");
   return next;
 }

@@ -15,6 +15,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
@@ -26,6 +27,14 @@ export interface CrmApiStackProps extends StackProps {
   readonly userPoolClient: cognito.UserPoolClient;
   /** CrmOps's LockoutCounter table — auth.reportFailedAttempt writes to it (found deploying). */
   readonly lockoutTable: dynamodb.Table;
+  /** CrmData's index bucket name (B-03: search.properties/search.permits/property.get read
+   *  crm_property/crm_permit Parquet from here via the B-02 LeadIndex adapter) — same
+   *  string-only pattern as crm-sync-stack.ts's indexBucketName (imported via fromBucketName,
+   *  not passed as a construct, so this stack's own tests don't need a real CrmDataStack). */
+  readonly indexBucketName: string;
+  /** B-07's leads table name, for the META#index pointer read (ADR-05) — same string-only
+   *  pattern as crm-sync-stack.ts's leadsTableName (no real table construct exists yet). */
+  readonly leadsTableName: string;
 }
 
 export class CrmApiStack extends Stack {
@@ -35,10 +44,31 @@ export class CrmApiStack extends Stack {
   constructor(scope: Construct, id: string, props: CrmApiStackProps) {
     super(scope, id, props);
 
+    // @duckdb/node-api's native binding (B-03: search.properties/search.permits/property.get,
+    // via apps/api/src/leadIndex.ts's DuckDbParquetLeadIndex) can't be statically bundled by
+    // esbuild (found integrating B-03: "Could not resolve @duckdb/node-bindings-*/duckdb.node" —
+    // the same class of error crm-sync-stack.ts's BuildIndex/Validate functions already hit and
+    // fixed). Same remedy here: exclude it from the bundle and let CDK npm-install it alongside,
+    // inside a Docker build on the target architecture so the installed native binding matches
+    // the Lambda runtime, not this build host.
+    const DUCKDB_NODE_MODULES = ["@duckdb/node-api"];
+    const indexBucket = s3.Bucket.fromBucketName(this, "IndexBucket", props.indexBucketName);
+
     const trpcHandler = new NodejsFunction(this, "TrpcHandler", {
       functionName: "crm-api-trpc",
       runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
       entry: props.healthHandlerEntry,
+      // Found live (same fix as crm-sync-stack.ts's BuildIndex/Validate): this workspace's
+      // pnpm-lock.yaml is lockfileVersion-incompatible with the CDK build image's bundled pnpm,
+      // which then tries to re-resolve from the registry and hits a known old-pnpm/fetch bug
+      // (ERR_INVALID_THIS) — unrelated to architecture. A plain npm lockfile naming only the one
+      // native dependency sidesteps pnpm entirely for this function's nodeModules install.
+      depsLockFilePath: new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url)
+        .pathname,
+      // depsLockFilePath's directory becomes the bundling project root by default — repoint it
+      // at the real monorepo root so esbuild can still resolve `entry` relative to it.
+      projectRoot: new URL("../../", import.meta.url).pathname,
       handler: "handler",
       // 1024 MB reduces cold-init without a standing provisioned-concurrency cost
       // (plan.md "Cold-start risk decision" — measure via TZ03's X-Ray trace, then decide).
@@ -49,6 +79,10 @@ export class CrmApiStack extends Stack {
         POWERTOOLS_SERVICE_NAME: "crm-api",
         POWERTOOLS_METRICS_NAMESPACE: "RoofingCrm",
         LOCKOUT_TABLE_NAME: props.lockoutTable.tableName,
+        // B-03: apps/api/src/leadIndex.ts reads these (never a hard-coded bucket/table name,
+        // architecture-constitution.md §9's module-boundary table).
+        CRM_INDEX_BUCKET_NAME: props.indexBucketName,
+        CRM_LEADS_TABLE_NAME: props.leadsTableName,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {
@@ -63,11 +97,18 @@ export class CrmApiStack extends Stack {
         // runtime's built-in SDK), but its @smithy/* sub-dependencies aren't resolvable from
         // that built-in layer in ESM output (Runtime.ImportModuleError, found deploying) —
         // bundle the AWS SDK ourselves instead of depending on the runtime's version/layout.
-        externalModules: [],
+        // @duckdb/node-api is the one exception (see DUCKDB_NODE_MODULES above).
+        externalModules: DUCKDB_NODE_MODULES,
+        nodeModules: DUCKDB_NODE_MODULES,
+        forceDockerBundling: true,
       },
     });
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
     props.lockoutTable.grantReadWriteData(trpcHandler);
+    indexBucket.grantRead(trpcHandler);
+    dynamodb.Table.fromTableName(this, "LeadsTable", props.leadsTableName).grantReadData(
+      trpcHandler,
+    );
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],

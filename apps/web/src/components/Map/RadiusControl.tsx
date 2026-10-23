@@ -1,0 +1,82 @@
+// T016 (B-03, US1): the 0.5-25 mi radius control (FR-001, data-model.md). A value outside the
+// bound is rejected at the control — the radius stays at its previous value and no onChange
+// fires (testplans/B-03-test-cases.md TC-002) — never silently clamped into a different number.
+import { useId, useState, type KeyboardEvent, type ReactElement } from "react";
+import styles from "./RadiusControl.module.css";
+
+export const RADIUS_MIN_MI = 0.5;
+export const RADIUS_MAX_MI = 25;
+
+export interface RadiusControlProps {
+  readonly radiusMi: number;
+  readonly onChange: (radiusMi: number) => void;
+  readonly min?: number;
+  readonly max?: number;
+}
+
+function parseRadius(raw: string, min: number, max: number): number | null {
+  const value = Number(raw);
+  if (raw.trim() === "" || !Number.isFinite(value) || value < min || value > max) return null;
+  return value;
+}
+
+export function RadiusControl({
+  radiusMi,
+  onChange,
+  min = RADIUS_MIN_MI,
+  max = RADIUS_MAX_MI,
+}: RadiusControlProps): ReactElement {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [rejected, setRejected] = useState(false);
+
+  const commit = (raw: string): void => {
+    const parsed = parseRadius(raw, min, max);
+    if (parsed === null) {
+      // Rejected: the radius stays at its previous value, no onChange fires, no request is sent
+      // (TC-002) — the draft is cleared so the input snaps back to the last accepted value.
+      setRejected(true);
+      setDraft(null);
+      return;
+    }
+    setRejected(false);
+    setDraft(null);
+    onChange(parsed);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      commit(event.currentTarget.value);
+    }
+  };
+
+  return (
+    <div className={styles.field}>
+      <label className={styles.label} htmlFor={id}>
+        Radius
+      </label>
+      <span className={styles.inputRow}>
+        <input
+          id={id}
+          className={styles.input}
+          type="number"
+          inputMode="decimal"
+          step="0.5"
+          min={min}
+          max={max}
+          value={draft ?? String(radiusMi)}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={(event) => commit(event.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <span className={styles.unit}>mi</span>
+      </span>
+      {rejected ? (
+        <p role="alert" className={styles.hint}>
+          {`Radius must be between ${min} and ${max} mi`}
+        </p>
+      ) : null}
+    </div>
+  );
+}

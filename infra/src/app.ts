@@ -56,10 +56,15 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     userPool: opsStack.userPool,
     userPoolClient: opsStack.userPoolClient,
     lockoutTable: opsStack.lockoutTable,
+    // B-03: search.properties/search.permits/property.get read the B-02 index this way too.
+    indexBucketName: dataStack.indexBucket.bucketName,
+    leadsTableName: CRM_LEADS_TABLE_NAME,
   });
   // The recorded deviation from architecture-constitution.md §11's literal stack order
   // (plan.md's Complexity Tracking table): CrmApi's JWT authorizer needs CrmOps's pool first.
   apiStack.addDependency(opsStack);
+  // B-03: the API Lambda now reads CrmData's index bucket directly.
+  apiStack.addDependency(dataStack);
 
   const webStack = new CrmWebStack(app, "CrmWeb", {
     env,

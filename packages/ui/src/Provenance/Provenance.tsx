@@ -7,9 +7,9 @@
 // picks the values; this file formats them.
 import type { ReactElement, ReactNode } from "react";
 import type { Missing } from "@crm/oracle-contract";
-import { CidDisplay } from "./CidDisplay";
+import { CidDisplay } from "../CidDisplay/CidDisplay";
 import { Icon } from "../Icon/Icon";
-import { MissingReason } from "./MissingReason";
+import { MissingReason } from "../MissingReason/MissingReason";
 import styles from "./Provenance.module.css";
 
 /** An ISO 8601 instant as a UTC calendar time, `2026-10-20 14:02:05` (the caller adds "UTC"). */

@@ -5,10 +5,16 @@
 import { router } from "../trpc.js";
 import { authRouter } from "./auth.js";
 import { healthRouter } from "./health.js";
+import { propertyRouter } from "./property.js";
+import { searchRouter } from "./search.js";
 
 export const appRouter = router({
   health: healthRouter,
   auth: authRouter,
+  // B-03 (plan.md "Patterns the code must show"): search.properties/search.permits + property.get,
+  // wired additively onto the existing B-01/B-02 routes.
+  search: searchRouter,
+  property: propertyRouter,
 });
 
 export type AppRouter = typeof appRouter;

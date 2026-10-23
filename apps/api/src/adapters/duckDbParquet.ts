@@ -16,6 +16,7 @@ import {
 } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+import { bboxFor, distanceMeters, milesToMeters, type LatLng } from "@crm/domain";
 
 /** DuckDB's own single-quote escaping (double the quote) — the one rule every string literal
  *  interpolated into a SQL string in this adapter must follow consistently (CR-B-02 finding #4:
@@ -68,6 +69,13 @@ export interface BoundingBox {
 
 export interface SearchPropertiesQuery {
   bbox?: BoundingBox;
+  /** B-03 (contracts/search-api.md): a center point + radius, converted to `bbox` via
+   *  `packages/domain`'s `bboxFor` before the DuckDB bbox filter below, then cut to the exact
+   *  circle with `distanceMeters` (ADR-07: the bbox is a superset prefilter, never the final
+   *  answer on its own). When both `bbox` and `center`/`radiusMi` are given, `center`/`radiusMi`
+   *  wins — the caller picked the real search shape. */
+  center?: LatLng;
+  radiusMi?: number;
   roofAgeMinYears?: number;
   propertyUsageType?: string;
   limit?: number;
@@ -75,6 +83,10 @@ export interface SearchPropertiesQuery {
 
 export interface SearchPermitsQuery {
   propertyCid?: string;
+  /** B-03 `search.permits` (contracts/search-api.md step 2): joins through the same
+   *  radius-filtered property set as `search.properties`, so the two procedures never disagree
+   *  on which properties are in scope (SC-06). Ignored when `propertyCid` is also given. */
+  propertyCids?: readonly string[];
   isOpen?: boolean;
   openDaysMinimum?: number;
   sort?: "openDays" | "issueDate";
@@ -243,9 +255,16 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const { manifestCid } = await this.indexInfo();
       const { connection } = await this.ensureLoaded(manifestCid);
       const conditions: string[] = [];
-      if (query.bbox) {
+      // Center/radius wins over an explicit bbox (contracts/search-api.md step 1): the bbox is
+      // the DuckDB-side superset prefilter, computed from the real search shape via
+      // packages/domain's bboxFor — never a second, independently-derived box.
+      const effectiveBbox =
+        query.center && query.radiusMi !== undefined
+          ? bboxFor(query.center, query.radiusMi)
+          : query.bbox;
+      if (effectiveBbox) {
         conditions.push(
-          `latitude BETWEEN ${query.bbox.south} AND ${query.bbox.north} AND longitude BETWEEN ${query.bbox.west} AND ${query.bbox.east}`,
+          `latitude BETWEEN ${effectiveBbox.south} AND ${effectiveBbox.north} AND longitude BETWEEN ${effectiveBbox.west} AND ${effectiveBbox.east}`,
         );
       }
       if (query.roofAgeMinYears !== undefined)
@@ -254,11 +273,38 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
         conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
       }
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-      const limit = query.limit ?? 100;
+      // No SQL LIMIT when an exact-circle cut still has to run client-side below (T012) — a
+      // bbox-only limit could otherwise discard rows the circle cut would have kept out anyway,
+      // undercounting `counts.afterRadius` (AC-4/FR-004 requires every count to run over the
+      // full matching set, not a truncated one).
+      const sqlLimit =
+        query.center && query.radiusMi !== undefined ? undefined : (query.limit ?? 100);
       const reader = await connection.runAndReadAll(
-        `SELECT * FROM crm_property ${where} LIMIT ${limit}`,
+        `SELECT * FROM crm_property ${where}${sqlLimit === undefined ? "" : ` LIMIT ${sqlLimit}`}`,
       );
-      return reader.getRowObjectsJS() as unknown as PropertyResult[];
+      let rows = reader.getRowObjectsJS() as unknown as PropertyResult[];
+
+      // The exact-circle cut (contracts/search-api.md step 3): the bbox above is a rectangular
+      // superset, so rows outside the true radiusMi circle must still be dropped here, sorted
+      // nearest first — the same two-step shape as the vendored radiusSql (research.md).
+      if (query.center && query.radiusMi !== undefined) {
+        const center = query.center;
+        const radiusMeters = milesToMeters(query.radiusMi);
+        rows = rows
+          .map((row) => {
+            const r = row as unknown as { latitude: number | null; longitude: number | null };
+            const distance =
+              r.latitude === null || r.longitude === null
+                ? Number.POSITIVE_INFINITY
+                : distanceMeters(center, { lat: r.latitude, lng: r.longitude });
+            return { row, distance };
+          })
+          .filter(({ distance }) => distance < radiusMeters)
+          .sort((a, b) => a.distance - b.distance)
+          .map(({ row }) => row);
+        if (query.limit !== undefined) rows = rows.slice(0, query.limit);
+      }
+      return rows;
     });
   }
 
@@ -267,8 +313,21 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const { manifestCid } = await this.indexInfo();
       const { connection } = await this.ensureLoaded(manifestCid);
       const conditions: string[] = [];
-      if (query.propertyCid !== undefined)
+      if (query.propertyCid !== undefined) {
         conditions.push(`"propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
+      } else if (query.propertyCids !== undefined) {
+        // B-03 search.permits (contracts/search-api.md step 2): join through the same
+        // radius-filtered property set search.properties computed — never a separately-derived
+        // radius. An empty set means "no properties in radius", not "no filter" (contrast with
+        // SQL's own `IN ()` syntax error), so it short-circuits to an explicit always-false
+        // condition instead.
+        const cids = query.propertyCids;
+        conditions.push(
+          cids.length === 0
+            ? "FALSE"
+            : `"propertyCid" IN (${cids.map((cid) => `'${sqlEscapeString(cid)}'`).join(", ")})`,
+        );
+      }
       // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
       // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored
       // statusClass column, it does not re-derive it from raw dates.
@@ -277,8 +336,12 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       if (query.openDaysMinimum !== undefined)
         conditions.push(`"openDays" >= ${query.openDaysMinimum}`);
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      // AC-5/data-model.md: longest-open first, nulls (not open) last — DuckDB's default NULL
+      // order is engine-dependent, so it is pinned explicitly rather than left implicit.
       const orderBy =
-        query.sort === "issueDate" ? `ORDER BY "issueDate"` : `ORDER BY "openDays" DESC`;
+        query.sort === "issueDate"
+          ? `ORDER BY "issueDate" NULLS LAST`
+          : `ORDER BY "openDays" DESC NULLS LAST`;
       const reader = await connection.runAndReadAll(`SELECT * FROM crm_permit ${where} ${orderBy}`);
       return reader.getRowObjectsJS() as unknown as PermitResult[];
     });

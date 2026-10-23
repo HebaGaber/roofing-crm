@@ -1,16 +1,12 @@
-// The contractor resolution badge (A-13 T027; AC-5, FR-005; AD-24 five states: resolved,
-// candidate, ambiguous, conflicting, unresolved). The word is the row's `contractor.resolution`
-// as published; a row without one is `unresolved` (the views' default). Colours follow Atlas
-// § 2.4: resolved → Verified, candidate → Info, ambiguous / conflicting → Warning, unresolved →
-// Not available. `data-contractor-resolution` carries the state. Render-only.
+// B-03 contractor-resolution badge (tasks.md T037; AC-6, AC-7, FR-007). Reads `CrmPermit`'s own
+// `contractorResolution` enum verbatim (`resolved` | `unresolved` — `packages/oracle-contract`'s
+// `COLUMN_ENUMS.contractor_resolution`), never guessed. A permit with no resolution recorded is
+// `unresolved` (the vendored view's own default, ADR-07). Render-only.
 import type { ReactElement } from "react";
-import { StatusPill, type StatusKind } from "../../../components/StatusPill";
+import { StatusPill, type StatusKind } from "@crm/ui";
 
 const STATUS: Readonly<Record<string, StatusKind>> = {
   resolved: "verified",
-  candidate: "info",
-  ambiguous: "warning",
-  conflicting: "warning",
   unresolved: "unavailable",
 };
 
@@ -22,7 +18,7 @@ export function ContractorBadge({ resolution }: ContractorBadgeProps): ReactElem
   const state = resolution ?? "unresolved";
   return (
     <span data-contractor-resolution={state}>
-      <StatusPill status={STATUS[state] ?? "info"} icon="badge" text={`Contractor ${state}`} />
+      <StatusPill status={STATUS[state] ?? "unavailable"} text={`Contractor ${state}`} />
     </span>
   );
 }

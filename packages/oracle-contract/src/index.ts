@@ -13,6 +13,7 @@ export {
   RunManifestV1,
 } from "./manifest.js";
 export { RUNS_INDEX_SCHEMA, RunsIndexEntry, RunsIndexV1 } from "./runs-index.js";
+export { missingLabel, missingReasonLabel, isContractorField } from "./labels.js";
 export {
   ALIASES,
   COLUMN_ENUMS,

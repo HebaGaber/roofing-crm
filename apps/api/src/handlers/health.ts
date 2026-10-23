@@ -9,6 +9,7 @@ import { Metrics, MetricUnit } from "@aws-lambda-powertools/metrics";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
 import { appRouter } from "../routers/index.js";
+import { tryLeadIndex } from "../leadIndex.js";
 import type { TrpcContext } from "../trpc.js";
 
 const logger = new Logger({ serviceName: "crm-api" });
@@ -17,9 +18,17 @@ const metrics = new Metrics({ namespace: "RoofingCrm", serviceName: "crm-api" })
 
 const trpcHandler = awsLambdaRequestHandler({
   router: appRouter,
-  createContext: ({ event }): TrpcContext => ({
-    requestId: event.requestContext.requestId,
-  }),
+  createContext: ({ event }): TrpcContext => {
+    const base: TrpcContext = { requestId: event.requestContext.requestId };
+    // B-03: wired lazily, never thrown here — a missing CRM_INDEX_BUCKET_NAME/CRM_LEADS_TABLE_NAME
+    // (the known infra gap, apps/api/src/leadIndex.ts) must not break health.ping or auth routes.
+    // The key is omitted entirely (not set to `undefined`) when there is no index yet —
+    // `exactOptionalPropertyTypes` treats "optional, absent" and "present, undefined" as
+    // different things, and TrpcContext's `leadIndex` is the former; a spread of a ternary loses
+    // that distinction (it infers `leadIndex?: LeadIndex | undefined`), so this branches instead.
+    const leadIndex = tryLeadIndex();
+    return leadIndex === undefined ? base : { ...base, leadIndex };
+  },
 });
 
 // The tRPC Lambda adapter derives the procedure path from the route match: for a route with a

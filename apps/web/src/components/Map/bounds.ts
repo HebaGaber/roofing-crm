@@ -46,3 +46,16 @@ export interface CrmMapInitOptions {
 export function buildMapInitOptions(): CrmMapInitOptions {
   return { center: TRAVIS_COUNTY_CENTER };
 }
+
+/**
+ * B-03 AC-1's edge case 2 / AC-2's outside-county state: a cheap bbox containment check against
+ * `TRAVIS_COUNTY_BOUNDS` — the same box the map itself always renders at minimum, so "outside the
+ * covered county" and "outside the box the map guarantees" are the same answer. Not a true county
+ * polygon (none is vendored for this story), so it is a conservative approximation: a point just
+ * outside the real county line but still inside this box reads as "in coverage". Good enough for
+ * the story's named edge case (Williamson County is well outside this box in every direction).
+ */
+export function isInTravisCounty(point: { lat: number; lng: number }): boolean {
+  const [[west, south], [east, north]] = TRAVIS_COUNTY_BOUNDS;
+  return point.lat >= south && point.lat <= north && point.lng >= west && point.lng <= east;
+}

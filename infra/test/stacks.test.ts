@@ -80,58 +80,83 @@ describe("CrmOps (T017)", () => {
 });
 
 describe("CrmApi (T007)", () => {
-  function buildApi() {
+  // B-03: the TrpcHandler now bundles @duckdb/node-api (apps/api/src/leadIndex.ts), which forces
+  // Docker bundling (crm-api-stack.ts) — a real, ~minutes-scale cost on a cold Docker layer /
+  // npm-registry fetch, not a logic issue. Memoized once per file (identical props every call)
+  // instead of once per `it`, so that one-time cost is paid at most once, not 3x.
+  let cachedTemplate: Template | undefined;
+  function buildApi(): Template {
+    if (cachedTemplate !== undefined) return cachedTemplate;
     const app = new App();
     const ops = new CrmOpsStack(app, "CrmOps", { env: ENV, lockoutHandlerEntry: LOCKOUT_ENTRY });
-    const template = Template.fromStack(
+    cachedTemplate = Template.fromStack(
       new CrmApiStack(app, "CrmApi", {
         env: ENV,
         healthHandlerEntry: HEALTH_ENTRY,
         userPool: ops.userPool,
         userPoolClient: ops.userPoolClient,
         lockoutTable: ops.lockoutTable,
+        indexBucketName: "crm-index",
+        leadsTableName: "crm-leads",
       }),
     );
-    return template;
+    return cachedTemplate;
   }
 
-  it("creates an HTTP API with a JWT authorizer", () => {
-    const template = buildApi();
-    template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
-    template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
-      AuthorizerType: "JWT",
-    });
-  });
+  // 300s, not the file-wide 20s default: Docker-bundled native-module install (see above) can
+  // take minutes on a cold cache, confirmed live (one cold run took ~1170s).
+  const DOCKER_BUNDLE_TIMEOUT_MS = 300_000;
 
-  it("denies Task A's S3/SSM resources on the API Lambda's role (T007B)", () => {
-    const template = buildApi();
-    template.hasResourceProperties(
-      "AWS::IAM::Policy",
-      Match.objectLike({
-        PolicyDocument: Match.objectLike({
-          Statement: Match.arrayWith([
-            Match.objectLike({ Effect: "Deny", Sid: "DenyTaskAResources" }),
-          ]),
+  it(
+    "creates an HTTP API with a JWT authorizer",
+    () => {
+      const template = buildApi();
+      template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
+      template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
+        AuthorizerType: "JWT",
+      });
+    },
+    DOCKER_BUNDLE_TIMEOUT_MS,
+  );
+
+  it(
+    "denies Task A's S3/SSM resources on the API Lambda's role (T007B)",
+    () => {
+      const template = buildApi();
+      template.hasResourceProperties(
+        "AWS::IAM::Policy",
+        Match.objectLike({
+          PolicyDocument: Match.objectLike({
+            Statement: Match.arrayWith([
+              Match.objectLike({ Effect: "Deny", Sid: "DenyTaskAResources" }),
+            ]),
+          }),
         }),
-      }),
-    );
-  });
+      );
+    },
+    DOCKER_BUNDLE_TIMEOUT_MS,
+  );
 
-  it("the health.ping route has no authorizer attached", () => {
-    const template = buildApi();
-    const routes = template.findResources("AWS::ApiGatewayV2::Route");
-    interface RouteResource {
-      Properties: { RouteKey?: string; AuthorizationType?: string };
-    }
-    const healthRoutes = Object.values(routes as Record<string, RouteResource>).filter(
-      (r) =>
-        typeof r.Properties.RouteKey === "string" && r.Properties.RouteKey.includes("health.ping"),
-    );
-    expect(healthRoutes.length).toBeGreaterThan(0);
-    for (const route of healthRoutes) {
-      expect(route.Properties.AuthorizationType ?? "NONE").not.toBe("JWT");
-    }
-  });
+  it(
+    "the health.ping route has no authorizer attached",
+    () => {
+      const template = buildApi();
+      const routes = template.findResources("AWS::ApiGatewayV2::Route");
+      interface RouteResource {
+        Properties: { RouteKey?: string; AuthorizationType?: string };
+      }
+      const healthRoutes = Object.values(routes as Record<string, RouteResource>).filter(
+        (r) =>
+          typeof r.Properties.RouteKey === "string" &&
+          r.Properties.RouteKey.includes("health.ping"),
+      );
+      expect(healthRoutes.length).toBeGreaterThan(0);
+      for (const route of healthRoutes) {
+        expect(route.Properties.AuthorizationType ?? "NONE").not.toBe("JWT");
+      }
+    },
+    DOCKER_BUNDLE_TIMEOUT_MS,
+  );
 });
 
 describe("CrmWeb (T009)", () => {
