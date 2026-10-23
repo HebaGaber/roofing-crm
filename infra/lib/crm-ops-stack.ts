@@ -23,6 +23,7 @@ export class CrmOpsStack extends Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
   public readonly adminSecret: secretsmanager.Secret;
+  public readonly lockoutTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props: CrmOpsStackProps) {
     super(scope, id, props);
@@ -62,6 +63,7 @@ export class CrmOpsStack extends Stack {
     });
     lockoutTable.grantReadWriteData(lockoutHandler);
     lockoutHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
+    this.lockoutTable = lockoutTable;
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: "roofing-crm-users",
@@ -83,6 +85,9 @@ export class CrmOpsStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
       lambdaTriggers: {
         preAuthentication: lockoutHandler,
+        // Cognito-native, unspoofable reset of the counter on an actual success (found
+        // deploying — see lockout-handler.ts's module header for the full picture).
+        postAuthentication: lockoutHandler,
       },
     });
 

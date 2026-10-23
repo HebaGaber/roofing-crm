@@ -75,6 +75,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@crm/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared

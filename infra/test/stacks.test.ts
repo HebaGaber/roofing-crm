@@ -97,6 +97,7 @@ describe("CrmApi (T007)", () => {
         healthHandlerEntry: HEALTH_ENTRY,
         userPool: ops.userPool,
         userPoolClient: ops.userPoolClient,
+        lockoutTable: ops.lockoutTable,
       }),
     );
     return template;

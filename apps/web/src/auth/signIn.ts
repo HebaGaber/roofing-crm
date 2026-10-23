@@ -10,6 +10,7 @@ import {
   CognitoUserPool,
   type CognitoUserSession,
 } from "amazon-cognito-identity-js";
+import { createApiClient } from "@crm/api-client";
 import type { Session } from "@crm/shared";
 import { loadCognitoWebConfig } from "./config.js";
 
@@ -58,7 +59,23 @@ export function signIn(username: string, password: string): Promise<Session> {
   return new Promise((resolve, reject) => {
     user.authenticateUser(details, {
       onSuccess: (cognitoSession) => resolve(toSession(cognitoSession)),
-      onFailure: (error) => reject(error),
+      onFailure: (error: unknown) => {
+        // Found deploying: Cognito's PreAuthentication trigger can't itself observe a failed
+        // password (see lockout-handler.ts). Report it here — only for a genuine wrong-password
+        // rejection, never for an already-locked rejection (that's the gate working correctly,
+        // not a new failure to count).
+        if (classifySignInError(error).kind === "invalid-credentials") {
+          void reportFailedAttempt(username);
+        }
+        reject(error as Error);
+      },
     });
   });
+}
+
+function reportFailedAttempt(username: string): Promise<void> {
+  return createApiClient()
+    .auth.reportFailedAttempt.mutate({ username })
+    .then(() => undefined)
+    .catch(() => undefined); // best-effort: never let a reporting failure mask the sign-in error.
 }

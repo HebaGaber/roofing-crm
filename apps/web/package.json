@@ -12,6 +12,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@crm/api-client": "workspace:*",
     "@crm/shared": "workspace:*",
     "@crm/ui": "workspace:*",
     "amazon-cognito-identity-js": "6.3.12",

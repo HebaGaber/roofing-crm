@@ -10,6 +10,7 @@ import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -23,6 +24,8 @@ export interface CrmApiStackProps extends StackProps {
   readonly healthHandlerEntry: string;
   readonly userPool: cognito.UserPool;
   readonly userPoolClient: cognito.UserPoolClient;
+  /** CrmOps's LockoutCounter table — auth.reportFailedAttempt writes to it (found deploying). */
+  readonly lockoutTable: dynamodb.Table;
 }
 
 export class CrmApiStack extends Stack {
@@ -45,6 +48,7 @@ export class CrmApiStack extends Stack {
       environment: {
         POWERTOOLS_SERVICE_NAME: "crm-api",
         POWERTOOLS_METRICS_NAMESPACE: "RoofingCrm",
+        LOCKOUT_TABLE_NAME: props.lockoutTable.tableName,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {
@@ -63,6 +67,7 @@ export class CrmApiStack extends Stack {
       },
     });
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
+    props.lockoutTable.grantReadWriteData(trpcHandler);
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],
@@ -103,6 +108,14 @@ export class CrmApiStack extends Stack {
     this.httpApi.addRoutes({
       path: "/trpc/health.ping",
       methods: [apigwv2.HttpMethod.GET, apigwv2.HttpMethod.POST],
+      integration,
+    });
+
+    // auth.reportFailedAttempt: also unauthenticated — called from the sign-in page before any
+    // session exists (found deploying; see routers/auth.ts). A tRPC mutation, POST only.
+    this.httpApi.addRoutes({
+      path: "/trpc/auth.reportFailedAttempt",
+      methods: [apigwv2.HttpMethod.POST],
       integration,
     });
 
@@ -155,6 +168,17 @@ export class CrmApiStack extends Stack {
           id: "AwsSolutions-APIG4",
           reason:
             "health.ping is deliberately the one unauthenticated route in this story (contracts/health.md, constitution P0-11's named exception).",
+        },
+      ],
+    );
+    NagSuppressions.addResourceSuppressionsByPath(
+      this,
+      `${this.httpApi.node.path}/POST--trpc--auth.reportFailedAttempt/Resource`,
+      [
+        {
+          id: "AwsSolutions-APIG4",
+          reason:
+            "auth.reportFailedAttempt is deliberately unauthenticated — called from the sign-in page before any session exists (found deploying; decided with the user: client-reported failure count, server-enforced block — see auth/lockout-handler.ts).",
         },
       ],
     );

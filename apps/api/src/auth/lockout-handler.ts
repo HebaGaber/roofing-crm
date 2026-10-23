@@ -1,27 +1,32 @@
-// T018: Cognito pre-authentication Lambda trigger implementing data-model.md's `LockoutCounter`
-// state machine exactly (research.md "custom pre-auth Lambda for the exact lockout rule"):
-// 0 failures → 1..3 failures, not locked → (4th consecutive failure) → locked, lockedUntil =
-// now + 5 minutes → (cooldown elapses) → 0 failures, not locked. A successful sign-in before the
-// 4th failure resets failedAttempts to 0 without ever locking.
+// T018: Cognito Lambda trigger implementing data-model.md's `LockoutCounter` state machine
+// exactly (research.md "custom pre-auth Lambda for the exact lockout rule"): 0 failures →
+// 1..3 failures, not locked → (4th consecutive failure) → locked, lockedUntil = now + 5 minutes →
+// (cooldown elapses) → 0 failures, not locked. A successful sign-in resets failedAttempts to 0
+// without ever locking.
 //
-// Cognito invokes a pre-authentication trigger *before* it knows whether the password is correct
-// (PreAuthentication_Authentication event), so this handler cannot itself observe a password
-// failure. It instead:
-//   1. Checks the counter first — if currently locked and the cooldown has not elapsed, throws
-//      the typed lockout error (never a raw 500/blank screen, SignIn.tsx maps this via
-//      `cause.code`) and clears the counter if the cooldown just elapsed.
-//   2. Registers a PostAuthentication-equivalent fact via the `recordOutcome` helper, called by a
-//      companion PostAuthentication trigger (success → reset to 0) and the Cognito console's own
-//      failed-auth CloudTrail event is not used here; instead the client-visible contract is:
-//      `recordFailedAttempt`/`recordSuccess` are the two state transitions this module exposes,
-//      and `preAuthentication` is the gate Cognito calls on every attempt.
+// Found deploying (not in the original design): Cognito's PreAuthentication trigger fires
+// *before* it validates the password, so it cannot itself observe a failure — the first build
+// only wired this gate check and left `recordFailedAttempt` genuinely uncalled by anything,
+// which silently made the whole lockout feature a no-op (unit-tested in isolation, never
+// exercised against real Cognito). Fixed with two cooperating pieces, decided with the user:
+//   1. This same Lambda is now wired as BOTH the PreAuthentication trigger (gate: reject while
+//      locked, Cognito-native and unspoofable — `preAuthentication`) AND the PostAuthentication
+//      trigger (reset to 0 on an actual successful sign-in, also Cognito-native — `recordSuccess`
+//      via the postAuthentication branch below). Dispatches on `event.triggerSource`.
+//   2. `recordFailedAttempt` is called from apps/api/src/routers/auth.ts's public
+//      `auth.reportFailedAttempt` procedure, which apps/web calls when Cognito's SRP sign-in
+//      itself throws NotAuthorizedException. This is client-reported and in principle spoofable
+//      (a malicious client could just not call it) — accepted for this story: one shared admin
+//      login, no public attacker surface worth hardening against here. The actual *blocking* of
+//      a locked account stays entirely server-side and unspoofable (point 1); only the failure
+//      *count* trusts the client.
 //
 // Wrapped in Powertools Logger/Tracer/Metrics like every other Lambda in this story (constitution
 // Article VIII, ARD-B §12.13 — not only health.ts).
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Metrics, MetricUnit } from "@aws-lambda-powertools/metrics";
 import { Tracer } from "@aws-lambda-powertools/tracer";
-import type { PreAuthenticationTriggerEvent } from "aws-lambda";
+import type { PostAuthenticationTriggerEvent, PreAuthenticationTriggerEvent } from "aws-lambda";
 import {
   createDynamoLockoutStore,
   type LockoutCounter,
@@ -91,13 +96,29 @@ function lockoutStore(): LockoutStore {
   return cachedStore;
 }
 
-/** The Cognito PreAuthentication_Authentication trigger entry point (infra/lib/crm-ops-stack.ts). */
-export async function handler(
-  event: PreAuthenticationTriggerEvent,
-): Promise<PreAuthenticationTriggerEvent> {
+type LockoutTriggerEvent = PreAuthenticationTriggerEvent | PostAuthenticationTriggerEvent;
+
+/**
+ * The Cognito Lambda trigger entry point, wired as both PreAuthentication and PostAuthentication
+ * (infra/lib/crm-ops-stack.ts) — dispatches on `event.triggerSource` since Cognito invokes
+ * whatever single Lambda is configured for each trigger type it's attached to.
+ */
+export async function handler<T extends LockoutTriggerEvent>(event: T): Promise<T> {
   const segment = tracer.getSegment();
-  const subsegment = segment?.addNewSubsegment("## crm-ops-lockout.preAuthentication");
   const username = event.userName;
+  if (event.triggerSource === "PostAuthentication_Authentication") {
+    const subsegment = segment?.addNewSubsegment("## crm-ops-lockout.postAuthentication");
+    logger.info("post-authentication: resetting lockout counter", { username });
+    try {
+      await recordSuccess(lockoutStore(), username);
+      metrics.addMetric("LockoutCounterReset", MetricUnit.Count, 1);
+      return event;
+    } finally {
+      subsegment?.close();
+      metrics.publishStoredMetrics();
+    }
+  }
+  const subsegment = segment?.addNewSubsegment("## crm-ops-lockout.preAuthentication");
   logger.info("pre-authentication check", { username });
   try {
     await preAuthentication(lockoutStore(), username);

@@ -36,6 +36,7 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     healthHandlerEntry: new URL(HEALTH_HANDLER_ENTRY, import.meta.url).pathname,
     userPool: opsStack.userPool,
     userPoolClient: opsStack.userPoolClient,
+    lockoutTable: opsStack.lockoutTable,
   });
   // The recorded deviation from architecture-constitution.md §11's literal stack order
   // (plan.md's Complexity Tracking table): CrmApi's JWT authorizer needs CrmOps's pool first.
