@@ -2,46 +2,46 @@
 
 Code and design copied from the Oracle repo (Task A). Data is never copied: the CRM reads it by manifest CID.
 
-| Date (UTC) | Oracle path | CRM path | Oracle commit | Oracle branch |
-| --- | --- | --- | --- | --- |
-| 2026-10-22T22:54Z | `packages/tsconfig` | `packages/tsconfig` | 72ba7a3 | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `packages/eslint-config` | `packages/eslint-config` | 660f73c | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `packages/shared` | `packages/shared` | 660f73c | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `packages/api-client` | `packages/api-client` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `infra` | `infra` | 9191b3c | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `.github/workflows` | `.github/workflows` | 732297d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/styles` | `apps/web/src/styles` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/AppShell.tsx` | `apps/web/src/components/AppShell.tsx` | 660f73c | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/AppShell.module.css` | `apps/web/src/components/AppShell.module.css` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/Icon.tsx` | `apps/web/src/components/Icon.tsx` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/Icon.module.css` | `apps/web/src/components/Icon.module.css` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/EmptyState.tsx` | `apps/web/src/components/EmptyState.tsx` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/EmptyState.module.css` | `apps/web/src/components/EmptyState.module.css` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/ErrorBanner.tsx` | `apps/web/src/components/ErrorBanner.tsx` | 660f73c | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/ErrorBanner.module.css` | `apps/web/src/components/ErrorBanner.module.css` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/Skeleton.tsx` | `apps/web/src/components/Skeleton.tsx` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/Skeleton.module.css` | `apps/web/src/components/Skeleton.module.css` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/StatusPill.tsx` | `apps/web/src/components/StatusPill.tsx` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `apps/web/src/components/StatusPill.module.css` | `apps/web/src/components/StatusPill.module.css` | 570285d | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `tests/e2e/responsive.spec.ts` | `tests/e2e/responsive.spec.ts` | a1fd50a | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `tests/e2e/config-guard.spec.ts` | `tests/e2e/config-guard.spec.ts` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T22:54Z | `tests/e2e/build-checks.spec.ts` | `tests/e2e/build-checks.spec.ts` | 570285d | feature/oracle-pipeline |
+| Date (UTC) | Oracle path | CRM path | Oracle commit | Oracle branch | sha256 |
+| --- | --- | --- | --- | --- | --- |
+| 2026-10-22T22:54Z | `packages/tsconfig` | `packages/tsconfig` | 72ba7a3 | feature/oracle-pipeline | 665cfd543b540f0cc464f49e916d2fea45b804f3d108db11897639081ea094a1 |
+| 2026-10-22T22:54Z | `packages/eslint-config` | `packages/eslint-config` | 660f73c | feature/oracle-pipeline | f00ea60904684d983909db1462b0fc281c110b224f4e6c8c7f66a749a7843d66 |
+| 2026-10-22T22:54Z | `packages/shared` | `packages/shared` | 660f73c | feature/oracle-pipeline | 72665398a9df757456bf86e614dc2cdae3a4eb3c7c6d4971fb2d11866f1146ae |
+| 2026-10-22T22:54Z | `packages/api-client` | `packages/api-client` | 071eb1b | feature/oracle-pipeline | 549b86bcc8b417616f5791bf57e10b99813d4e4a67869fcbe9c796b796076769 |
+| 2026-10-22T22:54Z | `infra` | `infra` | 9191b3c | feature/oracle-pipeline | a8aea47e6a2b82662934222498bffe6254d84a9d66ab50c5b9aa394d8629cfe5 |
+| 2026-10-22T22:54Z | `.github/workflows` | `.github/workflows` | 732297d | feature/oracle-pipeline | 2408650e9583f43c5a5f2bce5af7aaf356ae9821eed7c1df47caa2e9958d6b62 |
+| 2026-10-22T22:54Z | `apps/web/src/styles` | `apps/web/src/styles` | 071eb1b | feature/oracle-pipeline | 37e59c5ed6e3b18431880aec21a84a72b8aba127202c7e82bdb14e1d012d1e73 |
+| 2026-10-22T22:54Z | `apps/web/src/components/AppShell.tsx` | `apps/web/src/components/AppShell.tsx` | 660f73c | feature/oracle-pipeline | c1589c4d4b023e21b87cc99aa0bbdbf3a6e04a26b5153b082ab97b9eb098d61d |
+| 2026-10-22T22:54Z | `apps/web/src/components/AppShell.module.css` | `apps/web/src/components/AppShell.module.css` | 071eb1b | feature/oracle-pipeline | 106bf330f093f6e0160d11def5d955990aa891fd4b651866c8522754035c5287 |
+| 2026-10-22T22:54Z | `apps/web/src/components/Icon.tsx` | `apps/web/src/components/Icon.tsx` | 570285d | feature/oracle-pipeline | ece002fedf8c06cf3d22232011d2235cbdb52091dd597116be13413366fecb4e |
+| 2026-10-22T22:54Z | `apps/web/src/components/Icon.module.css` | `apps/web/src/components/Icon.module.css` | 570285d | feature/oracle-pipeline | 36b8f86e5b2165dee960198d606b8158f0fd5f0021a519bbcacf46860e9909e6 |
+| 2026-10-22T22:54Z | `apps/web/src/components/EmptyState.tsx` | `apps/web/src/components/EmptyState.tsx` | 570285d | feature/oracle-pipeline | 34823d7640918c139a241626077d5b8b0bde700e9f6da95ec46e757a69107537 |
+| 2026-10-22T22:54Z | `apps/web/src/components/EmptyState.module.css` | `apps/web/src/components/EmptyState.module.css` | 570285d | feature/oracle-pipeline | 0e2c72284bc32a744e175d6bcd00b651bba6f322ddae061238837085d49d9ae4 |
+| 2026-10-22T22:54Z | `apps/web/src/components/ErrorBanner.tsx` | `apps/web/src/components/ErrorBanner.tsx` | 660f73c | feature/oracle-pipeline | fb9982673ef675c46dac3880eb4246da3671a61c092a2e788b72ca23e22db041 |
+| 2026-10-22T22:54Z | `apps/web/src/components/ErrorBanner.module.css` | `apps/web/src/components/ErrorBanner.module.css` | 570285d | feature/oracle-pipeline | 22e948012d820c06c6c6c8f6e7ec4ad74c73b1e3446d31c8b3abd9e859fe7152 |
+| 2026-10-22T22:54Z | `apps/web/src/components/Skeleton.tsx` | `apps/web/src/components/Skeleton.tsx` | 570285d | feature/oracle-pipeline | 74c011d4fecd3ddd98216ad31ff7909ecb91a8664afb1dfc5ccce3252e1d17b9 |
+| 2026-10-22T22:54Z | `apps/web/src/components/Skeleton.module.css` | `apps/web/src/components/Skeleton.module.css` | 570285d | feature/oracle-pipeline | bc393022ac081413d2902d8de06fcf2020e1b969aab626cb4b4c5ee79eedb682 |
+| 2026-10-22T22:54Z | `apps/web/src/components/StatusPill.tsx` | `apps/web/src/components/StatusPill.tsx` | 570285d | feature/oracle-pipeline | da6d2064b8cded8689e757b1c59412d7e47a94273b6c26d1c57f10e21207e061 |
+| 2026-10-22T22:54Z | `apps/web/src/components/StatusPill.module.css` | `apps/web/src/components/StatusPill.module.css` | 570285d | feature/oracle-pipeline | 312b359417a726659d1e6e7f173aa6ccc4000b1d4a8b3c548d3220256e130b99 |
+| 2026-10-22T22:54Z | `tests/e2e/responsive.spec.ts` | `tests/e2e/responsive.spec.ts` | a1fd50a | feature/oracle-pipeline | not present (file absent at this path) |
+| 2026-10-22T22:54Z | `tests/e2e/config-guard.spec.ts` | `tests/e2e/config-guard.spec.ts` | 071eb1b | feature/oracle-pipeline | 509ac3ff751a92200b56b2ddaf5bd1c7c8d479dc0ba712674484be8456d01fad |
+| 2026-10-22T22:54Z | `tests/e2e/build-checks.spec.ts` | `tests/e2e/build-checks.spec.ts` | 570285d | feature/oracle-pipeline | not present (file absent at this path) |
 
 Rename pass (B-01, after the copies above; applies to the copied files only):
 - Stacks: CountyLensData→CrmData, CountyLensApi→CrmApi, CountyLensWeb→CrmWeb, CountyLensOps→CrmOps, CountyLensCert→CrmDomain (CrmSync has no Task A source; it is built in its own story). createCountyLensStacks→createCrmStacks; infra/bin/countylens.ts→infra/bin/crm.ts; cdk.json app and countylens:* context keys→crm:*.
 - Identifiers and resource names: COUNTYLENS_*→CRM_*, countylens-*→crm-*, /countylens/ SSM prefixes→/crm/, CountyLens metrics namespace→RoofingCrm, @countylens/* scope→@crm/*, APP_TITLE "CountyLens"→"Roofing CRM".
 - Kept on purpose (Task A deploy values, need a decision): domain countylens.aldarraj.com, Amplify branch feature/oracle-pipeline, githubRepository HebaGaber/oracle-property-intelligence-platform-pipeline-travis-tx, tag project_name=oracle-travis.
 - Removed infra/cdk.out (generated Task A synth output copied in with infra).
-| 2026-10-22T22:57Z | `infra/cdk.json` | `infra/cdk.json` | 327c11f | feature/oracle-pipeline |
-| 2026-10-22T22:57Z | `infra/bin/countylens.ts` | `infra/bin/app.ts` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonEntry.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonEntry.tsx` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonEntry.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonEntry.module.css` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonSkeleton.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonSkeleton.tsx` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonSkeleton.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonSkeleton.module.css` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/routes/ComingSoon.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/routes/ComingSoon.tsx` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/routes/ComingSoon.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/routes/ComingSoon.module.css` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/test/coming-soon.test.tsx` (read-only, unmerged A-13 branch) | `apps/web/test/coming-soon.test.tsx` | 1ad7123 | 013-explorer-and-pages |
-| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/content/coming-soon.ts` (read-only, unmerged A-13 branch) | `apps/web/src/content/coming-soon.ts` | 1ad7123 | 013-explorer-and-pages |
+| 2026-10-22T22:57Z | `infra/cdk.json` | `infra/cdk.json` | 327c11f | feature/oracle-pipeline | c92362ffeeae48a3a4d0ab769afaf291ddc7878517445d3733e21c1090eb9421 |
+| 2026-10-22T22:57Z | `infra/bin/countylens.ts` | `infra/bin/app.ts` | 071eb1b | feature/oracle-pipeline | f82283b5bfd6b4a5d4384383d4eb5ac1117ec829cabca0f3345cce188220a25d |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonEntry.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonEntry.tsx` | 1ad7123 | 013-explorer-and-pages | not present (file absent at this path) |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonEntry.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonEntry.module.css` | 1ad7123 | 013-explorer-and-pages | not present (file absent at this path) |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonSkeleton.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonSkeleton.tsx` | 1ad7123 | 013-explorer-and-pages | 4ca2c155e56a08ad118bda87b40eab7c3660691f34360f02e115a998bbb22053 |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/components/ComingSoonSkeleton.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/components/ComingSoonSkeleton.module.css` | 1ad7123 | 013-explorer-and-pages | 38f8eff60675d246d087a66001a5aa6793920c805c6fefbe6527f0bd0f88a185 |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/routes/ComingSoon.tsx` (read-only, unmerged A-13 branch) | `apps/web/src/routes/ComingSoon.tsx` | 1ad7123 | 013-explorer-and-pages | da9459606be6bad44a35e3a54ccdb1be219f061456e58123c86a382796f71391 |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/routes/ComingSoon.module.css` (read-only, unmerged A-13 branch) | `apps/web/src/routes/ComingSoon.module.css` | 1ad7123 | 013-explorer-and-pages | e162f75059b3e9ba5615890948dde30f092bbb57e09c2921438e47b740bb6b5a |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/test/coming-soon.test.tsx` (read-only, unmerged A-13 branch) | `apps/web/test/coming-soon.test.tsx` | 1ad7123 | 013-explorer-and-pages | 5e0616810785e995a58c2ddfec718a797680a195fee5901dc4352d72f4497cab |
+| 2026-10-22T22:57Z | `git show 013-explorer-and-pages:apps/web/src/content/coming-soon.ts` (read-only, unmerged A-13 branch) | `apps/web/src/content/coming-soon.ts` | 1ad7123 | 013-explorer-and-pages | 85b05b846ecfeca13cd66643a767e37e72e8108c3b820621fd2848d18cebe4f9 |
 
 T001/T002 correction (after the rows above):
 - infra: only infra/bin/app.ts (from infra/bin/countylens.ts, copied with the script's destination argument) and infra/cdk.json remain. Removed everything else the infra folder copy brought in (infra/src/*, infra/test/*, infra/package.json, infra/tsconfig.json, infra/vitest.config.ts). Those are Task A's stack implementations, which the CRM writes fresh in T005/T007/T009/T010/T017. cdk.json app now runs bin/app.ts. bin/app.ts still imports ../src/app.js and ../src/config.js, which do not exist until the stack tasks land.
@@ -53,9 +53,21 @@ T001/T002 correction (after the rows above):
 - .github/workflows/ci.yml: deploy-branch condition and comments feature/oracle-pipeline→feature/roofing-crm. Flagged, not changed: .github/workflows/a01-us-gis-probe.yml (Task A Travis County GIS probe, not CRM scope).
 - Deleted .github/workflows/a01-us-gis-probe.yml (Task A Travis County GIS probe; out of CRM scope and conflicts with the no-ingestion rule). Replaces the earlier 'flagged' note above.
 - Deleted .github/workflows/a04-gis-capture.yml (Task A GIS capture workflow; out of CRM scope, same reason as a01 above).
-| 2026-10-22T23:39Z | `tests/e2e/lib/runtime.ts` | `tests/e2e/lib/runtime.ts` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T23:39Z | `tests/e2e/lib/runtime-url.ts` | `tests/e2e/lib/runtime-url.ts` | 071eb1b | feature/oracle-pipeline |
-| 2026-10-22T23:39Z | `tests/e2e/lib/atlas-tokens.ts` | `tests/e2e/lib/atlas-tokens.ts` | 95e9a4c | feature/oracle-pipeline |
-| 2026-10-22T23:40Z | `tests/e2e/lib/spawn.ts` | `tests/e2e/lib/spawn.ts` | 071eb1b | feature/oracle-pipeline |
+| 2026-10-22T23:39Z | `tests/e2e/lib/runtime.ts` | `tests/e2e/lib/runtime.ts` | 071eb1b | feature/oracle-pipeline | dd03c53dfca274ae0e4f0726eab11613283603ff9d1480806bc768eacdb3d8ed |
+| 2026-10-22T23:39Z | `tests/e2e/lib/runtime-url.ts` | `tests/e2e/lib/runtime-url.ts` | 071eb1b | feature/oracle-pipeline | 5b410e5fcd9d7c6783e934604ce6ff90c0d6ec08071960d3e6ac77f6a88e83e3 |
+| 2026-10-22T23:39Z | `tests/e2e/lib/atlas-tokens.ts` | `tests/e2e/lib/atlas-tokens.ts` | 95e9a4c | feature/oracle-pipeline | 467a7a6123ebc1ddd6a7f6e69bdf0b1d5933ee2c9c2d959c455303d8f209ffb4 |
+| 2026-10-22T23:40Z | `tests/e2e/lib/spawn.ts` | `tests/e2e/lib/spawn.ts` | 071eb1b | feature/oracle-pipeline | 1a5251804de2dcac4699c263e3c3e579ea7e02b9dbb653bf6055324f4f3f402e |
 
 T001 e2e-helpers correction (after the row above): on inspection, `tests/e2e/responsive.spec.ts` and `tests/e2e/build-checks.spec.ts` (both originally listed in T001) turned out NOT to be generic harnesses — they are Task A's own A-03-TC-xxx test suites, asserting against Task A's Permits/Runs pages (`SELECTORS.permitsPage`, `readPublishedRun`'s CID-manifest fixture) and Task A's own directories (`pipeline/publish`, `pipeline/oracle-runtime`), none of which exist or apply in this repo. Deleted both rather than force-fitting them; this story's own build-time proof is TZ03 (`tests/e2e/B-01.spec.ts` against RUNTIME_URL) and its own responsive proof is TZ04 (smeargle-generated specs under `tests/e2e/responsive/*`), per tasks.md — no coverage gap. Kept `config-guard.spec.ts` (genuinely generic: checks the Playwright config refuses localhost, no Task-A content) and `atlas-tokens.ts` (self-contained, page-generic token audit — not wired to anything yet, but reusable by TZ04). Stripped `tests/e2e/lib/runtime.ts` down to the RUNTIME_URL/repoRoot/build-info helpers B-01 actually uses; removed the published-run/manifest-CID functions that depended on Task A's `@crm/contract`/`@crm/publish` packages (not vendored, per the earlier packages/shared decision above — B-01 has no published data run to read). Root `package.json` needed a `zod` devDependency for these root-level test-harness files (apps/packages each pin their own zod 3.24.1 independently) — set to `4.6.7` to match Oracle's own `tests/e2e/package.json` pin, not the apps' 3.24.1, since `spawn.ts`'s `.loose()` call is zod-v4-only.
+| 2026-10-23T07:53Z | `packages/contract` | `packages/oracle-contract` | 660f73c | feature/oracle-pipeline | 7af3bdf9371c6060f6cbd0c0aed75cdf1924e23301e3a1b110dce614ee71a63c |
+| 2026-10-23T07:53Z | `scripts/verify-manifest.ts` | `scripts/verify-manifest.ts` | 071eb1b | feature/oracle-pipeline | 03e3d00c3e6243ebe26c94607a5096f56bbc2dd7c40b736ead2274f5ec7baa7b |
+| 2026-10-23T07:54Z | `packages/query-core` (HEAD 2cdb1dd, read-only via `git archive` — working tree had uncommitted deletions of roof-age-comparison.ts/.test.ts at copy time, so the last clean committed tree was used) | `packages/oracle-views` | 2cdb1dd | feature/oracle-pipeline | 6308707c841b5c65e0e0aa7cec5df007c70be38d83b313892e6b1ea458c74375 |
+| 2026-10-23T07:57Z | `profiles/travis-austin@1.0.0` | `packages/oracle-profile-travis-austin` | 72ba7a3 | feature/oracle-pipeline | f6a24a627ce0651072829f597f12d2c85c33303853175a4a66133a4f8fd80046 |
+| 2026-10-23T08:45Z | `contract/v1` | `contract/v1` | be925c5 | feature/oracle-pipeline | 4e881003321c89cfbeae47833769dd1b83520d4f7e4dd0587f9fd086516dda4e |
+| 2026-10-23T08:45Z | `docs/decisions/0002-lexicon-carriers.md` | `docs/decisions/0002-lexicon-carriers.md` | f3ddcbe | feature/oracle-pipeline | 86d2a04dcd150fdc4078c890da00ae772e5da06d6c6d088fb5701886de56d9ca |
+| 2026-10-23T08:57Z | `tests/e2e/manifest.spec.ts` | `tests/e2e/manifest.spec.ts` | a1fd50a | feature/oracle-pipeline | c44cbe21a98ecb2f6b0ed407795f907eb7e956357a433f9e9440b3277c0a5a0b |
+| 2026-10-23T08:57Z | `tests/e2e/cid-copy.spec.ts` | `tests/e2e/cid-copy.spec.ts` | 071eb1b | feature/oracle-pipeline | dd009c324867c69aa949b51dff01dc0f795d0e319bbe95a4174de41934405502 |
+| 2026-10-23T08:57Z | `tests/e2e/fallback.spec.ts` | `tests/e2e/fallback.spec.ts` | a1fd50a | feature/oracle-pipeline | 7388fbefde60f4d8456df1eae1f1dffcbe5d05e5da01465ee693418fd861fafe |
+| 2026-10-23T08:57Z | `tests/e2e/verify-manifest.spec.ts` | `tests/e2e/verify-manifest.spec.ts` | a1fd50a | feature/oracle-pipeline | bb30bf08d2873ef028ef625c2238a58b0ba9b92386657a3b5870d14d3f20e669 |
+| 2026-10-23T08:57Z | `apps/api/test/query.test.ts` | `apps/api/test/query.test.ts` | 9191b3c | feature/oracle-pipeline | eee823166cb2807b3591dbb7c6837b3ff9a5c7fb078ab7a9df0e0baef9539a3c |
+| 2026-10-23T08:57Z | `apps/api/test/duckdb-node.test.ts` | `apps/api/test/duckdb-node.test.ts` | a1fd50a | feature/oracle-pipeline | 4f7cdb85e4186bea9367f6ce029c62aedacbfc1cc8c406d3dcdd2506c8c206b7 |

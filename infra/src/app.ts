@@ -16,6 +16,15 @@ import type { CrmAppConfig } from "./config.js";
 /** NodejsFunction bundles these directly from source (esbuild) — no separate build step. */
 const HEALTH_HANDLER_ENTRY = "../../apps/api/src/handlers/health.ts";
 const LOCKOUT_HANDLER_ENTRY = "../../apps/api/src/auth/lockout-handler.ts";
+const PLAN_HANDLER_ENTRY = "../../apps/sync/handlers/plan.ts";
+const FETCH_PART_HANDLER_ENTRY = "../../apps/sync/handlers/fetchPart.ts";
+const BUILD_INDEX_HANDLER_ENTRY = "../../apps/sync/handlers/buildIndex.ts";
+const VALIDATE_HANDLER_ENTRY = "../../apps/sync/handlers/validate.ts";
+const PROMOTE_HANDLER_ENTRY = "../../apps/sync/handlers/promote.ts";
+/** B-07 creates this table; CrmSync only ever references it by name for the META#index pointer
+ * item (architecture-constitution.md §9 — no new table here, per infra/test/crm-sync-stack.test.ts's
+ * own literal fixture value). */
+const CRM_LEADS_TABLE_NAME = "crm-leads";
 
 export function createCrmStacks(app: App, config: CrmAppConfig): void {
   const env = {
@@ -24,7 +33,17 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
   };
 
   const dataStack = new CrmDataStack(app, "CrmData", { env });
-  const syncStack = new CrmSyncStack(app, "CrmSync", { env });
+  const syncStack = new CrmSyncStack(app, "CrmSync", {
+    env,
+    planHandlerEntry: new URL(PLAN_HANDLER_ENTRY, import.meta.url).pathname,
+    fetchPartHandlerEntry: new URL(FETCH_PART_HANDLER_ENTRY, import.meta.url).pathname,
+    buildIndexHandlerEntry: new URL(BUILD_INDEX_HANDLER_ENTRY, import.meta.url).pathname,
+    validateHandlerEntry: new URL(VALIDATE_HANDLER_ENTRY, import.meta.url).pathname,
+    promoteHandlerEntry: new URL(PROMOTE_HANDLER_ENTRY, import.meta.url).pathname,
+    indexBucketName: dataStack.indexBucket.bucketName,
+    leadsTableName: CRM_LEADS_TABLE_NAME,
+  });
+  syncStack.addDependency(dataStack);
 
   const opsStack = new CrmOpsStack(app, "CrmOps", {
     env,
@@ -46,6 +65,7 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     env,
     githubRepository: config.githubRepository,
     githubRef: config.githubRef,
+    additionalBranches: config.additionalBranches,
     apiUrl: apiStack.apiUrl,
     userPoolId: opsStack.userPool.userPoolId,
     userPoolClientId: opsStack.userPoolClient.userPoolClientId,

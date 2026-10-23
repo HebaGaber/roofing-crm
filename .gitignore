@@ -4,6 +4,7 @@ build/
 cdk.out/
 cdk.context.json
 .turbo/
+.vitest/
 coverage/
 playwright-report/
 test-results/

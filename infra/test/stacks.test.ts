@@ -4,10 +4,8 @@ import { App } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { CrmApiStack } from "../lib/crm-api-stack.js";
-import { CrmDataStack } from "../lib/crm-data-stack.js";
 import { CrmDomainStack } from "../lib/crm-domain-stack.js";
 import { CrmOpsStack } from "../lib/crm-ops-stack.js";
-import { CrmSyncStack } from "../lib/crm-sync-stack.js";
 import { CrmWebStack } from "../lib/crm-web-stack.js";
 
 const ENV = { region: "eu-north-1", account: "515618610572" };
@@ -15,14 +13,8 @@ const HEALTH_ENTRY = new URL("../../apps/api/src/handlers/health.ts", import.met
 const LOCKOUT_ENTRY = new URL("../../apps/api/src/auth/lockout-handler.ts", import.meta.url)
   .pathname;
 
-describe("CrmData / CrmSync (T005, stubbed)", () => {
-  it("declare no resources yet", () => {
-    const dataTemplate = Template.fromStack(new CrmDataStack(new App(), "CrmData", { env: ENV }));
-    const syncTemplate = Template.fromStack(new CrmSyncStack(new App(), "CrmSync", { env: ENV }));
-    expect(Object.keys(dataTemplate.toJSON().Resources ?? {})).toHaveLength(0);
-    expect(Object.keys(syncTemplate.toJSON().Resources ?? {})).toHaveLength(0);
-  });
-});
+// CrmData / CrmSync's B-02 assertions moved to crm-data-stack.test.ts / crm-sync-stack.test.ts
+// (tasks.md T009) — they no longer stay "intentionally empty" (B-01 T005).
 
 describe("CrmOps (T017)", () => {
   function buildOps() {

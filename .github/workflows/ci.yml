@@ -23,15 +23,30 @@ permissions:
 jobs:
   workspace:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # B-02: CrmSync's native-DuckDB Lambda forces Docker-bundled arm64 builds; under this
+    # runner's QEMU emulation (docker/setup-qemu-action, added above) that's materially slower
+    # than the native-Docker-Desktop case this budget was set for — 15m wasn't enough.
+    timeout-minutes: 30
     env:
       # @crm/config throws without CDK_DEFAULT_REGION (infra/src/config.ts); synth needs it even
       # though this job never deploys.
       AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
       CDK_DEFAULT_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+      # B-02: @crm/config also throws without DATA_MANIFEST_CID (never a hard-coded constant in
+      # app code, per the story's own rule) — a repo variable, not a secret: it's the public
+      # sample manifest CID this whole story is pinned to.
+      DATA_MANIFEST_CID: ${{ vars.DATA_MANIFEST_CID }}
     steps:
       - uses: actions/checkout@v4
+
+      # B-02: CrmSync's BuildIndexFunction forces Docker bundling at arm64 (native DuckDB
+      # binding, infra/lib/crm-sync-stack.ts) — the stock runner has no arm64 binfmt handler
+      # registered, so that cross-platform docker build fails with "exec format error" without
+      # this step.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
       - uses: pnpm/action-setup@v4
 

@@ -12,11 +12,18 @@ export interface CrmWebStackProps extends StackProps {
   readonly apiUrl: string;
   readonly userPoolId: string;
   readonly userPoolClientId: string;
+  // B-02: additional story branches that get their own Amplify preview, alongside the primary
+  // `githubRef` branch. Each gets its own CfnBranch under a distinct logical id (never touching
+  // the primary `WebBranch` resource/logical-id) — `CfnBranch.branchName` is a CloudFormation
+  // replacement property, so changing the primary branch's name in place would delete and
+  // recreate it, destroying an earlier story's already-evidenced preview URL. Additive only.
+  readonly additionalBranches?: readonly string[];
 }
 
 export class CrmWebStack extends Stack {
   public readonly app: amplify.CfnApp;
   public readonly branch: amplify.CfnBranch;
+  public readonly additionalBranches: readonly amplify.CfnBranch[];
 
   constructor(scope: Construct, id: string, props: CrmWebStackProps) {
     super(scope, id, props);
@@ -78,6 +85,19 @@ export class CrmWebStack extends Stack {
     new CfnOutput(this, "AmplifyDefaultDomain", {
       value: `${this.branch.branchName}.${this.app.attrDefaultDomain}`,
       description: "RUNTIME_URL for this branch until CrmDomain cuts over (TZ02).",
+    });
+
+    this.additionalBranches = (props.additionalBranches ?? []).map((ref) => {
+      const branchName = ref.replace(/^(refs\/heads\/)?/, "");
+      // Logical id must be a stable, CloudFormation-safe identifier derived from the branch
+      // name (CfnBranch's own branchName stays the real git ref, including its dashes/digits).
+      const logicalIdSuffix = branchName.replace(/[^A-Za-z0-9]/g, "");
+      return new amplify.CfnBranch(this, `WebBranch${logicalIdSuffix}`, {
+        appId: this.app.attrAppId,
+        branchName,
+        enableAutoBuild: true,
+        stage: "DEVELOPMENT",
+      });
     });
   }
 }

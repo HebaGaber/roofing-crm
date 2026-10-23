@@ -1,0 +1,117 @@
+// CRM-owned row shapes for crm_property/crm_permit/index_meta (data-model.md). A provenance-
+// carrying, query-optimized projection of Task A's contract/v1 — never a re-derivation (ADR-07).
+//
+// This package is on zod v3 (this workspace's own convention), while the vendored
+// packages/oracle-contract is pinned to zod v4 (ADR-07's vendor-verbatim rule) — the two majors'
+// schema internals don't compose, so only plain data (the MISSING_REASONS string array, the
+// isCidV1 predicate) crosses that boundary, never a cross-major schema instance.
+import { z } from "zod";
+import { isCidV1 } from "@crm/oracle-contract/cid";
+import { MISSING_REASONS } from "@crm/oracle-contract";
+
+export const CidV1 = z.string().refine(isCidV1, { message: "expected a base32 CIDv1 string" });
+
+export const MissingReason = z.enum(MISSING_REASONS);
+export type MissingReason = z.infer<typeof MissingReason>;
+
+export const Missing = z.object({ field: z.string().min(1), reason: MissingReason });
+export type Missing = z.infer<typeof Missing>;
+
+/** Provenance fields carried verbatim onto every crm_property/crm_permit row (architecture-constitution.md §7). */
+export const ProvenanceFields = {
+  sourceManifestCid: CidV1,
+  missingReasons: z.array(Missing),
+  capturedAt: z.string(),
+  cid: CidV1,
+  runId: z.string().min(1),
+};
+
+export const CrmProperty = z
+  .object({
+    propertyCid: CidV1,
+    requestIdentifier: z.string().min(1),
+    latitude: z.number().nullable(),
+    longitude: z.number().nullable(),
+    coordinateSource: z.enum(["gis_centroid", "permit_point", "none"]),
+    propertyType: z.string().nullable(),
+    propertyUsageType: z.string().nullable(),
+    // Never guessed or interpolated (AC-3/FR-003) — null + its missingReasons entry is the only
+    // way this field is ever empty.
+    roofAgeYears: z.number().int().nullable(),
+    roofAgeBasis: z.enum(["permit", "new_construction", "built_year", "unknown"]),
+    roofAgeConfidence: z.enum(["high", "medium", "low", "none"]),
+    isLongTenure: z.boolean().nullable(),
+    ownerKind: z.enum(["person", "company", "unknown"]).nullable(),
+    ownerAreaClass: z.enum(["in_county", "regional", "out_of_area", "unknown"]).nullable(),
+    ownerIsOutOfArea: z.boolean().nullable(),
+    ...ProvenanceFields,
+  })
+  // No ownerName field exists at all (ADR-03): .strict() rejects any extra key, including one
+  // named ownerName, rather than silently dropping it — the absence is enforced, not incidental.
+  .strict();
+export type CrmProperty = z.infer<typeof CrmProperty>;
+
+export const CrmPermit = z
+  .object({
+    propertyCid: CidV1,
+    permitCid: CidV1,
+    jurisdiction: z.string().nullable(),
+    permitNumber: z.string().nullable(),
+    improvementType: z.string(),
+    improvementAction: z.string(),
+    improvementStatus: z.string().nullable(),
+    // Read verbatim from the vendored query-core derivation (ADR-07) — never recomputed here. A
+    // null improvementStatus must already have arrived as statusClass "stalled" (constitution P0-4).
+    statusClass: z.string().nullable(),
+    issueDate: z.string().nullable(),
+    finalDate: z.string().nullable(),
+    permitCloseDate: z.string().nullable(),
+    finalInspectionDate: z.string().nullable(),
+    openDays: z.number().int().nullable(),
+    contractorResolution: z.string().nullable(),
+    contractorCompanyCid: CidV1.nullable(),
+    ...ProvenanceFields,
+  })
+  .strict();
+export type CrmPermit = z.infer<typeof CrmPermit>;
+
+export const IndexMetaStatus = z.enum([
+  "Validating",
+  "Validated",
+  "Held",
+  "Promoted",
+  "Quarantined",
+]);
+export type IndexMetaStatus = z.infer<typeof IndexMetaStatus>;
+
+export const IndexMetaHeldReason = z.enum([
+  "lineage_fork",
+  "stale_finished_at",
+  "cost_gate_exceeded",
+  "drop_over_5_percent",
+  "digest_mismatch",
+  "reconcile_diff_exceeds_tolerance",
+  // T020/T020a (G5 C-07): a run with any DLQ'd/unverified FetchPart part is held on that
+  // condition alone, checked before row counts are evaluated at all (constitution P0-2: "a run
+  // with a failed part is never promoted" — even if every other part verified and the overall
+  // count drop is within tolerance).
+  "unverified_part",
+]);
+export type IndexMetaHeldReason = z.infer<typeof IndexMetaHeldReason>;
+
+export const IndexMeta = z
+  .object({
+    manifestCid: CidV1,
+    status: IndexMetaStatus,
+    propertyCount: z.number().int().nonnegative(),
+    permitCount: z.number().int().nonnegative(),
+    reconcileDiff: z.number().int().nullable(),
+    heldReason: IndexMetaHeldReason.nullable(),
+    finishedAt: z.string(),
+  })
+  .strict();
+export type IndexMeta = z.infer<typeof IndexMeta>;
+
+export type Provenanced<T> = T & {
+  sourceManifestCid: string;
+};

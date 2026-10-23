@@ -17,19 +17,19 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | AC-1 | Default the map and search experience to a particular county, with support for exploring properties in the user's selected area. | B1 | FEAT-B01 | B-01 | FR-001 | TC-001, TC-006, TC-010 | docs/evidence/B-01.md | 2026-10-23 |
 | AC-2 | Allow users to center property search on current GPS location and/or a pin dropped on the map. | B1 | FEAT-B03 | B-03 | | | docs/evidence/B-03.md | |
 | AC-3 | Allow users to set a configurable search radius around the selected location. | B1 | FEAT-B03 | B-03 | | | docs/evidence/B-03.md | |
-| AC-4 | Display properties within the radius that have roofs older than a configurable age threshold (default suggestion: 15 years). | B2 | FEAT-B04, FEAT-B02 | B-04 (data: B-02) | | | docs/evidence/B-04.md | |
-| AC-5 | Display properties within the radius that have open roofing permits, with emphasis on permits that have remained open for an extended period. | B3 | FEAT-B05, FEAT-B02 | B-05 (data: B-02) | | | docs/evidence/B-05.md | |
+| AC-4 | Display properties within the radius that have roofs older than a configurable age threshold (default suggestion: 15 years). | B2 | FEAT-B04, FEAT-B02 | B-04 (data: B-02) | FR-002, FR-003 (B-02's data foundation — count reconciliation and missing-roof-age preservation; B-04 builds the display on top) | B-02-TC-004, B-02-TC-006, B-02-TC-007 | docs/evidence/B-04.md | |
+| AC-5 | Display properties within the radius that have open roofing permits, with emphasis on permits that have remained open for an extended period. | B3 | FEAT-B05, FEAT-B02 | B-05 (data: B-02) | FR-001, FR-004 (B-02's data foundation — verified permit fetch and idempotent re-sync; B-05 builds the display on top) | B-02-TC-001, B-02-TC-008 | docs/evidence/B-05.md | |
 | AC-6 | Show permit details in the UI, including permit status, age/open duration, contractor name, and BBB rating score when available. | B3 | FEAT-B06 | B-06 | | | docs/evidence/B-06.md | |
 | AC-7 | Present a browsable list of matching roofing lead candidates derived from the map/radius filters. | B6 | FEAT-B08 | B-08 | | | docs/evidence/B-08.md | |
 | AC-8 | Support creating and managing CRM lead records from identified properties and permits. | B4 | FEAT-B07 | B-07 | | | docs/evidence/B-07.md | |
 | AC-9 | Provide a RAG-backed agent that answers natural-language queries about roofing opportunities using available property and permit data. | B5 | FEAT-B09 | B-09 | | | docs/evidence/B-09.md | |
-| AC-10 | Keep data gathering, ingestion, and source-system integration out of scope; consume pre-existing/available datasets. | B6 (also the access boundary) | FEAT-B02 | B-02 | | | docs/evidence/B-02.md | |
+| AC-10 | Keep data gathering, ingestion, and source-system integration out of scope; consume pre-existing/available datasets. | B6 (also the access boundary) | FEAT-B02 | B-02 | FR-001 | B-02-TC-001, B-02-TC-003 | docs/evidence/B-02.md | — (no UI; this story has no demo line of its own, per spec.md — it underlies D-1, D-3, D-4) |
 | AC-11 | Show (disabled) sections on the CRM that would expand the product beyond the initial lead-identification workflow. | B6 | FEAT-B10 | B-10 | FR-004, FR-005 | TC-005, TC-008, TC-009 | docs/evidence/B-01.md § B-10 | 2026-10-23 |
 | R-1 | Context: finding and qualifying **residential and commercial** roofing leads. | B2 | FEAT-B04, FEAT-B02 | B-04 (data: B-02) | | | docs/evidence/B-04.md | |
 | R-2 | Context: turn signals into **actionable outreach opportunities**. | B4 | FEAT-B07 | B-07 | | | docs/evidence/B-07.md | |
 | R-3 | Description: the UI presents **property** and permit details, including contractor information. | B3 | FEAT-B06 | B-06 | | | docs/evidence/B-06.md | |
 | R-4 | Description: example agent query "show me open roofing permits older than five years within five miles of [city xyz]". | B5 | FEAT-B09 | B-09 (golden query) | | | docs/evidence/B-09.md | |
-| OOS-1 | Out of scope: property, permit, ownership or enrichment data collection and ingestion pipelines. | B6 (access boundary) | FEAT-B02 | B-02 | | | docs/evidence/B-02.md | |
+| OOS-1 | Out of scope: property, permit, ownership or enrichment data collection and ingestion pipelines. | B6 (access boundary) | FEAT-B02 | B-02 | FR-001 | B-02-TC-001, B-02-TC-003 | docs/evidence/B-02.md | — (no UI; proved by the architecture's absence of any ingestion code path — only CID-fetch-and-verify) |
 | OOS-2 | Out of scope: live BBB API integration beyond displaying scores already in the data. | B3 | FEAT-B06, FEAT-B14 | B-06 | | | docs/evidence/B-06.md | |
 | OOS-3 | Out of scope: actual outbound messaging to property owners (can be mocked or deferred). | B6 | FEAT-B10, FEAT-B13 | B-10 | | | docs/evidence/B-10.md | |
 | D-1 | Open the CRM centered on a particular county. | B1 | FEAT-B01 | B-01 | FR-001 | TC-001 | docs/evidence/B-01.md | 2026-10-23 |
@@ -48,6 +48,8 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | BN-B | VIS-B | | | | | | | | |
 
+*BN-B's remaining columns (FEAT/US/REQ/TASK/TC/Code/CR/REL) are intentionally left blank until G8 (release) — this row rolls up all five merged Task B stories (B-01, B-02, B-03, B-07, B-09), and only two (B-01, B-02) are built as of 2026-10-23. Per-story gate status lives in `docs/progress.md` and § 3's gate log below.*
+
 ## 3. Gate log
 
 | Gate | Artifact | Version | Pre-check | Decision | Date |
@@ -61,5 +63,9 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G5 (B-01) | specs/001-crm-shell/{plan,tasks}.md | | PASS (4 rounds, structural fixes) | Approved | 2026-10-23 |
 | G6 (B-01) | testplans/B-01-test-cases.md | | PASS (4 rounds; TD-4 polish exceptions) | Approved with exceptions | 2026-10-23 |
 | G7 (B-01) | docs/gates/G7-B-01-precheck.md | | PASS (TD-5 coverage exception) | pending Round 2 | 2026-10-23 |
+| G4 (B-02) | stories/B-02-lead-index.md | | PASS | Ready | 2026-10-23 |
+| G5 (B-02) | specs/002-lead-index/{plan,tasks}.md | | PASS (fixed C-03/C-04/C-07, 3 recorded judgment calls) | Approved | 2026-10-23 |
+| G6 (B-02) | testplans/B-02-test-cases.md | | FAIL (strict AI reading); ratified by the user at G7 Round 2 | Approved with exceptions (no-UI automation substitution) | 2026-10-23 |
+| G7 (B-02) | docs/gates/G7-B-02-precheck.md | | FAIL (strict AI reading, 4 checks); PASS against the walkthrough's own recommended bar | Approved | 2026-10-23 |
 | G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
