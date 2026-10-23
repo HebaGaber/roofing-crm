@@ -37,7 +37,11 @@ const STATE_NAME: Readonly<Record<Exclude<GpsState, "idle">, string>> = {
   locating: "CrmMapGpsLocating390",
   denied: "CrmMapGpsDenied390",
   unavailable: "CrmMapGpsUnavailable390",
-  timeout: "CrmMapGpsTimeout390",
+  // CRM-HANDOFF.md §4.2 covers "unavailable or timed out" as one combined board
+  // (CrmMapGpsUnavailable390) — no separate "CrmMapGpsTimeout390" board exists in
+  // design/prototype (found in review, CR-B-03). The `timeout` GpsState keeps its own copy
+  // (above) for a more specific message, but shares the one real board name.
+  timeout: "CrmMapGpsUnavailable390",
   outsideCounty: "CrmMapGpsOutside390",
 };
 

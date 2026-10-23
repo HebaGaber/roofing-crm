@@ -54,7 +54,9 @@ describe("GpsButton", () => {
     });
     render(<GpsButton onLocated={vi.fn()} geolocation={timeout} />);
     fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
-    expect(screen.getByRole("alert").getAttribute("data-state")).toBe("CrmMapGpsTimeout390");
+    // CRM-HANDOFF.md §4.2: "unavailable or timed out" is one combined board, no separate
+    // "CrmMapGpsTimeout390" board exists (CR-B-03 finding).
+    expect(screen.getByRole("alert").getAttribute("data-state")).toBe("CrmMapGpsUnavailable390");
   });
 
   it("no geolocation API at all shows the unavailable state, never a crash", () => {

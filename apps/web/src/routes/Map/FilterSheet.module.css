@@ -43,7 +43,7 @@
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: rgb(0 0 0 / 0.4);
+  background: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
 }
 
 @media (min-width: 840px) {
