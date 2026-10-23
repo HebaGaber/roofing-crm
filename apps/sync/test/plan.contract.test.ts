@@ -43,6 +43,8 @@ describe("Plan", () => {
         predictedDocCount: expect.any(Number),
         predictedBytes: expect.any(Number),
       },
+      coverageParcelsPublished: expect.any(Number),
+      finishedAt: expect.any(String),
     });
   });
 

@@ -3,13 +3,21 @@
 // index_meta/reconcile rules. Round 1 decision (2026-10-23): tightened to constitution §10's
 // index-fidelity NFR — exact match or at most 0.1% of coverage.parcels_published, documented via
 // `reconcileDiff`; anything larger is `Held`, never a silent pass.
-import { withObservability } from "@crm/observability";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { withObservability, type Observability } from "@crm/observability";
 import {
   IndexMeta,
   type CrmPermit,
   type CrmProperty,
   type IndexMetaHeldReason,
 } from "@crm/index-schema";
+import { createInMemoryConnection } from "../src/engine/duckdb.js";
 
 /** Constitution §10 / Round 1 decision, 2026-10-23: a reconcile diff over 0.1% of the manifest's
  *  published coverage count fails outright — it is never a documented pass. */
@@ -112,6 +120,90 @@ export function validateCore(input: ValidateInput): IndexMeta {
   return heldResult(input, "reconcile_diff_exceeds_tolerance", reconcileDiff);
 }
 
-export const validateHandler = withObservability("Validate", async (event: ValidateInput) =>
-  validateCore(event),
-);
+/** BuildIndex's actual output, plus the pass-through fields it echoed from Plan/the Map
+ *  (contracts/sync-pipeline.md's Validate input is BuildIndex's output verbatim). */
+export interface ValidateEvent {
+  manifestCid: string;
+  bucket: string;
+  propertyKey: string;
+  permitKey: string;
+  coverageParcelsPublished: number;
+  finishedAt: string;
+  anyPartUnverified: boolean;
+}
+
+const META_INDEX_PK = "META#index";
+
+async function downloadToFile(s3: S3Client, bucket: string, key: string, destPath: string) {
+  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const body = res.Body;
+  if (body === undefined) throw new Error(`Validate: S3 object ${key} has no body`);
+  await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
+}
+
+/** Reads just enough of a written Parquet file to prove every row carries `sourceManifestCid`
+ *  and to count rows — never a live re-fetch from Task A (BuildIndex already wrote these bytes;
+ *  Validate only proves what landed, per contracts/sync-pipeline.md). */
+async function readSourceManifestCids(
+  connection: Awaited<ReturnType<typeof createInMemoryConnection>>,
+  file: string,
+  viewName: string,
+): Promise<(string | null)[]> {
+  await connection.run(`CREATE VIEW ${viewName} AS SELECT * FROM read_parquet('${file}')`);
+  const reader = await connection.runAndReadAll(`SELECT sourceManifestCid FROM ${viewName}`);
+  return (reader.getRowObjectsJS() as { sourceManifestCid: string | null }[]).map(
+    (row) => row.sourceManifestCid,
+  );
+}
+
+async function validateCoreFromEvent(
+  event: ValidateEvent,
+  _obs: Observability,
+): Promise<IndexMeta> {
+  const tmpDir = mkdtempSync(join(tmpdir(), "crm-validate-"));
+  const s3 = new S3Client({});
+  try {
+    const propertyFile = join(tmpDir, "crm_property.parquet");
+    const permitFile = join(tmpDir, "crm_permit.parquet");
+    await downloadToFile(s3, event.bucket, event.propertyKey, propertyFile);
+    await downloadToFile(s3, event.bucket, event.permitKey, permitFile);
+
+    const connection = await createInMemoryConnection();
+    try {
+      const propertyCids = await readSourceManifestCids(connection, propertyFile, "crm_property");
+      const permitCids = await readSourceManifestCids(connection, permitFile, "crm_permit");
+
+      const tableName = process.env.CRM_LEADS_TABLE_NAME;
+      if (tableName === undefined || tableName === "") {
+        throw new Error("Validate: CRM_LEADS_TABLE_NAME is not set");
+      }
+      const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+      const pointer = await ddb.send(
+        new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK } }),
+      );
+      const previousPromotedPropertyCount =
+        pointer.Item?.propertyCount === undefined ? null : Number(pointer.Item.propertyCount);
+
+      const input: ValidateInput = {
+        manifestCid: event.manifestCid,
+        // Only sourceManifestCid is actually read by validateCore (row count + provenance
+        // check) — the rest of CrmProperty/CrmPermit's fields were already Zod-validated by
+        // BuildIndex before these bytes were ever written, so re-parsing every column here
+        // would just re-prove what already passed.
+        properties: propertyCids.map((cid) => ({ sourceManifestCid: cid }) as CrmProperty),
+        permits: permitCids.map((cid) => ({ sourceManifestCid: cid }) as CrmPermit),
+        coverageParcelsPublished: event.coverageParcelsPublished,
+        previousPromotedPropertyCount,
+        anyPartUnverified: event.anyPartUnverified,
+        finishedAt: event.finishedAt,
+      };
+      return validateCore(input);
+    } finally {
+      connection.closeSync();
+    }
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+export const validateHandler = withObservability("Validate", validateCoreFromEvent);

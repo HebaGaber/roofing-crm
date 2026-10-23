@@ -4,7 +4,7 @@
 // infra/lib/crm-sync-stack.ts to make this pass.
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { CrmSyncStack } from "../lib/crm-sync-stack.js";
 
 const ENV = { region: "eu-north-1", account: "515618610572" };
@@ -32,8 +32,17 @@ function build() {
 }
 
 describe("CrmSync (T038)", () => {
+  // Built once (not per test): each build() call synths and Docker-bundles BuildIndex's and
+  // Validate's native DuckDB binding, which is expensive enough that five fresh builds started
+  // timing out individual tests once a second function needed the same treatment. The template
+  // is immutable, so every assertion below reads the same one.
+  let template: Template;
+
+  beforeAll(() => {
+    template = build();
+  }, 240_000);
+
   it("creates the crm-sync Step Functions state machine", () => {
-    const template = build();
     template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
     template.hasResourceProperties("AWS::StepFunctions::StateMachine", {
       StateMachineName: "crm-sync",
@@ -41,12 +50,10 @@ describe("CrmSync (T038)", () => {
   });
 
   it("creates the five pipeline Lambdas (Plan, FetchPart, BuildIndex, Validate, Promote)", () => {
-    const template = build();
     template.resourceCountIs("AWS::Lambda::Function", 5);
   });
 
   it("denies Task A's resources on every role the stack creates (constitution P0-1)", () => {
-    const template = build();
     const policies = template.findResources("AWS::IAM::Policy");
     const denyPolicies = Object.values(policies).filter((policy) => {
       const statements = (policy as Record<string, unknown>).Properties as {
@@ -62,12 +69,10 @@ describe("CrmSync (T038)", () => {
   });
 
   it("reuses the existing crm-leads table — declares no new DynamoDB table", () => {
-    const template = build();
     template.resourceCountIs("AWS::DynamoDB::Table", 0);
   });
 
   it("wires FetchPart's Distributed Map with concurrency 2-3 (ADR-02)", () => {
-    const template = build();
     const stateMachines = template.findResources("AWS::StepFunctions::StateMachine");
     const [first] = Object.values(stateMachines);
     const definition = JSON.stringify((first as Record<string, unknown>).Properties);

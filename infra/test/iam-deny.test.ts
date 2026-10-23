@@ -74,5 +74,5 @@ describe("CrmSync IAM Deny coverage (T037)", () => {
     for (const [roleId, hasDeny] of roleLogicalIdHasDeny) {
       expect(hasDeny, `role ${roleId} is missing the DenyTaskAResources statement`).toBe(true);
     }
-  });
+  }, 240_000);
 });

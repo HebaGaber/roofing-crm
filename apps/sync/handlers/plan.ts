@@ -71,6 +71,12 @@ export interface PlanResult {
   costEstimate: PlanCostEstimate;
   /** This run's start timestamp — Promote (T022) reads this back to compute SyncDurationMs. */
   startedAt: string;
+  /** The manifest's own `coverage.parcels_published.count` — Validate (T019) reconciles
+   *  BuildIndex's row count against this, never a live recount of Task A's data. */
+  coverageParcelsPublished: number;
+  /** The manifest's own `finishedAt` — carried through to Validate/Promote's `IndexMeta` rather
+   *  than generated fresh at each later step. */
+  finishedAt: string;
 }
 
 export interface PlanHeld {
@@ -184,6 +190,8 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     })),
     costEstimate: { predictedSpendUsd, predictedDocCount, predictedBytes },
     startedAt: new Date().toISOString(),
+    coverageParcelsPublished: manifest.coverage.parcels_published?.count ?? 0,
+    finishedAt: manifest.finishedAt,
   };
 }
 

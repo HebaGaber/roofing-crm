@@ -235,8 +235,17 @@ export class CrmSyncStack extends Stack {
       "ValidateFunction",
       "crm-sync-validate",
       props.validateHandlerEntry,
-      { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      {
+        CRM_INDEX_BUCKET_NAME: props.indexBucketName,
+        CRM_LEADS_TABLE_NAME: props.leadsTableName,
+      },
       "validateHandler",
+      // Validate also reads Parquet via apps/sync/src/engine/duckdb.ts now (it proves row
+      // counts/provenance against BuildIndex's own output) — same native-binding treatment as
+      // BuildIndexFunction (ARM64 + the npm-only lockfile for the Docker-bundled pnpm bug).
+      ["@duckdb/node-api"],
+      lambda.Architecture.ARM_64,
+      new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url).pathname,
     );
     const promoteFn = makeHandler(
       "PromoteFunction",
@@ -250,6 +259,7 @@ export class CrmSyncStack extends Stack {
     indexBucket.grantReadWrite(fetchPartFn);
     indexBucket.grantReadWrite(buildIndexFn);
     indexBucket.grantRead(validateFn);
+    leadsTable.grantReadData(validateFn);
     leadsTable.grantReadWriteData(promoteFn);
 
     const { queue: fetchPartDlq } = addFetchPartDlqAndAlarm(this, { alarmTopic });
@@ -283,6 +293,10 @@ export class CrmSyncStack extends Stack {
     const sendToFetchPartDlq = new tasks.SqsSendMessage(this, "SendToFetchPartDlq", {
       queue: fetchPartDlq,
       messageBody: sfn.TaskInput.fromJsonPathAt("$"),
+      // Discarding the SQS response keeps this Map item's own output as FetchPart's original
+      // {status: "dlq", ...} result rather than replacing it with SQS's send-message metadata —
+      // Validate (via BuildIndex's pass-through) needs to see which items were DLQ'd.
+      resultPath: sfn.JsonPath.DISCARD,
     });
 
     const partVerified = new sfn.Pass(this, "PartVerified");
@@ -299,7 +313,9 @@ export class CrmSyncStack extends Stack {
         "manifestCid.$": "$.manifestCid",
         "part.$": "$$.Map.Item.Value",
       },
-      resultPath: sfn.JsonPath.DISCARD,
+      // Kept (not discarded): BuildIndex echoes this array's statuses forward as
+      // `anyPartUnverified` for Validate (T020a) — a run is never promoted with one DLQ'd part.
+      resultPath: "$.fetchResults",
     });
     fetchPartsMap.itemProcessor(fetchPartInvoke.next(fetchPartResultChoice));
 

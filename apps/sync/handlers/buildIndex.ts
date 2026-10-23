@@ -196,6 +196,15 @@ export interface BuildIndexEvent {
    *  used to write it (`sha256(manifestCid + path)`) — never a separately-recorded key, so the
    *  two steps can never drift out of sync on where a part actually landed. */
   parts: BuildIndexPart[];
+  /** Plan's own values, echoed into BuildIndexOutput below purely as pass-through state (the
+   *  Step Functions payload replaces itself at every LambdaInvoke's outputPath, so anything
+   *  Validate needs has to ride through this step, not just Plan's). */
+  coverageParcelsPublished: number;
+  finishedAt: string;
+  /** The FetchPartsMap's per-item results (one per part) — present only because the state
+   *  machine keeps the Map's output rather than discarding it. Reduced to `anyPartUnverified`
+   *  below; BuildIndex never otherwise reads these. */
+  fetchResults?: { status: string }[];
 }
 
 export interface BuildIndexOutput {
@@ -204,6 +213,11 @@ export interface BuildIndexOutput {
   permitCount: number;
   propertyKey: string;
   permitKey: string;
+  coverageParcelsPublished: number;
+  finishedAt: string;
+  /** T020a: true when any part in this run was routed to the DLQ as unverified — Validate holds
+   *  the whole run on this signal alone, before evaluating row counts (constitution P0-2). */
+  anyPartUnverified: boolean;
 }
 
 const s3 = new S3Client({});
@@ -301,6 +315,9 @@ async function buildIndexCoreFromEvent(
       permitCount: permits.length,
       propertyKey,
       permitKey,
+      coverageParcelsPublished: event.coverageParcelsPublished,
+      finishedAt: event.finishedAt,
+      anyPartUnverified: (event.fetchResults ?? []).some((r) => r.status === "dlq"),
     };
   } finally {
     connection.closeSync();
