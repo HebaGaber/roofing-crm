@@ -198,9 +198,12 @@ export interface BuildIndexEvent {
   parts: BuildIndexPart[];
   /** Plan's own values, echoed into BuildIndexOutput below purely as pass-through state (the
    *  Step Functions payload replaces itself at every LambdaInvoke's outputPath, so anything
-   *  Validate needs has to ride through this step, not just Plan's). */
+   *  Validate or Promote needs has to ride through this step, not just Plan's). */
   coverageParcelsPublished: number;
   finishedAt: string;
+  /** Plan's run-start timestamp — Promote (T022) reads this back (as `planStartedAt`) to
+   *  compute SyncDurationMs, two steps after BuildIndex. */
+  startedAt: string;
   /** The FetchPartsMap's per-item results (one per part) — present only because the state
    *  machine keeps the Map's output rather than discarding it. Reduced to `anyPartUnverified`
    *  below; BuildIndex never otherwise reads these. */
@@ -209,12 +212,17 @@ export interface BuildIndexEvent {
 
 export interface BuildIndexOutput {
   manifestCid: string;
+  /** Echoed from the event — Validate's own S3 reads need it too, and LambdaInvoke's
+   *  outputPath: "$.Payload" replaces the whole state with just this return value. */
+  bucket: string;
   propertyCount: number;
   permitCount: number;
   propertyKey: string;
   permitKey: string;
   coverageParcelsPublished: number;
   finishedAt: string;
+  /** Echoed from the event — Promote reads this back two steps later. */
+  startedAt: string;
   /** T020a: true when any part in this run was routed to the DLQ as unverified — Validate holds
    *  the whole run on this signal alone, before evaluating row counts (constitution P0-2). */
   anyPartUnverified: boolean;
@@ -311,12 +319,14 @@ async function buildIndexCoreFromEvent(
 
     return {
       manifestCid: event.manifestCid,
+      bucket: event.bucket,
       propertyCount: properties.length,
       permitCount: permits.length,
       propertyKey,
       permitKey,
       coverageParcelsPublished: event.coverageParcelsPublished,
       finishedAt: event.finishedAt,
+      startedAt: event.startedAt,
       anyPartUnverified: (event.fetchResults ?? []).some((r) => r.status === "dlq"),
     };
   } finally {

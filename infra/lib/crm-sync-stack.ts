@@ -335,16 +335,25 @@ export class CrmSyncStack extends Stack {
 
     const validateTask = new tasks.LambdaInvoke(this, "Validate", {
       lambdaFunction: validateFn,
-      outputPath: "$.Payload",
+      // Kept under its own key (not outputPath: "$.Payload") — IndexMeta is a strict Zod schema
+      // with no room for extra fields, but Promote still needs `startedAt` (as planStartedAt),
+      // which rode this far in state since BuildIndex echoed it forward; outputPath would have
+      // discarded it the same way `bucket` was lost the first time around (found live).
+      resultPath: "$.indexMeta",
     });
 
     const promoteTask = new tasks.LambdaInvoke(this, "Promote", {
       lambdaFunction: promoteFn,
+      payload: sfn.TaskInput.fromObject({
+        "indexMeta.$": "$.indexMeta",
+        tableName: props.leadsTableName,
+        "planStartedAt.$": "$.startedAt",
+      }),
       outputPath: "$.Payload",
     });
 
     const validateResultChoice = new sfn.Choice(this, "ValidateResultChoice")
-      .when(sfn.Condition.stringEquals("$.status", "Validated"), promoteTask)
+      .when(sfn.Condition.stringEquals("$.indexMeta.status", "Validated"), promoteTask)
       .otherwise(heldNoPromotion);
 
     const planResultChoice = new sfn.Choice(this, "PlanResultChoice")
