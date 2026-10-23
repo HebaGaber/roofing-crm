@@ -127,6 +127,7 @@ export class CrmSyncStack extends Stack {
       handlerExportName: string,
       nodeModules: string[] = [],
       architecture: lambda.Architecture = lambda.Architecture.X86_64,
+      depsLockFilePath?: string,
     ): NodejsFunction => {
       // An explicit LogGroup (rather than NodejsFunction's `logRetention` prop) avoids spinning
       // up CDK's LogRetention custom-resource Lambda per function — keeping this stack's Lambda
@@ -142,6 +143,15 @@ export class CrmSyncStack extends Stack {
         runtime: lambda.Runtime.NODEJS_22_X,
         architecture,
         entry,
+        ...(depsLockFilePath === undefined
+          ? {}
+          : {
+              depsLockFilePath,
+              // depsLockFilePath's directory becomes the bundling project root by default —
+              // repoint it at the real monorepo root so esbuild can still resolve `entry`
+              // (apps/sync/handlers/...) relative to it.
+              projectRoot: new URL("../../", import.meta.url).pathname,
+            }),
         handler: handlerExportName,
         memorySize: HANDLER_MEMORY_MB,
         timeout: HANDLER_TIMEOUT,
@@ -204,6 +214,12 @@ export class CrmSyncStack extends Stack {
       // linux-arm64 — matching this architecture, not X86_64 (ARM64 Lambda is also the AWS-
       // recommended, cheaper default; nothing else in this stack requires X86_64).
       lambda.Architecture.ARM_64,
+      // Found live: this workspace's pnpm-lock.yaml is lockfileVersion-incompatible with the
+      // CDK build image's bundled pnpm, which then tries to re-resolve from the registry and
+      // hits a known old-pnpm/fetch bug (ERR_INVALID_THIS) — unrelated to architecture. A plain
+      // npm lockfile naming only this one native dependency sidesteps pnpm entirely for this
+      // one function's nodeModules install.
+      new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url).pathname,
     );
     const validateFn = makeHandler(
       "ValidateFunction",
