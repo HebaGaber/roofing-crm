@@ -58,6 +58,33 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
     );
     expect(response.ok()).toBe(true);
   });
+
+  // TD-4 fix: TC-002's pan/zoom claim was previously only unit-tested (bounds.test.ts's pure
+  // math), never asserted against the live map. CrmMap.tsx exposes window.__crmMap for exactly
+  // this — try to zoom out past the computed minZoom and confirm MapLibre itself clamps it,
+  // never actually dropping below full-county visibility.
+  test("zooming out never drops below the county's minimum zoom", async ({ page }) => {
+    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    if (!SEEDED_PASSWORD) return;
+    await signIn(page, SEEDED_PASSWORD);
+    await expect(page.locator('[data-route="map"]')).toBeVisible();
+    await page.waitForFunction(() => {
+      const map = (window as unknown as { __crmMap?: { loaded(): boolean } }).__crmMap;
+      return map?.loaded() === true;
+    });
+    const minZoom = await page.evaluate(() =>
+      (window as unknown as { __crmMap: { getMinZoom(): number } }).__crmMap.getMinZoom(),
+    );
+    expect(minZoom).toBeGreaterThan(0);
+    const clampedZoom = await page.evaluate(() => {
+      const map = (
+        window as unknown as { __crmMap: { setZoom(z: number): unknown; getZoom(): number } }
+      ).__crmMap;
+      map.setZoom(0); // attempt to zoom out far past any sane county-wide minimum
+      return map.getZoom();
+    });
+    expect(clampedZoom).toBeCloseTo(minZoom, 5);
+  });
 });
 
 // AC-3 (TC-003, TC-004, TC-011): 3 wrong passwords then a 4th locks out with the typed message;
@@ -69,6 +96,15 @@ test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", ()
     for (let attempt = 0; attempt < 4; attempt++) {
       await signIn(page, "wrong-password-does-not-match");
       await page.waitForSelector("[data-sign-in-error]");
+      // TD-4 fix (TC-004): the first 3 attempts must show the plain invalid-credentials text,
+      // distinct from the eventual lockout message — previously only the final (4th) attempt's
+      // text was ever asserted, so a bug that showed the lockout message prematurely (e.g. on
+      // attempt 2) would have passed unnoticed.
+      if (attempt < 3) {
+        await expect(page.locator("[data-sign-in-error]")).toHaveText(
+          "Incorrect username or password.",
+        );
+      }
     }
     await expect(page.locator("[data-sign-in-error]")).toHaveText(
       "Too many attempts — try again in 5 minutes.",

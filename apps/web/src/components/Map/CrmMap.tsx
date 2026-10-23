@@ -36,6 +36,11 @@ export function CrmMap({ styleUrl = DEFAULT_STYLE }: CrmMapProps): ReactElement 
       ...buildMapInitOptions(),
     });
     mapRef.current = map;
+    // Test-only hook (TD-4 fix, testplans/B-01-test-cases.md TC-002): exposes the live MapLibre
+    // instance so Playwright can assert the county-bbox minZoom guarantee directly, instead of
+    // only unit-testing the pure bounds math (bounds.test.ts) with no live-map assertion at all.
+    // Never read by application code — only by tests/e2e/B-01.spec.ts.
+    (window as unknown as { __crmMap?: MapLibreMap }).__crmMap = map;
 
     const applyMinZoom = (): void => {
       const minZoom = computeMinZoom(map);
@@ -67,6 +72,7 @@ export function CrmMap({ styleUrl = DEFAULT_STYLE }: CrmMapProps): ReactElement 
     return () => {
       map.remove();
       mapRef.current = null;
+      delete (window as unknown as { __crmMap?: MapLibreMap }).__crmMap;
     };
   }, [styleUrl, retryToken]);
 
