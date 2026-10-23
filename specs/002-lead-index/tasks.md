@@ -129,3 +129,21 @@ description: "Task list for B-02: lead search index"
 **MVP scope**: US1 (verified copy, AC-1) is the only story that must ship for every later story (B-03, B-07, B-09) to have anything to read. US2 (count reconciliation) and US3 (missing-data preservation) are both P1 and ship in the same build wave since they share `BuildIndex`/`Validate` — splitting them further would not reduce risk. US4 (idempotency) is P2 and can, in principle, land after US1–US3 if the budget forces a cut, but AC-4 is required for G7, so it is not deferred in practice here.
 
 **Why phases are grouped by builder (INDEX/SYNC), not strict priority order (G5 C-02):** the story's own front matter names exactly two builders (`espeon`, `machamp`), and the run script explicitly directs "Exactly two groups ... one build wave." Reordering Phase 3/4 into priority-only phases would either split each builder's tasks across multiple phases (defeating the one-subagent-per-group delegation in constitution XV) or force a sequential INDEX-then-SYNC build where none is architecturally required (per `agent-design.md`'s convergence that `BuildIndex` and `FetchPart` are independent). This is a recorded judgment call, not an oversight — see plan.md's Complexity Tracking table.
+
+---
+
+## Phase 6: Convergence
+
+Found by `/speckit-converge` (2026-10-23) assessing the actual codebase against spec.md/tasks.md/the constitution — checkbox state was not used as evidence.
+
+- [ ] T047 CRITICAL: `apps/sync/handlers/plan.ts`'s `fetchManifestBytes` must verify the fetched manifest's own bytes against its CID (sha256/CID digest check) before use — currently only the manifest's *parts* are verified downstream, not the manifest itself, contradicting FR-001's "verify every byte... before use" and architecture-constitution.md §6/§8 per FR-001 (contradicts)
+- [ ] T048 CRITICAL: Wrap `apps/api/src/adapters/duckDbParquet.ts` (the `LeadIndex` port) with the shared Powertools observability middleware (`withObservability`), per Constitution Article VIII ("Every Lambda uses Powertools Logger, Tracer and Metrics") per Constitution Article VIII (missing)
+- [ ] T049 Implement `Plan`'s authoritative manifest-CID resolution (SSM-pinned parameter, or a verified `runs/index.json` hint) in `apps/sync/handlers/plan.ts`, instead of relying solely on an unverified `input.manifestCidHint` per T024 (partial)
+- [ ] T050 Once `crm-leads` (B-07) exists, re-run the deployed state machine end to end: confirm `Promote` reaches `SUCCEEDED`, `META#index.current` flips, and record the measured `SyncDurationMs` against the ≤5 min NFR-001/SC-005 threshold per T042/T045, SC-005 (missing)
+- [ ] T051 Once Travis County is published to the Elephant MCP index, re-run `soofi-xyz-team-kit:donphan`'s independent Oracle MCP cross-check of `propertyCount` per T043, AC-2 (missing)
+- [ ] T052 Re-prove the idempotent-rerun (AC-4) using the same CID-named Step Functions execution (not a differently-named debug execution), and record that execution's final status, so the execution-name collision guard is demonstrated against a true repeat invocation per T044, AC-4 (partial)
+- [ ] T053 Add a sha256 column to `docs/reuse-log.md` for each file copied from Task A, per ADR-07's digest-guard record requirement per T001, ADR-07 (partial)
+- [ ] T054 Strengthen `infra/test/iam-deny.test.ts` to assert the denied ARNs match architecture-constitution.md §7's named Task A access categories, not just that a Deny statement exists on every role per T037 (partial)
+- [ ] T055 Strengthen `apps/sync/test/dlq.test.ts` to assert exactly one CloudWatch alarm fires per DLQ-depth-above-zero event (not per message) and that it self-resolves once the DLQ drains per T033 (partial)
+- [ ] T056 Update `docs/evidence/B-02.md`'s donphan-cross-check and `SyncDurationMs` sections with final values once T050/T051 complete per T046 (partial)
+- [ ] T057 (low priority) Consider strengthening `scripts/local-rag-poc/test/query.test.ts` to assert a roof-age-specific missing reason once the sample manifest contains such a row (FR-003 is otherwise already covered by T016/T017) per T012 (partial)

@@ -58,4 +58,56 @@ describe("FetchPart DLQ + self-resolving alarm (T033/T034)", () => {
     const policies = template.findResources("AWS::SQS::QueuePolicy");
     expect(Object.keys(policies).length).toBeGreaterThan(0);
   });
+
+  // T055 (convergence fix): the three tests above prove the alarm exists and is wired to SNS and
+  // TLS, but never proved the *firing semantics* — that it fires once per DLQ-depth-above-zero
+  // event (a CloudWatch alarm state transition into ALARM) rather than once per message sitting
+  // in the queue, and that it clears itself (returns to OK) once the queue drains back to zero,
+  // with no manual reset or per-message fan-out. CloudWatch alarms are inherently state-based:
+  // they evaluate a metric's current value against a threshold on each evaluation period and
+  // transition INSUFFICIENT_DATA/OK/ALARM, firing an action only on a *transition*, not once per
+  // underlying metric contribution — so a single-item ApproximateNumberOfMessagesVisible metric
+  // breaching 0 produces exactly one ALARM transition regardless of how many messages pushed the
+  // depth above zero, and returns to OK on its own the moment the queue reports 0 again (SQS
+  // always publishes the zero value once drained). This test asserts the exact alarm config that
+  // makes that true, rather than merely that an alarm with some config exists.
+  it("the alarm is configured for per-event (not per-message) firing and self-resolves on drain", () => {
+    const template = buildBareStack();
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      // A single evaluation period means one breaching data point flips the alarm straight to
+      // ALARM on the next evaluation — there is no "fire again for the 2nd, 3rd, ... message"
+      // behavior, because the alarm only ever has one current state (OK/ALARM), not one state
+      // per message. This is what "exactly one alarm per DLQ-depth-above-zero event" means in
+      // CloudWatch: one state transition, independent of how many messages caused the breach.
+      EvaluationPeriods: 1,
+      // GreaterThanThreshold against 0 means: ALARM while depth > 0, OK while depth <= 0 (or
+      // missing/zero). There is no latching "stays in ALARM once triggered" behavior here — the
+      // alarm re-evaluates the live metric every period and moves back to OK by itself the first
+      // time depth reports 0, with no human or code action required to reset it.
+      ComparisonOperator: "GreaterThanThreshold",
+      Threshold: 0,
+      // SQS always publishes ApproximateNumberOfMessagesVisible, including the value 0 once the
+      // queue drains, so a missing data point is never mistaken for a sustained breach; this
+      // also keeps the alarm from being stuck in ALARM on a reporting gap.
+      TreatMissingData: "notBreaching",
+    });
+  });
+
+  it(
+    "the alarm fires both an alarm action and an OK action to the same topic, so the OK " +
+      "transition (drain) is itself observable, not just the breach",
+    () => {
+      const template = buildBareStack(true);
+      const alarms = template.findResources("AWS::CloudWatch::Alarm");
+      const [alarm] = Object.values(alarms) as {
+        Properties: { AlarmActions?: unknown[]; OKActions?: unknown[] };
+      }[];
+      expect(alarm?.Properties.AlarmActions?.length ?? 0).toBeGreaterThan(0);
+      expect(
+        alarm?.Properties.OKActions?.length ?? 0,
+        "the alarm must notify on recovery (OK) as well as breach, so draining the DLQ is " +
+          "itself evidence the alarm self-resolved rather than staying latched",
+      ).toBeGreaterThan(0);
+    },
+  );
 });

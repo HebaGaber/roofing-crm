@@ -173,4 +173,55 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
       expect(closed).toHaveLength(1);
     });
   });
+
+  describe("Powertools observability wrapping (Phase 6 convergence T048, Constitution Article VIII)", () => {
+    it("wraps indexInfo with the shared Powertools middleware: structured logs plus a metrics flush", async () => {
+      ddbMock.onAnyCommand().resolves({ Item: undefined });
+      const logInfoSpy = vi.spyOn(obs.logger, "info");
+      const metricsFlushSpy = vi.spyOn(obs.metrics, "publishStoredMetrics");
+
+      const index = makeIndex();
+      await expect(index.indexInfo()).rejects.toThrow(IndexNotReadyError);
+
+      expect(logInfoSpy).toHaveBeenCalledWith(
+        "operation invoked",
+        expect.objectContaining({ operationName: "LeadIndex.indexInfo" }),
+      );
+      expect(logInfoSpy).toHaveBeenCalledWith(
+        "operation invoked",
+        expect.objectContaining({ operationName: "LeadIndex.indexInfo" }),
+      );
+      expect(metricsFlushSpy).toHaveBeenCalled();
+
+      logInfoSpy.mockRestore();
+      metricsFlushSpy.mockRestore();
+    });
+
+    it("wraps searchProperties with the shared Powertools middleware", async () => {
+      const MANIFEST_CID = `obs-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      ddbMock.onAnyCommand().resolves({ Item: { pk: "META#index", current: MANIFEST_CID } });
+      s3Mock
+        .on(GetObjectCommand)
+        .resolves({ Body: Readable.from([Buffer.from("bytes")]) } as never);
+      openParquetConnectionMock.mockResolvedValue({
+        closeSync: vi.fn(),
+        runAndReadAll: vi.fn(async () => ({ getRowObjectsJS: () => [] })),
+      });
+      const logInfoSpy = vi.spyOn(obs.logger, "info");
+
+      const index = makeIndex();
+      await index.searchProperties({});
+
+      expect(logInfoSpy).toHaveBeenCalledWith(
+        "operation invoked",
+        expect.objectContaining({ operationName: "LeadIndex.searchProperties" }),
+      );
+      expect(logInfoSpy).toHaveBeenCalledWith(
+        "operation completed",
+        expect.objectContaining({ operationName: "LeadIndex.searchProperties" }),
+      );
+
+      logInfoSpy.mockRestore();
+    });
+  });
 });

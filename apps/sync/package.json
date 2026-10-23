@@ -18,6 +18,7 @@
     "@aws-lambda-powertools/tracer": "2.36.0",
     "@aws-sdk/client-dynamodb": "3.709.0",
     "@aws-sdk/client-s3": "3.709.0",
+    "@aws-sdk/client-ssm": "3.709.0",
     "@aws-sdk/lib-dynamodb": "3.709.0",
     "@duckdb/node-api": "1.5.6-r.2",
     "@crm/config": "workspace:*",

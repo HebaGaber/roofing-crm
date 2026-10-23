@@ -67,3 +67,43 @@ export function withObservability<TEvent, TResult>(
     }
   };
 }
+
+/**
+ * Instruments one call against an already-constructed `Observability` instance, emitting the
+ * same structured JSON log entry, X-Ray subsegment and metrics flush as `withObservability`
+ * above — reused here, never reimplemented (constitution Article VIII) — for code that is not
+ * itself a Lambda handler entry point but still must never hand-roll its own Logger/Tracer/
+ * Metrics. `withObservability` always constructs a fresh `Observability` per call (correct for a
+ * Lambda handler, which owns exactly one per invocation); a port/class such as
+ * `apps/api/src/adapters/duckDbParquet.ts`'s `LeadIndex` is instead handed one `Observability`
+ * per Lambda invocation by its caller and reused across several method calls within that same
+ * invocation — so it needs this instrument-in-place form rather than `withObservability` itself.
+ */
+export async function withObservabilityOperation<TResult>(
+  obs: Observability,
+  operationName: string,
+  fn: () => Promise<TResult>,
+): Promise<TResult> {
+  obs.logger.info("operation invoked", { operationName });
+  const segment = obs.tracer.getSegment();
+  const subsegment = segment?.addNewSubsegment(`## ${operationName}`);
+  if (subsegment) {
+    obs.tracer.setSegment(subsegment);
+  }
+  try {
+    const result = await fn();
+    obs.logger.info("operation completed", { operationName });
+    return result;
+  } catch (error) {
+    obs.logger.error("operation failed", { operationName, error });
+    throw error;
+  } finally {
+    obs.metrics.publishStoredMetrics();
+    if (subsegment) {
+      subsegment.close();
+      if (segment) {
+        obs.tracer.setSegment(segment);
+      }
+    }
+  }
+}

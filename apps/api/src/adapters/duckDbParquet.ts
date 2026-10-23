@@ -8,7 +8,12 @@ import { GetCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openParquetConnection, type DuckDBConnection } from "../engine/duckdb.js";
-import { downloadS3ObjectToFile, METRIC_NAMES, type Observability } from "@crm/observability";
+import {
+  downloadS3ObjectToFile,
+  METRIC_NAMES,
+  withObservabilityOperation,
+  type Observability,
+} from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 
@@ -135,20 +140,29 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     this.tmpDir = deps.tmpDir ?? "/tmp/crm-index";
   }
 
+  // T048 (Phase 6 convergence, CRITICAL): every public LeadIndex method is wrapped with the
+  // shared Powertools observability middleware (constitution Article VIII), reusing
+  // `withObservabilityOperation` from `packages/observability` rather than hand-rolling
+  // Logger/Tracer/Metrics calls here. This port is not itself a Lambda handler entry point (its
+  // caller constructs one `Observability` per invocation and injects it via `deps.obs`), so it
+  // uses the instrument-in-place form rather than `withObservability` (which always constructs
+  // its own fresh Observability — correct for a handler, wrong for a reused, caller-owned one).
   async indexInfo(): Promise<IndexInfo> {
-    const item = await this.ddb.send(
-      new GetCommand({ TableName: this.tableName, Key: { pk: PK } }),
-    );
-    const current = item.Item?.current as string | undefined;
-    // Never returns a run whose Validate step has not passed (constitution P0-3): the pointer
-    // only ever names a Promoted run, so its mere presence is the readiness signal.
-    if (current === undefined) throw new IndexNotReadyError();
-    return {
-      manifestCid: current,
-      propertyCount: Number(item.Item?.propertyCount ?? 0),
-      permitCount: Number(item.Item?.permitCount ?? 0),
-      promotedAt: String(item.Item?.promotedAt ?? ""),
-    };
+    return withObservabilityOperation(this.obs, "LeadIndex.indexInfo", async () => {
+      const item = await this.ddb.send(
+        new GetCommand({ TableName: this.tableName, Key: { pk: PK } }),
+      );
+      const current = item.Item?.current as string | undefined;
+      // Never returns a run whose Validate step has not passed (constitution P0-3): the pointer
+      // only ever names a Promoted run, so its mere presence is the readiness signal.
+      if (current === undefined) throw new IndexNotReadyError();
+      return {
+        manifestCid: current,
+        propertyCount: Number(item.Item?.propertyCount ?? 0),
+        permitCount: Number(item.Item?.permitCount ?? 0),
+        promotedAt: String(item.Item?.promotedAt ?? ""),
+      };
+    });
   }
 
   /** Downloads and opens this manifest's Parquet once per sandbox, caching the open connection.
@@ -225,65 +239,71 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   }
 
   async searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]> {
-    const { manifestCid } = await this.indexInfo();
-    const { connection } = await this.ensureLoaded(manifestCid);
-    const conditions: string[] = [];
-    if (query.bbox) {
-      conditions.push(
-        `latitude BETWEEN ${query.bbox.south} AND ${query.bbox.north} AND longitude BETWEEN ${query.bbox.west} AND ${query.bbox.east}`,
+    return withObservabilityOperation(this.obs, "LeadIndex.searchProperties", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const conditions: string[] = [];
+      if (query.bbox) {
+        conditions.push(
+          `latitude BETWEEN ${query.bbox.south} AND ${query.bbox.north} AND longitude BETWEEN ${query.bbox.west} AND ${query.bbox.east}`,
+        );
+      }
+      if (query.roofAgeMinYears !== undefined)
+        conditions.push(`"roofAgeYears" >= ${query.roofAgeMinYears}`);
+      if (query.propertyUsageType !== undefined) {
+        conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
+      }
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const limit = query.limit ?? 100;
+      const reader = await connection.runAndReadAll(
+        `SELECT * FROM crm_property ${where} LIMIT ${limit}`,
       );
-    }
-    if (query.roofAgeMinYears !== undefined)
-      conditions.push(`"roofAgeYears" >= ${query.roofAgeMinYears}`);
-    if (query.propertyUsageType !== undefined) {
-      conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
-    }
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const limit = query.limit ?? 100;
-    const reader = await connection.runAndReadAll(
-      `SELECT * FROM crm_property ${where} LIMIT ${limit}`,
-    );
-    return reader.getRowObjectsJS() as unknown as PropertyResult[];
+      return reader.getRowObjectsJS() as unknown as PropertyResult[];
+    });
   }
 
   async searchPermits(query: SearchPermitsQuery): Promise<PermitResult[]> {
-    const { manifestCid } = await this.indexInfo();
-    const { connection } = await this.ensureLoaded(manifestCid);
-    const conditions: string[] = [];
-    if (query.propertyCid !== undefined)
-      conditions.push(`"propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
-    // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
-    // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored
-    // statusClass column, it does not re-derive it from raw dates.
-    if (query.isOpen !== undefined)
-      conditions.push(`"statusClass" ${query.isOpen ? "=" : "<>"} 'open'`);
-    if (query.openDaysMinimum !== undefined)
-      conditions.push(`"openDays" >= ${query.openDaysMinimum}`);
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const orderBy =
-      query.sort === "issueDate" ? `ORDER BY "issueDate"` : `ORDER BY "openDays" DESC`;
-    const reader = await connection.runAndReadAll(`SELECT * FROM crm_permit ${where} ${orderBy}`);
-    return reader.getRowObjectsJS() as unknown as PermitResult[];
+    return withObservabilityOperation(this.obs, "LeadIndex.searchPermits", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const conditions: string[] = [];
+      if (query.propertyCid !== undefined)
+        conditions.push(`"propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
+      // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
+      // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored
+      // statusClass column, it does not re-derive it from raw dates.
+      if (query.isOpen !== undefined)
+        conditions.push(`"statusClass" ${query.isOpen ? "=" : "<>"} 'open'`);
+      if (query.openDaysMinimum !== undefined)
+        conditions.push(`"openDays" >= ${query.openDaysMinimum}`);
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const orderBy =
+        query.sort === "issueDate" ? `ORDER BY "issueDate"` : `ORDER BY "openDays" DESC`;
+      const reader = await connection.runAndReadAll(`SELECT * FROM crm_permit ${where} ${orderBy}`);
+      return reader.getRowObjectsJS() as unknown as PermitResult[];
+    });
   }
 
   async getProperty(
     propertyCid: string,
   ): Promise<(PropertyResult & { permits: PermitResult[] }) | null> {
-    const { manifestCid } = await this.indexInfo();
-    const { connection } = await this.ensureLoaded(manifestCid);
-    const propertyReader = await connection.runAndReadAll(
-      `SELECT * FROM crm_property WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
-    );
-    const rows = propertyReader.getRowObjectsJS() as unknown as PropertyResult[];
-    const property = rows[0];
-    // null, not a thrown error, when the CID isn't in the currently promoted run (contracts/
-    // lead-index-port.md) — later stories render this as a typed "not in this run" state.
-    if (property === undefined) return null;
+    return withObservabilityOperation(this.obs, "LeadIndex.getProperty", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const propertyReader = await connection.runAndReadAll(
+        `SELECT * FROM crm_property WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
+      );
+      const rows = propertyReader.getRowObjectsJS() as unknown as PropertyResult[];
+      const property = rows[0];
+      // null, not a thrown error, when the CID isn't in the currently promoted run (contracts/
+      // lead-index-port.md) — later stories render this as a typed "not in this run" state.
+      if (property === undefined) return null;
 
-    const permitReader = await connection.runAndReadAll(
-      `SELECT * FROM crm_permit WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
-    );
-    const permits = permitReader.getRowObjectsJS() as unknown as PermitResult[];
-    return { ...property, permits };
+      const permitReader = await connection.runAndReadAll(
+        `SELECT * FROM crm_permit WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
+      );
+      const permits = permitReader.getRowObjectsJS() as unknown as PermitResult[];
+      return { ...property, permits };
+    });
   }
 }

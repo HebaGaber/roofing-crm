@@ -5,11 +5,15 @@
 // refinement in research.md). Records this run's start timestamp, read back by Promote (T022) to
 // compute SyncDurationMs — a cross-task data dependency threaded through the Step Functions
 // execution payload, not a side read.
+import { createHash } from "node:crypto";
 import { withObservability, type Observability } from "@crm/observability";
-import { RunManifestV1 } from "@crm/oracle-contract";
+import { RunManifestV1, RunsIndexV1 } from "@crm/oracle-contract";
+import { isCidV1 } from "@crm/oracle-contract/cid";
 import { PROFILE } from "@crm/oracle-profile-travis-austin";
 import { gazetteer } from "@crm/oracle-views";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { contentAddressedKey } from "./fetchPart.js";
 import { estimateCostFromManifest, evaluateCostGate } from "./costGate.js";
 
@@ -118,6 +122,143 @@ export interface PlanInput {
   __testForceDigestMismatch?: boolean;
 }
 
+/** Multibase 'b' = base32 (RFC4648, lowercase, no padding) — the only multibase CIDv1 uses. */
+const BASE32_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
+
+/**
+ * Decodes a CIDv1, raw-codec (0x55), sha2-256 (multihash code 0x12, length 0x20) CID down to its
+ * embedded 32-byte digest — the only CID shape Task A's published manifest/part CIDs use
+ * (confirmed against the real sample manifest CID). Returns `undefined` for any other multibase/
+ * version/codec/multihash shape; the caller treats that exactly like a verification failure,
+ * never a thrown error. No `multiformats` (or any other CID-decoding) package is vendored or
+ * installed anywhere in this workspace (ADR-07 vendors Task A's `query-core`/`contract` only,
+ * never its CID tooling) — this is a minimal, self-contained decode of exactly the shape in use,
+ * not a general-purpose CID library.
+ */
+function cidV1RawSha256Digest(cid: string): Buffer | undefined {
+  if (!cid.startsWith("b")) return undefined;
+  const body = cid.slice(1);
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+  for (const ch of body) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx === -1) return undefined;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  const [version, codec, multihashCode, multihashLength] = bytes;
+  if (
+    bytes.length < 4 + 32 ||
+    version !== 0x01 ||
+    codec !== 0x55 ||
+    multihashCode !== 0x12 ||
+    multihashLength !== 0x20
+  ) {
+    return undefined;
+  }
+  return Buffer.from(bytes.slice(4, 4 + 32));
+}
+
+/**
+ * T047 (Phase 6 convergence, CRITICAL): verifies the manifest's own fetched bytes against the
+ * `manifestCid` they were requested by — before this fix, only the manifest's *parts* were
+ * verified downstream (FetchPart's sha256 check), never the manifest itself, contradicting
+ * FR-001's "verify every byte... before use" and architecture-constitution.md §6/§8. Returns a
+ * boolean rather than throwing — `planCore` turns a `false` result into a `Held` run, never an
+ * uncaught exception or a silent pass-through of unverified bytes.
+ */
+function manifestBytesVerifyAgainstCid(cid: string, bytes: Uint8Array): boolean {
+  const expectedDigest = cidV1RawSha256Digest(cid);
+  if (expectedDigest === undefined) return false;
+  const actualDigest = createHash("sha256").update(bytes).digest();
+  return Buffer.compare(expectedDigest, actualDigest) === 0;
+}
+
+/** Reads one S3 object fully into memory as bytes, for the small `runs/index.json` hint file
+ *  only (never used for the multi-megabyte manifest/table artifacts, which stream to disk via
+ *  `packages/observability`'s `downloadS3ObjectToFile`). Works against both a real S3 SDK
+ *  response body and a plain `Readable` test fixture (both are async-iterable), unlike
+ *  `transformToByteArray()`, which only the real SDK's stream-mixin-wrapped body has. */
+async function readS3ObjectBytes(
+  s3: S3Client,
+  bucket: string,
+  key: string,
+): Promise<Uint8Array | undefined> {
+  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const body = res.Body;
+  if (body === undefined) return undefined;
+  const chunks: Buffer[] = [];
+  for await (const chunk of body as AsyncIterable<Buffer | Uint8Array>) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return new Uint8Array(Buffer.concat(chunks));
+}
+
+/** Env var naming the SSM parameter that pins the authoritative manifestCid (research.md's
+ *  decision: "A pinned manifest CID in SSM is the authority"). Unset in local/test runs and in
+ *  any environment where `infra/lib/crm-sync-stack.ts` has not yet wired this parameter — Plan
+ *  falls through to the `runs/index.json` hint, then to `input.manifestCidHint`, rather than
+ *  failing, so this remains additive until that infra wiring lands. */
+const MANIFEST_CID_SSM_PARAM_NAME_ENV = "MANIFEST_CID_SSM_PARAM_NAME";
+
+const RUNS_INDEX_KEY = "runs/index.json";
+
+/**
+ * T049 (Phase 6 convergence, HIGH): resolves the authoritative manifestCid per research.md's
+ * decision and contracts/sync-pipeline.md's Plan input comment — "SSM-pinned, or a verified
+ * `runs/index.json` hint" — instead of trusting `input.manifestCidHint` outright. Tries the
+ * SSM-pinned parameter first (if configured), then a verified `runs/index.json` hint in this
+ * run's own S3 bucket (Zod-validated against the vendored `RunsIndexV1` schema, ADR-07; "verified"
+ * here means schema-valid, since this is the CRM's own bucket, not a byte-for-byte CID check like
+ * the manifest's own bytes get). Returns `undefined`, never throws, when neither source is
+ * configured/reachable — `planCore` then falls back to `input.manifestCidHint` so an environment
+ * with neither SSM nor a published runs/index.json yet (today's deploy, and every unit test) keeps
+ * working exactly as before this fix.
+ */
+async function resolveAuthoritativeManifestCid(
+  bucket: string,
+  obs: Observability,
+): Promise<string | undefined> {
+  const ssmParamName = process.env[MANIFEST_CID_SSM_PARAM_NAME_ENV];
+  if (ssmParamName !== undefined && ssmParamName !== "") {
+    try {
+      const ssm = new SSMClient({});
+      const result = await ssm.send(new GetParameterCommand({ Name: ssmParamName }));
+      const value = result.Parameter?.Value;
+      if (value !== undefined && value !== "" && isCidV1(value)) {
+        return value;
+      }
+      obs.logger.warn("Plan: SSM manifest CID parameter did not hold a valid CIDv1 value", {
+        ssmParamName,
+      });
+    } catch (error) {
+      obs.logger.warn("Plan: SSM manifest CID parameter unreadable, falling back", {
+        ssmParamName,
+        error,
+      });
+    }
+  }
+
+  try {
+    const s3 = new S3Client({});
+    const bytes = await readS3ObjectBytes(s3, bucket, RUNS_INDEX_KEY);
+    if (bytes !== undefined) {
+      const parsed = RunsIndexV1.parse(JSON.parse(new TextDecoder().decode(bytes)));
+      const latest = parsed.runs.at(-1);
+      if (latest !== undefined) return latest.manifestCid;
+    }
+  } catch (error) {
+    obs.logger.info("Plan: no verified runs/index.json hint available, falling back", { error });
+  }
+
+  return undefined;
+}
+
 async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   let lastError: unknown;
   for (const url of manifestGatewayUrls(cid)) {
@@ -137,14 +278,52 @@ async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
 }
 
 async function planCore(input: PlanInput, obs: Observability): Promise<PlanResult | PlanHeld> {
-  const manifestCid = input.manifestCidHint;
+  const bucket = process.env.CRM_INDEX_BUCKET_NAME;
+  if (bucket === undefined || bucket === "") {
+    throw new Error("Plan: CRM_INDEX_BUCKET_NAME is not set");
+  }
+
+  // T049: the authoritative source (SSM-pinned parameter, or a verified runs/index.json hint)
+  // takes priority over the input hint — the hint is only ever the fallback when neither
+  // authoritative source is configured/reachable, never trusted outright on its own.
+  const authoritativeManifestCid = await resolveAuthoritativeManifestCid(bucket, obs);
+  const manifestCid = authoritativeManifestCid ?? input.manifestCidHint;
   if (manifestCid === undefined || manifestCid === "") {
     throw new Error(
-      "Plan: no manifestCidHint given (the SSM-pinned authority is read at deploy time, not by this handler directly)",
+      "Plan: no authoritative manifestCid resolved (no SSM-pinned parameter, no runs/index.json " +
+        "hint) and no manifestCidHint given",
+    );
+  }
+  if (
+    authoritativeManifestCid !== undefined &&
+    input.manifestCidHint !== undefined &&
+    input.manifestCidHint !== "" &&
+    input.manifestCidHint !== authoritativeManifestCid
+  ) {
+    obs.logger.warn(
+      "Plan: input manifestCidHint disagrees with the authoritative source (SSM/runs-index) — " +
+        "using the authoritative CID; the hint is advisory only",
+      { manifestCidHint: input.manifestCidHint, authoritativeManifestCid },
     );
   }
 
   const manifestBytes = await fetchManifestBytes(manifestCid);
+
+  // T047: verify the manifest's own bytes against the CID they were fetched by, before parsing
+  // or trusting anything in them — only the manifest's *parts* were verified downstream before
+  // this fix (FetchPart's sha256 check), never the manifest itself. Holds, never throws
+  // uncaught, on a mismatch (constitution P0-2/§8: "stop on a CID or sha256 mismatch ... no
+  // bypass of a failed verification"). Reuses the existing `digest_mismatch` heldReason
+  // (packages/index-schema's `IndexMetaHeldReason` enum) rather than adding a new one: both this
+  // check and the profile-digest guard below are "a computed digest did not match the one this
+  // byte source was supposed to produce," just checked against a different source of truth.
+  if (!manifestBytesVerifyAgainstCid(manifestCid, manifestBytes)) {
+    obs.logger.warn("Plan: held, fetched manifest bytes do not verify against their own CID", {
+      manifestCid,
+    });
+    return { status: "Held", heldReason: "digest_mismatch", manifestCid };
+  }
+
   const manifest = RunManifestV1.parse(JSON.parse(new TextDecoder().decode(manifestBytes)));
 
   const rulesProfile = manifest.profiles.find((p) => p.name === PROFILE.name);
@@ -183,10 +362,6 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     return { status: "Held", heldReason: costGateResult.heldReason, manifestCid };
   }
 
-  const bucket = process.env.CRM_INDEX_BUCKET_NAME;
-  if (bucket === undefined || bucket === "") {
-    throw new Error("Plan: CRM_INDEX_BUCKET_NAME is not set");
-  }
   const manifestKey = contentAddressedKey(manifestCid, "manifest.json");
   // Content-addressed, If-None-Match write — same idempotency boundary as FetchPart's own parts
   // (AC-4/FR-004): a re-run against an already-indexed manifestCid writes this key once, not
