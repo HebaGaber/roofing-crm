@@ -335,10 +335,15 @@ export class CrmSyncStack extends Stack {
 
     const validateTask = new tasks.LambdaInvoke(this, "Validate", {
       lambdaFunction: validateFn,
-      // Kept under its own key (not outputPath: "$.Payload") — IndexMeta is a strict Zod schema
-      // with no room for extra fields, but Promote still needs `startedAt` (as planStartedAt),
-      // which rode this far in state since BuildIndex echoed it forward; outputPath would have
-      // discarded it the same way `bucket` was lost the first time around (found live).
+      // payloadResponseOnly unwraps the Lambda's return value itself (not the full Invoke API
+      // response) before it's merged — resultPath keeps it under its own key rather than
+      // replacing state the way outputPath: "$.Payload" does elsewhere, since IndexMeta is a
+      // strict Zod schema with no room for extra fields, but Promote still needs `startedAt`
+      // (as planStartedAt), which rode this far in state since BuildIndex echoed it forward.
+      // Found live, twice: first without payloadResponseOnly, resultPath captured the whole raw
+      // Invoke response (ExecutionArn/StatusCode/Payload/...) under $.indexMeta, not the IndexMeta
+      // value itself, so $.indexMeta.status didn't exist either.
+      payloadResponseOnly: true,
       resultPath: "$.indexMeta",
     });
 
