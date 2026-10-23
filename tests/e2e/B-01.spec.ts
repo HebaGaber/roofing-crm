@@ -92,7 +92,18 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
 test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", () => {
   test("the 4th wrong password shows the typed lockout message, never a generic error", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    // Found running the full suite: this test genuinely locks the one shared, real admin
+    // account for a real 5-minute cooldown — it is the only test in this file that mutates
+    // account-wide state rather than just signing in. Running it once per viewport project (the
+    // suite's default) locks the account on the first project and the next project's run then
+    // finds it still locked, failing with the lockout message on what should be attempt 1. This
+    // is an auth-logic case, not a responsive/layout one, so it only needs to run once per suite
+    // execution — not once per viewport.
+    test.skip(
+      testInfo.project.name !== "desktop-1440",
+      "lockout mutates the one shared account for a real 5 minutes; runs once (desktop-1440 only), not once per viewport",
+    );
     for (let attempt = 0; attempt < 4; attempt++) {
       await signIn(page, "wrong-password-does-not-match");
       await page.waitForSelector("[data-sign-in-error]");
