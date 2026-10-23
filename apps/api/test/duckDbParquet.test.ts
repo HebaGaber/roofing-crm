@@ -209,7 +209,10 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
       });
       const logInfoSpy = vi.spyOn(obs.logger, "info");
 
-      const index = makeIndex();
+      // Generous timeout: this test asserts Powertools logging, not cold-load timing —
+      // the suite's default 50ms budget (tuned for the dedicated timeout test above) is
+      // flaky under CI's slower/emulated runners.
+      const index = makeIndex({ coldLoadTimeoutMs: 5000 });
       await index.searchProperties({});
 
       expect(logInfoSpy).toHaveBeenCalledWith(
