@@ -14,7 +14,7 @@ Budget: 1.5% of weekly quota (COST-MODE.md). Cost mode: Sonnet main session, Hai
 - [x] **B2** · 2026-10-23 · plan + tasks (INDEX/espeon, SYNC/machamp, one build wave) · analyze (D1/D2 fixed) · G5 FAIL→fixed, G6 FAIL→fixed (pre-checks not re-run after fixes; final PASS/approval is the user's at the gate)
 
 **C · Build**
-- [ ] **C1** espeon local prototype
+- [~] **C1** espeon local prototype · 2026-10-23 · T001-T011 (Setup+Foundational) done directly in main session, not delegated — Phase 2 explicitly blocks both builder groups, so it isn't builder-group work. T012/T013 (the actual local prototype) handed to espeon below.
 - [ ] **C2** INDEX + SYNC build wave
 - [ ] **C3** integration check
 
@@ -41,6 +41,11 @@ Budget: 1.5% of weekly quota (COST-MODE.md). Cost mode: Sonnet main session, Hai
 | A2 G4 pre-check | 2026-10-23 | FAIL→fixed (wording); 2 items → Round 1 |
 | A3 spec + clarify | 2026-10-23 | spec.md written, 0 clarify questions, checklist 16/16, committed ac384e4 |
 | Budget check (end Phase A) | 2026-10-23 | 104.2% weekly quota (over 90% stop line). User decision: continue as planned — overage is from other tracks, not B-02; re-check at each phase end |
+| Round 1 stop | 2026-10-23 | AC-2 tightened to ≤0.1% (user chose Recommended); eval-point recording kept as-is (Recommended); seed fixture deferred to B-03 (user override of Recommended) |
+| Budget check (end Phase B) | 2026-10-23 | 105.3% weekly quota. Proceeding to Phase C per earlier decision; 🧹 new session before Phase C per cost mode C3 |
+| Resume, new session | 2026-10-23 | Resumed into Phase C per Resume script. T001: copied `packages/contract`→`packages/oracle-contract`, `scripts/verify-manifest.ts` (Oracle repo clean at those paths); `packages/query-core` had uncommitted deletions in the Oracle repo mid-copy (another track's in-progress revert) — copy script refused the dirty tree, so used read-only `git archive HEAD` to vendor the last clean commit into `packages/oracle-views` instead (never touched the Oracle working tree), logged in docs/reuse-log.md with that explanation. Also discovered and vendored `profiles/travis-austin@1.0.0`→`packages/oracle-profile-travis-austin` (a query-core dependency the task description didn't name). Found and fixed: zod v3 (this workspace) vs vendored zod v4 (Oracle packages) can't compose schema objects across the major-version boundary — reused `isCidV1`/`MISSING_REASONS` as plain data instead of embedding zod4 schema instances; vendored tsconfigs pointed at a nonexistent `tsconfig.base.json`, repointed to `../tsconfig/node.json`. Renamed `@countylens/*` → `@crm/oracle-*` across all three vendored packages per the B-01 rename-pass precedent. |
+| T002-T011 | 2026-10-23 | Setup scaffolds (index-schema, apps/sync, scripts/local-rag-poc) + DATA_MANIFEST_CID added to @crm/config (tests-first, 3 pre-existing tests updated for the new required field) + @crm/observability built fresh (Logger/Tracer/Metrics middleware, METRIC_NAMES constants) — Powertools Logger writes via its own internal Console bound to process.stdout outside POWERTOOLS_DEV mode, not the global `console`, so the test spies process.stdout.write (matches real/prod behavior). T008 (plan.contract.test.ts) and T009 (crm-data-stack.test.ts, crm-sync-stack.test.ts, replacing B-01's "intentionally empty" assertions in stacks.test.ts) written and confirmed failing — their implementations land in Phase 3/4 below. All of @crm/config, @crm/index-schema, @crm/observability pass test+type-check; infra suite: 13 pass (unchanged stacks), 6 new fail as expected. |
+| Gap noted, not blocking | 2026-10-23 | `scripts/verify-manifest.ts` imports `../pipeline/publish/src/verify.ts`, not yet vendored — needed for Phase D's gateway cross-check, not Phase C. |
 
 ### Subagent calls
 
