@@ -22,6 +22,17 @@ table), adds pin-drop + the browser Geolocation API to the existing `CrmMap` com
 the "View lineage in Explorer" link that is new in the CRM. No new AWS resource: this story reads
 the index B-02 already built and syncs (A-03 sample manifest), and adds API + UI only.
 
+## Data flow (architecture-constitution.md §2.4)
+
+`apps/web`'s `CrmMap`/`FilterSheet` call `search.properties`/`search.permits`/`property.get` via
+`packages/api-client` (tRPC). Each procedure computes `bbox` from `center`/`radiusMi` via
+`packages/domain`, calls the existing B-02 `LeadIndex` adapter (DuckDB over the already-promoted
+`crm_property`/`crm_permit` Parquet — no new download, no new cold-load path), applies the
+exact-circle cut and the `isLongOpen`/`isAgedRoof` flags (also `packages/domain`), and returns
+rows plus `manifestCid`/`traceId` for provenance. No write path exists in this story — every
+procedure is read-only, matching the sequence diagram's `L->>X` query step with no new participant
+added to it.
+
 ## Technical Context
 
 **Language/Version**: TypeScript (Node.js + React 19, matching the existing `apps/web`/`apps/api` toolchain)
@@ -54,7 +65,7 @@ Copied from `stories/B-03-map-search.md` front matter and `specs/003-map-search/
 | Verify | Playwright with geolocation mock on the hosted preview; 15→25 roof-age count change; permits sorted by open days; a BBB-not-available case | — | Proven on the Amplify branch preview for `003-map-search`, never localhost |
 
 **Patterns the code must show** (from the builder's answer):
-- Shared business rules, written once (architecture-constitution.md §5): `packages/domain/src/radius.ts` (`bboxFor`, `distanceMeters`), `packages/domain/src/permit.ts` (`isLongOpen`, `openDurationLabel`) — imported by both `apps/web` and `apps/api`, never reimplemented in either.
+- Shared business rules, written once (architecture-constitution.md §5): `packages/domain/src/radius.ts` (`bboxFor`, `distanceMeters`), `packages/domain/src/permit.ts` (`isLongOpen`, `openDurationLabel`), `packages/domain/src/roofAge.ts` (`isAgedRoof`, `DEFAULT_ROOF_AGE_YEARS = 15`) — imported by both `apps/web` and `apps/api`, never reimplemented in either, and the threshold is a named constant rather than a literal `15` repeated across the UI and the API.
 - tRPC contracts, Zod-validated, no `any`: `apps/api/src/routers/search.ts` (`search.properties`, `search.permits`), `apps/api/src/routers/property.ts` (`property.get`), wired into `apps/api/src/routers/index.ts`'s `appRouter`.
 - Reused, never re-derived (ADR-07): the extended `LeadIndex.searchProperties`/`searchPermits` still read `crm_property`/`crm_permit` fields verbatim; no roof-age/status recomputation in the new routers.
 - Atlas tokens only (P0-14): every new component in `packages/ui` or `apps/web/src/components`, none with inline/ad hoc styling.
@@ -100,7 +111,8 @@ specs/003-map-search/
 packages/domain/                          # NEW — pure business rules, shared by web + api
 ├── src/
 │   ├── radius.ts                         # bboxFor(center, radiusMi), distanceMeters(a, b)
-│   └── permit.ts                         # isLongOpen(openDays), openDurationLabel(openDays)
+│   ├── permit.ts                         # isLongOpen(openDays), openDurationLabel(openDays)
+│   └── roofAge.ts                        # isAgedRoof(years, threshold), DEFAULT_ROOF_AGE_YEARS
 └── test/                                 # Vitest, written first
 
 apps/api/src/adapters/duckDbParquet.ts    # EXTEND (B-02's file) — SearchPropertiesQuery gains

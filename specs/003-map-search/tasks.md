@@ -31,9 +31,9 @@ builder; the run book splits its work into two groups so both halves build at on
 
 ---
 
-## Phase 1: Setup
+## Phase 1: Setup (shared, no story label)
 
-- [ ] T001 Create `packages/domain/` (package.json, tsconfig extending `packages/tsconfig`, Vitest config) per plan.md's Project Structure — no story label, shared by both groups
+- [ ] T001 Create `packages/domain/package.json`, `packages/domain/tsconfig.json` (extending `packages/tsconfig`), `packages/domain/vitest.config.ts` per plan.md's Project Structure — shared by both build groups
 
 ---
 
@@ -42,9 +42,9 @@ builder; the run book splits its work into two groups so both halves build at on
 **⚠️ CRITICAL**: both build groups depend on this phase.
 
 - [ ] T002 [P] Write failing Vitest cases for `bboxFor(center, radiusMi)` and `distanceMeters(a, b)` in `packages/domain/test/radius.test.ts` — fixed vectors matching the vendored `oracle-views`' `geo()` bbox/haversine constants (research.md "reusing… Task A's radius/roof-age SQL semantics")
-- [ ] T003 [P] Implement `bboxFor`/`distanceMeters` in `packages/domain/src/radius.ts` to pass T002
-- [ ] T004 [P] Write failing Vitest cases for `isLongOpen(openDays)` and `openDurationLabel(openDays)` in `packages/domain/test/permit.test.ts` — `isLongOpen(1826) === false`, `isLongOpen(1827) === true` (research.md "the long-open badge threshold": 5 years × 365.25, rounded down, 1826 days)
-- [ ] T005 [P] Implement `isLongOpen`/`openDurationLabel` in `packages/domain/src/permit.ts` to pass T004
+- [ ] T003 Implement `bboxFor`/`distanceMeters` in `packages/domain/src/radius.ts` to pass T002 (depends on T002 — not parallel with it)
+- [ ] T004 [P] Write failing Vitest cases for `isLongOpen(openDays)`, `openDurationLabel(openDays)` and `isAgedRoof(roofAgeYears, thresholdYears)` in `packages/domain/test/permit.test.ts` / `packages/domain/test/roofAge.test.ts` — `isLongOpen(1826) === false`, `isLongOpen(1827) === true` (research.md "the long-open badge threshold": 5 years × 365.25, rounded down, 1826 days); `isAgedRoof(15, DEFAULT_ROOF_AGE_YEARS) === true`, `isAgedRoof(14, DEFAULT_ROOF_AGE_YEARS) === false`
+- [ ] T005 Implement `isLongOpen`/`openDurationLabel` in `packages/domain/src/permit.ts`, and `isAgedRoof`/`DEFAULT_ROOF_AGE_YEARS = 15` in `packages/domain/src/roofAge.ts`, to pass T004 (depends on T004 — not parallel with it; architecture-constitution.md §5 names `isAgedRoof` as a shared rule, so the roof-age threshold is a named constant here, never a magic `15` scattered across the API and the UI)
 
 **Checkpoint**: `packages/domain` is complete and tested; both groups can now build on it.
 
@@ -94,15 +94,16 @@ confirm the count drops and matches a direct query of the same inputs.
 
 - [ ] T019 [P] [US2] Write failing Vitest test asserting `search.properties`'s `counts.afterRoofAge` is computed fresh (not cached) for every `roofAgeMinYears` value, over a fixture with a known age distribution, in `apps/api/test/search.properties.test.ts`
 - [ ] T020 [P] [US2] Write failing Playwright test for AC-3 (threshold 15 → only `roofAgeYears >= 15` rows, each showing `roofAgeBasis`/`roofAgeConfidence`) in `tests/e2e/B-03-map-search.spec.ts`
-- [ ] T021 [P] [US2] Write failing Playwright test for AC-4 (threshold 15→25 → visible count strictly lower, matches a direct `search.properties` call with the same inputs — run against `tests/fixtures/sample-travis/`, the local-only synthetic volume fixture, never the 35-row real sample, per quickstart.md §2) in `tests/e2e/B-03-map-search.spec.ts`
+- [ ] T021 [P] [US2] Write failing Vitest test for AC-4's scale assertion (threshold 15→25 → count strictly lower, matches a direct `search.properties` call with the same inputs) in `apps/api/test/search.properties.scale.test.ts`, run against `tests/fixtures/sample-travis/` — **Vitest only, never Playwright/hosted**: constitution P0-4 forbids synthetic/sample-shaped data from appearing in a deployed index or UI, so this fixture never reaches the Amplify preview; the hosted Playwright AC-4 assertion (T008/Phase Z) runs against the real A-03 sample instead, recording whatever count it finds (even if both counts are small) rather than the synthetic numbers
 
 ### Implementation for User Story 2
 
 - [ ] T022 [P] [US2] Generate `tests/fixtures/sample-travis/` (a few thousand synthetic rows in the `CrmProperty`/`CrmPermit` shape, marked `synthetic`, fake addresses/parcel ids; never deployed, never cited as real per WALKTHROUGH-B-sample-first.md §2) in a one-off generator script under `tests/fixtures/generate-sample-travis.ts`
 - [ ] T023 [US2] Add the `counts.afterRoofAge`/`counts.afterRadius` computation to `search.properties` (`apps/api/src/routers/search.ts`) — run the pipeline once with and once without `roofAgeMinYears`, both over the full index (depends on T013, T019)
-- [ ] T024 [US2] Add the roof-age threshold control to `FilterSheet.tsx` (`apps/web/src/routes/Map/FilterSheet.tsx`, copied from A-13's `ORACLE-u` worktree, renamed from CountyLens-specific names) — default 15 years, 15–25+ range
+- [ ] T023a [US2] Copy `ExploreFilters.state.ts` from `ORACLE-u` into `apps/web/src/routes/Map/ExploreFilters.state.ts` (URL filter state), renamed from CountyLens-specific names — done here, before `FilterSheet.tsx`, because both this story's roof-age control (T024) and its permit-view toggle (T030) read/write it
+- [ ] T024 [US2] Add the roof-age threshold control to `FilterSheet.tsx` (`apps/web/src/routes/Map/FilterSheet.tsx`, copied from A-13's `ORACLE-u` worktree, renamed from CountyLens-specific names) — default `DEFAULT_ROOF_AGE_YEARS` (`packages/domain`, T005), 15–25+ range, reading/writing `ExploreFilters.state.ts` (depends on T023a)
 - [ ] T025 [US2] Render `roofAgeBasis`/`roofAgeConfidence` on `ResultRow.tsx` (`apps/web/src/routes/Map/ResultRow.tsx`, copied from A-13) alongside the age (depends on T024)
-- [ ] T025a [P] [US2] Copy `apps/web/test/filter-sheet-controlled.test.tsx` and `explore-filters.test.tsx` from `ORACLE-u`, adapted to this story's `FilterSheet`/`ExploreFilters.state.ts`
+- [ ] T025a [P] [US2] Copy `apps/web/test/filter-sheet-controlled.test.tsx` and `explore-filters.test.tsx` from `ORACLE-u`, adapted to this story's `FilterSheet`/`ExploreFilters.state.ts` (depends on T023a, T024 — both files must exist first)
 
 **Checkpoint**: US1 + US2 both independently functional.
 
@@ -124,7 +125,7 @@ sort order and the badge on any permit open more than 5 years.
 
 - [ ] T028 [US3] Implement `search.permits` in `apps/api/src/routers/search.ts` per `contracts/search-api.md` — joins through the same radius-filtered property set as `search.properties`, attaches `isLongOpen` (`packages/domain`) per row (depends on T026, T012)
 - [ ] T029 [P] [US3] Implement `PermitChip.tsx` (`apps/web/src/routes/Map/PermitChip.tsx`, copied from A-13's `ORACLE-u` worktree) — renders the long-open badge from the `isLongOpen` flag, never recomputing it
-- [ ] T030 [US3] Add the permit-view toggle to `Map.tsx` and `ExploreFilters.state.ts` (`apps/web/src/routes/Map/ExploreFilters.state.ts`, copied from A-13's `ORACLE-u` worktree — URL filter state) calling `search.permits` (depends on T028, T029)
+- [ ] T030 [US3] Add the permit-view toggle to `Map.tsx` and extend the already-copied `ExploreFilters.state.ts` (`apps/web/src/routes/Map/ExploreFilters.state.ts`, T023a) with the permit-view flag, calling `search.permits` (depends on T023a, T028, T029)
 
 - [ ] T030a [P] [US3] Copy `tests/e2e/A-13-vitals.spec.ts` from `ORACLE-u`, adapted to this story's CRM routes (Map, permit view)
 
@@ -152,8 +153,8 @@ open one whose permit has no published BBB rating (confirm the honest absent-sta
 - [ ] T035 [US4] Wire `property` into `appRouter` in `apps/api/src/routers/index.ts`
 - [ ] T036 [P] [US4] Copy `components/MissingReason`, `Provenance`, `CidDisplay` from `ORACLE` (base) into `packages/ui/src/{MissingReason,Provenance,CidDisplay}/`, renaming CountyLens-specific names, running the CRM's own tests after the copy
 - [ ] T037 [P] [US4] Copy `PropertyDetail` drawer + `ContractorBadge` from `ORACLE-u` into `apps/web/src/routes/Map/PropertyDetail/{PropertyDetail,ContractorBadge}.tsx`, renaming CountyLens-specific names
-- [ ] T038 [US4] Wire the drawer to `property.get`, rendering the BBB-absent state (T033's assertion) and the "no contractor" state (`CrmPropertyNoContractor390`) — never a blank field (depends on T034, T036, T037)
-- [ ] T039 [US4] Add the "View lineage in Explorer" link render in `PropertyDetail.tsx`, new in the CRM — resolves to a real, already-published Task A record (depends on T034)
+- [ ] T038 [US4] Wire `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx` to `property.get` via `packages/api-client`, rendering the BBB-absent state (T033's assertion, using the copied `packages/ui/src/MissingReason`, T036) and the "no contractor" state (`CrmPropertyNoContractor390`) — never a blank field (depends on T034, T036, T037)
+- [ ] T039 [US4] Add the "View lineage in Explorer" link render to `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx`, new in the CRM — resolves to a real, already-published Task A record via the `lineageUrl` field from T034 (depends on T034, T037)
 
 **Checkpoint**: all four user stories independently functional — the full merged story is feature-complete pending Phase Z.
 
