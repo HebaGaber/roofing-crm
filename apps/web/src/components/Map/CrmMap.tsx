@@ -1,0 +1,92 @@
+// T021: MapLibre wrapper. center is fixed on Travis County (bounds.ts); minZoom is derived once
+// via map.cameraForBounds on load/resize, no maxBounds set (research.md). On a tile-load failure,
+// renders the named CrmMapFailed390 state with a "Retry" action — never a blank grey grid
+// (TC-007, the spec.md edge case closed at G5).
+import { Map as MapLibreMap, type MapLibreEvent } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
+import { buildMapInitOptions, computeMinZoom } from "./bounds.js";
+import styles from "./CrmMap.module.css";
+
+/** Default demo style: no API key required (maplibre demotiles); swap for a provider style later. */
+const DEFAULT_STYLE = "https://demotiles.maplibre.org/style.json";
+
+export interface CrmMapProps {
+  readonly styleUrl?: string;
+}
+
+export function CrmMap({ styleUrl = DEFAULT_STYLE }: CrmMapProps): ReactElement {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<MapLibreMap | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retryToken, setRetryToken] = useState(0);
+
+  const onRetry = useCallback(() => {
+    setFailed(false);
+    setRetryToken((token) => token + 1);
+  }, []);
+
+  useEffect(() => {
+    if (containerRef.current === null) return;
+
+    const map = new MapLibreMap({
+      container: containerRef.current,
+      style: styleUrl,
+      zoom: 9,
+      ...buildMapInitOptions(),
+    });
+    mapRef.current = map;
+    // Test-only hook (TD-4 fix, testplans/B-01-test-cases.md TC-002): exposes the live MapLibre
+    // instance so Playwright can assert the county-bbox minZoom guarantee directly, instead of
+    // only unit-testing the pure bounds math (bounds.test.ts) with no live-map assertion at all.
+    // Never read by application code — only by tests/e2e/B-01.spec.ts.
+    (window as unknown as { __crmMap?: MapLibreMap }).__crmMap = map;
+
+    const applyMinZoom = (): void => {
+      const minZoom = computeMinZoom(map);
+      if (minZoom !== undefined) {
+        map.setMinZoom(minZoom);
+      }
+    };
+
+    const onError = (event: MapLibreEvent & { error?: Error }): void => {
+      // MapLibre's "error" event fires for any internal failure (a malformed style, a lost
+      // WebGL context, a bad minZoom call), not only a tile-load failure — treating every one
+      // as CrmMapFailed390 with a "Retry" button would mislead the user for causes a reload can
+      // never fix (found in code review, CR-B-01). A tile-load failure is a network fetch
+      // failure, which MapLibre surfaces as a TypeError/AbortError-shaped message; anything else
+      // is logged instead of shown as the named tile-failure state.
+      const message = event.error?.message ?? "";
+      const isTileFailure = /fetch|network|abort|load/i.test(message);
+      if (isTileFailure) {
+        setFailed(true);
+      } else {
+        console.error("MapLibre error (not a tile-load failure):", event.error);
+      }
+    };
+
+    map.on("load", applyMinZoom);
+    map.on("resize", applyMinZoom);
+    map.on("error", onError);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      delete (window as unknown as { __crmMap?: MapLibreMap }).__crmMap;
+    };
+  }, [styleUrl, retryToken]);
+
+  return (
+    <div className={styles.wrapper}>
+      <div ref={containerRef} className={styles.map} data-testid="crm-map" />
+      {failed && (
+        <div role="alert" data-state="CrmMapFailed390" className={styles.failed}>
+          <p className={styles.failedMessage}>Map tiles failed to load.</p>
+          <button type="button" className={styles.retry} onClick={onRetry}>
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

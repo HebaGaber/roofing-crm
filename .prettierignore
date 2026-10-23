@@ -1,0 +1,15 @@
+pnpm-lock.yaml
+pnpm-workspace.yaml
+apps/web/src/styles/tokens.css
+
+# Planning/process docs, tool/skill infrastructure and design exports predate Prettier being
+# wired up in this story (B-01) — reformatting them is out of scope and would bury this
+# story's code diff in unrelated churn.
+docs/
+stories/
+specs/
+testplans/
+design/
+.claude/
+.specify/
+README.md

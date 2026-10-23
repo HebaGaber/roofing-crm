@@ -1,0 +1,155 @@
+# B-01: the one CI workflow for roofing-crm. Rewritten from the Task A (A-03) copy T001 brought
+# in (found in code review, CR-B-01): that version's `workspace` job ran `turbo run typecheck
+# lint test synth` — no package here defines a `typecheck` or `lint` script (only hyphenated
+# `type-check`, and `lint` is a root-only `eslint .` turbo doesn't pick up), so it silently
+# ran nothing and reported green. Its coverage-gate, stylelint, grep-gates and bundle-size steps
+# referenced packages/contract, packages/query-core and scripts/ that don't exist in this repo,
+# and its entire second job (`oracle-runtime`) was Task A's own pipeline CI, verbatim, targeting
+# a `pipeline/oracle-runtime` directory this repo has never had.
+#
+# CI never deploys and never holds AWS credentials: infrastructure deploys run from the PO's
+# laptop (profile assess) after approval per deploy. Amplify builds every push from its own Git
+# connection; `e2e-hosted` waits for that build and tests it. The region, account id and Amplify
+# app id are repository variables, never literals.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # @crm/config throws without CDK_DEFAULT_REGION (infra/src/config.ts); synth needs it even
+      # though this job never deploys.
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_DEFAULT_REGION: ${{ vars.AWS_REGION }}
+      CDK_DEFAULT_ACCOUNT: ${{ vars.AWS_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check (Turborepo)
+        run: pnpm run type-check
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Unit tests (Turborepo)
+        run: pnpm run test
+
+      - name: Prettier
+        run: pnpm run format
+
+      - name: cdk synth --strict (cdk-nag runs as part of synth, infra/src/app.ts)
+        working-directory: infra
+        run: pnpm exec cdk synth --strict
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # constitution Article XII: every suppressed fingerprint is governed. A fingerprint line
+      # must sit under a comment block with a "# reason:" line naming the file, the false-positive
+      # kind and the PO decision; the PR lists them.
+      - name: .gitleaksignore governance (every fingerprint under a "# reason:" comment)
+        run: |
+          test -f .gitleaksignore || { echo "no .gitleaksignore: nothing to govern"; exit 0; }
+          awk '
+            /^[[:space:]]*$/ { reason = 0; next }
+            /^#/ { if ($0 ~ /^# reason:/) reason = 1; next }
+            { if (!reason) { printf ".gitleaksignore:%d: fingerprint without a preceding \"# reason:\" comment: %s\n", NR, $0; bad++ } }
+            END { exit bad ? 1 : 0 }
+          ' .gitleaksignore
+
+      - name: gitleaks (full history, .gitleaksignore honoured)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  e2e-hosted:
+    if: github.event_name == 'push' && (github.ref_name == 'feature/roofing-crm' || startsWith(github.ref_name, '0'))
+    needs: [workspace, gitleaks]
+    runs-on: ubuntu-latest
+    # The one job outside the 15-minute budget: waits for the Amplify build of this commit, then
+    # Playwright on the hosted URL.
+    timeout-minutes: 30
+    # A newer push makes this commit's hosted run stale; cancel it.
+    concurrency:
+      group: e2e-hosted-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      # Amplify builds the branch from the same push (branch slug: "/" becomes "-").
+      # infra/lib/crm-web-stack.ts has no /build.json route yet (B-01 has none — a future story's
+      # concern), so this polls the branch's own default page instead of a build-identity file.
+      - name: Wait for the Amplify build of this commit
+        run: |
+          if [ -z "$AMPLIFY_APP_ID" ]; then
+            echo "::error::Repository variable AMPLIFY_APP_ID is not set (CrmWeb output)"
+            exit 1
+          fi
+          slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '/' '-')
+          url="https://${slug}.${AMPLIFY_APP_ID}.amplifyapp.com"
+          deadline=$(( $(date +%s) + 12 * 60 ))
+          while :; do
+            code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$url/sign-in" || echo "000")
+            if [ "$code" = "200" ]; then
+              echo "$url is live"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::$url did not come up within 12 minutes (last HTTP status: $code)"
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "RUNTIME_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The Playwright config refuses an explicit localhost RUNTIME_URL (config-guard.spec.ts);
+      # RUNTIME_URL here is always the hosted branch URL.
+      - name: Playwright on the hosted URL
+        run: pnpm exec playwright test
+
+      - name: Upload the Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14

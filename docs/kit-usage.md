@@ -8,7 +8,7 @@ Every story also loads `apply-engineering-guidelines`. Agents follow `../assessm
 
 | Story | Primary agent | Skills loaded | Reviewer | What the kit decided or produced |
 | --- | --- | --- | --- | --- |
-| B-01 Walking skeleton | `metagross` | `build-frontend-backends`, `integrate-ci-cd` | `metagross` | — |
+| B-01 Walking skeleton | `metagross` | `build-frontend-backends`, `integrate-ci-cd` | `metagross` | Turborepo + Cognito + MapLibre shell live at RUNTIME_URL; lockout redesigned mid-build (client-reported failures, server-enforced block) after `metagross`'s original PreAuthentication-only design proved a no-op against real Cognito |
 | B-02 Lead search index | `espeon` (index), `machamp` (batch); design with `alakazam` | `build-local-rag-pocs`, `build-rag-systems`, `build-batch-workflows`, `unify-metrics`, `use-elephant-mcp` | `espeon`, `alakazam`, `machamp`, `porygon`, `donphan` | — |
 | B-03 Radius search | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
 | B-04 Roof age | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
@@ -17,7 +17,7 @@ Every story also loads `apply-engineering-guidelines`. Agents follow `../assessm
 | B-07 Leads | `metagross`; design with `mew` | `build-frontend-backends`, `use-neutral-lexicon` | `metagross` | — |
 | B-08 Lead list | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
 | B-09 Agent | `alakazam` (retrieval), `ash` (runtime) | `build-rag-systems`, `build-ai-agents`, `use-elephant-mcp` | `alakazam`, `ash` | — |
-| B-10 Disabled sections | `metagross` | `build-frontend-backends` | `metagross`, `audino` | — |
+| B-10 Disabled sections | `metagross` | `build-frontend-backends` | `metagross`, `audino` | Shared `NavRow` (`aria-disabled`, tooltip, still interactive) reused unmodified between the nav rail and the 390 px "More" sheet; `smeargle` responsive pass clean after 2 Atlas-token fixes |
 | B-11 Responsive + observable | `metagross`; design with `smeargle`, `porygon` | `responsive-design-tests`, `unify-metrics`, `build-frontend-backends` | `metagross`, `audino`, `porygon` | — |
 
 `smeargle` runs the responsive suite on every `ui: true` story. Whole-repo moments: `arceus` at P1, `slowking` at R6.

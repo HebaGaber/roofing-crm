@@ -14,7 +14,7 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 
 | # | README criterion / demo line | Eval point | FEAT | Story (US) | Spec FR | Test case | Evidence | Demo time |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| AC-1 | Default the map and search experience to a particular county, with support for exploring properties in the user's selected area. | B1 | FEAT-B01 | B-01 | | | docs/evidence/B-01.md | |
+| AC-1 | Default the map and search experience to a particular county, with support for exploring properties in the user's selected area. | B1 | FEAT-B01 | B-01 | FR-001 | TC-001, TC-006, TC-010 | docs/evidence/B-01.md | 2026-10-23 |
 | AC-2 | Allow users to center property search on current GPS location and/or a pin dropped on the map. | B1 | FEAT-B03 | B-03 | | | docs/evidence/B-03.md | |
 | AC-3 | Allow users to set a configurable search radius around the selected location. | B1 | FEAT-B03 | B-03 | | | docs/evidence/B-03.md | |
 | AC-4 | Display properties within the radius that have roofs older than a configurable age threshold (default suggestion: 15 years). | B2 | FEAT-B04, FEAT-B02 | B-04 (data: B-02) | | | docs/evidence/B-04.md | |
@@ -24,7 +24,7 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | AC-8 | Support creating and managing CRM lead records from identified properties and permits. | B4 | FEAT-B07 | B-07 | | | docs/evidence/B-07.md | |
 | AC-9 | Provide a RAG-backed agent that answers natural-language queries about roofing opportunities using available property and permit data. | B5 | FEAT-B09 | B-09 | | | docs/evidence/B-09.md | |
 | AC-10 | Keep data gathering, ingestion, and source-system integration out of scope; consume pre-existing/available datasets. | B6 (also the access boundary) | FEAT-B02 | B-02 | | | docs/evidence/B-02.md | |
-| AC-11 | Show (disabled) sections on the CRM that would expand the product beyond the initial lead-identification workflow. | B6 | FEAT-B10 | B-10 | | | docs/evidence/B-10.md | |
+| AC-11 | Show (disabled) sections on the CRM that would expand the product beyond the initial lead-identification workflow. | B6 | FEAT-B10 | B-10 | FR-004, FR-005 | TC-005, TC-008, TC-009 | docs/evidence/B-01.md § B-10 | 2026-10-23 |
 | R-1 | Context: finding and qualifying **residential and commercial** roofing leads. | B2 | FEAT-B04, FEAT-B02 | B-04 (data: B-02) | | | docs/evidence/B-04.md | |
 | R-2 | Context: turn signals into **actionable outreach opportunities**. | B4 | FEAT-B07 | B-07 | | | docs/evidence/B-07.md | |
 | R-3 | Description: the UI presents **property** and permit details, including contractor information. | B3 | FEAT-B06 | B-06 | | | docs/evidence/B-06.md | |
@@ -32,7 +32,7 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | OOS-1 | Out of scope: property, permit, ownership or enrichment data collection and ingestion pipelines. | B6 (access boundary) | FEAT-B02 | B-02 | | | docs/evidence/B-02.md | |
 | OOS-2 | Out of scope: live BBB API integration beyond displaying scores already in the data. | B3 | FEAT-B06, FEAT-B14 | B-06 | | | docs/evidence/B-06.md | |
 | OOS-3 | Out of scope: actual outbound messaging to property owners (can be mocked or deferred). | B6 | FEAT-B10, FEAT-B13 | B-10 | | | docs/evidence/B-10.md | |
-| D-1 | Open the CRM centered on a particular county. | B1 | FEAT-B01 | B-01 | | | docs/evidence/B-01.md | |
+| D-1 | Open the CRM centered on a particular county. | B1 | FEAT-B01 | B-01 | FR-001 | TC-001 | docs/evidence/B-01.md | 2026-10-23 |
 | D-2 | Drop a pin (or use GPS) and set a search radius. | B1 | FEAT-B03 | B-03 | | | docs/evidence/B-03.md | |
 | D-3 | Show roofs older than the age threshold (e.g., 15 years) within the radius. | B2 | FEAT-B04 | B-04 | | | docs/evidence/B-04.md | |
 | D-4 | Highlight properties with open roofing permits, prioritizing long-open permits. | B3 | FEAT-B05 | B-05 | | | docs/evidence/B-05.md | |
@@ -40,7 +40,7 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | D-6 | Convert one or more matches into CRM lead records. | B4 | FEAT-B07 | B-07 | | | docs/evidence/B-07.md | |
 | D-7 | Ask the RAG agent a natural-language query for roofing opportunities in the area and show relevant results. | B5 | FEAT-B09 | B-09 | | | docs/evidence/B-09.md | |
 | D-8 | Demonstrate filtering leads by roof age, permit status/open duration, and location radius. | B6 | FEAT-B08 | B-08 | | | docs/evidence/B-08.md | |
-| D-9 | Show disabled/placeholder sections for future CRM expansions beyond lead identification. | B6 | FEAT-B10 | B-10 | | | docs/evidence/B-10.md | |
+| D-9 | Show disabled/placeholder sections for future CRM expansions beyond lead identification. | B6 | FEAT-B10 | B-10 | FR-004, FR-005 | TC-005, TC-008 | docs/evidence/B-01.md § B-10 | 2026-10-23 |
 
 ## 2. Chain matrix (BN → release)
 
@@ -56,6 +56,10 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G1 | docs/feature-list.md | 0.2 | PASS | Approved | 2026-10-21 |
 | G2 | docs/plan.md | 0.1 | PASS | Approved | 2026-10-21 |
 | Design CP | design/ | | | | |
-| G3 | docs/architecture-constitution.md | | | | |
-| G4–G7 | per story; see `docs/progress.md` | | | | |
+| G3 | docs/architecture-constitution.md | 1.0 | PASS | Approved | 2026-10-23 |
+| G4 (B-01) | stories/B-01-crm-shell.md | | PASS | Ready | 2026-10-23 |
+| G5 (B-01) | specs/001-crm-shell/{plan,tasks}.md | | PASS (4 rounds, structural fixes) | Approved | 2026-10-23 |
+| G6 (B-01) | testplans/B-01-test-cases.md | | PASS (4 rounds; TD-4 polish exceptions) | Approved with exceptions | 2026-10-23 |
+| G7 (B-01) | docs/gates/G7-B-01-precheck.md | | PASS (TD-5 coverage exception) | pending Round 2 | 2026-10-23 |
+| G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

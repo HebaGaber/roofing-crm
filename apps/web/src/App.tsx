@@ -1,0 +1,29 @@
+// Route table (plan.md "Project Structure"): /sign-in (public, no session needed) and everything
+// else behind RequireSession + AppShell (Map at "/", Coming Soon at /coming-soon/:section).
+import type { ReactElement } from "react";
+import { BrowserRouter, Route, Routes } from "react-router";
+import { RequireSession } from "./auth/RequireSession.js";
+import { AppShell } from "./components/AppShell.js";
+import { Component as ComingSoon } from "./routes/ComingSoon.js";
+import { Component as MapRoute } from "./routes/Map/Map.js";
+import { Component as SignIn } from "./routes/SignIn/SignIn.js";
+
+export function App(): ReactElement {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/sign-in" element={<SignIn />} />
+        <Route
+          element={
+            <RequireSession>
+              <AppShell />
+            </RequireSession>
+          }
+        >
+          <Route path="/" element={<MapRoute />} />
+          <Route path="/coming-soon/:section" element={<ComingSoon />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}

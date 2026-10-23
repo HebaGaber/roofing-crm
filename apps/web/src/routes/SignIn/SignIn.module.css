@@ -1,0 +1,80 @@
+/* Atlas tokens only (constitution P0-14) — no raw colors/spacing. */
+.page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+  background: var(--md-sys-color-surface-container-low);
+}
+
+.title {
+  font: var(--md-sys-typescale-headline-medium-weight)
+    var(--md-sys-typescale-headline-medium-size) /
+    var(--md-sys-typescale-headline-medium-line-height) var(--md-ref-typeface-brand);
+  color: var(--md-sys-color-on-surface);
+  /* The browser's UA stylesheet default h1 margin-top was never reset, so it fell through as an
+     un-tokened value (found by smeargle's Atlas-token audit, TZ04) — 0 is an allowed value. */
+  margin-top: 0;
+  margin-bottom: var(--space-6);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 360px;
+  padding: var(--space-6);
+  background: var(--md-sys-color-surface);
+  border-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.label {
+  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
+    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.input {
+  padding: var(--space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  font: var(--md-sys-typescale-body-large-weight) var(--md-sys-typescale-body-large-size) /
+    var(--md-sys-typescale-body-large-line-height) var(--md-ref-typeface-plain);
+  color: var(--md-sys-color-on-surface);
+  background: var(--md-sys-color-surface);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--status-danger);
+  background: var(--status-danger-container);
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: var(--space-3);
+  font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size) /
+    var(--md-sys-typescale-body-medium-line-height) var(--md-ref-typeface-plain);
+}
+
+.submit {
+  margin-top: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
+    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: var(--md-sys-state-disabled-opacity);
+  cursor: default;
+}

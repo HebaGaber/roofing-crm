@@ -1,0 +1,39 @@
+/* Visible below 600px; the NavRail takes over from 600px (T028) — matches AppShell.module.css's
+   own grid breakpoint and NavRail.module.css's (found in code review, CR-B-01: this previously
+   said 768px, disagreeing with both). */
+.wrapper {
+  display: block;
+}
+
+@media (min-width: 600px) {
+  .wrapper {
+    display: none;
+  }
+}
+
+.trigger {
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font: var(--md-sys-typescale-label-medium-weight) var(--md-sys-typescale-label-medium-size) /
+    var(--md-sys-typescale-label-medium-line-height) var(--md-ref-typeface-plain);
+  cursor: pointer;
+}
+
+.panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  background: var(--md-sys-color-surface-container-high);
+  border-top-left-radius: var(--md-sys-shape-corner-large);
+  border-top-right-radius: var(--md-sys-shape-corner-large);
+  box-shadow: var(--md-sys-elevation-level3);
+  z-index: 2;
+}
