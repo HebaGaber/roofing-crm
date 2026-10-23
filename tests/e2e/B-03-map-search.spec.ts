@@ -71,7 +71,7 @@ test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () =>
     await waitForMapReady(page);
 
     await clickMapAt(page, PFLUGERVILLE);
-    const radius = page.getByLabel("Radius");
+    const radius = page.getByRole("spinbutton", { name: "Radius" });
     await radius.fill("5");
     await radius.blur();
 
@@ -129,7 +129,7 @@ test.describe("AC-1 edge case: zero results near Lago Vista widen to a wider rad
     await waitForMapReady(page);
 
     await clickMapAt(page, LAGO_VISTA);
-    const radius = page.getByLabel("Radius");
+    const radius = page.getByRole("spinbutton", { name: "Radius" });
     await radius.fill("0.5");
     await radius.blur();
 
