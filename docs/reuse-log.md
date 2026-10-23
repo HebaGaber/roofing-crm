@@ -71,3 +71,27 @@ T001 e2e-helpers correction (after the row above): on inspection, `tests/e2e/res
 | 2026-10-23T08:57Z | `tests/e2e/verify-manifest.spec.ts` | `tests/e2e/verify-manifest.spec.ts` | a1fd50a | feature/oracle-pipeline | bb30bf08d2873ef028ef625c2238a58b0ba9b92386657a3b5870d14d3f20e669 |
 | 2026-10-23T08:57Z | `apps/api/test/query.test.ts` | `apps/api/test/query.test.ts` | 9191b3c | feature/oracle-pipeline | eee823166cb2807b3591dbb7c6837b3ff9a5c7fb078ab7a9df0e0baef9539a3c |
 | 2026-10-23T08:57Z | `apps/api/test/duckdb-node.test.ts` | `apps/api/test/duckdb-node.test.ts` | a1fd50a | feature/oracle-pipeline | 4f7cdb85e4186bea9367f6ce029c62aedacbfc1cc8c406d3dcdd2506c8c206b7 |
+| 2026-10-23T18:21Z | `apps/web/src/components/MissingReason.tsx` | `packages/ui/src/MissingReason/MissingReason.tsx` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:21Z | `apps/web/src/components/Provenance.tsx` | `packages/ui/src/Provenance/Provenance.tsx` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:21Z | `apps/web/src/components/Provenance.module.css` | `packages/ui/src/Provenance/Provenance.module.css` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:21Z | `apps/web/src/components/CidDisplay.tsx` | `packages/ui/src/CidDisplay/CidDisplay.tsx` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:21Z | `apps/web/src/components/CidDisplay.module.css` | `packages/ui/src/CidDisplay/CidDisplay.module.css` | 660f73c | feature/oracle-pipeline |
+| 2026-10-23T18:21Z | `tests/e2e/perf.spec.ts` | `tests/e2e/perf.spec.ts` | a1fd50a | feature/oracle-pipeline |
+| 2026-10-23T18:23Z | `apps/web/src/components/FilterSheet.tsx` | `apps/web/src/routes/Map/FilterSheet.tsx` | d3ae47e |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/components/FilterSheet.module.css` | `apps/web/src/routes/Map/FilterSheet.module.css` | a285dbe |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/components/ResultRow.tsx` | `apps/web/src/routes/Map/ResultRow.tsx` | 0ac0d03 |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/components/ResultRow.module.css` | `apps/web/src/routes/Map/ResultRow.module.css` | 0ac0d03 |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/components/PermitChip.tsx` | `apps/web/src/routes/Map/PermitChip.tsx` | 0ac0d03 |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/components/ContractorBadge.tsx` | `apps/web/src/routes/Map/PropertyDetail/ContractorBadge.tsx` | 0ac0d03 |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/routes/ExploreFilters.state.ts` | `apps/web/src/routes/Map/ExploreFilters.state.ts` | 0ac0d03 |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/src/routes/PropertyDrawer.tsx` | `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx` | 70561ec |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/test/filter-sheet-controlled.test.tsx` | `apps/web/test/filter-sheet-controlled.test.tsx` | d3ae47e |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `apps/web/test/explore-filters.test.tsx` | `apps/web/test/explore-filters.test.tsx` | 2cc58ac |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:23Z | `tests/e2e/A-13-vitals.spec.ts` | `tests/e2e/A-13-vitals.spec.ts` | a285dbe |   013-explorer-and-pages (base repo, via temp worktree) |
+| 2026-10-23T18:24Z | `apps/web/src/components/Icon.tsx` | `packages/ui/src/Icon/Icon.tsx` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:24Z | `apps/web/src/components/Icon.module.css` | `packages/ui/src/Icon/Icon.module.css` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:24Z | `apps/web/src/components/StatusPill.tsx` | `packages/ui/src/StatusPill/StatusPill.tsx` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:24Z | `apps/web/src/components/StatusPill.module.css` | `packages/ui/src/StatusPill/StatusPill.module.css` | 570285d | feature/oracle-pipeline |
+| 2026-10-23T18:25Z | `packages/shared/src/labels.ts` | `packages/oracle-contract/src/labels.ts` | 660f73c | feature/oracle-pipeline |
+| 2026-10-23T18:26Z | `tests/e2e/lib/evidence.ts` | `tests/e2e/lib/evidence.ts` | a1fd50a | feature/oracle-pipeline |
+| 2026-10-23T18:26Z | `tests/e2e/lib/fixtures.ts` | `tests/e2e/lib/fixtures.ts` | 071eb1b | feature/oracle-pipeline |
