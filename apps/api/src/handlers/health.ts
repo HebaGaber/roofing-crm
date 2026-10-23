@@ -22,6 +22,17 @@ const trpcHandler = awsLambdaRequestHandler({
   }),
 });
 
+// The tRPC Lambda adapter derives the procedure path from the route match: for a route with a
+// greedy `{proxy+}` path parameter it uses the matched remainder (correct), but for an exact
+// literal route (our public, unauthorized health.ping route — found deploying) it falls back to
+// the full `rawPath`, which still has the API Gateway route's own "/trpc" prefix attached
+// ("No procedure found on path \"trpc/health.ping\""). Strip it before handing the event over.
+export function stripTrpcPrefix(event: APIGatewayProxyEventV2): APIGatewayProxyEventV2 {
+  const prefix = "/trpc";
+  if (!event.rawPath.startsWith(`${prefix}/`)) return event;
+  return { ...event, rawPath: event.rawPath.slice(prefix.length) };
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
   context: Context,
@@ -31,7 +42,7 @@ export async function handler(
   logger.addContext(context);
   logger.info("health.ping invoked", { requestId: event.requestContext.requestId });
   try {
-    const result = await trpcHandler(event, context);
+    const result = await trpcHandler(stripTrpcPrefix(event), context);
     metrics.addMetric("HealthPingInvocations", MetricUnit.Count, 1);
     return result;
   } catch (error) {

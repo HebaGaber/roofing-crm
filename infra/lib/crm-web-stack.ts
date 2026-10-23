@@ -30,7 +30,15 @@ export class CrmWebStack extends Stack {
       customRules: [
         {
           source: "/api/<*>",
-          target: `${props.apiUrl}<*>`,
+          target: `${props.apiUrl}/<*>`,
+          status: "200",
+        },
+        {
+          // SPA fallback: any path with no file extension serves index.html so client-side
+          // routing (react-router) handles it — otherwise a direct load of /sign-in or
+          // /coming-soon/:section 404s instead of rendering the app (found deploying, AC-1/AC-5).
+          source: "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|ttf|map|json)$)([^.]+$)/>",
+          target: "/index.html",
           status: "200",
         },
       ],

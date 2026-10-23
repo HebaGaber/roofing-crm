@@ -47,7 +47,20 @@ export class CrmApiStack extends Stack {
         POWERTOOLS_METRICS_NAMESPACE: "RoofingCrm",
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
-      bundling: { format: OutputFormat.ESM, minify: true },
+      bundling: {
+        format: OutputFormat.ESM,
+        minify: true,
+        // esbuild's ESM output can't convert a dependency's CJS `require()` calls on its own
+        // ("Dynamic require of ... is not supported" at cold start, found deploying) — the
+        // documented CDK workaround: a createRequire shim in the bundle banner.
+        banner:
+          "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+        // NodejsFunction defaults to externalModules: ['@aws-sdk/*'] (assumes the Lambda
+        // runtime's built-in SDK), but its @smithy/* sub-dependencies aren't resolvable from
+        // that built-in layer in ESM output (Runtime.ImportModuleError, found deploying) —
+        // bundle the AWS SDK ourselves instead of depending on the runtime's version/layout.
+        externalModules: [],
+      },
     });
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
 

@@ -49,7 +49,16 @@ export class CrmOpsStack extends Stack {
         POWERTOOLS_METRICS_NAMESPACE: "RoofingCrm",
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
-      bundling: { format: OutputFormat.ESM, minify: true },
+      bundling: {
+        format: OutputFormat.ESM,
+        minify: true,
+        // Same fix as CrmApi's TrpcHandler (crm-api-stack.ts) — esbuild's ESM output can't
+        // convert a dependency's CJS `require()` calls on its own; shim it in the bundle banner.
+        banner:
+          "import { createRequire } from 'module'; const require = createRequire(import.meta.url);",
+        // Same reason as CrmApi: don't rely on the Lambda runtime's built-in AWS SDK layout.
+        externalModules: [],
+      },
     });
     lockoutTable.grantReadWriteData(lockoutHandler);
     lockoutHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
