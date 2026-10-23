@@ -572,6 +572,7 @@ Each case is a complete, ordered sequence starting from the hosted URL, in a pri
 | B-03-TC-019, B-03-TC-020 | A property **"near Manor"** | GAP-6b: no property in this 14-row slice is within normal demo distance of Manor, TX (nearest is 7.48 mi). `{P_MANOR}` is the closest available and is used with that caveat recorded in evidence | none yet |
 | B-03-TC-022 | A permit with a **published** BBB rating | GAP-6c, confirmed by direct query: `bbb_status`/`bbbRating` is never populated in this slice (every permit's contractor is `unresolved`, so BBB lookup never runs). This case has no real candidate and is recorded **blocked**, not passed with a stand-in value, until the full county | none yet |
 | B-03-TC-002, B-03-TC-006, B-03-TC-007, B-03-TC-008, B-03-TC-009, B-03-TC-010, B-03-TC-024 | Exact on-screen copy ("widen to {n} mi", "outside Travis County", "location denied", the index-down text) | GAP-2: the prototype carries these as titles, not body copy. Each case asserts the wording given in the story or the prototype title; the exact strings are confirmed against the design before G7. (TC-021/TC-023's BBB/contractor wording is no longer GAP-2 — it now quotes the real `missingReasons` codes, `contractor_unresolved`/`no_lexicon_carrier`, confirmed by direct query.) | none yet |
+| B-03-TC-011, TC-012, TC-013, TC-016, TC-017, TC-018, TC-019, TC-020, TC-021, TC-022, TC-023, TC-NF-01, TC-024, TC-025, TC-026 | Any real, populated result on the hosted preview | **GAP-7 (new, found live 2026-10-23/24, cross-story):** `crm-leads` (B-07's DynamoDB table) does not exist in this AWS environment yet, so B-02's `Promote` step never actually flipped `META#index` — the raw Parquet data is correct in S3, but no run has ever been promoted. Every `search.properties`/`search.permits`/`property.get` call on the hosted environment correctly returns the typed `INDEX_NOT_READY` state, which blocks live proof of **every** AC that needs a populated result, not just these. Fixed in this story: `indexInfo()` now returns this typed state instead of a raw 500 (`apps/api/test/duckDbParquet.test.ts`'s regression test). These TCs' underlying logic is proven by Vitest/component tests (`packages/domain`, `apps/api/test/*`, `apps/web/test/result-row-card.test.tsx`, `apps/web/test/filter-sheet-controlled.test.tsx`) instead; AC-1/AC-2's own Playwright tests (TC-001/004/006/007/009) already accept the honest not-ready state as valid proof of the error-handling path. Dedicated Playwright specs for TC-011 through TC-026 are not yet written, since until B-07 deploys they could only re-prove the same not-ready state TC-001 already covers — writing them is listed as Phase Z follow-up work for the B-03/B-07 handoff, not silently skipped. | none yet |
 
 **Demo-viability note (flagged for the user, not resolved here):** the README/story Demo Script's
 "drop a pin near Pflugerville, set a 5-mile radius" step (demo line D-2) will show **zero results**
@@ -580,9 +581,36 @@ live-demo risk, not a test-case defect — see Round 1.
 
 ## 11. Execution log (filled in Phase 5)
 
+All hosted runs below are against `https://003-map-search.d1zmhc6kkyzsbe.amplifyapp.com` (never
+localhost), build sha `5e321ff`, across all 3 Playwright viewport projects (mobile-390,
+tablet-768, desktop-1440) unless noted.
+
 | TC ID | Run date | Build (sha) | Result | Evidence | Defect |
 | --- | --- | --- | --- | --- | --- |
-| B-03-TC-001 | — | — | not run | — | — |
+| B-03-TC-001 | 2026-10-24 | `5e321ff` | PASS (hosted) — 5 mi leg confirms the honest `CrmMapIndexDown390` state (GAP-7); 6 mi leg's real-inclusion assertion is skipped with a `known-gap` annotation when the index isn't ready, which is every run on this environment today | `docs/evidence/img/B-03-02-pin-radius-indexdown-1440.png` | none |
+| B-03-TC-004 | 2026-10-24 | `5e321ff` | Covered by TC-001's same Playwright test (shared scenario); same result | — | none |
+| B-03-TC-006 | 2026-10-24 | `5e321ff` | PASS (hosted) — accepts the honest not-ready state (GAP-7) as valid proof, same pattern as TC-001 | — | none |
+| B-03-TC-007 | 2026-10-24 | `5e321ff` | PASS (hosted) — client-side only (gazetteer bbox check before any search fires), unaffected by GAP-7 | — | none |
+| B-03-TC-008 | — | — | Not run as a dedicated Playwright test (pin-drop outside-county variant of TC-007's GPS case); same client-side mechanism, not independently automated | — | none — tracked as follow-up |
+| B-03-TC-009 | 2026-10-24 | `5e321ff` | PASS (hosted) — GPS-denied state confirmed independent of GAP-7; final pin-drop step accepts the not-ready state too | — | none |
+| B-03-TC-010 | — | — | Not run as a dedicated Playwright test | — | none — tracked as follow-up |
+| B-03-TC-011 | — | — | BLOCKED (GAP-7) — no dedicated Playwright test written; mechanism proven via `apps/api/test/search.properties.test.ts` and `apps/web/test/result-row-card.test.tsx` | — | none |
+| B-03-TC-012 | — | — | BLOCKED (GAP-4b) — real sample has no null-roof-age row; proven via `apps/web/test/result-row-card.test.tsx`'s "shows the honest roof-age-not-available fallback" + "shows the MissingReason component's reason text" tests | — | none |
+| B-03-TC-013 | — | — | BLOCKED (GAP-4) — proven via `packages/domain/test/roofAge.test.ts` (`isAgedRoof(15,15)===true`, `isAgedRoof(14,15)===false`) | — | none |
+| B-03-TC-014 | — | — | BLOCKED (GAP-1/GAP-4) — proven via `apps/api/test/search.properties.scale.test.ts` against the synthetic fixture (never deployed, never cited as real) | — | none |
+| B-03-TC-015 | — | — | Same as TC-014 | — | none |
+| B-03-TC-016 | — | — | BLOCKED (GAP-7); sort mechanism proven via `apps/api/test/search.permits.test.ts` | — | none |
+| B-03-TC-017 | — | — | BLOCKED (GAP-5) — proven via `packages/domain/test/permit.test.ts` (`isLongOpen` boundary) | — | none |
+| B-03-TC-018 | — | — | BLOCKED (GAP-7); missing-reason mechanism proven via `apps/web/test/result-row-card.test.tsx` and `packages/ui`'s `MissingReason` tests | — | none |
+| B-03-TC-019 | — | — | BLOCKED (GAP-7); drawer structure proven via `apps/api/test/property.get.test.ts` and source review (no live render possible until B-07) | — | none |
+| B-03-TC-020 | — | — | BLOCKED (GAP-7) — same dependency | — | none |
+| B-03-TC-021 | — | — | BLOCKED (GAP-7); BBB-absent mechanism proven via `apps/api/test/property.get.test.ts` (`bbbStatus !== "rated"` always returns a non-empty reason) | — | none |
+| B-03-TC-022 | — | — | BLOCKED (GAP-6c) — no real published rating exists in this slice | — | none |
+| B-03-TC-023 | — | — | BLOCKED (GAP-7); same mechanism as TC-021/TC-018 | — | none |
+| B-03-TC-NF-01 | — | — | BLOCKED (GAP-1) — full-county timing unprovable until A-11; adapted black-box timing harness exists (`tests/e2e/perf.spec.ts`) but has not been run against a populated index | — | none |
+| B-03-TC-024 | — | — | Not run — index-unreadable simulation (route abort) not yet authored as a dedicated B-03 Playwright test; `tests/e2e/B-01.spec.ts`'s equivalent tile-failure test (`CrmMapFailed390`) passed on this build | — | none — tracked as follow-up |
+| B-03-TC-025 | — | — | Not run as a dedicated test | — | none — tracked as follow-up |
+| B-03-TC-026 | 2026-10-24 | `5e321ff` | PASS (hosted) — `tests/e2e/responsive/map-shell.spec.ts` (390/768/1440, no overflow, Atlas-token audit clean after this story's 2 fixes) and `smeargle`'s manual responsive pass (reported 2026-10-24, 2 findings both fixed same day) | — | none |
 
 ---
 
