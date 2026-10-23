@@ -3,12 +3,12 @@
 // names match apps/sync's own (infra/lib/crm-sync-stack.ts: CRM_INDEX_BUCKET_NAME,
 // CRM_LEADS_TABLE_NAME) so the API Lambda reads the same bucket/table the sync job writes.
 //
-// Known gap (disclosed, not hidden): infra/lib/crm-api-stack.ts does not yet pass these two env
-// vars, or an S3 read grant on the `crm-index` bucket / a DynamoDB read grant on the leads table,
-// to the trpcHandler Lambda. Every unit test below injects its own DuckDbParquetLeadIndex
-// directly and never calls this factory, so that gap has no effect on the Vitest suite — but it
-// must be closed (a CDK change, out of this build group's T001-T018a scope) before search.* works
-// on the hosted Lambda. Recorded here rather than silently assumed away.
+// Resolved: infra/lib/crm-api-stack.ts now passes both env vars (CRM_INDEX_BUCKET_NAME,
+// CRM_LEADS_TABLE_NAME) to the trpcHandler Lambda, plus an S3 read grant on the `crm-index`
+// bucket and a DynamoDB read grant on the leads table (same stack, this branch) — search.*/
+// property.get work on the hosted Lambda. Every unit test below still injects its own
+// DuckDbParquetLeadIndex directly and never calls this factory, so this file's own Vitest suite
+// never depended on the gap either way.
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { createObservability } from "@crm/observability";

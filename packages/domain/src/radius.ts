@@ -21,6 +21,12 @@ const EARTH_RADIUS_METERS = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
 const DEGREES_PER_RADIAN = 180 / Math.PI;
 
+/** The 0.5-25 mi radius bound (FR-001/data-model.md) — the one source of truth: every caller
+ *  (ExploreFilters.state.ts, RadiusControl.tsx, search.ts's Zod input) imports these instead of
+ *  repeating the literals (found in review, CR-B-03). */
+export const MIN_RADIUS_MI = 0.5;
+export const MAX_RADIUS_MI = 25;
+
 /** A rectangular superset of the radiusMi circle around center, degrees of lat/lng (data-model.md). */
 export function bboxFor(center: LatLng, radiusMi: number): BoundingBox {
   const radiusMeters = radiusMi * METERS_PER_MILE;

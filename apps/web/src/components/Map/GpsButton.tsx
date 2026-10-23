@@ -62,6 +62,11 @@ export function GpsButton({
         const point: LatLng = { lat: position.coords.latitude, lng: position.coords.longitude };
         if (!isInCoverage(point)) {
           setState("outsideCounty");
+          // Same as the map-click path (TC-008): the point is still handed to the caller so
+          // Map.tsx's outside-county banner logic runs off the located point regardless of
+          // entry method — only the GPS button's own status text differs (found in review,
+          // CR-B-03: the two paths used to disagree here).
+          onLocated(point);
           return;
         }
         setState("idle");

@@ -99,6 +99,20 @@
   overflow-wrap: anywhere;
 }
 
+.permits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.permitItem {
+  display: inline-flex;
+  min-width: 0;
+}
+
 .missing {
   display: flex;
   flex-wrap: wrap;

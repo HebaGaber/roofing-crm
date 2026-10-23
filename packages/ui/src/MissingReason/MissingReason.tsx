@@ -15,8 +15,24 @@ export interface MissingReasonProps {
   readonly reason: Reason;
 }
 
+/** `missingLabel` throws on a reason code outside its closed list (ADR-07's vendored-verbatim
+ *  wording) — correct for a contract the vendor controls, but a single unrecognized/stale code on
+ *  one row must never crash the whole result row or drawer (found in review, CR-B-03). Falls back
+ *  to a generic "not available" label that still shows the raw reason code, rather than losing it. */
+function safeMissingLabel(field: string, reason: Reason): string {
+  try {
+    return missingLabel(field, reason);
+  } catch {
+    return `${field} not available (${String(reason)})`;
+  }
+}
+
 export function MissingReason({ field, reason }: MissingReasonProps): ReactElement {
   return (
-    <StatusPill status="unavailable" text={missingLabel(field, reason)} data={{ field, reason }} />
+    <StatusPill
+      status="unavailable"
+      text={safeMissingLabel(field, reason)}
+      data={{ field, reason }}
+    />
   );
 }

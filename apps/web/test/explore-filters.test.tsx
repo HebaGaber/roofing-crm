@@ -51,6 +51,15 @@ describe("parseMapQuery", () => {
   it("DEFAULT_ROOF_AGE_YEARS stays 15, the one named threshold constant (packages/domain)", () => {
     expect(DEFAULT_ROOF_AGE_YEARS).toBe(15);
   });
+
+  it("drops an invalid/out-of-bounds roof-age value (undefined, never clamped to the default)", () => {
+    // header comment's own rule: "values outside bounds are dropped, never clamped into a
+    // different question" — a negative or non-integer `roof` must not silently become
+    // DEFAULT_ROOF_AGE_YEARS's filter (found in review, CR-B-03).
+    expect(parseMapQuery(params("roof=-5")).roofAgeMinYears).toBeUndefined();
+    expect(parseMapQuery(params("roof=abc")).roofAgeMinYears).toBeUndefined();
+    expect(parseMapQuery(params("roof=1.5")).roofAgeMinYears).toBeUndefined();
+  });
 });
 
 describe("patchMapParams", () => {

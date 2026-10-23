@@ -10,10 +10,10 @@
 // `roof` (roofAgeMinYears), `permits` (permit-view toggle, "1"), `sel` (the selected
 // propertyCid, opens the detail drawer). Values outside bounds are dropped, never clamped into a
 // different question (FR-001/FR-003, matching the pattern the original file used).
-import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
+import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 
 export const DEFAULT_RADIUS_MI = 5;
-export const RADIUS_BOUNDS: readonly [number, number] = [0.5, 25];
+export const RADIUS_BOUNDS: readonly [number, number] = [MIN_RADIUS_MI, MAX_RADIUS_MI];
 /** architecture-constitution.md §6's page-limit bound. */
 export const MAX_RESULTS = 100;
 
@@ -54,7 +54,11 @@ function parseRoofAgeMinYears(params: URLSearchParams): number | undefined {
   const raw = params.get("roof");
   if (raw === null || raw.trim() === "") return undefined;
   const value = Number(raw);
-  return Number.isInteger(value) && value >= 0 ? value : DEFAULT_ROOF_AGE_YEARS;
+  // Values outside bounds are dropped (no filter), never clamped into a different question
+  // (header comment above, FR-001/FR-003) — an invalid/negative/non-integer value must NOT fall
+  // back to DEFAULT_ROOF_AGE_YEARS, which would silently apply a filter the URL never asked for
+  // (found in review, CR-B-03).
+  return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 export function parseMapQuery(params: URLSearchParams): MapQuery {

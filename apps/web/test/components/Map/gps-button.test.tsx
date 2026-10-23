@@ -66,7 +66,7 @@ describe("GpsButton", () => {
     ).not.toThrow();
   });
 
-  it("edge case 2: a resolved position outside coverage shows the outside-county state, not onLocated", () => {
+  it("edge case 2: a resolved position outside coverage shows the outside-county state AND still calls onLocated (matching the map-click path, TC-008 — found in review, CR-B-03)", () => {
     const onLocated = vi.fn();
     const geolocation = fakeGeolocation((onSuccess) => {
       onSuccess({ coords: { latitude: 30.6333, longitude: -97.678 } } as GeolocationPosition);
@@ -76,6 +76,6 @@ describe("GpsButton", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
     expect(screen.getByRole("alert").getAttribute("data-state")).toBe("CrmMapGpsOutside390");
-    expect(onLocated).not.toHaveBeenCalled();
+    expect(onLocated).toHaveBeenCalledWith({ lat: 30.6333, lng: -97.678 });
   });
 });

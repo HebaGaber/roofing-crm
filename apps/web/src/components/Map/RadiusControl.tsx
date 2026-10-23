@@ -2,10 +2,14 @@
 // bound is rejected at the control — the radius stays at its previous value and no onChange
 // fires (testplans/B-03-test-cases.md TC-002) — never silently clamped into a different number.
 import { useId, useState, type KeyboardEvent, type ReactElement } from "react";
+import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import styles from "./RadiusControl.module.css";
 
-export const RADIUS_MIN_MI = 0.5;
-export const RADIUS_MAX_MI = 25;
+// Re-exported under this component's own names so existing callers are unaffected — the values
+// themselves now come from `packages/domain`'s single 0.5-25 mi source of truth, not a repeated
+// literal (found in review, CR-B-03).
+export const RADIUS_MIN_MI = MIN_RADIUS_MI;
+export const RADIUS_MAX_MI = MAX_RADIUS_MI;
 
 export interface RadiusControlProps {
   readonly radiusMi: number;

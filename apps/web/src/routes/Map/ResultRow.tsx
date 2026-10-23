@@ -7,9 +7,10 @@
 // components. A missing roof age always shows its stated reason (constitution P0-4), never `0`,
 // blank or `null`.
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
-import type { CrmProperty, Missing, Provenanced } from "@crm/index-schema";
+import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
 import { CidDisplay, MissingReason, Provenance } from "@crm/ui";
 import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
+import { PermitChip } from "./PermitChip.js";
 import styles from "./ResultRow.module.css";
 
 function missingFor(row: Provenanced<CrmProperty>, field: string): Missing | undefined {
@@ -103,9 +104,18 @@ export interface ResultRowProps {
   readonly row: Provenanced<CrmProperty>;
   readonly onSelect?: (propertyCid: string) => void;
   readonly selected?: boolean;
+  /** B-03 permit-view (AC-5, FR-005): this property's permits, rendered via `PermitChip` when
+   *  the permit-view toggle is on. `undefined`/empty renders nothing extra — permit view off
+   *  never fetches or shows permits at all. */
+  readonly permits?: readonly Provenanced<CrmPermit>[];
 }
 
-export function ResultRow({ row, onSelect, selected = false }: ResultRowProps): ReactElement {
+export function ResultRow({
+  row,
+  onSelect,
+  selected = false,
+  permits,
+}: ResultRowProps): ReactElement {
   const select = (): void => onSelect?.(row.propertyCid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     if ((event.target as Element).closest("a, button") !== null) return;
@@ -140,6 +150,15 @@ export function ResultRow({ row, onSelect, selected = false }: ResultRowProps): 
         )}
       </header>
       <PropertyFields row={row} />
+      {permits !== undefined && permits.length > 0 ? (
+        <ul className={styles.permits} aria-label="Permits">
+          {permits.map((permit) => (
+            <li key={permit.permitCid} className={styles.permitItem}>
+              <PermitChip permit={permit} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <MissingSummary row={row} />
       <RowProvenance row={row} />
     </article>

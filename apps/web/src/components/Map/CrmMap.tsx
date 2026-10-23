@@ -28,6 +28,20 @@ const RADIUS_RING_LINE_LAYER_ID = "crm-radius-ring-line";
 const RING_POINTS = 64;
 const EARTH_RADIUS_M = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
+/** Hardcoding Atlas's light-mode primary hex here would never follow dark mode like every other
+ *  primary-colored element (constitution: "UI uses only Atlas tokens") — MapLibre paint
+ *  properties need a literal value, not a CSS var string, so the live `--md-sys-color-primary`
+ *  is resolved from the DOM at the point the layer is created/updated instead (found in review,
+ *  CR-B-03). Falls back to the light-mode hex only if the token is somehow unset. */
+const FALLBACK_PRIMARY_COLOR = "#0B57D0";
+
+function resolvePrimaryColor(): string {
+  if (typeof document === "undefined") return FALLBACK_PRIMARY_COLOR;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue("--md-sys-color-primary")
+    .trim();
+  return value === "" ? FALLBACK_PRIMARY_COLOR : value;
+}
 
 /** Display-only ring point at `bearingDeg` from `center`, `radiusMi` away (equirectangular
  *  approximation — good enough for a visual preview; never used for the actual filter decision). */
@@ -178,9 +192,14 @@ export function CrmMap({
       return;
     }
     const data = ringGeoJson(center, radiusMi);
+    const primaryColor = resolvePrimaryColor();
     const source = map.getSource(RADIUS_RING_SOURCE_ID);
     if (source !== undefined && "setData" in source) {
       (source as { setData: (data: GeoJSON.Feature) => void }).setData(data);
+      // Re-resolved on every redraw (not just creation) so a dark-mode toggle between renders is
+      // reflected on the next center/radius change too, not only on first paint.
+      map.setPaintProperty(RADIUS_RING_FILL_LAYER_ID, "fill-color", primaryColor);
+      map.setPaintProperty(RADIUS_RING_LINE_LAYER_ID, "line-color", primaryColor);
       return;
     }
     map.addSource(RADIUS_RING_SOURCE_ID, { type: "geojson", data });
@@ -188,13 +207,13 @@ export function CrmMap({
       id: RADIUS_RING_FILL_LAYER_ID,
       type: "fill",
       source: RADIUS_RING_SOURCE_ID,
-      paint: { "fill-color": "#0B57D0", "fill-opacity": 0.08 },
+      paint: { "fill-color": primaryColor, "fill-opacity": 0.08 },
     });
     map.addLayer({
       id: RADIUS_RING_LINE_LAYER_ID,
       type: "line",
       source: RADIUS_RING_SOURCE_ID,
-      paint: { "line-color": "#0B57D0", "line-width": 2 },
+      paint: { "line-color": primaryColor, "line-width": 2 },
     });
   }, [center?.lat, center?.lng, radiusMi, styleReady]);
 

@@ -4,7 +4,7 @@
 // port twice (with and without roofAgeMinYears, so `counts` is always fresh over the full
 // matching set, never a cached subset — FR-004/AC-4) and shapes the response.
 import { z } from "zod";
-import { isLongOpen } from "@crm/domain";
+import { isLongOpen, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { publicProcedure, requireLeadIndex, router } from "../trpc.js";
 
 const LatLngInput = z.object({
@@ -15,7 +15,7 @@ const LatLngInput = z.object({
 const SearchPropertiesInput = z.object({
   center: LatLngInput,
   // FR-001/data-model.md: inclusive 0.5-25 mi, a Zod error outside it — never silently clamped.
-  radiusMi: z.number().min(0.5).max(25),
+  radiusMi: z.number().min(MIN_RADIUS_MI).max(MAX_RADIUS_MI),
   roofAgeMinYears: z.number().int().optional(),
   // architecture-constitution.md §6's page-limit bound.
   limit: z.number().int().positive().max(100).optional(),
@@ -62,7 +62,7 @@ export const searchRouter = router({
     .input(
       z.object({
         center: LatLngInput,
-        radiusMi: z.number().min(0.5).max(25),
+        radiusMi: z.number().min(MIN_RADIUS_MI).max(MAX_RADIUS_MI),
         sort: z.literal("openDays"),
       }),
     )
