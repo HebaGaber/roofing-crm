@@ -56,6 +56,7 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     env,
     domainName: "crm.aldarraj.com",
     cutover: false, // Round 1 decision D-2: not pointed live until after this story merges.
+    web: { appId: webStack.app.attrAppId, branchName: webStack.branch.branchName },
   });
   domainStack.addDependency(webStack);
 
