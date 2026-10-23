@@ -39,6 +39,17 @@ describe("CrmData (T038)", () => {
     expect(Object.keys(policies).length).toBeGreaterThan(0);
   });
 
+  it("B-07 T002: creates the crm-leads table skeleton tagged project_name=roofing-crm", () => {
+    build().hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "crm-leads",
+      KeySchema: [
+        { AttributeName: "pk", KeyType: "HASH" },
+        { AttributeName: "sk", KeyType: "RANGE" },
+      ],
+      Tags: [{ Key: "project_name", Value: "roofing-crm" }],
+    });
+  });
+
   it("declares no Task A resources — this stack only ever reads Task A's public CID copies", () => {
     expect(() => build()).not.toThrow();
   });

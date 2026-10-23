@@ -1,0 +1,39 @@
+// B-07 T003: lead schema shape checks.
+import { describe, expect, it } from "vitest";
+import { Lead, LeadEvent, LeadFilters, LeadStatus } from "../../src/schemas/lead.js";
+
+describe("lead schemas", () => {
+  it("accepts exactly the five statuses", () => {
+    for (const s of ["new", "contacted", "qualified", "won", "lost"]) {
+      expect(LeadStatus.safeParse(s).success).toBe(true);
+    }
+    expect(LeadStatus.safeParse("closed").success).toBe(false);
+  });
+
+  it("parses a Lead and rejects a bad createdFrom", () => {
+    const lead = {
+      leadId: "01J",
+      address: "1 Main St",
+      lat: 30.2,
+      lon: -97.7,
+      status: "new",
+      assignee: "rep",
+      createdFrom: "map",
+      sourceManifestCid: "bafy",
+      createdAt: "2026-10-24T00:00:00Z",
+      eventSequence: 0,
+    };
+    expect(Lead.safeParse(lead).success).toBe(true);
+    expect(Lead.safeParse({ ...lead, createdFrom: "fax" }).success).toBe(false);
+  });
+
+  it("does not cap note length in LeadEvent.change", () => {
+    const ev = { sequence: 1, at: "t", by: "rep", change: "x".repeat(5000), kind: "note" };
+    expect(LeadEvent.safeParse(ev).success).toBe(true);
+  });
+
+  it("accepts empty filters and rejects an unknown permitStatus", () => {
+    expect(LeadFilters.safeParse({}).success).toBe(true);
+    expect(LeadFilters.safeParse({ permitStatus: "weird" }).success).toBe(false);
+  });
+});

@@ -24,16 +24,16 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 
 ## Phase 1: Setup
 
-- [ ] T001 No file change — verification only: run `pnpm turbo run build test --filter=@crm/shared --filter=@crm/domain --filter=@crm/api --filter=@crm/web` from the repo root and confirm it is green on branch `007-leads` before T002 adds anything
-- [ ] T002 [P] Add the `crm-leads` DynamoDB table construct skeleton (name only, no attributes/GSIs yet) to `infra/lib/crm-data-stack.ts`, tagged `project_name=roofing-crm`, region read from `infra/src/config.ts` (never hard-coded)
+- [X] T001 No file change — verification only: run `pnpm turbo run build test --filter=@crm/shared --filter=@crm/domain --filter=@crm/api --filter=web` from the repo root and confirm it is green on branch `007-leads` before T002 adds anything
+- [X] T002 [P] Add the `crm-leads` DynamoDB table construct skeleton (name only, no attributes/GSIs yet) to `infra/lib/crm-data-stack.ts`, tagged `project_name=roofing-crm`, region read from `infra/src/config.ts` (never hard-coded)
 
 ---
 
 ## Phase 2: Foundational (blocking both groups)
 
-- [ ] T003 Define `Lead`, `LeadSignals`, `LeadEvent`, `LeadFilters` Zod schemas in `packages/shared/src/schemas/lead.ts` per data-model.md (status enum `new|contacted|qualified|won|lost`; note text has no length cap in the schema itself — the 4,000-char cap is enforced at the tRPC input boundary, T012)
-- [ ] T004 [P] Export the new schemas from `packages/shared/src/index.ts`
-- [ ] T005 Add `leadKey(fips, requestIdentifier)` and `isNotInCurrentRun(sourceManifestCid, currentManifestCid)` pure functions to `packages/domain/src/leads.ts`, exported from `packages/domain/src/index.ts`, unit tested in `tests/packages/domain/leads.test.ts` (test written and failing before the implementation)
+- [X] T003 Define `Lead`, `LeadSignals`, `LeadEvent`, `LeadFilters` Zod schemas in `packages/shared/src/schemas/lead.ts` per data-model.md (status enum `new|contacted|qualified|won|lost`; note text has no length cap in the schema itself — the 4,000-char cap is enforced at the tRPC input boundary, T012)
+- [X] T004 [P] Export the new schemas from `packages/shared/src/index.ts`
+- [X] T005 Add `leadKey(fips, requestIdentifier)` and `isNotInCurrentRun(sourceManifestCid, currentManifestCid)` pure functions to `packages/domain/src/leads.ts`, exported from `packages/domain/src/index.ts`, unit tested in `tests/packages/domain/leads.test.ts` (test written and failing before the implementation)
 
 ---
 

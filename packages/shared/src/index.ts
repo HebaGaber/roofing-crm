@@ -14,3 +14,11 @@ export {
   RoadmapSection,
   type RoadmapSectionMeta,
 } from "./schemas/roadmap-section.js";
+export {
+  LEAD_STATUSES,
+  Lead,
+  LeadEvent,
+  LeadFilters,
+  LeadSignals,
+  LeadStatus,
+} from "./schemas/lead.js";
