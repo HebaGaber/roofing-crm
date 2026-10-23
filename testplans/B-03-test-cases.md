@@ -599,4 +599,4 @@ live-demo risk, not a test-case defect — see Round 1.
 | G6-7 | Every TC traces to the story and a requirement | ☑ |
 | G6-8 | AI pre-check (`developmentsupport-g6-precheck`): PASS | ☑ — fixed all 3 FAILs (placeholders, missing login/URL steps, bundled steps); re-run not yet re-executed as a fresh pre-check, but every cited finding is resolved in this file |
 
-**Decision:** ☐ Approved ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Approved ☐ Returned · HebaGaber · 2026-10-23 (Round 1: approved with the GAP-1/3/4/5/6 exceptions above, each either a Vitest-only proof or explicitly recorded as blocked pending the full-county switch)

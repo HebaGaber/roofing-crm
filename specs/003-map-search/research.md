@@ -69,11 +69,16 @@ B-01/B-02 code this story extends. This file records those decisions for traceab
 
 ## Decision: the zero-result "widen" increment
 
-- **Decision**: not fixed by this plan. The walkthrough routes this exact question (double the
-  radius, capped at 25 mi, vs. some other step) to the Round 1 `AskUserQuestion` stop (D-2), with a
-  recommended default of "double, capped at 25 mi." This research file records that the decision is
-  deliberately deferred, not overlooked.
-- **Source**: `../assessment-guide/WALKTHROUGH-B-03-map-search.md` § 4.
+- **Decision**: fixed +1 mi steps — "widen to {current + 1} mi" each time, not doubling. Decided
+  by the user at Round 1 (2026-10-23), overriding the walkthrough's own "double, capped at 25 mi"
+  recommendation.
+- **Rationale**: simpler, predictable UI copy; the user accepted the tradeoff of more taps to reach
+  a non-empty result on a sparse sample (acceptable since the current sample is tiny and the
+  full-county switch will make this edge case rare in practice).
+- **Alternatives considered**: doubling, capped at 25 mi (the walkthrough's recommended default,
+  not chosen); jumping straight to the nearest real result's radius (rejected — reveals index
+  internals to the rep rather than a predictable UI step).
+- **Source**: Round 1 decision, 2026-10-23 (`AskUserQuestion`, this session).
 
 ## Open item carried forward (not blocking this plan)
 

@@ -74,7 +74,7 @@ builder; the run book splits its work into two groups so both halves build at on
 - [ ] T015 [P] [US1] Implement `GpsButton.tsx` in `apps/web/src/components/Map/GpsButton.tsx` — `navigator.geolocation`, explicit denied/outside-county/unavailable states (never a silent failure), per the copied `CrmMapGpsDenied390`/`CrmMapGpsOutside390`/`CrmMapGpsUnavailable390` prototype states
 - [ ] T016 [P] [US1] Implement `RadiusControl.tsx` in `apps/web/src/components/Map/RadiusControl.tsx` — 0.5–25 mi, Atlas tokens only (P0-14)
 - [ ] T017 [US1] Extend `CrmMap.tsx` (`apps/web/src/components/Map/CrmMap.tsx`) with pin-drop, the live radius ring (drawn via `packages/domain`'s `bboxFor`/`distanceMeters` for client-side preview, per plan.md's shared-rule requirement), and wiring to `GpsButton`/`RadiusControl` (depends on T015, T016)
-- [ ] T018 [US1] Wire `Map.tsx` (`apps/web/src/routes/Map/Map.tsx`) to call `search.properties` via `packages/api-client` on pin/radius change, rendering the zero-result "widen" state and the outside-county state (depends on T013, T017)
+- [ ] T018 [US1] Wire `Map.tsx` (`apps/web/src/routes/Map/Map.tsx`) to call `search.properties` via `packages/api-client` on pin/radius change, rendering the zero-result "widen to {current + 1} mi" state (fixed +1 mi steps, capped at 25 mi — Round 1 decision, 2026-10-23, not the doubling default) and the outside-county state (depends on T013, T017)
 
 - [ ] T018a [P] [US1] Copy `tests/e2e/perf.spec.ts` from `ORACLE` (base), adapt it to `search.properties`/`search.permits` (NFR-001: p95 < 3 s end to end on the hosted URL, architecture-constitution.md §10), ≥ 20 runs
 

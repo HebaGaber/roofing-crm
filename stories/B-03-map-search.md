@@ -126,4 +126,4 @@ No `[NEEDS CLARIFICATION]` remaining.
 | G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ — `docs/gates/G4-B-03-precheck.md` (written below); its 3 findings (NFR traceability, prototype paths, AC-4 wording) fixed in this file |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date} — pending Round 1 (confirm A-13 dependency wording above)
+**Decision:** ☑ Ready ☐ Returned · HebaGaber · 2026-10-23 (Round 1: the A-13 dependency wording above — G7-approved but merge held for A-11's order, reachable via `ORACLE-u` — is accepted as not a blocker)
