@@ -3,6 +3,7 @@
 // the local Turborepo dev server (no hosted stack exists yet in this phase); re-run against
 // RUNTIME_URL by TZ03 once TZ02 deploys. config-guard.spec.ts enforces RUNTIME_URL is never
 // localhost for that later run — this file does not special-case localhost itself.
+import { DynamoDBClient, DeleteItemCommand } from "@aws-sdk/client-dynamodb";
 import { expect, test } from "@playwright/test";
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
@@ -13,6 +14,31 @@ async function signIn(page: import("@playwright/test").Page, password: string): 
   await page.getByLabel("Username").fill(SEEDED_USERNAME);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
+}
+
+/**
+ * The TC-011-anticipated "test harness lockout-reset fixture" (testplans/B-01-test-cases.md),
+ * built here rather than left undone: AC-3's test genuinely locks the one shared admin account
+ * for a real 5-minute cooldown, which otherwise fails every later test in the same project's run
+ * that needs a working sign-in (found running the full suite after scoping AC-3 to one project).
+ * Calls DynamoDB directly from the Node test process — no public API, no new attack surface, the
+ * same AWS-SDK-in-the-test-harness precedent testplans/B-01-test-cases.md's TC-NF-01 (X-Ray) and
+ * TC-NF-03 (CloudWatch Logs) already describe. Table name matches crm-ops-stack.ts's literal
+ * `tableName: "crm-lockout-counter"`; best-effort (a failed reset degrades the *next* test's
+ * timing, not this one's own pass/fail).
+ */
+async function resetLockout(): Promise<void> {
+  const client = new DynamoDBClient({});
+  try {
+    await client.send(
+      new DeleteItemCommand({
+        TableName: "crm-lockout-counter",
+        Key: { username: { S: SEEDED_USERNAME } },
+      }),
+    );
+  } catch (error) {
+    console.error("resetLockout: best-effort cleanup failed", error);
+  }
 }
 
 // AC-1 (TC-001, TC-006, TC-010): private-window sign-in, lands on Map centered on Travis County,
@@ -90,6 +116,12 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
 // AC-3 (TC-003, TC-004, TC-011): 3 wrong passwords then a 4th locks out with the typed message;
 // a successful sign-in after the 5-minute cooldown succeeds.
 test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", () => {
+  // Reset the lockout counter after this test proves it locked — otherwise every later test in
+  // this project's run (the tile-failure edge case, AC-4, AC-5, and every tests/e2e/responsive/*
+  // test on this same project) would also fail to sign in for the rest of the real 5-minute
+  // cooldown (found running the full suite).
+  test.afterEach(resetLockout);
+
   test("the 4th wrong password shows the typed lockout message, never a generic error", async ({
     page,
   }, testInfo) => {

@@ -18,6 +18,7 @@
     "e2e": "playwright test"
   },
   "devDependencies": {
+    "@aws-sdk/client-dynamodb": "3.709.0",
     "@crm/eslint-config": "workspace:*",
     "@playwright/test": "1.50.1",
     "@vitest/coverage-v8": "5.0.5",
