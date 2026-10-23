@@ -99,9 +99,9 @@ flowchart LR
 | DEP-01 | Inter-phase | Phase 0 → Phase 1 | Search needs hosting, login and the index | — |
 | DEP-02 | Inter-phase | Phase 1 → Phase 2 | Leads are created from the detail drawer and results | — |
 | DEP-03 | Inter-phase | Phase 2 → Phase 3 | The agent's `createLead` tool needs leads | — |
-| EXT-01 | External (Task A) | A-02 `contract/v1` frozen with real sample rows | Planning (P6, P8), Phase 0 | Pending (A-02 in progress on 2026-10-21) |
-| EXT-02 | External (Task A) | A-03 done: code to copy + first published CIDs (one month of Austin reroof permits) | Phase 0 | Pending |
-| EXT-03 | External (Task A) | A-11 done: full-county manifest | Phase 0 B-02 re-sync, before the demo | Pending |
+| EXT-01 | External (Task A) | A-02 `contract/v1` frozen with real sample rows | Planning (P6, P8), Phase 0 | **Done** — vendored at commit `660f73c` (`docs/reuse-log.md`, sha256 `7af3bdf9...`), confirmed 2026-10-23 |
+| EXT-02 | External (Task A) | A-03 done: code to copy + first published CIDs (one month of Austin reroof permits) | Phase 0 | **Done** — sample manifest CID `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` published and reachable, confirmed 2026-10-23 |
+| EXT-03 | External (Task A) | A-11 done: full-county manifest | Phase 0 B-02 re-sync, before the demo | Pending — the full-county manifest genuinely has not been published yet; B-02 builds and proves itself against EXT-02's sample manifest in the meantime (sample-first mode) and re-syncs once this lands, per a `DATA_MANIFEST_CID` config change only |
 | EXT-04 | External (Task A) | A-13 done: filters, drawer and responsive code to copy | Phase 1 (and B-11) | Pending |
 | EXT-05 | External (Task A) | A-14 done: agent frame to copy | Phase 3 (B-09) | Pending |
 | EXT-06 | External (Task A) | A-18 done: "Coming soon" pattern to copy | Phase 3 (B-10) | Pending |

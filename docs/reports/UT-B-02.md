@@ -3,26 +3,29 @@ id: UT-RPT-B-02
 type: unit-test-report
 feature: FEAT-B02
 story: B-02
-owner: Claude (session, E2 fixer round), approved by HebaGaber
+owner: Claude (session, through the G7 close-out round), approved by HebaGaber
 status: Complete
 gate: G7
 created: 2026-10-23
+updated: 2026-10-23
 ---
 
-# Unit Test Report: B-02 lead search index — E2 fixer round
+# Unit Test Report: B-02 lead search index
 
-Real `pnpm -r test` / `pnpm -r type-check` / `pnpm lint` / `pnpm format` output (Turborepo, all 17
-workspace packages/apps), run locally against branch `002-lead-index` after fixing every finding
-in `docs/reviews/CR-B-02.md`'s E2 scope (items #1–#4, #6–#8; #5 is explicitly out of scope per the
-review's own scope note and the recorded 2026-10-23 user decision in `docs/evidence/B-02.md`).
+Real `pnpm -r test` / `pnpm -r type-check` / `pnpm lint` / `pnpm format` output (Turborepo, all 14
+workspace packages/apps with tests), run locally against branch `002-lead-index` at commit
+`db55565` (the commit CI run `39972094970` validated — everything after it on the branch is
+docs/spec-only). Supersedes the original E2-round numbers below (528 tests) — this report now
+also reflects the `/speckit-converge` fixer round and the coverage round that raised `apps/sync`
+and `packages/observability` to 80%+ coverage (`docs/evidence/B-02.md`).
 
 ## Summary
 
 | Item | Value |
 | --- | --- |
-| Total test files | 60 |
-| Total tests | 528 |
-| Passed / failed / skipped | 523 / 0 / 5 |
+| Total test files | 68 |
+| Total tests | 618 |
+| Passed / failed / skipped | 613 / 0 / 5 |
 | Pass rate | 100% (of non-skipped) |
 
 ## Per-package results (`pnpm -r test`)
@@ -31,19 +34,19 @@ review's own scope note and the recorded 2026-10-23 user decision in `docs/evide
 | --- | --- | --- | --- |
 | `packages/shared` | 2 | 6 | ✅ |
 | `packages/oracle-contract` | 3 | 58 | ✅ |
-| `packages/observability` | 2 | 6 | ✅ (new: `test/s3.test.ts` for the shared `downloadS3ObjectToFile` helper, finding #7) |
+| `packages/observability` | 2 | 13 | ✅ 100% stmts/funcs/lines, 85.71% branches — raised from 57.14% stmts in the coverage round |
 | `packages/travis-austin@1.0.0` | 6 | 79 | ✅ |
 | `packages/eslint-config` | 1 | 18 | ✅ |
 | `packages/ui` | 1 | 3 | ✅ |
 | `packages/config` | 2 | 16 | ✅ |
-| `packages/index-schema` | 1 | 5 | ✅ |
+| `packages/index-schema` | 1 | 5 | ✅ (100% coverage) |
 | `packages/oracle-views` | 18 | 246 (241 passed, 5 skipped, pre-existing) | ✅ |
-| `apps/api` | 7 | 41 | ✅ (new/updated tests in `test/duckDbParquet.test.ts`: finding #1's `indexInfo()` real-value read, finding #8's cold-load-race test) |
-| `apps/sync` | 11 | 46 | ✅ (new/updated tests in `test/promote.test.ts` findings #1, `test/fetchPart.test.ts` findings #2 and #6) |
-| `infra` | 4 | 20 | ✅ (CDK stack synth unaffected by the `GATEWAY_CLOUDFRONT_BASE_URL` env var addition) |
+| `apps/api` | 7 | 43 | ✅ 98.03% stmts |
+| `apps/sync` | 15 | 76 | ✅ 93.29% stmts / 95.39% lines — raised from 65.95% lines in the coverage round (new: `engine.duckdb.test.ts`, `buildIndex.event.test.ts`, `validate.event.test.ts`) |
+| `infra` | 4 | 21 | ✅ |
 | `packages/api-client` | 2 | 7 | ✅ |
 | `apps/web` | 4 | 27 | ✅ |
-| **Total** | **60** | **528** (523 passed, 5 skipped) | **✅** |
+| **Total** | **68** | **618** (613 passed, 5 skipped) | **✅** |
 
 Exact tail of the real run:
 
@@ -53,7 +56,7 @@ packages/shared test:       Tests  6 passed (6)
 packages/oracle-contract test:  Test Files  3 passed (3)
 packages/oracle-contract test:       Tests  58 passed (58)
 packages/observability test:  Test Files  2 passed (2)
-packages/observability test:       Tests  6 passed (6)
+packages/observability test:       Tests  13 passed (13)
 packages/travis-austin@1.0.0 test:  Test Files  6 passed (6)
 packages/travis-austin@1.0.0 test:       Tests  79 passed (79)
 packages/eslint-config test:  Test Files  1 passed (1)
@@ -67,18 +70,28 @@ packages/index-schema test:       Tests  5 passed (5)
 packages/oracle-views test:  Test Files  17 passed | 1 skipped (18)
 packages/oracle-views test:       Tests  241 passed | 5 skipped (246)
 apps/api test:  Test Files  7 passed (7)
-apps/api test:       Tests  41 passed (41)
-apps/sync test:  Test Files  11 passed (11)
-apps/sync test:       Tests  46 passed (46)
+apps/api test:       Tests  43 passed (43)
+apps/sync test:  Test Files  15 passed (15)
+apps/sync test:       Tests  76 passed (76)
 infra test:  Test Files  4 passed (4)
-infra test:       Tests  20 passed (20)
+infra test:       Tests  21 passed (21)
 packages/api-client test:  Test Files  2 passed (2)
 packages/api-client test:       Tests  7 passed (7)
 apps/web test:  Test Files  4 passed (4)
 apps/web test:       Tests  27 passed (27)
 ```
 
-(`oracle-views`'s 5 skipped tests predate this round — unrelated to the E2 fixer scope.)
+(`oracle-views`'s 5 skipped tests predate this story — unrelated to B-02's own scope.)
+
+## Also validated on CI (not just locally)
+
+CI run `https://github.com/HebaGaber/roofing-crm/actions/runs/39972094970` (`db55565`): `workspace`
+(type-check, lint, these same unit tests, format, `cdk synth --strict`), `gitleaks`, and
+`e2e-hosted` (Playwright against the live `002-lead-index` Amplify preview) all green. Getting
+there required fixing several CI-only gaps (missing `tsx`/`vitest` devDependencies in three
+vendored packages, `DATA_MANIFEST_CID` unset for synth, no QEMU for arm64 Docker bundling, one
+flaky timing-sensitive test, and creating the Amplify branch preview) — see
+`docs/evidence/B-02.md`'s "CI and coverage" section for the full account.
 
 ## New tests added this round, by CR-B-02 finding
 

@@ -11,7 +11,7 @@ priority: P1
 moscow: Must
 branch: 002-lead-index
 spec: specs/002-lead-index/
-depends_on: ["B-01 merged", "Task A A-02 (Data contract) done", "Task A A-11 (Publish + incremental runs) done — at least contract/v1/sample.parquet until then"]
+depends_on: ["B-01 merged", "Task A A-02 (Data contract) done — vendored at commit 660f73c (docs/reuse-log.md), sha256 7af3bdf9...", "Task A A-11 (Publish + incremental runs): sample manifest CID bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i published and reachable (contract/v1/sample.parquet, verified 2026-10-23); the full-county run A-11 itself is not required to start this story (sample-first mode) — see docs/plan.md EXT-01"]
 size_days: 1.5
 agents:
   design: [alakazam, espeon, machamp]
@@ -46,7 +46,7 @@ reuses:
 
 ## Context
 
-Every later story — map search, leads, the agent — reads this index, never Task A's data directly. `espeon`'s discipline (a local query-only prototype before any AWS resource) catches wrong assumptions about Task A's contract cheaply, and `machamp`'s batch patterns (queue, DLQ, idempotency) keep the sync safe to re-run as Task A republishes. **Architecture note (G3, ARD-01):** the store is DuckDB over Parquet in the API Lambda, not an OpenSearch domain — `contract/v1` publishes no free text to embed yet, so OpenSearch would add cost without adding retrieval quality (recorded as an accepted deviation from `build-rag-systems`' production-store default; see `docs/architecture-constitution.md` §13).
+Every later story — map search, leads, the agent — reads this index, never Task A's data directly. `espeon`'s discipline (a local query-only prototype before any AWS resource) catches wrong assumptions about Task A's contract cheaply, and `machamp`'s batch patterns (queue, DLQ, idempotency) keep the sync safe to re-run as Task A republishes. **Architecture note (G3, ADR-01):** the store is DuckDB over Parquet in the API Lambda, not an OpenSearch domain — `contract/v1` publishes no free text to embed yet, so OpenSearch would add cost without adding retrieval quality (recorded as an accepted deviation from `build-rag-systems`' production-store default; see `docs/architecture-constitution.md` §13).
 
 ## Description
 
@@ -76,8 +76,8 @@ What will exist when done: a Step Functions sync job (`Plan → FetchPart → Bu
 | FR-002 | System MUST record the index count against Oracle's published count and flag any undocumented mismatch | AC-2 |
 | FR-003 | System MUST preserve every `missing` reason code from `contract/v1` rather than inventing a value | AC-3 |
 | FR-004 | System MUST be safe to re-run against the same manifest CID with no duplicate writes | AC-4 |
-| NFR-001 | Sync duration ≤ 5 min for an A-03-sized run, ≤ 30 min for the full county | ARD-B §10; measured against AC-1's deployed run, recorded in `docs/evidence/B-02.md` |
-| NFR-002 | Gateway politeness: concurrency 2, ≤ 30 requests/min per gateway, backoff + jitter | ARD-B §10; observed on AC-1's `FetchPart` stage via the fault-injection test |
+| NFR-001 | Sync duration ≤ 5 min for an A-03-sized run, ≤ 30 min for the full county | AC-1; architecture-constitution.md §10; measured against AC-1's deployed run, recorded in `docs/evidence/B-02.md` |
+| NFR-002 | Gateway politeness: concurrency 2, ≤ 30 requests/min per gateway, backoff + jitter | AC-1; architecture-constitution.md §10; observed on AC-1's `FetchPart` stage via the fault-injection test |
 
 No `[NEEDS CLARIFICATION]` remaining.
 
@@ -92,7 +92,7 @@ Not a standalone demo line; its proof is `docs/evidence/B-02.md` (index count vs
 ## Out of scope
 
 - Any UI (map, list, leads) — those read this index in B-03 and B-07.
-- Vector/semantic search over permit text (no embeddings in v1, per ARD-08 — `contract/v1` publishes no text to embed).
+- Vector/semantic search over permit text (no embeddings in v1, per ADR-08 — `contract/v1` publishes no text to embed).
 - Re-deriving `status_class`, `open_days` or roof-age rules — those come verbatim from vendored `query-core` (ADR-07).
 
 ## Evidence to capture
