@@ -1,0 +1,110 @@
+// T014 (Phase 3, INDEX): BuildIndex's contract (contracts/sync-pipeline.md) — given a fixture of
+// already-verified parts (no network), it writes crm_property/crm_permit rows each carrying
+// sourceManifestCid, and makes zero network calls. Written first, shown failing (no handler
+// exists yet). The fixture here is a fake QueryEngine standing in for "a DuckDB already bound to
+// this run's verified parts" — BuildIndex's own contract is that it never fetches those parts
+// itself (that boundary belongs entirely to FetchPart/machamp), so a fixture engine is the
+// correct double for this unit: it proves the mapping/validation core, not the S3/DuckDB plumbing
+// around it (exercised instead on the hosted runtime, Phase Z).
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildIndexCore } from "../handlers/buildIndex.js";
+import type { ViewRow } from "../handlers/buildIndex.js";
+
+const MANIFEST_CID = "baguqeeramjzy4a3oqe5sldka4hdbbm65xkbjh2yaxkb2j4dtqqkctodfxayq";
+const PROPERTY_CID = "baguqeeraqc3y3bh65rbd42zgdrkctaulckvvidmgb52pghyansb43vumoh6q";
+const PERMIT_CID = "baguqeeraqxod4kdmjfpzqdu36b5jyvb5fe4mdlmvxolgukqvugex7hkwgdtq";
+const RUN_CID = "bafkreihkjrwg3dobc3emke5j5q2xk63746pxjhg6galvr5kibcseboc6ha";
+
+function propertyRow(overrides: Partial<ViewRow> = {}): ViewRow {
+  return {
+    property_cid: PROPERTY_CID,
+    request_identifier: "0208011301",
+    latitude: 30.26,
+    longitude: -97.74,
+    coordinate_source: "gis_centroid",
+    property_type: "SingleFamily",
+    property_usage_type: "Residential",
+    roof_age_years: 18,
+    roof_age_basis: "built_year",
+    roof_age_confidence: "low",
+    is_long_tenure: null,
+    owner_kind: null,
+    owner_area_class: "unknown",
+    owner_is_out_of_area: null,
+    missing: [{ field: "last_ownership_transfer_date", reason: "no_dated_sale" }],
+    captured_at: "2026-10-21T10:35:59.798Z",
+    cid: RUN_CID,
+    run_id: "travis-202609-permits-20261021t103516z",
+    ...overrides,
+  };
+}
+
+function permitRow(overrides: Partial<ViewRow> = {}): ViewRow {
+  return {
+    permit_cid: PERMIT_CID,
+    property_cid: PROPERTY_CID,
+    jurisdiction: "austin",
+    permit_number: "2026-123456 RP",
+    improvement_type: "Roofing",
+    improvement_action: "Replacement",
+    improvement_status: "Completed",
+    status_class: "closed",
+    issue_date: "2026-09-02",
+    final_date: "2026-09-10",
+    permit_close_date: "2026-09-10",
+    final_inspection_date: "2026-09-10",
+    open_days: 8,
+    contractor_resolution: "resolved",
+    contractor_company_cid: null,
+    missing: [],
+    captured_at: "2026-10-21T10:35:59.798Z",
+    cid: RUN_CID,
+    run_id: "travis-202609-permits-20261021t103516z",
+    ...overrides,
+  };
+}
+
+function fakeEngine(properties: ViewRow[], permits: ViewRow[]) {
+  return {
+    run: async () => undefined,
+    all: async (sql: string) => {
+      if (sql.includes("v_property")) return properties;
+      if (sql.includes("v_roofing_permit")) return permits;
+      throw new Error(`fakeEngine: unexpected query: ${sql}`);
+    },
+  };
+}
+
+describe("BuildIndex", () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // Assert via a mock that throws on any fetch call — BuildIndex must never make one
+    // (contracts/sync-pipeline.md: "Must not make any network call to Task A or any gateway").
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      throw new Error("BuildIndex must never call fetch()");
+    });
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  it("writes crm_property/crm_permit rows each carrying sourceManifestCid, with zero network calls", async () => {
+    const engine = fakeEngine([propertyRow()], [permitRow()]);
+
+    const result = await buildIndexCore(engine, MANIFEST_CID);
+
+    expect(result.properties).toHaveLength(1);
+    expect(result.permits).toHaveLength(1);
+    expect(result.properties[0]?.sourceManifestCid).toBe(MANIFEST_CID);
+    expect(result.permits[0]?.sourceManifestCid).toBe(MANIFEST_CID);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("never invents an ownerName field (ADR-03) even though the schema is strict", async () => {
+    const engine = fakeEngine([propertyRow()], []);
+    const result = await buildIndexCore(engine, MANIFEST_CID);
+    expect(result.properties[0]).not.toHaveProperty("ownerName");
+  });
+});

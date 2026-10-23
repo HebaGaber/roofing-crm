@@ -199,7 +199,10 @@ export const ownerKind = (persons: number, companies: number): "person" | "compa
   companies > 0 ? "company" : persons > 0 ? "person" : "unknown";
 
 export type OwnerGapReason =
-  "owner_unparsed" | "owner_confidential" | "no_owner_record" | "needs_review";
+  | "owner_unparsed"
+  | "owner_confidential"
+  | "no_owner_record"
+  | "needs_review";
 
 /**
  * Why a property with a dated sale has no owner. The export cannot tell the cases apart, so the

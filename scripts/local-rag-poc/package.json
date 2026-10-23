@@ -8,9 +8,14 @@
     "test": "vitest run",
     "query": "tsx query.ts"
   },
+  "dependencies": {
+    "@duckdb/node-api": "1.5.6-r.2"
+  },
   "devDependencies": {
-    "typescript": "6.0.3",
+    "@types/node": "22.10.5",
     "tsx": "4.19.2",
+    "typescript": "6.0.3",
+    "vite": "^6.4.5",
     "vitest": "5.0.5"
   }
 }

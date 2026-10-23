@@ -48,8 +48,8 @@ describe("loadConfig", () => {
   });
 
   it("fails fast when DATA_MANIFEST_CID is not a CIDv1 string", () => {
-    expect(() =>
-      loadConfig({ AWS_REGION: "eu-north-1", DATA_MANIFEST_CID: "not-a-cid" }),
-    ).toThrow(/DATA_MANIFEST_CID/);
+    expect(() => loadConfig({ AWS_REGION: "eu-north-1", DATA_MANIFEST_CID: "not-a-cid" })).toThrow(
+      /DATA_MANIFEST_CID/,
+    );
   });
 });

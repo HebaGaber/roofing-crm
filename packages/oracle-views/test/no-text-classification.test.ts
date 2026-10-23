@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
-const VIEWS_SQL = join(ROOT, "packages/query-core/views.sql");
+const VIEWS_SQL = join(ROOT, "packages/oracle-views/views.sql");
 
 /** The grep of TC-011, as a regex (case-insensitive). */
 const TEXT_MATCHING =

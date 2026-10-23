@@ -3,7 +3,7 @@
 // bundled for the browser. This Node-only generator writes those values as constants:
 //   generated/travis-austin@1.0.0.status-map.sql  ← toSqlStatusMap() (profile rules.json)
 //   src/sql.generated.ts                           ← views.sql, the status map, GAZETTEER_SHA256
-//   profiles/travis-austin@1.0.0/index.ts          ← its one marked `RULES_SHA256` line
+//   packages/travis-austin@1.0.0/index.ts          ← its one marked `RULES_SHA256` line
 // It refuses to run when a recomputed digest differs from the committed DIGEST (a rule or list
 // changed without the version bump AD-26 requires). test/browser-safe.test.ts proves the committed
 // output equals the files and the recomputed digests. Run: pnpm --filter @crm/oracle-views gen
@@ -28,7 +28,7 @@ import {
 const PKG = fileURLToPath(new URL("../", import.meta.url));
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const GAZ = `${PKG}gazetteer/travis-places@1.0.0/`;
-const PROFILE_DIR = `${ROOT}profiles/travis-austin@1.0.0/`;
+const PROFILE_DIR = `${ROOT}packages/travis-austin@1.0.0/`;
 
 const sha256 = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 const readJson = (file: string): unknown => JSON.parse(readFileSync(file, "utf8"));
@@ -96,7 +96,7 @@ function main(): void {
   write(indexFile, source.replace(line, `export const RULES_SHA256 = "${profile}";`));
   if (PROFILE.sha256 !== profile)
     throw new Error(
-      `RULES_SHA256 in profiles/travis-austin@1.0.0/index.ts was stale (${PROFILE.sha256}) and is now ${profile}: run gen again`,
+      `RULES_SHA256 in packages/travis-austin@1.0.0/index.ts was stale (${PROFILE.sha256}) and is now ${profile}: run gen again`,
     );
 
   const statusMap = toSqlStatusMap();

@@ -63,3 +63,5 @@ T001 e2e-helpers correction (after the row above): on inspection, `tests/e2e/res
 | 2026-10-23T07:53Z | `scripts/verify-manifest.ts` | `scripts/verify-manifest.ts` | 071eb1b | feature/oracle-pipeline |
 | 2026-10-23T07:54Z | `packages/query-core` (HEAD 2cdb1dd, read-only via `git archive` — working tree had uncommitted deletions of roof-age-comparison.ts/.test.ts at copy time, so the last clean committed tree was used) | `packages/oracle-views` | 2cdb1dd | feature/oracle-pipeline |
 | 2026-10-23T07:57Z | `profiles/travis-austin@1.0.0` | `packages/oracle-profile-travis-austin` | 72ba7a3 | feature/oracle-pipeline |
+| 2026-10-23T08:45Z | `contract/v1` | `contract/v1` | be925c5 | feature/oracle-pipeline |
+| 2026-10-23T08:45Z | `docs/decisions/0002-lexicon-carriers.md` | `docs/decisions/0002-lexicon-carriers.md` | f3ddcbe | feature/oracle-pipeline |

@@ -3,14 +3,13 @@
 // — no longer "intentionally empty" (B-01 T005). T038 (Phase 4, machamp) implements
 // infra/lib/crm-sync-stack.ts to make this pass.
 import { App } from "aws-cdk-lib";
-import { Match, Template } from "aws-cdk-lib/assertions";
+import { Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { CrmSyncStack } from "../lib/crm-sync-stack.js";
 
 const ENV = { region: "eu-north-1", account: "515618610572" };
 const PLAN_ENTRY = new URL("../../apps/sync/handlers/plan.ts", import.meta.url).pathname;
-const FETCH_PART_ENTRY = new URL("../../apps/sync/handlers/fetchPart.ts", import.meta.url)
-  .pathname;
+const FETCH_PART_ENTRY = new URL("../../apps/sync/handlers/fetchPart.ts", import.meta.url).pathname;
 const BUILD_INDEX_ENTRY = new URL("../../apps/sync/handlers/buildIndex.ts", import.meta.url)
   .pathname;
 const VALIDATE_ENTRY = new URL("../../apps/sync/handlers/validate.ts", import.meta.url).pathname;
@@ -72,6 +71,12 @@ describe("CrmSync (T038)", () => {
     const stateMachines = template.findResources("AWS::StepFunctions::StateMachine");
     const [first] = Object.values(stateMachines);
     const definition = JSON.stringify((first as Record<string, unknown>).Properties);
-    expect(definition).toMatch(/"MaxConcurrency":[23]/);
+    // Found implementing T038: DefinitionString embeds the ASL JSON text as literal string
+    // fragments inside an Fn::Join (needed because the Map/Task states reference dynamic Lambda
+    // ARNs and the DLQ's queue URL) — JSON.stringify-ing that structure necessarily escapes the
+    // ASL text's own embedded quote characters (`\"MaxConcurrency\":3`, not `"MaxConcurrency":3`).
+    // Tolerating one optional backslash keeps this assertion meaningful without over-fitting to
+    // a single CDK rendering strategy.
+    expect(definition).toMatch(/\\?"MaxConcurrency\\?":[23]/);
   });
 });

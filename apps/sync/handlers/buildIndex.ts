@@ -1,0 +1,232 @@
+// BuildIndex (T015/T017, INDEX group, espeon): the one step the contract forbids from making any
+// network call to Task A or a gateway (contracts/sync-pipeline.md). It receives this run's
+// already-verified parts (fetched and sha256-checked by FetchPart, machamp's step) from S3,
+// binds them with vendored packages/oracle-views' bindManifest() (never re-deriving
+// status_class/open_days/roof age — ADR-07), and Zod-validates every row against
+// packages/index-schema before it is ever written out as crm_property/crm_permit Parquet.
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import { withObservability, type Observability } from "@crm/observability";
+import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
+import { bindManifest } from "@crm/oracle-views";
+import type { QueryEngine, Row } from "@crm/oracle-views";
+
+/** One row of the bound v_property view, as DuckDB returns it (snake_case, verbatim column
+ *  names from packages/oracle-contract/src/columns.ts). */
+export type ViewRow = Record<string, unknown>;
+
+function asMissing(value: unknown): Missing[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((m) => {
+    const entry = m as { field: string; reason: string };
+    return { field: entry.field, reason: entry.reason as Missing["reason"] };
+  });
+}
+
+/**
+ * Maps one bound v_property row into the CRM's own CrmProperty shape and Zod-validates it.
+ * Every field not carried into data-model.md's crm_property table (parcel_identifier,
+ * property_structure_built_year, last_ownership_transfer_date, tenure_years, tenure_basis,
+ * owner_name, area_list_sha256) is dropped here on purpose — never copied, per ADR-03 for
+ * owner_name specifically and per data-model.md's slimmer field list for the rest. A null field
+ * keeps its exact missing reason (row.missing, verbatim) — this function never guesses or
+ * interpolates a replacement value (FR-003).
+ */
+export function mapPropertyRow(row: ViewRow, sourceManifestCid: string): CrmProperty {
+  return CrmProperty.parse({
+    propertyCid: row.property_cid,
+    requestIdentifier: row.request_identifier,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    coordinateSource: row.coordinate_source,
+    propertyType: row.property_type,
+    propertyUsageType: row.property_usage_type,
+    roofAgeYears: row.roof_age_years,
+    roofAgeBasis: row.roof_age_basis,
+    roofAgeConfidence: row.roof_age_confidence,
+    isLongTenure: row.is_long_tenure,
+    ownerKind: row.owner_kind,
+    ownerAreaClass: row.owner_area_class,
+    ownerIsOutOfArea: row.owner_is_out_of_area,
+    sourceManifestCid,
+    missingReasons: asMissing(row.missing),
+    capturedAt: row.captured_at,
+    cid: row.cid,
+    runId: row.run_id,
+  });
+}
+
+/** Maps one bound v_roofing_permit row into CrmPermit. statusClass/isOpen are read verbatim from
+ *  the vendored query-core derivation — never recomputed here (contracts/lead-index-port.md). */
+export function mapPermitRow(row: ViewRow, sourceManifestCid: string): CrmPermit {
+  return CrmPermit.parse({
+    propertyCid: row.property_cid,
+    permitCid: row.permit_cid,
+    jurisdiction: row.jurisdiction,
+    permitNumber: row.permit_number,
+    improvementType: row.improvement_type,
+    improvementAction: row.improvement_action,
+    improvementStatus: row.improvement_status,
+    statusClass: row.status_class,
+    issueDate: row.issue_date,
+    finalDate: row.final_date,
+    permitCloseDate: row.permit_close_date,
+    finalInspectionDate: row.final_inspection_date,
+    openDays: row.open_days,
+    contractorResolution: row.contractor_resolution,
+    contractorCompanyCid: row.contractor_company_cid,
+    sourceManifestCid,
+    missingReasons: asMissing(row.missing),
+    capturedAt: row.captured_at,
+    cid: row.cid,
+    runId: row.run_id,
+  });
+}
+
+export interface BuildIndexResult {
+  properties: CrmProperty[];
+  permits: CrmPermit[];
+}
+
+/**
+ * The network-free core (contracts/sync-pipeline.md: "Must not make any network call to Task A
+ * or any gateway"): given an already-bound QueryEngine (BuildIndex's caller has already loaded
+ * this run's verified parts into it — no fetch happens in here, by construction, since `engine`
+ * only ever runs SQL against whatever DuckDB already has loaded locally), reads v_property and
+ * v_roofing_permit and maps+validates every row.
+ */
+export async function buildIndexCore(
+  engine: QueryEngine,
+  sourceManifestCid: string,
+): Promise<BuildIndexResult> {
+  const propertyRows = (await engine.all("SELECT * FROM v_property")) as Row[];
+  const permitRows = (await engine.all("SELECT * FROM v_roofing_permit")) as Row[];
+  return {
+    properties: propertyRows.map((row) => mapPropertyRow(row, sourceManifestCid)),
+    permits: permitRows.map((row) => mapPermitRow(row, sourceManifestCid)),
+  };
+}
+
+export interface BuildIndexEvent {
+  bucket: string;
+  manifestCid: string;
+  /** S3 key of the raw manifest JSON bytes, already verified by FetchPart. */
+  manifestKey: string;
+  /** S3 keys of this run's verified table parts, e.g. raw/{manifestCid}/tables/county/property/part-00000.parquet. */
+  partKeys: string[];
+}
+
+export interface BuildIndexOutput {
+  manifestCid: string;
+  propertyCount: number;
+  permitCount: number;
+  propertyKey: string;
+  permitKey: string;
+}
+
+const s3 = new S3Client({});
+
+async function downloadToFile(bucket: string, key: string, destPath: string): Promise<void> {
+  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const body = res.Body;
+  if (body === undefined) throw new Error(`BuildIndex: S3 object ${key} has no body`);
+  await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
+}
+
+/** `raw/{manifestCid}/tables/county/property/part-00000.parquet` -> `{group}/{table}/{part}`, the
+ *  local layout bindManifest's default partUrl expects under `tablesDir`. */
+function localPartPath(key: string): string {
+  const match = /tables\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(key);
+  if (!match) throw new Error(`BuildIndex: part key "${key}" is not tables/{group}/{table}/{part}`);
+  const [, group, table, part] = match;
+  return join(String(group), String(table), String(part));
+}
+
+async function buildIndexCoreFromEvent(
+  event: BuildIndexEvent,
+  obs: Observability,
+): Promise<BuildIndexOutput> {
+  const tmpDir = mkdtempSync(join(tmpdir(), "crm-build-index-"));
+  const connection = await createInMemoryConnection();
+  try {
+    await connection.run("SET TimeZone = 'UTC'");
+    const engine: QueryEngine = {
+      run: async (sql: string) => {
+        await connection.run(sql);
+      },
+      all: async (sql: string) => {
+        const reader = await connection.runAndReadAll(sql);
+        return reader.getRowObjectsJS() as Row[];
+      },
+    };
+
+    const manifestPath = join(tmpDir, "manifest.json");
+    await downloadToFile(event.bucket, event.manifestKey, manifestPath);
+    const manifestBytes = new Uint8Array(await readFile(manifestPath));
+
+    for (const key of event.partKeys) {
+      const relative = localPartPath(key);
+      const destPath = join(tmpDir, relative);
+      await mkdir(join(destPath, ".."), { recursive: true });
+      await downloadToFile(event.bucket, key, destPath);
+    }
+
+    await bindManifest(manifestBytes, tmpDir, engine);
+    const { properties, permits } = await buildIndexCore(engine, event.manifestCid);
+    obs.logger.info("BuildIndex: rows mapped and validated", {
+      propertyCount: properties.length,
+      permitCount: permits.length,
+    });
+
+    // Write the already-validated CrmProperty/CrmPermit rows (camelCase, index-schema shape) —
+    // never the raw view rows — as Parquet, via a JSON round-trip DuckDB reads back typed.
+    const propertyJson = join(tmpDir, "crm_property.json");
+    const permitJson = join(tmpDir, "crm_permit.json");
+    await writeFile(propertyJson, JSON.stringify(properties));
+    await writeFile(permitJson, JSON.stringify(permits));
+
+    const propertyFile = join(tmpDir, "crm_property.parquet");
+    const permitFile = join(tmpDir, "crm_permit.parquet");
+    await connection.run(
+      `COPY (SELECT * FROM read_json_auto('${propertyJson}')) TO '${propertyFile}' (FORMAT parquet)`,
+    );
+    await connection.run(
+      `COPY (SELECT * FROM read_json_auto('${permitJson}')) TO '${permitFile}' (FORMAT parquet)`,
+    );
+
+    const propertyKey = `index/${event.manifestCid}/crm_property.parquet`;
+    const permitKey = `index/${event.manifestCid}/crm_permit.parquet`;
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: event.bucket,
+        Key: propertyKey,
+        Body: await readFile(propertyFile),
+      }),
+    );
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: event.bucket,
+        Key: permitKey,
+        Body: await readFile(permitFile),
+      }),
+    );
+
+    return {
+      manifestCid: event.manifestCid,
+      propertyCount: properties.length,
+      permitCount: permits.length,
+      propertyKey,
+      permitKey,
+    };
+  } finally {
+    connection.closeSync();
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
+export const buildIndexHandler = withObservability("BuildIndex", buildIndexCoreFromEvent);

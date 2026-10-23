@@ -47,7 +47,9 @@ describe("CrmProperty", () => {
     expect(parsed.success).toBe(true);
     if (parsed.success) {
       expect(parsed.data.roofAgeYears).toBeNull();
-      expect(parsed.data.missingReasons).toEqual([{ field: "roofAgeYears", reason: "no_roof_date" }]);
+      expect(parsed.data.missingReasons).toEqual([
+        { field: "roofAgeYears", reason: "no_roof_date" },
+      ]);
     }
   });
 

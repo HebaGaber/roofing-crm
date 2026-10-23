@@ -102,7 +102,7 @@ export function baseManifest(): ManifestJson {
       name: "travis-places",
       version: GAZETTEER.version,
       sha256: GAZETTEER.sha256,
-      path: "packages/query-core/gazetteer/travis-places@1.0.0",
+      path: "packages/oracle-views/gazetteer/travis-places@1.0.0",
       gitCommit: "0000000",
     });
   }

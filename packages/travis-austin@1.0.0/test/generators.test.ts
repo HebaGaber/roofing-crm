@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { PROFILE, RULES, toSoqlInclude, toSoqlSamplePopulation, toSqlStatusMap } from "../index.js";
 
 const generated = new URL(
-  "../../../packages/query-core/generated/travis-austin@1.0.0.status-map.sql",
+  "../../../packages/oracle-views/generated/travis-austin@1.0.0.status-map.sql",
   import.meta.url,
 ).pathname;
 

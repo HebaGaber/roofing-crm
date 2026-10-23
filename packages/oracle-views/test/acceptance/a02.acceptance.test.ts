@@ -28,7 +28,7 @@ import {
 type Missing = { field: string; reason: string }[];
 type Row = Record<string, unknown>;
 
-const VIEWS_SQL = join(ROOT, "packages/query-core/views.sql");
+const VIEWS_SQL = join(ROOT, "packages/oracle-views/views.sql");
 const COLUMNS_JSON = join(ROOT, "contract/v1/columns.json");
 const SAMPLE = join(ROOT, "contract/v1/sample.parquet");
 const README = join(ROOT, "contract/v1/README.md");
@@ -364,12 +364,12 @@ if (!PILOT_DIR) {
     });
 
     it("A-02-TC-NF-03 the profile SHA-256 is stamped on every classification and every permit row", () => {
-      const sha = readFileSync(join(ROOT, "profiles/travis-austin@1.0.0/DIGEST"), "utf8").trim();
+      const sha = readFileSync(join(ROOT, "packages/travis-austin@1.0.0/DIGEST"), "utf8").trim();
       expect(digest()).toBe(sha);
       expect(PROFILE.sha256).toBe(sha);
       expect(classifyStatus("Expired").profile_sha256).toBe(sha);
       const expectations = JSON.parse(
-        readFileSync(join(ROOT, "profiles/travis-austin@1.0.0/expectations.json"), "utf8"),
+        readFileSync(join(ROOT, "packages/travis-austin@1.0.0/expectations.json"), "utf8"),
       ) as { rules_sha256: string };
       expect(expectations.rules_sha256).toBe(sha);
       const profiles = manifestJson().profiles as {

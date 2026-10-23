@@ -16,7 +16,7 @@ import { openDuckDb, type DuckDbEngine } from "../scripts/duckdb-engine.js";
 import { PILOT_DIR, ROOT, SKIP_MESSAGE } from "./helpers/pilot.js";
 
 const ADR = join(ROOT, "docs/decisions/0002-lexicon-carriers.md");
-const SCHEMAS = join(ROOT, "packages/query-core/test/fixtures/schemas");
+const SCHEMAS = join(ROOT, "packages/oracle-views/test/fixtures/schemas");
 /** Lexicon classes in the committed schema snapshot (keeps `tables.car …` and the like out). */
 const LEXICON_CLASSES = new Set(
   readdirSync(SCHEMAS)

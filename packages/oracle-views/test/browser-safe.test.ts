@@ -25,7 +25,7 @@ import {
 const PKG = fileURLToPath(new URL("../", import.meta.url));
 const ROOT = resolve(PKG, "../../");
 const GAZ = join(PKG, "gazetteer/travis-places@1.0.0");
-const PROFILE_DIR = join(ROOT, "profiles/travis-austin@1.0.0");
+const PROFILE_DIR = join(ROOT, "packages/travis-austin@1.0.0");
 
 const sha256 = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 const readJson = (file: string): unknown => JSON.parse(readFileSync(file, "utf8"));
@@ -81,7 +81,7 @@ describe("generated digest constants (T010)", () => {
 
 /** Workspace packages reachable from query-core, resolved to their source entry. */
 const WORKSPACE: Record<string, string> = {
-  "@crm/oracle-contract": join(ROOT, "packages/contract/src/index.ts"),
+  "@crm/oracle-contract": join(ROOT, "packages/oracle-contract/src/index.ts"),
   "@crm/oracle-profile-travis-austin": join(PROFILE_DIR, "index.ts"),
 };
 /** npm packages the browser bundle may carry. */
@@ -134,12 +134,12 @@ describe("browser safety of the modules reachable from src/index.ts (T010)", () 
     const rel = graph.files.map((f) => relative(ROOT, f));
     expect(rel).toEqual(
       expect.arrayContaining([
-        "packages/query-core/src/bind-manifest.ts",
-        "packages/query-core/src/sql.generated.ts",
-        "packages/query-core/gazetteer/travis-places@1.0.0/index.ts",
-        "packages/query-core/gazetteer/travis-places@1.0.0/schema.ts",
-        "profiles/travis-austin@1.0.0/index.ts",
-        "packages/contract/src/index.ts",
+        "packages/oracle-views/src/bind-manifest.ts",
+        "packages/oracle-views/src/sql.generated.ts",
+        "packages/oracle-views/gazetteer/travis-places@1.0.0/index.ts",
+        "packages/oracle-views/gazetteer/travis-places@1.0.0/schema.ts",
+        "packages/travis-austin@1.0.0/index.ts",
+        "packages/oracle-contract/src/index.ts",
       ]),
     );
   });

@@ -1,7 +1,7 @@
 // A-07 T047 (Track D, contracts/estimator.md § "View comparison (Track D3)", FR-017, NFR-004/
 // SC-006): the view-derivation comparison harness must agree with the estimator's output
 // 25/25 for the audited properties before any `--apply` is approved. This fixture test proves
-// the harness itself: it reuses packages/query-core's own view-side derivation functions
+// the harness itself: it reuses packages/oracle-views's own view-side derivation functions
 // (derive.ts), never a reimplementation, and must flag any disagreement precisely.
 import { describe, expect, it } from "vitest";
 import { compareRoofAgeDerivations, type RoofAgeComparisonRow } from "../roof-age-comparison.js";

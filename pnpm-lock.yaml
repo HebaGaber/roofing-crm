@@ -50,12 +50,24 @@ importers:
       '@aws-sdk/client-dynamodb':
         specifier: 3.709.0
         version: 3.709.0
+      '@aws-sdk/client-s3':
+        specifier: 3.709.0
+        version: 3.709.0
       '@aws-sdk/lib-dynamodb':
         specifier: 3.709.0
         version: 3.709.0(@aws-sdk/client-dynamodb@3.709.0)
+      '@crm/index-schema':
+        specifier: workspace:*
+        version: link:../../packages/index-schema
+      '@crm/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@duckdb/node-api':
+        specifier: 1.5.6-r.2
+        version: 1.5.6-r.2
       '@trpc/server':
         specifier: 11.19.0
         version: 11.19.0(typescript@6.0.3)
@@ -111,12 +123,18 @@ importers:
       '@crm/oracle-contract':
         specifier: workspace:*
         version: link:../../packages/oracle-contract
+      '@crm/oracle-profile-travis-austin':
+        specifier: workspace:*
+        version: link:../../packages/travis-austin@1.0.0
       '@crm/oracle-views':
         specifier: workspace:*
         version: link:../../packages/oracle-views
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@duckdb/node-api':
+        specifier: 1.5.6-r.2
+        version: 1.5.6-r.2
       zod:
         specifier: 3.24.1
         version: 3.24.1
@@ -127,9 +145,15 @@ importers:
       '@types/node':
         specifier: 22.10.5
         version: 22.10.5
+      aws-cdk-lib:
+        specifier: 2.173.4
+        version: 2.173.4(constructs@10.4.2)
       aws-sdk-client-mock:
         specifier: 4.1.0
         version: 4.1.0
+      constructs:
+        specifier: 10.4.2
+        version: 10.4.2
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -363,12 +387,6 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
-  packages/oracle-profile-travis-austin:
-    dependencies:
-      zod:
-        specifier: ^4.6.7
-        version: 4.6.7
-
   packages/oracle-views:
     dependencies:
       '@crm/oracle-contract':
@@ -376,7 +394,7 @@ importers:
         version: link:../oracle-contract
       '@crm/oracle-profile-travis-austin':
         specifier: workspace:*
-        version: link:../oracle-profile-travis-austin
+        version: link:../travis-austin@1.0.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -400,6 +418,12 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(@types/node@22.10.5)(tsx@4.19.2))
+
+  packages/travis-austin@1.0.0:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
 
   packages/tsconfig: {}
 
