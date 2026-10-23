@@ -1,7 +1,11 @@
-// B-03 FilterSheet tests (tasks.md T025a; AC-3, AC-5, FR-003, FR-005). Replaces the A-13/
-// ORACLE-u version this file was copied from (C1 copy, 2026-10-23), which exercised that story's
-// place/tenure/ooa/sort controls — none of which exist on this story's own `FilterSheet.tsx`
-// (rewritten for B-03's two controls: the roof-age threshold and the permit-view toggle).
+// B-03 FilterSheet tests (tasks.md T025a; AC-3, AC-5, FR-003, FR-005). Originally replaced the
+// A-13/ORACLE-u version this file was copied from; updated again for the structural-rebuild fix
+// (B-03, 2026-10-24) that removed the duplicate legacy controls (a standalone "Roof age" number
+// field and a "Show open permits" checkbox) the earlier rebuild had left in place beside the new
+// roof-age chips and permit-status controls. CRM-HANDOFF §4.2 names exactly one roof-age control
+// (chips, or any number in "Other") and this file now tests that single control, plus the
+// permit-status/permit-open-years controls which replaced the old checkbox (filter-sheet-
+// extended.test.tsx covers their own cases in more depth).
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
@@ -9,66 +13,83 @@ import { committedRoofAge, FilterSheet } from "../src/routes/Map/FilterSheet";
 
 afterEach(cleanup);
 
+function renderSheet(
+  overrides: Partial<Parameters<typeof FilterSheet>[0]> = {},
+): ReturnType<typeof render> {
+  return render(
+    <FilterSheet
+      roofAgeMinYears={DEFAULT_ROOF_AGE_YEARS}
+      onRoofAgeMinYearsChange={vi.fn()}
+      permitStatus="any"
+      onPermitStatusChange={vi.fn()}
+      permitOpenYrs={undefined}
+      onPermitOpenYrsChange={vi.fn()}
+      {...overrides}
+    />,
+  );
+}
+
 describe("FilterSheet", () => {
-  it("B-03-TC-011: shows the roof-age threshold and the default placeholder", () => {
-    render(
-      <FilterSheet
-        roofAgeMinYears={DEFAULT_ROOF_AGE_YEARS}
-        permitView={false}
-        onRoofAgeMinYearsChange={vi.fn()}
-        onPermitViewChange={vi.fn()}
-      />,
-    );
-    const input = screen.getByLabelText("Roof age") as HTMLInputElement;
+  it("B-03-TC-011: shows the roof-age 'Other' field with the default placeholder, and no second 'Roof age' field", () => {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const input = screen.getByLabelText("Other, yrs or older") as HTMLInputElement;
     expect(input.value).toBe("15");
+    // Only ONE roof-age control: the chip row's own label "Roof age ≥" is a <span>, not a
+    // second <label htmlFor>, so there is exactly one labelled roof-age text box.
+    expect(screen.queryAllByLabelText("Roof age")).toHaveLength(0);
   });
 
-  it("commits an integer roof-age threshold on change", () => {
+  it("commits an integer roof-age threshold typed into 'Other'", () => {
     const onChange = vi.fn();
-    render(
-      <FilterSheet
-        roofAgeMinYears={15}
-        permitView={false}
-        onRoofAgeMinYearsChange={onChange}
-        onPermitViewChange={vi.fn()}
-      />,
-    );
-    const input = screen.getByLabelText("Roof age");
+    renderSheet({ roofAgeMinYears: 15, onRoofAgeMinYearsChange: onChange });
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const input = screen.getByLabelText("Other, yrs or older");
     fireEvent.change(input, { target: { value: "25" } });
     expect(onChange).toHaveBeenCalledWith(25);
   });
 
-  it("an emptied roof-age box clears the filter (undefined, never 0) — FR-003's 'no filter' state", () => {
+  it("an emptied 'Other' box clears the filter (undefined, never 0) — FR-003's 'no filter' state", () => {
     const onChange = vi.fn();
-    render(
-      <FilterSheet
-        roofAgeMinYears={15}
-        permitView={false}
-        onRoofAgeMinYearsChange={onChange}
-        onPermitViewChange={vi.fn()}
-      />,
-    );
-    const input = screen.getByLabelText("Roof age");
+    renderSheet({ roofAgeMinYears: 15, onRoofAgeMinYearsChange: onChange });
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const input = screen.getByLabelText("Other, yrs or older");
     fireEvent.change(input, { target: { value: "" } });
     expect(onChange).toHaveBeenCalledWith(undefined);
   });
 
-  it("B-03-TC-016: toggles the permit view", () => {
-    const onChange = vi.fn();
-    render(
-      <FilterSheet
-        roofAgeMinYears={15}
-        permitView={false}
-        onRoofAgeMinYearsChange={vi.fn()}
-        onPermitViewChange={onChange}
-      />,
-    );
-    // The panel is collapsed below 840px until "Filters" is opened (same pattern as the file
-    // this replaces).
+  it("there is no 'Show open permits' checkbox (removed as a duplicate of Permit status)", () => {
+    renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
-    const box = screen.getByRole("checkbox", { name: "Show open permits" }) as HTMLInputElement;
-    fireEvent.click(box);
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole("checkbox", { name: "Show open permits" })).toBeNull();
+  });
+
+  it("the sheet opens behind the 'Filters' button and closes with the X", () => {
+    renderSheet();
+    const toggle = screen.getByRole("button", { name: "Filters" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Close filters" }));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("Escape closes the open sheet", () => {
+    renderSheet();
+    const toggle = screen.getByRole("button", { name: "Filters" });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("clicking the backdrop closes the open sheet", () => {
+    const { container } = renderSheet();
+    const toggle = screen.getByRole("button", { name: "Filters" });
+    fireEvent.click(toggle);
+    const backdrop = container.querySelector("[aria-hidden='true']");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop as Element);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 });
 

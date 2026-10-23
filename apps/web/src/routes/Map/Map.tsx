@@ -78,13 +78,6 @@ export function Component(): ReactElement {
     [setSearchParams],
   );
 
-  const setPermitView = useCallback(
-    (value: boolean) => {
-      setSearchParams((prev) => patchMapParams(prev, { permits: value }));
-    },
-    [setSearchParams],
-  );
-
   const selectProperty = useCallback(
     (propertyCid: string) => {
       setSearchParams((prev) => patchMapParams(prev, { sel: propertyCid }));
@@ -188,9 +181,7 @@ export function Component(): ReactElement {
         <GpsButton onLocated={placePoint} isInCoverage={isInTravisCounty} />
         <FilterSheet
           roofAgeMinYears={roofAgeMinYears}
-          permitView={permitView}
           onRoofAgeMinYearsChange={setRoofAgeMinYears}
-          onPermitViewChange={setPermitView}
           permitStatus={permitStatus}
           onPermitStatusChange={setPermitStatus}
           permitOpenYrs={permitOpenYrs}

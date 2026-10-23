@@ -2,16 +2,21 @@
 // Explore version this file was copied from (C1 copy, 2026-10-23): that version controlled
 // place/radius/roof/permit/openYrs/tenure/ooa/sort for Task A's place-based Explorer. B-03's Map
 // has no place search and no tenure/out-of-area-owner filter (ADR-03 keeps owner data out of this
-// story entirely) — radius itself lives in `RadiusControl.tsx` (Group 1's T016). This file owns:
-// the roof-age threshold (chips 10/13/15/20/25 + an "Other" number field, default 15, CRM-HANDOFF
-// §4.2 "Filters (CRM set)"), the permit-view toggle (US3), and — new in the structural rebuild —
-// the permit status (Open/Stalled/Any) and permit-open-duration filters, applied client-side over
-// the already-fetched permits (the API has no status filter of its own, contracts/search-api.md).
-// Below 840 px the controls collapse into a sheet behind a "Filters" button (aria-expanded); from
-// 840 px they sit beside the results (same breakpoint and CSS module as the file this replaces).
-// Atlas outlined text fields and chips, 48 px targets. Render-only.
+// story entirely) — radius itself lives in `RadiusControl.tsx` (Group 1's T016). CRM-HANDOFF
+// §4.2 "Filters (CRM set)" names exactly three controls, and this file owns all three: the
+// roof-age threshold (chips 10/13/15/20/25, or any number in "Other"; default 15 — one control,
+// not two), the permit status (Open/Stalled/Any), and the permit-open-duration filter. Permit
+// status/open-years are applied client-side over the already-fetched permits (the API has no
+// status filter of its own, contracts/search-api.md). There is no separate "show permits"
+// toggle in the CRM-HANDOFF filter set — the old A-13 "Show open permits" checkbox was left
+// behind by the structural rebuild and has been removed as a duplicate of "Permit status".
+// Below 840 px the controls collapse into a real dismissible sheet behind a "Filters" button
+// (aria-expanded; Escape and backdrop-click close it, matching `@crm/ui`'s `Popover`); from
+// 840 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
+// file this replaces). Atlas outlined text fields and chips, 48 px targets. Render-only.
+import { IconButton } from "@crm/ui";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
-import { useId, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import styles from "./FilterSheet.module.css";
 
 /** CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other'; default 15)". */
@@ -25,17 +30,15 @@ export const PERMIT_OPEN_YEARS_OPTIONS: readonly number[] = [1, 3, 5, 10];
 export interface FilterSheetProps {
   /** `undefined` = no roof-age filter applied (every row shown, FR-003's "no filter" state). */
   readonly roofAgeMinYears: number | undefined;
-  readonly permitView: boolean;
   readonly onRoofAgeMinYearsChange: (value: number | undefined) => void;
-  readonly onPermitViewChange: (value: boolean) => void;
   /** Permit status (Open · Stalled · Any — "Open" means not finaled, includes stalled per
-   *  CRM-HANDOFF §4.2). Optional: a caller that doesn't care about permit status yet (every
-   *  existing test) gets the control hidden and no behaviour change. */
-  readonly permitStatus?: PermitStatusFilter;
-  readonly onPermitStatusChange?: (value: PermitStatusFilter) => void;
+   *  CRM-HANDOFF §4.2). The one permit-status control this sheet renders (there is no separate
+   *  show/hide-permits toggle — "Any" already shows every permit). */
+  readonly permitStatus: PermitStatusFilter;
+  readonly onPermitStatusChange: (value: PermitStatusFilter) => void;
   /** Permit open ≥ N yrs; `undefined` = "Any". */
-  readonly permitOpenYrs?: number | undefined;
-  readonly onPermitOpenYrsChange?: (value: number | undefined) => void;
+  readonly permitOpenYrs: number | undefined;
+  readonly onPermitOpenYrsChange: (value: number | undefined) => void;
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -50,9 +53,7 @@ export function committedRoofAge(text: string): number | undefined {
 
 export function FilterSheet({
   roofAgeMinYears,
-  permitView,
   onRoofAgeMinYearsChange,
-  onPermitViewChange,
   permitStatus,
   onPermitStatusChange,
   permitOpenYrs,
@@ -63,6 +64,21 @@ export function FilterSheet({
   // What the person is typing, until they leave the box (mirrors the copied-from file's "drafts"
   // pattern so a half-typed value is never clobbered by the committed one re-rendering).
   const [draft, setDraft] = useState<string | undefined>(undefined);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const close = (): void => setOpen(false);
+
+  // Below 840px the panel is a dismissible overlay: Escape closes it (same contract as
+  // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 840px
+  // the panel is always visible beside the results (CSS below), so neither listener fires
+  // anything a person can see.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   return (
     <div className={styles.sheet}>
@@ -75,7 +91,26 @@ export function FilterSheet({
       >
         Filters
       </button>
-      <div id={`${id}-panel`} className={`${styles.panel} ${open ? styles.open : ""}`}>
+      {open ? <div className={styles.backdrop} onClick={close} aria-hidden="true" /> : null}
+      <div
+        ref={panelRef}
+        id={`${id}-panel`}
+        role="dialog"
+        aria-label="Filters"
+        aria-modal={open || undefined}
+        className={`${styles.panel} ${open ? styles.open : ""}`}
+      >
+        <div className={styles.header}>
+          <span className={styles.headerTitle}>Filters</span>
+          <IconButton
+            icon="close"
+            label="Close filters"
+            className={styles.closeBtn}
+            onClick={close}
+          />
+        </div>
+        {/* CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other')" — one
+            control: the five preset chips, plus "Other" for any value the chips don't cover. */}
         <div className={styles.group}>
           <span className={styles.groupLabel}>Roof age ≥</span>
           <div className={styles.chips} role="group" aria-label="Roof age threshold">
@@ -93,86 +128,67 @@ export function FilterSheet({
           </div>
           <div className={styles.field}>
             <label className={styles.label} htmlFor={`${id}-roof`}>
-              Roof age
+              Other, yrs or older
             </label>
-            <span className={styles.inputRow}>
-              <input
-                id={`${id}-roof`}
-                className={styles.input}
-                type="number"
-                inputMode="numeric"
-                step="1"
-                min={0}
-                placeholder={`${DEFAULT_ROOF_AGE_YEARS}`}
-                value={draft ?? (roofAgeMinYears === undefined ? "" : String(roofAgeMinYears))}
-                onChange={(e) => {
-                  const typed = e.target.value;
-                  setDraft(typed);
-                  if (typed.trim() === "") {
-                    onRoofAgeMinYearsChange(undefined);
-                  } else {
-                    const committed = committedRoofAge(typed);
-                    if (committed !== undefined) onRoofAgeMinYearsChange(committed);
-                  }
-                }}
-                onBlur={() => setDraft(undefined)}
-              />
-              <span className={styles.unit}>Other, yrs or older</span>
-            </span>
+            <input
+              id={`${id}-roof`}
+              className={styles.input}
+              type="number"
+              inputMode="numeric"
+              step="1"
+              min={0}
+              placeholder={`${DEFAULT_ROOF_AGE_YEARS}`}
+              value={draft ?? (roofAgeMinYears === undefined ? "" : String(roofAgeMinYears))}
+              onChange={(e) => {
+                const typed = e.target.value;
+                setDraft(typed);
+                if (typed.trim() === "") {
+                  onRoofAgeMinYearsChange(undefined);
+                } else {
+                  const committed = committedRoofAge(typed);
+                  if (committed !== undefined) onRoofAgeMinYearsChange(committed);
+                }
+              }}
+              onBlur={() => setDraft(undefined)}
+            />
           </div>
         </div>
-        <div className={styles.check}>
-          <input
-            id={`${id}-permits`}
-            className={styles.box}
-            type="checkbox"
-            checked={permitView}
-            onChange={(e) => onPermitViewChange(e.target.checked)}
-          />
-          <label className={styles.label} htmlFor={`${id}-permits`}>
-            Show open permits
+        <div className={styles.group}>
+          <span className={styles.groupLabel}>Permit status</span>
+          <div className={styles.chips} role="group" aria-label="Permit status">
+            {(["open", "stalled", "any"] as const).map((status) => (
+              <button
+                key={status}
+                type="button"
+                className={`${styles.chip} ${permitStatus === status ? styles.chipSelected : ""}`}
+                aria-pressed={permitStatus === status}
+                onClick={() => onPermitStatusChange(status)}
+              >
+                {status === "open" ? "Open" : status === "stalled" ? "Stalled" : "Any"}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor={`${id}-open-yrs`}>
+            Permit open ≥
           </label>
+          <select
+            id={`${id}-open-yrs`}
+            className={styles.select}
+            value={permitOpenYrs ?? ""}
+            onChange={(e) =>
+              onPermitOpenYrsChange(e.target.value === "" ? undefined : Number(e.target.value))
+            }
+          >
+            <option value="">Any</option>
+            {PERMIT_OPEN_YEARS_OPTIONS.map((years) => (
+              <option key={years} value={years}>
+                {years} yrs
+              </option>
+            ))}
+          </select>
         </div>
-        {onPermitStatusChange === undefined ? null : (
-          <div className={styles.group}>
-            <span className={styles.groupLabel}>Permit status</span>
-            <div className={styles.chips} role="group" aria-label="Permit status">
-              {(["open", "stalled", "any"] as const).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  className={`${styles.chip} ${permitStatus === status ? styles.chipSelected : ""}`}
-                  aria-pressed={permitStatus === status}
-                  onClick={() => onPermitStatusChange(status)}
-                >
-                  {status === "open" ? "Open" : status === "stalled" ? "Stalled" : "Any"}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {onPermitOpenYrsChange === undefined ? null : (
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${id}-open-yrs`}>
-              Permit open ≥
-            </label>
-            <select
-              id={`${id}-open-yrs`}
-              className={styles.select}
-              value={permitOpenYrs ?? ""}
-              onChange={(e) =>
-                onPermitOpenYrsChange(e.target.value === "" ? undefined : Number(e.target.value))
-              }
-            >
-              <option value="">Any</option>
-              {PERMIT_OPEN_YEARS_OPTIONS.map((years) => (
-                <option key={years} value={years}>
-                  {years} yrs
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
       </div>
     </div>
   );
