@@ -4,15 +4,14 @@
 // binds them with vendored packages/oracle-views' bindManifest() (never re-deriving
 // status_class/open_days/roof age — ADR-07), and Zod-validates every row against
 // packages/index-schema before it is ever written out as crm_property/crm_permit Parquet.
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { createInMemoryConnection } from "../src/engine/duckdb.js";
 import { contentAddressedKey } from "./fetchPart.js";
-import { withObservability, type Observability } from "@crm/observability";
+import { downloadS3ObjectToFile, withObservability, type Observability } from "@crm/observability";
 import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
 import { bindManifest } from "@crm/oracle-views";
 import type { QueryEngine, Row } from "@crm/oracle-views";
@@ -231,10 +230,7 @@ export interface BuildIndexOutput {
 const s3 = new S3Client({});
 
 async function downloadToFile(bucket: string, key: string, destPath: string): Promise<void> {
-  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const body = res.Body;
-  if (body === undefined) throw new Error(`BuildIndex: S3 object ${key} has no body`);
-  await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
+  await downloadS3ObjectToFile(s3, bucket, key, destPath);
 }
 
 /** `tables/county/property/part-00000.parquet` -> `{group}/{table}/{part}`, the local layout

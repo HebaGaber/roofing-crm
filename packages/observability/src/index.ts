@@ -6,6 +6,8 @@ import { Logger } from "@aws-lambda-powertools/logger";
 import { Metrics } from "@aws-lambda-powertools/metrics";
 import { Tracer } from "@aws-lambda-powertools/tracer";
 
+export { downloadS3ObjectToFile } from "./s3.js";
+
 export const METRICS_NAMESPACE = "RoofingCrm";
 
 export const METRIC_NAMES = {

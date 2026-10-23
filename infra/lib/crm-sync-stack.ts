@@ -55,6 +55,13 @@ const HANDLER_MEMORY_MB = 1024;
 const HANDLER_TIMEOUT = Duration.minutes(5);
 /** NFR-002 / ADR-02: FetchPart's Map runs with bounded concurrency 2–3. */
 const FETCH_PART_MAP_CONCURRENCY = 3;
+/** ADR-02: CloudFront first, then Filebase, then Pinata. Task A's own deployed distribution
+ *  (confirmed public, OAC to a private bucket, CORS `*` — ARD-B ADR-02; live-checked
+ *  specs/002-lead-index/run-log.md Stage 0 A1: `{this host}/{cid}` → 200). CR-B-02 finding #2:
+ *  this was never wired into either PlanFunction or FetchPartFunction's environment, so
+ *  productionFetchers()/manifestGatewayUrls() always fell straight to Filebase/Pinata — the
+ *  fallback order ADR-02 names as second and third, silently promoted to first and second. */
+const TASK_A_CLOUDFRONT_BASE_URL = "https://d2xsqoqv09bd0q.cloudfront.net";
 
 /**
  * FetchPart's DLQ and its one self-resolving CloudWatch alarm (constitution Article VII; tasks.md
@@ -192,7 +199,13 @@ export class CrmSyncStack extends Stack {
       "PlanFunction",
       "crm-sync-plan",
       props.planHandlerEntry,
-      { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      {
+        CRM_INDEX_BUCKET_NAME: props.indexBucketName,
+        // ADR-02: CloudFront first for the one lightweight fetch Plan does (the manifest JSON).
+        // plan.ts's manifestGatewayUrls() falls back to Filebase/Pinata's public defaults when
+        // this is unset (local dev, tests), so this is additive, not a required env var.
+        GATEWAY_CLOUDFRONT_BASE_URL: TASK_A_CLOUDFRONT_BASE_URL,
+      },
       "planHandler",
     );
     const fetchPartFn = makeHandler(
@@ -201,12 +214,13 @@ export class CrmSyncStack extends Stack {
       props.fetchPartHandlerEntry,
       {
         CRM_INDEX_BUCKET_NAME: props.indexBucketName,
-        // Found live: these were never wired, so productionFetchers() always returned an empty
-        // list and every part went straight to the DLQ. Filebase + Pinata only, matching Plan's
-        // own hardcoded manifest-fetch gateway list (research.md) — CloudFront's distribution
-        // serves at `/{cid}`, not the `/ipfs/{cid}` path every gateway fetcher here uses, so it
-        // isn't wired through this shared template (ADR-02's fallback order still holds; this is
-        // the same choice Plan already made, not a new deviation).
+        // CR-B-02 finding #2 (E2 fixer): CloudFront is now wired as the first gateway tried, per
+        // ADR-02 — fetchPart.ts's createHttpGatewayFetcher() fetches it at `/{cid}` directly
+        // (GATEWAY_PART_PATH), never the `/ipfs/{cid}` path Filebase/Pinata use, so this was a
+        // one-line path-shape fix, not a redesign. Found live (before this fix): these three were
+        // never all wired together, so productionFetchers() silently promoted Filebase/Pinata to
+        // first/second instead of second/third.
+        GATEWAY_CLOUDFRONT_BASE_URL: TASK_A_CLOUDFRONT_BASE_URL,
         GATEWAY_FILEBASE_BASE_URL: "https://ipfs.filebase.io",
         GATEWAY_PINATA_BASE_URL: "https://gateway.pinata.cloud",
       },

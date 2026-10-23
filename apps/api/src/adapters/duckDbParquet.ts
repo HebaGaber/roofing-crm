@@ -3,15 +3,21 @@
 // in v1). Caches the opened DuckDB connection per-sandbox, per-manifest in module scope — not
 // per-request — which is ADR-01's whole cost argument, so it must be visible in code, not just a
 // comment (alakazam's consult).
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { GetCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { pipeline } from "node:stream/promises";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openParquetConnection, type DuckDBConnection } from "../engine/duckdb.js";
-import { METRIC_NAMES, type Observability } from "@crm/observability";
+import { downloadS3ObjectToFile, METRIC_NAMES, type Observability } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+
+/** DuckDB's own single-quote escaping (double the quote) — the one rule every string literal
+ *  interpolated into a SQL string in this adapter must follow consistently (CR-B-02 finding #4:
+ *  `propertyUsageType` already did this; `propertyCid` did not). */
+function sqlEscapeString(value: string): string {
+  return value.replace(/'/g, "''");
+}
 
 export class IndexNotReadyError extends Error {
   readonly code = "INDEX_NOT_READY" as const;
@@ -24,6 +30,20 @@ export class IndexColdLoadTimeoutError extends Error {
   readonly code = "INDEX_COLD_LOAD_TIMEOUT" as const;
   constructor(manifestCid: string, timeoutMs: number) {
     super(`LeadIndex: cold load of manifest ${manifestCid} exceeded its ${timeoutMs}ms budget`);
+  }
+}
+
+/** CR-B-02 finding #8: thrown internally by a cold-load attempt that finishes after a newer
+ *  attempt for the same manifestCid has already started (this one lost the race to the timeout).
+ *  Never surfaces to a caller of `searchProperties`/`searchPermits`/`getProperty` — it is only
+ *  ever observed by `coldLoad`'s own background-rejection handling, exported solely so a test can
+ *  assert on it directly rather than only on its side effects. */
+export class IndexColdLoadStaleAttemptError extends Error {
+  readonly code = "INDEX_COLD_LOAD_STALE_ATTEMPT" as const;
+  constructor(manifestCid: string, attemptId: number) {
+    super(
+      `LeadIndex: cold-load attempt ${attemptId} for manifest ${manifestCid} was superseded by a newer attempt; discarded`,
+    );
   }
 }
 
@@ -96,6 +116,14 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   private readonly obs: Observability;
   private readonly coldLoadTimeoutMs: number;
   private readonly tmpDir: string;
+  /** CR-B-02 finding #8: one monotonically increasing attempt id per manifestCid. A timed-out
+   *  `coldLoad` never cancels the in-flight `load()` it raced against (Promise.race doesn't
+   *  cancel its loser) — without this, that abandoned load could still be mid-write to the same
+   *  on-disk path a later retry for the same manifestCid also uses, corrupting it. Each attempt
+   *  gets its own directory keyed by this counter, and an attempt that resolves after a newer one
+   *  has already started is recognized as stale and discarded instead of being returned or left
+   *  to linger. */
+  private readonly loadAttemptCounter = new Map<string, number>();
 
   constructor(deps: DuckDbParquetDeps) {
     this.ddb = deps.ddb;
@@ -136,6 +164,12 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   }
 
   private async coldLoad(manifestCid: string): Promise<BoundIndex> {
+    // This attempt's own generation number. A later ensureLoaded() call for the same manifestCid
+    // (e.g. a retry after this attempt times out) bumps the counter again, so this value is only
+    // ever "current" until a newer attempt starts.
+    const attemptId = (this.loadAttemptCounter.get(manifestCid) ?? 0) + 1;
+    this.loadAttemptCounter.set(manifestCid, attemptId);
+
     const startedAt = Date.now();
     const timeout = new Promise<never>((_, reject) => {
       setTimeout(
@@ -144,8 +178,12 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       );
     });
 
+    // Keyed by attemptId, not just manifestCid: an abandoned load (the Promise.race loser) keeps
+    // running after the timeout rejects, so its writes must never land in the same directory a
+    // later, newer attempt for this manifestCid also writes to.
+    const dir = join(this.tmpDir, manifestCid, String(attemptId));
+
     const load = async (): Promise<BoundIndex> => {
-      const dir = join(this.tmpDir, manifestCid);
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       const propertyFile = join(dir, "crm_property.parquet");
       const permitFile = join(dir, "crm_permit.parquet");
@@ -153,28 +191,37 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       await this.downloadToFile(`index/${manifestCid}/crm_permit.parquet`, permitFile);
 
       const connection = await openParquetConnection(propertyFile, permitFile);
+
+      // This attempt lost the race to the timeout (a newer attemptId was already recorded while
+      // this load() was still in flight) — never return or cache a stale connection; close it and
+      // clean up its own (uniquely keyed) directory instead.
+      if (this.loadAttemptCounter.get(manifestCid) !== attemptId) {
+        connection.closeSync();
+        rmSync(dir, { recursive: true, force: true });
+        throw new IndexColdLoadStaleAttemptError(manifestCid, attemptId);
+      }
       return { connection };
     };
 
-    try {
-      const bound = await Promise.race([load(), timeout]);
-      this.obs.metrics.addMetric(
-        METRIC_NAMES.IndexColdLoadMs,
-        MetricUnit.Milliseconds,
-        Date.now() - startedAt,
-      );
-      return bound;
-    } catch (error) {
-      if (error instanceof IndexColdLoadTimeoutError) throw error;
-      throw error;
-    }
+    const loadPromise = load();
+    // Prevents an unhandled-rejection warning/crash: when `timeout` wins the race below, nothing
+    // else is awaiting `loadPromise` directly any more, but it keeps running and will eventually
+    // settle on its own (successfully, as a stale attempt it self-discards, or with a real
+    // error). Promise.race still observes this same promise's original settlement for its own
+    // purposes; this just stops the abandoned branch from going unhandled.
+    loadPromise.catch(() => undefined);
+
+    const bound = await Promise.race([loadPromise, timeout]);
+    this.obs.metrics.addMetric(
+      METRIC_NAMES.IndexColdLoadMs,
+      MetricUnit.Milliseconds,
+      Date.now() - startedAt,
+    );
+    return bound;
   }
 
   private async downloadToFile(key: string, destPath: string): Promise<void> {
-    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
-    const body = res.Body;
-    if (body === undefined) throw new Error(`LeadIndex: S3 object ${key} has no body`);
-    await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
+    await downloadS3ObjectToFile(this.s3, this.bucket, key, destPath);
   }
 
   async searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]> {
@@ -189,7 +236,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     if (query.roofAgeMinYears !== undefined)
       conditions.push(`"roofAgeYears" >= ${query.roofAgeMinYears}`);
     if (query.propertyUsageType !== undefined) {
-      conditions.push(`"propertyUsageType" = '${query.propertyUsageType.replace(/'/g, "''")}'`);
+      conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
     }
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const limit = query.limit ?? 100;
@@ -203,7 +250,8 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     const { manifestCid } = await this.indexInfo();
     const { connection } = await this.ensureLoaded(manifestCid);
     const conditions: string[] = [];
-    if (query.propertyCid !== undefined) conditions.push(`"propertyCid" = '${query.propertyCid}'`);
+    if (query.propertyCid !== undefined)
+      conditions.push(`"propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
     // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
     // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored
     // statusClass column, it does not re-derive it from raw dates.
@@ -224,7 +272,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     const { manifestCid } = await this.indexInfo();
     const { connection } = await this.ensureLoaded(manifestCid);
     const propertyReader = await connection.runAndReadAll(
-      `SELECT * FROM crm_property WHERE "propertyCid" = '${propertyCid}'`,
+      `SELECT * FROM crm_property WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
     );
     const rows = propertyReader.getRowObjectsJS() as unknown as PropertyResult[];
     const property = rows[0];
@@ -233,7 +281,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     if (property === undefined) return null;
 
     const permitReader = await connection.runAndReadAll(
-      `SELECT * FROM crm_permit WHERE "propertyCid" = '${propertyCid}'`,
+      `SELECT * FROM crm_permit WHERE "propertyCid" = '${sqlEscapeString(propertyCid)}'`,
     );
     const permits = permitReader.getRowObjectsJS() as unknown as PermitResult[];
     return { ...property, permits };

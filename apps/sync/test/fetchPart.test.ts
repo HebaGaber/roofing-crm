@@ -4,7 +4,7 @@
 // bytes (contracts/sync-pipeline.md, ADR-02). T030 implements apps/sync/handlers/fetchPart.ts to
 // make this pass — intentionally failing now (no handler exists yet).
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GATEWAY_ORDER,
   MAX_RETRIES_BEFORE_SWITCH,
@@ -12,7 +12,9 @@ import {
 } from "@crm/config/gatewayPolicy.js";
 import {
   contentAddressedKey,
+  createHttpGatewayFetcher,
   fetchPart,
+  productionFetchers,
   type FetchPartDeps,
   type GatewayFetcher,
   type S3ConditionalWriter,
@@ -138,6 +140,94 @@ describe("FetchPart", () => {
     expect(filebase.fetch).toHaveBeenCalledTimes(MAX_RETRIES_BEFORE_SWITCH);
     expect(pinata.fetch).toHaveBeenCalledTimes(MAX_RETRIES_BEFORE_SWITCH);
     expect(s3.calls).toHaveLength(0);
+  });
+});
+
+describe("token-bucket wait never consumes a retry attempt (CR-B-02 finding #6)", () => {
+  it("drives the full MAX_RETRIES_BEFORE_SWITCH real fetch attempts even when the token bucket refuses a few times first", async () => {
+    const cloudfront = alwaysFailingFetcher("cloudfront");
+    const filebase = alwaysFailingFetcher("filebase");
+    const pinata = alwaysFailingFetcher("pinata");
+    const s3 = fakeS3Writer();
+
+    // Refuses the first two acquisitions (politeness waits — never a fetch), then always admits.
+    let acquireCalls = 0;
+    const fakeBucket = {
+      tryAcquire: () => {
+        acquireCalls += 1;
+        return acquireCalls > 2;
+      },
+    } as unknown as import("@crm/config/gatewayPolicy.js").TokenBucket;
+
+    const result = await fetchPart(
+      { manifestCid: MANIFEST_CID, part: PART },
+      {
+        fetchers: [cloudfront, filebase, pinata],
+        s3,
+        sleep: noSleep(),
+        random: () => 0,
+        tokenBuckets: { cloudfront: fakeBucket },
+      },
+    );
+
+    // Before the fix, the two bucket-refusal iterations would have consumed 2 of
+    // MAX_RETRIES_BEFORE_SWITCH's 5 slots, leaving only 3 real fetch attempts before falling
+    // back to Filebase. The fix must still drive the full 5 real attempts against CloudFront.
+    expect(cloudfront.fetch).toHaveBeenCalledTimes(MAX_RETRIES_BEFORE_SWITCH);
+    expect(result.status).toBe("dlq");
+  });
+});
+
+describe("ADR-02 CloudFront wiring (CR-B-02 finding #2)", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("fetches CloudFront at /{cid} directly, never /ipfs/{cid} (confirmed live, run-log.md Stage 0 A1)", async () => {
+    const calledUrls: string[] = [];
+    global.fetch = vi.fn(async (input: string | URL) => {
+      calledUrls.push(String(input));
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const fetcher = createHttpGatewayFetcher("cloudfront", "https://d2xsqoqv09bd0q.cloudfront.net");
+    await fetcher.fetch("bafkreiexamplecid");
+
+    expect(calledUrls).toEqual(["https://d2xsqoqv09bd0q.cloudfront.net/bafkreiexamplecid"]);
+  });
+
+  it("still fetches Filebase/Pinata at /ipfs/{cid}, unlike CloudFront", async () => {
+    const calledUrls: string[] = [];
+    global.fetch = vi.fn(async (input: string | URL) => {
+      calledUrls.push(String(input));
+      return new Response(new Uint8Array([1, 2, 3]), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const filebase = createHttpGatewayFetcher("filebase", "https://ipfs.filebase.io");
+    await filebase.fetch("bafkreiexamplecid");
+
+    expect(calledUrls).toEqual(["https://ipfs.filebase.io/ipfs/bafkreiexamplecid"]);
+  });
+
+  it("productionFetchers() includes CloudFront first when GATEWAY_CLOUDFRONT_BASE_URL is set, matching GATEWAY_ORDER", () => {
+    const fetchers = productionFetchers({
+      GATEWAY_CLOUDFRONT_BASE_URL: "https://d2xsqoqv09bd0q.cloudfront.net",
+      GATEWAY_FILEBASE_BASE_URL: "https://ipfs.filebase.io",
+      GATEWAY_PINATA_BASE_URL: "https://gateway.pinata.cloud",
+    });
+
+    expect(fetchers.map((f) => f.name)).toEqual(["cloudfront", "filebase", "pinata"]);
+  });
+
+  it("productionFetchers() skips CloudFront (never errors) when its env var is unset, falling back to Filebase/Pinata", () => {
+    const fetchers = productionFetchers({
+      GATEWAY_FILEBASE_BASE_URL: "https://ipfs.filebase.io",
+      GATEWAY_PINATA_BASE_URL: "https://gateway.pinata.cloud",
+    });
+
+    expect(fetchers.map((f) => f.name)).toEqual(["filebase", "pinata"]);
   });
 });
 

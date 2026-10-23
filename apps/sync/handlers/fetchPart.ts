@@ -86,6 +86,12 @@ export function contentAddressedKey(manifestCid: string, partPath: string): stri
 const defaultSleep = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+/** CR-B-02 finding #6: a safety bound on how many times this handler will wait on an exhausted
+ *  token bucket for one gateway before giving up on it (never a true infinite loop, even against
+ *  a pathological bucket that never refills). Generous relative to a real bucket, which always
+ *  refills within MAX_REQUESTS_PER_MINUTE's 60s window. */
+const MAX_BUCKET_WAITS_PER_GATEWAY = 20;
+
 /**
  * Fetches and verifies one part, trying each gateway in ADR-02's fixed order with up to
  * `MAX_RETRIES_BEFORE_SWITCH` attempts (backoff + full jitter) before falling back to the next
@@ -102,10 +108,21 @@ export async function fetchPart(
   const sleep = deps.sleep ?? defaultSleep;
 
   for (const fetcher of deps.fetchers) {
-    for (let attempt = 0; attempt < MAX_RETRIES_BEFORE_SWITCH; attempt++) {
+    // CR-B-02 finding #6: `attempt` here counts only real calls to `fetcher.fetch()` — a token-
+    // bucket wait (politeness backpressure, never a fetch) must not consume one of this
+    // gateway's `MAX_RETRIES_BEFORE_SWITCH` slots. The previous version used one `for` loop
+    // counter for both, so an exhausted bucket silently ate retry attempts that never actually
+    // tried the network, switching gateways (or reaching the DLQ) sooner than NFR-002 intends.
+    let attempt = 0;
+    let bucketWaits = 0;
+    while (attempt < MAX_RETRIES_BEFORE_SWITCH) {
       const bucket = deps.tokenBuckets?.[fetcher.name];
       if (bucket !== undefined && !bucket.tryAcquire()) {
-        await sleep(backoffDelayMs(attempt, { random: deps.random }));
+        // Bounded, not infinite: a bucket that never refills (shouldn't happen — TokenBucket
+        // always refills on its next window) still can't hang this handler forever.
+        bucketWaits += 1;
+        if (bucketWaits > MAX_BUCKET_WAITS_PER_GATEWAY) break;
+        await sleep(backoffDelayMs(0, { random: deps.random }));
         continue;
       }
 
@@ -115,6 +132,7 @@ export async function fetchPart(
       } catch {
         result = { ok: false, status: 599 };
       }
+      attempt += 1;
 
       if (result.ok && result.body !== undefined) {
         const digest = sha256Hex(result.body);
@@ -137,8 +155,8 @@ export async function fetchPart(
         break;
       }
 
-      if (attempt < MAX_RETRIES_BEFORE_SWITCH - 1) {
-        await sleep(backoffDelayMs(attempt, { random: deps.random }));
+      if (attempt < MAX_RETRIES_BEFORE_SWITCH) {
+        await sleep(backoffDelayMs(attempt - 1, { random: deps.random }));
       }
     }
     // This gateway's retries are exhausted (or it returned a non-retryable error) — ADR-02's
@@ -150,13 +168,24 @@ export async function fetchPart(
 
 const handlerName = "crm-sync-fetch-part";
 
+/** Task A's CloudFront distribution serves its CID copy at `/{cid}` directly (confirmed live,
+ *  specs/002-lead-index/run-log.md Stage 0 A1: `d2xsqoqv09bd0q.cloudfront.net/{cid}` → 200) —
+ *  not the `/ipfs/{cid}` path every always-public IPFS gateway (Filebase, Pinata) uses. CR-B-02
+ *  finding #2: this is the one place that path-shape difference is encoded, so wiring CloudFront
+ *  in is a one-line env var + this map entry, not a rewrite of the fetch logic. */
+const GATEWAY_PART_PATH: Record<Gateway, (baseUrl: string, cid: string) => string> = {
+  cloudfront: (baseUrl, cid) => `${baseUrl}/${cid}`,
+  filebase: (baseUrl, cid) => `${baseUrl}/ipfs/${cid}`,
+  pinata: (baseUrl, cid) => `${baseUrl}/ipfs/${cid}`,
+};
+
 /**
  * Production gateway fetcher: plain `fetch()` against a gateway's base URL. Base URLs are read
  * from the environment (never hard-coded — architecture-constitution.md §9's config boundary) and
  * are rejected at cold start if they resolve to ipfs.io/dweb.link (ADR-02's retired gateways),
  * so a misconfiguration is loud, not a silent policy violation.
  */
-function createHttpGatewayFetcher(name: Gateway, baseUrl: string): GatewayFetcher {
+export function createHttpGatewayFetcher(name: Gateway, baseUrl: string): GatewayFetcher {
   if (/ipfs\.io|dweb\.link/i.test(baseUrl)) {
     throw new Error(
       `gatewayPolicy: ${name} base URL "${baseUrl}" resolves to a retired gateway (ADR-02 forbids ipfs.io/dweb.link).`,
@@ -165,7 +194,7 @@ function createHttpGatewayFetcher(name: Gateway, baseUrl: string): GatewayFetche
   return {
     name,
     async fetch(cid: string): Promise<GatewayFetchResult> {
-      const response = await fetch(`${baseUrl}/ipfs/${cid}`);
+      const response = await fetch(GATEWAY_PART_PATH[name](baseUrl, cid));
       if (!response.ok) {
         return { ok: false, status: response.status };
       }
@@ -182,7 +211,7 @@ const GATEWAY_BASE_URL_ENV: Record<Gateway, string> = {
   pinata: "GATEWAY_PINATA_BASE_URL",
 };
 
-function productionFetchers(env: Record<string, string | undefined>): GatewayFetcher[] {
+export function productionFetchers(env: Record<string, string | undefined>): GatewayFetcher[] {
   return GATEWAY_ORDER.flatMap((gateway) => {
     const baseUrl = env[GATEWAY_BASE_URL_ENV[gateway]];
     if (baseUrl === undefined || baseUrl === "") return [];

@@ -41,6 +41,8 @@ async function promoteCore(
     );
   }
 
+  const promotedAt = new Date().toISOString();
+
   try {
     await ddb.send(
       new UpdateCommand({
@@ -51,10 +53,23 @@ async function promoteCore(
         // call for an already-promoted manifestCid fails this condition and is a no-op, never a
         // duplicate write. "current"/"previous" are both DynamoDB reserved keywords (found live:
         // ValidationException), hence the #-aliases.
-        UpdateExpression: "SET #previous = #current, #current = :next",
+        //
+        // CR-B-02 finding #1: propertyCount/permitCount/promotedAt are written here too, not just
+        // #current/#previous. Validate (apps/sync/handlers/validate.ts) reads propertyCount back
+        // off this same item for its >5%-row-drop-hold check (constitution §10/SC-006) — without
+        // this write, that check was always comparing against `undefined`/`null` and could never
+        // fire. The API's LeadIndex adapter (apps/api/src/adapters/duckDbParquet.ts's
+        // indexInfo()) reads the same three fields for its own IndexInfo response.
+        UpdateExpression:
+          "SET #previous = #current, #current = :next, propertyCount = :propertyCount, permitCount = :permitCount, promotedAt = :promotedAt",
         ConditionExpression: "attribute_not_exists(#current) OR #current <> :next",
         ExpressionAttributeNames: { "#current": "current", "#previous": "previous" },
-        ExpressionAttributeValues: { ":next": input.indexMeta.manifestCid },
+        ExpressionAttributeValues: {
+          ":next": input.indexMeta.manifestCid,
+          ":propertyCount": input.indexMeta.propertyCount,
+          ":permitCount": input.indexMeta.permitCount,
+          ":promotedAt": promotedAt,
+        },
       }),
     );
   } catch (error) {

@@ -3,14 +3,13 @@
 // index_meta/reconcile rules. Round 1 decision (2026-10-23): tightened to constitution §10's
 // index-fidelity NFR — exact match or at most 0.1% of coverage.parcels_published, documented via
 // `reconcileDiff`; anything larger is `Held`, never a silent pass.
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { DynamoDBClient, ResourceNotFoundException } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
-import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pipeline } from "node:stream/promises";
-import { withObservability, type Observability } from "@crm/observability";
+import { downloadS3ObjectToFile, withObservability, type Observability } from "@crm/observability";
 import {
   IndexMeta,
   type CrmPermit,
@@ -135,10 +134,19 @@ export interface ValidateEvent {
 const META_INDEX_PK = "META#index";
 
 async function downloadToFile(s3: S3Client, bucket: string, key: string, destPath: string) {
-  const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const body = res.Body;
-  if (body === undefined) throw new Error(`Validate: S3 object ${key} has no body`);
-  await pipeline(body as NodeJS.ReadableStream, createWriteStream(destPath));
+  await downloadS3ObjectToFile(s3, bucket, key, destPath);
+}
+
+/**
+ * Reads the previously *promoted* run's property count off a `META#index` DynamoDB item, the
+ * same shape Promote (apps/sync/handlers/promote.ts) now writes `propertyCount`/`permitCount`/
+ * `promotedAt` onto. Exported so a test can prove this reads back what Promote actually writes,
+ * not just that both sides independently agree on a field name (CR-B-02 finding #1).
+ */
+export function extractPreviousPromotedPropertyCount(
+  item: Record<string, unknown> | undefined,
+): number | null {
+  return item?.propertyCount === undefined ? null : Number(item.propertyCount);
 }
 
 /** Reads just enough of a written Parquet file to prove every row carries `sourceManifestCid`
@@ -188,8 +196,7 @@ async function validateCoreFromEvent(
         const pointer = await ddb.send(
           new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK } }),
         );
-        previousPromotedPropertyCount =
-          pointer.Item?.propertyCount === undefined ? null : Number(pointer.Item.propertyCount);
+        previousPromotedPropertyCount = extractPreviousPromotedPropertyCount(pointer.Item);
       } catch (error) {
         if (error instanceof ResourceNotFoundException) {
           previousPromotedPropertyCount = null;

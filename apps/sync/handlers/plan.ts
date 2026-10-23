@@ -11,6 +11,7 @@ import { PROFILE } from "@crm/oracle-profile-travis-austin";
 import { gazetteer } from "@crm/oracle-views";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
 import { contentAddressedKey } from "./fetchPart.js";
+import { estimateCostFromManifest, evaluateCostGate } from "./costGate.js";
 
 /** The manifest's own downloadable data files (`kind: "table"` — never the `car`/`directory`
  *  container-level artifacts, which nothing in this pipeline fetches directly). FetchPart's Map
@@ -19,19 +20,45 @@ const PART_KIND = "table";
 
 const PLACES_PROFILE_NAME = "travis-places";
 
-// ADR-02's gateway order for the one lightweight fetch Plan needs (the manifest JSON only — never
-// the 23 table parts; that network boundary belongs entirely to FetchPart/machamp).
-const GATEWAYS = ["https://ipfs.filebase.io/ipfs", "https://gateway.pinata.cloud/ipfs"];
 const FETCH_TIMEOUT_MS = 15_000;
 
-// ADR-05's cost gate: hold promotion above $1.00 predicted spend, 600,000 predicted documents, or
-// 2 GB predicted download — sized from the manifest's own declared `artifacts[].size`, never a
-// live HEAD request.
-const COST_GATE = { maxSpendUsd: 1, maxDocCount: 600_000, maxBytes: 2 * 1024 ** 3 };
-// A documented placeholder unit-cost basis for Plan's own early estimate (machamp's costGate.ts,
-// T036, is the authoritative gate re-checked with the same manifest-declared bytes; this is not a
-// real billing figure).
-const USD_PER_BYTE = 5e-10;
+/** Env var names for each gateway's base URL — the same names infra/lib/crm-sync-stack.ts wires
+ *  onto both PlanFunction and FetchPartFunction (never a hard-coded domain here). CloudFront is
+ *  tried first per ADR-02; an unset GATEWAY_CLOUDFRONT_BASE_URL (e.g. in a local/test run where
+ *  the stack hasn't wired it) just skips straight to Filebase/Pinata rather than failing. */
+const GATEWAY_BASE_URL_ENV = {
+  cloudfront: "GATEWAY_CLOUDFRONT_BASE_URL",
+  filebase: "GATEWAY_FILEBASE_BASE_URL",
+  pinata: "GATEWAY_PINATA_BASE_URL",
+} as const;
+
+/** CloudFront serves Task A's CID copy at `/{cid}` directly (confirmed live, run-log.md Stage 0
+ *  A1) — not the `/ipfs/{cid}` path every always-public gateway (Filebase, Pinata) uses. */
+function gatewayManifestUrl(
+  gateway: keyof typeof GATEWAY_BASE_URL_ENV,
+  baseUrl: string,
+  cid: string,
+): string {
+  return gateway === "cloudfront" ? `${baseUrl}/${cid}` : `${baseUrl}/ipfs/${cid}`;
+}
+
+/** ADR-02's fixed fallback order for the one lightweight fetch Plan needs (the manifest JSON
+ *  only — never the 23 table parts; that network boundary belongs entirely to FetchPart/machamp).
+ *  Falls back to Filebase's/Pinata's always-public default base URLs when the stack hasn't set
+ *  their env vars (local dev, tests) — CloudFront has no such default since it is Task A's own
+ *  deployed distribution, not a generic public gateway. */
+function manifestGatewayUrls(cid: string): string[] {
+  const cloudfrontBase = process.env[GATEWAY_BASE_URL_ENV.cloudfront];
+  const filebaseBase = process.env[GATEWAY_BASE_URL_ENV.filebase] ?? "https://ipfs.filebase.io";
+  const pinataBase = process.env[GATEWAY_BASE_URL_ENV.pinata] ?? "https://gateway.pinata.cloud";
+  const urls: string[] = [];
+  if (cloudfrontBase !== undefined && cloudfrontBase !== "") {
+    urls.push(gatewayManifestUrl("cloudfront", cloudfrontBase, cid));
+  }
+  urls.push(gatewayManifestUrl("filebase", filebaseBase, cid));
+  urls.push(gatewayManifestUrl("pinata", pinataBase, cid));
+  return urls;
+}
 
 export interface PlanCostEstimate {
   predictedSpendUsd: number;
@@ -93,10 +120,10 @@ export interface PlanInput {
 
 async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   let lastError: unknown;
-  for (const base of GATEWAYS) {
+  for (const url of manifestGatewayUrls(cid)) {
     try {
-      const res = await fetch(`${base}/${cid}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-      if (!res.ok) throw new Error(`HTTP ${res.status} from ${base}`);
+      const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
       return new Uint8Array(await res.arrayBuffer());
     } catch (error) {
       lastError = error;
@@ -138,24 +165,22 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     return { status: "Held", heldReason: "digest_mismatch", manifestCid };
   }
 
-  const predictedBytes = manifest.artifacts.reduce((sum, a) => sum + a.size, 0);
-  const predictedDocCount =
-    (manifest.coverage.parcels_published?.count ?? 0) +
-    (manifest.coverage.permits_emitted?.count ?? 0);
-  const predictedSpendUsd = predictedBytes * USD_PER_BYTE;
+  // CR-B-02 finding #3: this was a second, diverging implementation of the cost gate (its own
+  // USD_PER_BYTE constant, ~6x stricter than costGate.ts's) — costGate.ts's
+  // estimateCostFromManifest/evaluateCostGate is now the one place this math lives; Plan just
+  // calls it, same as it calls the digest guard above.
+  const { predictedSpendUsd, predictedDocCount, predictedBytes } =
+    estimateCostFromManifest(manifest);
+  const costGateResult = evaluateCostGate({ predictedSpendUsd, predictedDocCount, predictedBytes });
 
-  if (
-    predictedSpendUsd > COST_GATE.maxSpendUsd ||
-    predictedDocCount > COST_GATE.maxDocCount ||
-    predictedBytes > COST_GATE.maxBytes
-  ) {
+  if (costGateResult.held) {
     obs.logger.warn("Plan: held, predicted cost exceeds the cost gate", {
       manifestCid,
       predictedSpendUsd,
       predictedDocCount,
       predictedBytes,
     });
-    return { status: "Held", heldReason: "cost_gate_exceeded", manifestCid };
+    return { status: "Held", heldReason: costGateResult.heldReason, manifestCid };
   }
 
   const bucket = process.env.CRM_INDEX_BUCKET_NAME;
