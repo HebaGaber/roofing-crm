@@ -4,7 +4,7 @@
   "requireApproval": "broadening",
   "context": {
     "crm:githubRepository": "HebaGaber/roofing-crm",
-    "crm:githubRef": "feature/roofing-crm",
+    "crm:githubRef": "001-crm-shell",
     "crm:allowedRegions": ["eu-north-1"],
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,

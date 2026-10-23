@@ -57,7 +57,11 @@ export class CrmOpsStack extends Stack {
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: "roofing-crm-users",
       selfSignUpEnabled: false, // No sign-up UI route (AC-1); the one seeded admin user only.
-      signInAliases: { username: true, email: true },
+      // email as the actual Cognito username (UsernameAttributes), not an alias of a separate
+      // generated username — AdminCreateUser's Username is the email address (AC-1), which
+      // Cognito rejects if `username: true` is also set (that configures AliasAttributes
+      // instead and email-shaped usernames are then refused at create time).
+      signInAliases: { email: true },
       standardAttributes: { email: { required: true, mutable: true } },
       passwordPolicy: {
         minLength: 12,
