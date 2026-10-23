@@ -85,6 +85,18 @@ function asMissing(value: unknown): Missing[] {
   });
 }
 
+/** DuckDB returns TIMESTAMP/DATE columns from v_property/v_roofing_permit as native JS `Date`
+ *  objects, but every date-ish CrmProperty/CrmPermit field is a plain string (ISO 8601, carried
+ *  verbatim from the source) — found live (ZodError on BuildIndex's first real run). */
+function isoString(value: unknown): string {
+  return value instanceof Date ? value.toISOString() : (value as string);
+}
+
+function nullableIsoString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return isoString(value);
+}
+
 /**
  * Maps one bound v_property row into the CRM's own CrmProperty shape and Zod-validates it.
  * Every field not carried into data-model.md's crm_property table (parcel_identifier,
@@ -112,7 +124,7 @@ export function mapPropertyRow(row: ViewRow, sourceManifestCid: string): CrmProp
     ownerIsOutOfArea: row.owner_is_out_of_area,
     sourceManifestCid,
     missingReasons: asMissing(row.missing),
-    capturedAt: row.captured_at,
+    capturedAt: isoString(row.captured_at),
     cid: row.cid,
     runId: row.run_id,
   });
@@ -130,16 +142,16 @@ export function mapPermitRow(row: ViewRow, sourceManifestCid: string): CrmPermit
     improvementAction: row.improvement_action,
     improvementStatus: row.improvement_status,
     statusClass: row.status_class,
-    issueDate: row.issue_date,
-    finalDate: row.final_date,
-    permitCloseDate: row.permit_close_date,
-    finalInspectionDate: row.final_inspection_date,
+    issueDate: nullableIsoString(row.issue_date),
+    finalDate: nullableIsoString(row.final_date),
+    permitCloseDate: nullableIsoString(row.permit_close_date),
+    finalInspectionDate: nullableIsoString(row.final_inspection_date),
     openDays: row.open_days,
     contractorResolution: row.contractor_resolution,
     contractorCompanyCid: row.contractor_company_cid,
     sourceManifestCid,
     missingReasons: asMissing(row.missing),
-    capturedAt: row.captured_at,
+    capturedAt: isoString(row.captured_at),
     cid: row.cid,
     runId: row.run_id,
   });

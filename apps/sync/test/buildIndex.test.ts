@@ -107,4 +107,24 @@ describe("BuildIndex", () => {
     const result = await buildIndexCore(engine, MANIFEST_CID);
     expect(result.properties[0]).not.toHaveProperty("ownerName");
   });
+
+  // Found live (ZodError on the first real run, against the deployed state machine): DuckDB
+  // returns TIMESTAMP/DATE columns as native JS Date objects, not strings, so a row straight off
+  // the real v_property/v_roofing_permit views fails CrmProperty's/CrmPermit's `string` fields
+  // unless BuildIndex converts them first.
+  it("converts DuckDB's native Date objects to ISO strings for every date-ish field", async () => {
+    const capturedAt = new Date("2026-10-21T10:35:59.798Z");
+    const issueDate = new Date("2026-09-02T00:00:00.000Z");
+    const engine = fakeEngine(
+      [propertyRow({ captured_at: capturedAt })],
+      [permitRow({ captured_at: capturedAt, issue_date: issueDate, final_date: null })],
+    );
+
+    const result = await buildIndexCore(engine, MANIFEST_CID);
+
+    expect(result.properties[0]?.capturedAt).toBe("2026-10-21T10:35:59.798Z");
+    expect(result.permits[0]?.capturedAt).toBe("2026-10-21T10:35:59.798Z");
+    expect(result.permits[0]?.issueDate).toBe("2026-09-02T00:00:00.000Z");
+    expect(result.permits[0]?.finalDate).toBeNull();
+  });
 });
