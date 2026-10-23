@@ -4,7 +4,7 @@
 // index-fidelity NFR — exact match or at most 0.1% of coverage.parcels_published, documented via
 // `reconcileDiff`; anything larger is `Held`, never a silent pass.
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ResourceNotFoundException } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -178,11 +178,25 @@ async function validateCoreFromEvent(
         throw new Error("Validate: CRM_LEADS_TABLE_NAME is not set");
       }
       const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-      const pointer = await ddb.send(
-        new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK } }),
-      );
-      const previousPromotedPropertyCount =
-        pointer.Item?.propertyCount === undefined ? null : Number(pointer.Item.propertyCount);
+      // crm-leads is B-07's table (architecture-constitution.md §9) — CrmSync only ever
+      // references it by name, never creates it. In any environment where B-07 hasn't deployed
+      // yet, this GetCommand throws ResourceNotFoundException; that is indistinguishable, for
+      // Validate's purposes, from "no run has ever been promoted" (first_run), so it's treated
+      // the same as a missing item rather than a crash.
+      let previousPromotedPropertyCount: number | null;
+      try {
+        const pointer = await ddb.send(
+          new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK } }),
+        );
+        previousPromotedPropertyCount =
+          pointer.Item?.propertyCount === undefined ? null : Number(pointer.Item.propertyCount);
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) {
+          previousPromotedPropertyCount = null;
+        } else {
+          throw error;
+        }
+      }
 
       const input: ValidateInput = {
         manifestCid: event.manifestCid,
