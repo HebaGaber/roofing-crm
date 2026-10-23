@@ -4,15 +4,21 @@ Branch `002-lead-index`, diff against `feature/roofing-crm`. One round: `/code-r
 
 ## Scores
 
-| Reviewer | Angle | Score | ≥75 |
-| --- | --- | --- | --- |
-| espeon | INDEX (Plan/BuildIndex/Validate/Promote, schema, local prototype) | 80 | ✅ |
-| alakazam | Retrieval/index design, provenance, missing-data | 76 | ✅ |
-| machamp | Batch workflow: queue/DLQ/backoff/cost-gate/idempotency | 70 | ❌ |
-| porygon | Metrics/count-reconciliation trustworthiness | 58 | ❌ |
-| donphan | Oracle/Atlas access boundary + MCP cross-check | 88 | ✅ |
+| Reviewer | Angle | Score (Round 1) | Score (after E2) | ≥75 |
+| --- | --- | --- | --- | --- |
+| espeon | INDEX (Plan/BuildIndex/Validate/Promote, schema, local prototype) | 80 | — | ✅ |
+| alakazam | Retrieval/index design, provenance, missing-data | 76 | — | ✅ |
+| machamp | Batch workflow: queue/DLQ/backoff/cost-gate/idempotency | 70 | **86** | ✅ |
+| porygon | Metrics/count-reconciliation trustworthiness | 58 | **82** | ✅ |
+| donphan | Oracle/Atlas access boundary + MCP cross-check | 88 | — | ✅ |
 
-Two reviewers under 75 (machamp, porygon) → a fixer round (E2) is required before close-out, re-scoring only these two.
+Two reviewers were under 75 after Round 1 (machamp, porygon). The E2 fixer (commit `06a25c1`) resolved every in-scope finding; both were re-scored directly against the fixed code (not the evidence doc's prose) and now pass. **All five reviewers ≥75 — E1/E2 complete.**
+
+### E2 re-score notes
+
+**machamp (70→86):** confirmed live — CloudFront now genuinely first in `manifestGatewayUrls()`/`GATEWAY_PART_PATH` with correct path-shape handling; `plan.ts` calls `costGate.ts` directly, dead duplicate gone; FetchPart's `attempt` counter only increments on a real fetch, bucket-waits tracked separately, proven by a new test; the per-invocation (not cross-invocation) token-bucket limit is honestly documented rather than claimed as NFR-002-compliant at the aggregate level. Residual: scraping scripts (#5, out of scope by decision) and Promote's still-pending live B-07 dependency — both pre-existing disclosed items, not new deviations.
+
+**porygon (58→82):** confirmed live — Promote's `UpdateCommand` now writes `propertyCount`/`permitCount`/`promotedAt`; the new `promote.test.ts` genuinely proves Validate reads a real prior count (not just that the write occurs); `duckDbParquet.ts`'s `indexInfo()` now reads real values. AC-2's MCP cross-check framing is still honestly stated as a disclosed data-publication gap, not overstated as resolved. Residual, not a regression: the propertyCount round-trip is still only unit-proven (mocked DynamoDB), not live-proven — blocked on B-07's table, same disclosed cross-story dependency as before.
 
 ## Findings, deduplicated across all six sources
 

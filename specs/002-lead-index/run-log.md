@@ -26,7 +26,7 @@ Budget: 1.5% of weekly quota (COST-MODE.md). Cost mode: Sonnet main session, Hai
 
 **E · Review**
 - [x] **E1** · 2026-10-23 · review round complete → `docs/reviews/CR-B-02.md`: espeon 80, alakazam 76, donphan 88, machamp 70, porygon 58 (2 under 75). Confirmed by direct code read: Promote never persists `propertyCount` (drop-hold check is dead code); ADR-02 CloudFront never wired (only Filebase/Pinata deployed); dead/diverging cost gate. Also flagged: unescaped SQL interpolation, two vendored scraping scripts, duplicated S3-download helper, FetchPart token-bucket/retry issue, orphaned cold-load race.
-- [ ] **E2** fixer, re-score, CI green
+- [x] **E2** · 2026-10-23 · fixer (espeon, Sonnet) commit `06a25c1`: all 7 in-scope findings fixed (Promote now persists propertyCount/permitCount/promotedAt; ADR-02 CloudFront wired as the first gateway, not documented as a deviation — the stack comment claiming it couldn't fit the path shape was simply wrong; cost gate unified on costGate.ts, dead inline duplicate deleted; SQL escaping applied consistently; FetchPart retry-counter bug fixed for real, per-invocation token-bucket limitation documented; shared `downloadS3ObjectToFile` extracted to `packages/observability`; cold-load race fixed with a generation guard). `pnpm -r test`: 523/528 pass (5 pre-existing skips), 0 fail; type-check/lint/format clean. `docs/reports/UT-B-02.md` written. Re-score: machamp 70→86, porygon 58→82, both verified directly against the fixed code — all 5 reviewers now ≥75.
 
 **F · Close-out**
 - [ ] **F1** `/speckit-converge`, G7 pre-check
