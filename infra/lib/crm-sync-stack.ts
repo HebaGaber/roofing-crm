@@ -299,7 +299,16 @@ export class CrmSyncStack extends Stack {
       resultPath: sfn.JsonPath.DISCARD,
     });
 
-    const partVerified = new sfn.Pass(this, "PartVerified");
+    // Discards FetchPart's verifiedBytes before this item's output joins the Map's aggregated
+    // result array — Step Functions state has a 256KB limit, and 23 parts' worth of downloaded
+    // file bytes riding through state (BuildIndex re-downloads from S3 itself; it never needs
+    // these bytes echoed back) blew straight through it (States.DataLimitExceeded, found live).
+    const partVerified = new sfn.Pass(this, "PartVerified", {
+      parameters: {
+        "status.$": "$.status",
+        "partPath.$": "$.partPath",
+      },
+    });
 
     const fetchPartResultChoice = new sfn.Choice(this, "FetchPartResultChoice")
       .when(sfn.Condition.stringEquals("$.status", "dlq"), sendToFetchPartDlq)
