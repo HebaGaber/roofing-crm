@@ -98,3 +98,25 @@ Fixed every item in the fix list below the sub-75 score (audino 48/100). Did not
 - (`@crm/ui type-check` also run and clean, though not in the required list)
 
 No regressions found; no item in the fix list was left partially done. `audino`'s finding #4 (RadiusControl's `.input` using `--space-2` instead of a shape token) and the GPS-explain/low-accuracy-state note (#5) were in the same review but not in this fix list, so left untouched.
+
+## audino (re-score after fixer pass)
+
+**Scope:** re-check my own six findings above against the current code only (no fresh review). Read `apps/web/src/routes/Map/{Map,FilterSheet,ResultRow,PermitChip}.tsx`, `PropertyDetail/PropertyDetail.tsx`, `ExploreFilters.state.ts`, `apps/web/src/components/Map/{GpsButton,CrmMap,RadiusControl.module.css}.tsx`.
+
+**Finding #1 (Critical — components never wired in): RESOLVED.** `Map.tsx` now imports and renders `FilterSheet` (roof-age threshold + permit toggle), `ResultRow` per `search.properties` result (replacing the hand-rolled `<li>Property {cid}…</li>`), `PermitChip` via `ResultRow`'s new `permits` prop (populated from `search.permits`, only queried when permit view is on), and `PropertyDetail` as a drawer on row click via `property.get`. `ExploreFilters.state.ts`'s `parseMapQuery`/`patchMapParams` are now wired through `useSearchParams`, so center/radius/roof/permits/sel are all URL-driven. The partial/no-contractor states this story names as in scope are reachable through normal clicks again, not just through orphaned unit tests. Verified by direct read of the current files, not by trusting the fixer's narrative.
+
+**Finding #2 (card data shape — address/distance/bearing missing):** not addressed; `ResultRow`'s `PropertyFields` still renders raw lat/lon, no address or distance/bearing field. Not in the fix list; still a real, if medium, scope/data gap against the prototype's card spec.
+
+**Finding #3 (hardcoded hex in `CrmMap.tsx`'s radius ring): RESOLVED.** Fixer pass added `resolvePrimaryColor()` reading the live `--md-sys-color-primary` token, applied at ring creation and on every redraw.
+
+**Finding #4 (RadiusControl `.input` border-radius using `--space-2` instead of a shape token): CONFIRMED STILL PRESENT**, exactly as before — `RadiusControl.module.css` line 26 is unchanged (`border-radius: var(--space-2)`). The fixer pass explicitly and accurately disclosed this as left out of scope rather than silently dropping it.
+
+**Finding #5 (GPS explain/low-accuracy states) and #6 (`CrmMapGpsTimeout390` label with no matching prototype board): CONFIRMED STILL PRESENT**, unchanged — `GpsButton.tsx`'s `GpsState` union still has no `explain`/low-accuracy state, and `STATE_NAME.timeout` is still `"CrmMapGpsTimeout390"`. Also honestly disclosed as out of scope for this pass, not silently dropped.
+
+### Score: 84/100
+
+The Critical that capped the original score at 48 is genuinely fixed — the live Map page now shows the actual built UI (`ResultRow`/`PermitChip`/`FilterSheet`/`PropertyDetail`), closing the dominant gap between the delivered screen and the design prototype, and the dark-mode token fix (#3) is also real and correct. Remaining deductions: the still-open low/medium findings (#2 card data shape, #4 shape-token slip, #5/#6 GPS state gaps), all disclosed rather than hidden, plus the fact that #2 (the card's missing address/distance/bearing) is a real residual fidelity gap against the prototype that no fix in this pass touched. Not higher because two of my six findings (#4, #5/#6) remain, by the fixer's own honest account, exactly as found.
+
+### Confidence note
+
+High confidence on #1 and #3 (read the current `Map.tsx`, `ResultRow.tsx`, and `CrmMap.tsx` directly) and on #4/#5/#6 being unchanged (direct grep/read against the exact lines cited in my original review). Did not re-run the test suite in this pass; relying on the fixer's reported 58/65/17/3 passing counts for regression status rather than re-executing it myself.
