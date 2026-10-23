@@ -25,6 +25,7 @@ export type LeadDetailData = Lead & {
   readonly notes: LeadEvent[];
   readonly history: LeadEvent[];
   readonly notInCurrentRun: boolean;
+  readonly currentManifestCid?: string | undefined;
 };
 export interface LeadCreateInput {
   readonly fips: string;

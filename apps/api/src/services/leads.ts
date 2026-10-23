@@ -31,6 +31,9 @@ export interface ListLeadsInput {
 
 export type LeadView = StoredLead & { notInCurrentRun: boolean };
 export type LeadDetailView = LeadView & {
+  /** Manifest CID of the run now served; the index carries no run number, so this is the
+   *  provenance shown beside "not in the current run". Undefined when no run is promoted. */
+  currentManifestCid: string | undefined;
   signals: LeadSignals | undefined;
   notes: LeadEvent[];
   history: LeadEvent[];
@@ -163,6 +166,7 @@ export function createLeadService(
       return {
         ...detail.lead,
         notInCurrentRun: stale(detail.lead, current),
+        currentManifestCid: current,
         signals: detail.signals,
         notes: detail.events.filter((e) => e.kind === "note"),
         history: [...detail.events],

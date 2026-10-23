@@ -47,7 +47,14 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
         <p className={styles.meta}>
           This property is absent from the data run now being served, so its roof age and permit
           signals are not shown. The lead was captured from manifest{" "}
-          <CidDisplay cid={lead.sourceManifestCid} />.
+          <CidDisplay cid={lead.sourceManifestCid} />
+          {lead.currentManifestCid === undefined ? null : (
+            <>
+              {"; the run now served is manifest "}
+              <CidDisplay cid={lead.currentManifestCid} />
+            </>
+          )}
+          .
         </p>
       </section>
     );
