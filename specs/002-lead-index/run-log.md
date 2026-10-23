@@ -25,7 +25,7 @@ Budget: 1.5% of weekly quota (COST-MODE.md). Cost mode: Sonnet main session, Hai
 - [x] **D4** · 2026-10-23 · `docs/evidence/B-02.md` written: manifest CID, counts, MCP cross-check attempt and why it's blocked, idempotent-rerun proof, measured duration, every execution ARN, and the one known gap (Promote blocked on B-07's not-yet-created `crm-leads` table — architecturally deliberate, not a defect).
 
 **E · Review**
-- [ ] **E1** review round → CR-B-02.md
+- [x] **E1** · 2026-10-23 · review round complete → `docs/reviews/CR-B-02.md`: espeon 80, alakazam 76, donphan 88, machamp 70, porygon 58 (2 under 75). Confirmed by direct code read: Promote never persists `propertyCount` (drop-hold check is dead code); ADR-02 CloudFront never wired (only Filebase/Pinata deployed); dead/diverging cost gate. Also flagged: unescaped SQL interpolation, two vendored scraping scripts, duplicated S3-download helper, FetchPart token-bucket/retry issue, orphaned cold-load race.
 - [ ] **E2** fixer, re-score, CI green
 
 **F · Close-out**
@@ -77,4 +77,6 @@ Budget: 1.5% of weekly quota (COST-MODE.md). Cost mode: Sonnet main session, Hai
 
 ### Answers given (word for word)
 
-(none yet — Round 1 not reached)
+| Stop | Question | Answer |
+| --- | --- | --- |
+| E1 follow-up (not a Round 1/2 stop; user raised it mid-review) | Finding #5 (two vendored scripts, `build-gazetteer.ts`/`socrata.ts`, retain live scraping capability against census.gov/Socrata — an access-boundary inconsistency, not something B-02's own code calls) — remove/neutralize in E2, or record and proceed? | "i would add this to the known issues and do nothing and proceed with the task" — recorded in `docs/evidence/B-02.md` "Known issue" section and excluded from E2 scope in `docs/reviews/CR-B-02.md`. |
