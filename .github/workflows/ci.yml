@@ -37,6 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # B-02: CrmSync's BuildIndexFunction forces Docker bundling at arm64 (native DuckDB
+      # binding, infra/lib/crm-sync-stack.ts) — the stock runner has no arm64 binfmt handler
+      # registered, so that cross-platform docker build fails with "exec format error" without
+      # this step.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
