@@ -2,7 +2,7 @@
 // (INDEX_NOT_READY when no run has ever promoted, INDEX_COLD_LOAD_TIMEOUT on a fixture that
 // exceeds the cold-load budget), before any adapter code exists. Written first, shown failing.
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, ResourceNotFoundException } from "@aws-sdk/client-dynamodb";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { mockClient } from "aws-sdk-client-mock";
 import { createObservability } from "@crm/observability";
@@ -46,6 +46,19 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
 
   it("throws INDEX_NOT_READY when no run has ever been promoted", async () => {
     ddbMock.onAnyCommand().resolves({ Item: undefined });
+
+    const index = makeIndex();
+
+    await expect(index.indexInfo()).rejects.toThrow(IndexNotReadyError);
+    await expect(index.indexInfo()).rejects.toMatchObject({ code: "INDEX_NOT_READY" });
+  });
+
+  it("throws INDEX_NOT_READY (not a raw DynamoDB error) when crm-leads doesn't exist yet (B-07 not deployed, found live on the B-03 hosted preview)", async () => {
+    ddbMock
+      .onAnyCommand()
+      .rejects(
+        new ResourceNotFoundException({ message: "Requested resource not found", $metadata: {} }),
+      );
 
     const index = makeIndex();
 

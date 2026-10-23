@@ -3,6 +3,7 @@
 // in v1). Caches the opened DuckDB connection per-sandbox, per-manifest in module scope — not
 // per-request — which is ADR-01's whole cost argument, so it must be visible in code, not just a
 // comment (alakazam's consult).
+import { ResourceNotFoundException } from "@aws-sdk/client-dynamodb";
 import { S3Client } from "@aws-sdk/client-s3";
 import { GetCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
@@ -161,9 +162,19 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   // its own fresh Observability — correct for a handler, wrong for a reused, caller-owned one).
   async indexInfo(): Promise<IndexInfo> {
     return withObservabilityOperation(this.obs, "LeadIndex.indexInfo", async () => {
-      const item = await this.ddb.send(
-        new GetCommand({ TableName: this.tableName, Key: { pk: PK } }),
-      );
+      // crm-leads is B-07's table (architecture-constitution.md §9) — this adapter only ever
+      // references it by name, never creates it. In any environment where B-07 hasn't deployed
+      // yet, this GetCommand throws ResourceNotFoundException instead of returning an empty
+      // Item; found live on the hosted B-03 preview (500, not the typed INDEX_NOT_READY state)
+      // before this fix. Same remedy as apps/sync/handlers/validate.ts's identical case: treated
+      // as "no run has ever been promoted," not a crash.
+      let item;
+      try {
+        item = await this.ddb.send(new GetCommand({ TableName: this.tableName, Key: { pk: PK } }));
+      } catch (error) {
+        if (error instanceof ResourceNotFoundException) throw new IndexNotReadyError();
+        throw error;
+      }
       const current = item.Item?.current as string | undefined;
       // Never returns a run whose Validate step has not passed (constitution P0-3): the pointer
       // only ever names a Promoted run, so its mere presence is the readiness signal.
