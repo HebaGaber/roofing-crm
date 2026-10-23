@@ -97,12 +97,12 @@ description: "Task list for B-01 CRM shell with disabled roadmap sections"
 
 ## Phase Z: Prove on the hosted runtime (mandatory, always last)
 
-- [ ] TZ01 Run `metagross` and `audino` read-only against this branch; write `docs/reviews/CR-B-01.md` (each ≥ 75 or justified)
-- [ ] TZ02 Deploy to the hosted runtime: `git push origin 001-crm-shell` (Amplify preview, becomes RUNTIME_URL) + `pnpm --filter infra cdk deploy --all` (`infra/lib/crm-{api,web,domain,ops}-stack.ts`, in CDK-dependency order per `plan.md`'s Data Flow & Integration Points); record RUNTIME_URL in `specs/001-crm-shell/run-log.md`
-- [ ] TZ03 Run `tests/e2e/B-01.spec.ts` (AC-1..AC-5, all 11 non-NFR cases plus TC-NF-01 and TC-NF-03 in `testplans/B-01-test-cases.md`) against RUNTIME_URL — never localhost; walk `specs/001-crm-shell/quickstart.md`'s scenarios manually once as a cross-check; screenshots to `docs/evidence/img/`
-- [ ] TZ04 Run `smeargle` responsive-design-tests at 390/768/1440 on the sign-in, map and Coming Soon pages (TC-NF-02), writing its generated specs under `tests/e2e/responsive/*`, against RUNTIME_URL
-- [ ] TZ05 Run the story's `agents.verify` check — Playwright login + `aria-disabled` check — by re-citing the already-passing `tests/e2e/B-01.spec.ts` results from TZ03 above; no new test file, this task only records that citation in `docs/reports/TR-B-01.md`
-- [ ] TZ06 Write `docs/reports/TR-B-01.md`, `docs/evidence/B-01.md` (§ B-10 for the disabled-sections part), the `docs/traceability.md` row, and one `docs/kit-usage.md` line
+- [x] TZ01 Run `metagross` and `audino` read-only against this branch; write `docs/reviews/CR-B-01.md` (each ≥ 75 or justified)
+- [x] TZ02 Deploy to the hosted runtime: `git push origin 001-crm-shell` (Amplify preview, becomes RUNTIME_URL) + `pnpm --filter infra cdk deploy --all` (`infra/lib/crm-{api,web,domain,ops}-stack.ts`, in CDK-dependency order per `plan.md`'s Data Flow & Integration Points); record RUNTIME_URL in `specs/001-crm-shell/run-log.md`
+- [x] TZ03 Run `tests/e2e/B-01.spec.ts` (AC-1..AC-5, all 11 non-NFR cases plus TC-NF-01 and TC-NF-03 in `testplans/B-01-test-cases.md`) against RUNTIME_URL — never localhost; walk `specs/001-crm-shell/quickstart.md`'s scenarios manually once as a cross-check; screenshots to `docs/evidence/img/`
+- [x] TZ04 Run `smeargle` responsive-design-tests at 390/768/1440 on the sign-in, map and Coming Soon pages (TC-NF-02), writing its generated specs under `tests/e2e/responsive/*`, against RUNTIME_URL
+- [x] TZ05 Run the story's `agents.verify` check — Playwright login + `aria-disabled` check — by re-citing the already-passing `tests/e2e/B-01.spec.ts` results from TZ03 above; no new test file, this task only records that citation in `docs/reports/TR-B-01.md`
+- [x] TZ06 Write `docs/reports/TR-B-01.md`, `docs/evidence/B-01.md` (§ B-10 for the disabled-sections part), the `docs/traceability.md` row, and one `docs/kit-usage.md` line
 
 ## Dependencies & Execution Order
 
