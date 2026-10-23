@@ -4,7 +4,7 @@
 // bytes (contracts/sync-pipeline.md, ADR-02). T030 implements apps/sync/handlers/fetchPart.ts to
 // make this pass — intentionally failing now (no handler exists yet).
 import { createHash } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GATEWAY_ORDER,
   MAX_RETRIES_BEFORE_SWITCH,
@@ -19,6 +19,14 @@ import {
   type GatewayFetcher,
   type S3ConditionalWriter,
 } from "../handlers/fetchPart.js";
+
+vi.mock("../src/s3PartWriter.js", () => ({
+  createS3PartWriter: vi.fn(() => ({
+    async putIfAbsent() {
+      return { written: true };
+    },
+  })),
+}));
 
 const MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
 const PART = {
@@ -198,6 +206,26 @@ describe("ADR-02 CloudFront wiring (CR-B-02 finding #2)", () => {
     expect(calledUrls).toEqual(["https://d2xsqoqv09bd0q.cloudfront.net/bafkreiexamplecid"]);
   });
 
+  it("rejects a CloudFront/Filebase/Pinata base URL that resolves to a retired ipfs.io/dweb.link gateway", () => {
+    expect(() => createHttpGatewayFetcher("filebase", "https://ipfs.io")).toThrow(
+      /retired gateway/,
+    );
+    expect(() => createHttpGatewayFetcher("pinata", "https://dweb.link")).toThrow(
+      /retired gateway/,
+    );
+  });
+
+  it("returns ok:false with the HTTP status when the gateway response is not ok, without throwing", async () => {
+    global.fetch = vi.fn(
+      async () => new Response(null, { status: 503 }),
+    ) as unknown as typeof fetch;
+
+    const fetcher = createHttpGatewayFetcher("pinata", "https://gateway.pinata.cloud");
+    const result = await fetcher.fetch("bafkreiexamplecid");
+
+    expect(result).toEqual({ ok: false, status: 503 });
+  });
+
   it("still fetches Filebase/Pinata at /ipfs/{cid}, unlike CloudFront", async () => {
     const calledUrls: string[] = [];
     global.fetch = vi.fn(async (input: string | URL) => {
@@ -237,5 +265,79 @@ describe("contentAddressedKey", () => {
       .update(MANIFEST_CID + PART.path)
       .digest("hex");
     expect(contentAddressedKey(MANIFEST_CID, PART.path)).toBe(expected);
+  });
+});
+
+describe("handler (standalone Lambda-shaped entry point)", () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    global.fetch = originalFetch;
+  });
+
+  it("throws when CRM_INDEX_BUCKET_NAME is not set, before ever touching a gateway", async () => {
+    delete process.env.CRM_INDEX_BUCKET_NAME;
+    const { handler } = await import("../handlers/fetchPart.js");
+
+    await expect(handler({ manifestCid: MANIFEST_CID, part: PART })).rejects.toThrow(
+      /CRM_INDEX_BUCKET_NAME is not set/,
+    );
+  });
+
+  it("throws when CRM_INDEX_BUCKET_NAME is set to an empty string", async () => {
+    process.env.CRM_INDEX_BUCKET_NAME = "";
+    const { handler } = await import("../handlers/fetchPart.js");
+
+    await expect(handler({ manifestCid: MANIFEST_CID, part: PART })).rejects.toThrow(
+      /CRM_INDEX_BUCKET_NAME is not set/,
+    );
+  });
+
+  it("wires productionFetchers + the S3 writer end to end and returns a verified result on success", async () => {
+    process.env.CRM_INDEX_BUCKET_NAME = "crm-index-test-bucket";
+    process.env.GATEWAY_CLOUDFRONT_BASE_URL = "https://d2xsqoqv09bd0q.cloudfront.net";
+    delete process.env.GATEWAY_FILEBASE_BASE_URL;
+    delete process.env.GATEWAY_PINATA_BASE_URL;
+    const body = Buffer.from("real bytes");
+    global.fetch = vi.fn(
+      async () => new Response(body, { status: 200 }),
+    ) as unknown as typeof fetch;
+    const { handler } = await import("../handlers/fetchPart.js");
+
+    const result = await handler({ manifestCid: MANIFEST_CID, part: PART });
+
+    expect(result.status).toBe("verified");
+  });
+
+  it("logs and routes to the DLQ when every configured gateway is exhausted", async () => {
+    process.env.CRM_INDEX_BUCKET_NAME = "crm-index-test-bucket";
+    process.env.GATEWAY_CLOUDFRONT_BASE_URL = "https://d2xsqoqv09bd0q.cloudfront.net";
+    delete process.env.GATEWAY_FILEBASE_BASE_URL;
+    delete process.env.GATEWAY_PINATA_BASE_URL;
+    global.fetch = vi.fn(
+      async () => new Response(null, { status: 503 }),
+    ) as unknown as typeof fetch;
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const { handler } = await import("../handlers/fetchPart.js");
+
+    const result = await handler({ manifestCid: MANIFEST_CID, part: PART });
+
+    expect(result).toEqual({
+      status: "dlq",
+      partPath: PART.path,
+      reason: "all_gateways_exhausted",
+    });
+    // Powertools Logger routes `.error(...)` to stderr (its own internal Console), not stdout.
+    const loggedLine = stderrSpy.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .find((line: string) => line.includes("part exhausted every gateway's retries"));
+    stderrSpy.mockRestore();
+    expect(loggedLine).toBeDefined();
   });
 });

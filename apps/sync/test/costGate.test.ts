@@ -8,6 +8,7 @@ import {
   COST_GATE_THRESHOLDS,
   estimateCostFromManifest,
   evaluateCostGate,
+  handler,
   type CostEstimate,
 } from "../handlers/costGate.js";
 
@@ -89,5 +90,36 @@ describe("evaluateCostGate", () => {
       predictedBytes: COST_GATE_THRESHOLDS.maxBytes,
     };
     expect(evaluateCostGate(estimate)).toEqual({ held: false });
+  });
+});
+
+describe("handler (standalone Lambda-shaped entry point)", () => {
+  it("returns the estimate and does not hold when the manifest is well under every threshold", async () => {
+    const manifest = manifestWithArtifactBytesAndCoverage(4096, 35);
+
+    const result = await handler(manifest);
+
+    expect(result.held).toBe(false);
+    expect(result.estimate.predictedBytes).toBe(4096);
+    expect(result.estimate.predictedDocCount).toBe(35);
+  });
+
+  it("holds and logs a warning when the manifest's declared size exceeds a threshold", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    // Oversized artifact bytes alone exceed both maxBytes and, via COST_PER_GB_USD, maxSpendUsd.
+    const manifest = manifestWithArtifactBytesAndCoverage(COST_GATE_THRESHOLDS.maxBytes + 1024, 35);
+
+    const result = await handler(manifest);
+
+    expect(result.held).toBe(true);
+    if (result.held) {
+      expect(result.heldReason).toBe("cost_gate_exceeded");
+    }
+    // Powertools Logger routes `.warn(...)` to stderr (its own internal Console), not stdout.
+    const loggedLine = stderrSpy.mock.calls
+      .map((call: unknown[]) => String(call[0]))
+      .find((line: string) => line.includes("cost gate held the run"));
+    stderrSpy.mockRestore();
+    expect(loggedLine).toBeDefined();
   });
 });
