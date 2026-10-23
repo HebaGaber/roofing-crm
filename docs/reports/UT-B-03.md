@@ -7,24 +7,31 @@ owner: Claude (session, through the review/fixer round), approved by HebaGaber
 status: Complete
 gate: G7 (pending)
 created: 2026-10-23
-updated: 2026-10-23
+updated: 2026-10-24
 ---
 
 # Unit Test Report: B-03 Search a radius for aged roofs and open permits, with full detail
 
 Real `pnpm test` / `pnpm run type-check` / `pnpm run lint` / `pnpm run format` output (Turborepo,
 all workspace packages/apps with tests), run locally against branch `003-map-search` at commit
-`bb59255` (review round + fixer pass). Includes the two parallel builder groups' work (C2), the
-integration-check fixes (C3 — CDK Docker-bundling for `@duckdb/node-api` in the API Lambda), and
-the fixer pass that followed the review round (D2).
+`cc9ba00` — the final state, after the C2 build, the first review round and fixer pass, the
+structural UI rebuild against the real design prototype (requested by the user after comparing
+the live preview to it directly), a second `audino` full re-review, `smeargle`'s responsive pass,
+and the G7 pre-check's own two findings (tasks.md checkboxes, apps/web coverage).
+
+**Updated 2026-10-24** (supersedes the 2026-10-23 numbers below): `apps/web` grew from 58 to 77
+tests (added `PermitChip`/`ResultRow` coverage per the G7 pre-check — that package's coverage was
+85.33% stmts with two files under 80%; now 96.88% stmts / 98% lines, no file under 80%). `apps/api`
+grew from 65 to 66 (the `ResourceNotFoundException`→`IndexNotReadyError` regression test). Total:
+**80 test files, 708 tests (703 passed, 5 pre-existing skips), 100% pass rate.**
 
 ## Summary
 
 | Item | Value |
 | --- | --- |
-| Total test files | 78 |
-| Total tests | 688 |
-| Passed / failed / skipped | 683 / 0 / 5 |
+| Total test files | 80 |
+| Total tests | 708 |
+| Passed / failed / skipped | 703 / 0 / 5 |
 | Pass rate | 100% (of non-skipped) |
 
 ## Per-package results (`pnpm test`)
@@ -42,11 +49,11 @@ the fixer pass that followed the review round (D2).
 | `packages/config` | 2 | 16 | ✅ |
 | `packages/index-schema` | 1 | 5 | ✅ |
 | `packages/api-client` | 2 | 7 | ✅ |
-| `apps/api` | 10 | 65 (up from 7 files / 43 tests at B-02) | ✅ **+3 files / +22 tests** — `search.properties.test.ts`, `search.permits.test.ts`, `property.get.test.ts` |
-| `apps/web` (`web`) | 8 | 58 (up from 4 files / 27 tests at B-01) | ✅ **+4 files / +31 tests** — `gps-button.test.tsx`, `radius-control.test.tsx`, plus FilterSheet/ExploreFilters test updates |
+| `apps/api` | 10 | 66 (up from 7 files / 43 tests at B-02) | ✅ **+3 files / +23 tests** — `search.properties.test.ts`, `search.permits.test.ts`, `property.get.test.ts`, plus the `IndexNotReadyError` regression test |
+| `apps/web` (`web`) | 10 | 77 (up from 4 files / 27 tests at B-01) | ✅ **+6 files / +50 tests** — `gps-button.test.tsx`, `radius-control.test.tsx`, `filter-sheet-extended.test.tsx`, plus expanded `result-row-card.test.tsx`/`filter-sheet-controlled.test.tsx` coverage (96.88% stmts, up from 85.33%, after the G7 pre-check found `PermitChip.tsx` at 0% and `ResultRow.tsx` at 46%) |
 | `infra` | 4 | 21 | ✅ (CrmApi suite extended for the new `indexBucketName`/`leadsTableName` props and the Docker-bundled TrpcHandler, memoized once per file) |
 | `apps/sync` | 15 | 76 | ✅ (unchanged; not touched by this story) |
-| **Total** | **78** | **688** (683 passed, 5 skipped) | **✅** |
+| **Total** | **80** | **708** (703 passed, 5 skipped) | **✅** |
 
 (`oracle-views`'s 5 skipped tests predate this story, same as B-02's report — unrelated to B-03's scope.)
 
