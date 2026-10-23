@@ -150,10 +150,16 @@ describe("CrmWeb (T009)", () => {
         githubRepository: "HebaGaber/roofing-crm",
         githubRef: "001-crm-shell",
         apiUrl: "https://example.execute-api.eu-north-1.amazonaws.com",
+        userPoolId: "eu-north-1_example",
+        userPoolClientId: "exampleclientid",
       }),
     );
     template.hasResourceProperties("AWS::Amplify::App", {
       CustomRules: Match.arrayWith([Match.objectLike({ Source: "/api/<*>" })]),
+      EnvironmentVariables: Match.arrayWith([
+        Match.objectLike({ Name: "VITE_COGNITO_USER_POOL_ID", Value: "eu-north-1_example" }),
+        Match.objectLike({ Name: "VITE_COGNITO_USER_POOL_CLIENT_ID", Value: "exampleclientid" }),
+      ]),
     });
     template.resourceCountIs("AWS::Amplify::Branch", 1);
   });

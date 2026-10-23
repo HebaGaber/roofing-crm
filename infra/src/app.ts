@@ -46,6 +46,8 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     githubRepository: config.githubRepository,
     githubRef: config.githubRef,
     apiUrl: apiStack.apiUrl,
+    userPoolId: opsStack.userPool.userPoolId,
+    userPoolClientId: opsStack.userPoolClient.userPoolClientId,
   });
   webStack.addDependency(apiStack);
 

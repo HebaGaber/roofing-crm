@@ -10,6 +10,8 @@ export interface CrmWebStackProps extends StackProps {
   readonly githubRepository: string;
   readonly githubRef: string;
   readonly apiUrl: string;
+  readonly userPoolId: string;
+  readonly userPoolClientId: string;
 }
 
 export class CrmWebStack extends Stack {
@@ -26,7 +28,13 @@ export class CrmWebStack extends Stack {
       // committed (CLAUDE.md "Never: secrets in git or logs").
       accessToken: SecretValue.secretsManager("roofing-crm/github-access-token").unsafeUnwrap(),
       platform: "WEB",
-      environmentVariables: [{ name: "AMPLIFY_MONOREPO_APP_ROOT", value: "apps/web" }],
+      environmentVariables: [
+        { name: "AMPLIFY_MONOREPO_APP_ROOT", value: "apps/web" },
+        // apps/web/src/auth/config.ts's loadCognitoWebConfig reads these at Vite build time —
+        // missing, sign-in hung forever with no visible error (found deploying, AC-1).
+        { name: "VITE_COGNITO_USER_POOL_ID", value: props.userPoolId },
+        { name: "VITE_COGNITO_USER_POOL_CLIENT_ID", value: props.userPoolClientId },
+      ],
       customRules: [
         {
           source: "/api/<*>",
