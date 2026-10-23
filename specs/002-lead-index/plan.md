@@ -24,7 +24,7 @@ Build the Step Functions sync pipeline (`Plan → FetchPart → BuildIndex → V
 
 **Performance Goals**: Sync duration ≤ 5 min end to end for an A-03-sized (sample) run, ≤ 30 min for the full county (NFR-001, ARD-B §10); API search path latency targets belong to B-03, not this story, but the index this story builds must support them (DuckDB over Parquet, ADR-01)
 
-**Constraints**: Gateway politeness — concurrency 2, ≤ 30 requests/min per gateway, backoff + jitter, ≤ 5 retries before switching gateway (NFR-002); zero rows without provenance; index fidelity — property count = manifest `coverage.parcels_published`, rejects ≤ 0.1% (0 for the sample); idempotent re-run — zero new S3 objects on a repeat of the same manifest CID (AC-4); cost gate — hold promotion above $1.00 predicted spend / 600,000 documents / 2 GB (ADR-05)
+**Constraints**: Gateway politeness — concurrency 2–3 (deployed: 3, within the Operations row's range below), ≤ 30 requests/min per gateway, backoff + jitter, ≤ 5 retries before switching gateway (NFR-002); zero rows without provenance; index fidelity — property count = manifest `coverage.parcels_published`, rejects ≤ 0.1% (0 for the sample); idempotent re-run — zero new S3 objects on a repeat of the same manifest CID (AC-4); cost gate — hold promotion above $1.00 predicted spend / 600,000 documents / 2 GB (ADR-05)
 
 **Scale/Scope**: Sample manifest: 35 roofing rows (Austin permits, September 2026). Full county (deferred to the later "S · Data switch" step, not built here): Travis County TCAD roll, 493,246 accounts (A-01 measurement); this story's code is written so the full-county switch is a `DATA_MANIFEST_CID` config change, never a code change.
 

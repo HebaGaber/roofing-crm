@@ -35,7 +35,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 | Functional requirement | FR-002 | TC-004, TC-005 |
 | Functional requirement | FR-003 | TC-006, TC-007 |
 | Functional requirement | FR-004 | TC-008, TC-009 |
-| NFR | NFR-001 (sync duration) | TC-NF-01 |
+| NFR | NFR-001 (sync duration) | TC-NF-01 (sample scale), TC-NF-03 (full-county scale, gap-linked) |
 | NFR | NFR-002 (gateway politeness) | TC-010 |
 | NFR | architecture-constitution.md §10 (index cold load) | TC-NF-02 |
 | Edge case | one part fails verification → quarantine, no partial promotion | TC-011 |
@@ -84,6 +84,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 | B-02-TC-012 | Row count drop > 5% from the previous run → held for review, never silently promoted | P1 | @negative @edge | AWS | Edge case 2 | `apps/sync/test/validate.test.ts` |
 | B-02-TC-NF-01 | Sync duration ≤ 5 min for the sample-manifest-sized run | P2 | @perf | AWS | NFR-001 | manual + `docs/evidence/B-02.md` (`SyncDurationMs`) |
 | B-02-TC-NF-02 | Index cold load ≤ 3 s per sandbox per manifest | P2 | @perf | AWS | architecture-constitution.md §10 | manual (`IndexColdLoadMs` metric); unit-level cold-load-timeout/race tests exist in `apps/api/test/duckDbParquet.test.ts` |
+| B-02-TC-NF-03 | Sync duration ≤ 30 min for the full-county run | P2 | @perf | AWS | NFR-001 (full-county) | manual + `docs/evidence/B-02.md` (`SyncDurationMs`) — gap-linked, not run until full-county manifest is published |
 
 ## 8. Functional test cases
 
@@ -97,8 +98,9 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Steps:**
   1. **Trigger** the deployed `crm-sync` state machine with execution name = the manifest CID.
   2. **Wait** for the execution to reach `SUCCEEDED` (`aws stepfunctions describe-execution`).
-  3. **Fetch** the manifest at that CID and read its `artifacts[]` entries for `v_property` and `v_roofing_permit`.
-  4. **Verify** each fetched part's sha256 (recorded in the `FetchPart` step's CloudWatch log) matches the manifest's stated digest for that artifact.
+  3. **Fetch** the manifest at that CID.
+  4. **Read** its `artifacts[]` entries for `v_property` and `v_roofing_permit`.
+  5. **Verify** each fetched part's sha256 (recorded in the `FetchPart` step's CloudWatch log) matches the manifest's stated digest for that artifact.
 - **Expected result:** execution status `SUCCEEDED`; both parts' sha256 match the manifest exactly; no part shows a mismatch.
 
 ### B-02-TC-002: Every indexed row carries `sourceManifestCid` (happy path)
@@ -109,9 +111,11 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Preconditions:** TC-001 has completed successfully.
 - **Steps:**
   1. **Query** the deployed API Lambda's `indexInfo()` for the current promoted `manifestCid`.
-  2. **Query** `searchProperties({})` (no filter); record the returned row count and each row's `sourceManifestCid`.
-  3. **Query** `searchPermits({})` (no filter); record the returned row count and each row's `sourceManifestCid`. (`searchProperties` is expected to return 14 rows, matching `coverage.parcels_published`; `searchPermits` is expected to return 35 rows, matching `coverage.permits_emitted`, per `docs/evidence/B-02.md`.)
-  4. **Verify** every returned row's `sourceManifestCid` field equals `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` exactly.
+  2. **Query** `searchProperties({})` (no filter).
+  3. **Record** the returned row count (expected: 14, matching `coverage.parcels_published`) and each row's `sourceManifestCid`.
+  4. **Query** `searchPermits({})` (no filter).
+  5. **Record** the returned row count (expected: 35, matching `coverage.permits_emitted`) and each row's `sourceManifestCid`.
+  6. **Verify** every returned row's `sourceManifestCid` field equals `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` exactly.
 - **Expected result:** 100% of rows carry the correct `sourceManifestCid`; zero rows with a missing or mismatched value.
 
 ### B-02-TC-003: CID copy down → Filebase → Pinata fallback, in order (negative) (from A TC-032/033/034)
@@ -148,7 +152,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Steps:**
   1. **Ask** `soofi-xyz-team-kit:donphan` (via the Oracle MCP, read-only, never on the request path) for the sample manifest's published property count.
   2. **Compare** the integer `donphan` returns to the integer read via TC-004's `indexInfo().propertyCount`.
-- **Expected result:** the two integers are numerically equal (both expected to be the sample manifest's published property count — 35 rows' worth of distinct properties, or the manifest's stated `coverage.parcels_published` value if that differs from the raw row count). A numeric mismatch is a FAIL, recorded in `docs/evidence/B-02.md` with which source was stale (per the story's "if something goes wrong" guidance — never averaged or silently accepted).
+- **Expected result:** the two integers are numerically equal to `coverage.parcels_published` (14 for the sample manifest). A numeric mismatch is a FAIL, recorded in `docs/evidence/B-02.md` with which source was stale (per the story's "if something goes wrong" guidance — never averaged or silently accepted).
 
 ### B-02-TC-006: Missing roof-age reason preserved verbatim, never guessed (missing data)
 
@@ -167,6 +171,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Priority / tags:** P1 · `@missing-data`
 - **Maps to:** AC-3, FR-003
 - **Target:** every property row written by `apps/sync/handlers/buildIndex.ts` across the sample-manifest index.
+- **Note:** against this specific 35-row sample (which has zero `roof_age_basis = "unknown"` rows, per the Assumptions terminology note), this case passes vacuously — there is no row for it to find a violation in. It genuinely exercises the assertion once a manifest containing a missing-equivalent row is indexed (the fixture-based TC-006 proves the underlying preservation logic in the meantime).
 - **Steps:**
   1. **Query** every property row in the sample-manifest index.
   2. **For each row** where a source field was published as `missing`, **verify** the corresponding index field is `null`/absent with the reason intact, never a non-null computed value.
@@ -179,11 +184,12 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Target:** the `crm-index` S3 bucket's object count and `apps/sync/handlers/fetchPart.ts`'s `If-None-Match` write path.
 - **Preconditions:** TC-001 has completed; the manifest's parts are already in S3.
 - **Steps:**
-  1. **List** S3 objects under `crm-index/raw/{manifestCid}/` and `crm-index/index/{manifestCid}/`.
-  2. **Record** the total object count as N.
-  3. **Trigger** the sync again against the same `manifestCid`.
-  4. **List** the same two S3 prefixes again.
-  5. **Record** the total object count as N'.
+  1. **List** S3 objects under `crm-index/raw/{manifestCid}/`.
+  2. **List** S3 objects under `crm-index/index/{manifestCid}/`.
+  3. **Record** the combined total object count as N.
+  4. **Trigger** the sync again against the same `manifestCid`.
+  5. **List** the same two S3 prefixes again.
+  6. **Record** the combined total object count as N'.
 - **Expected result:** N' equals N exactly — zero new objects created.
 
 ### B-02-TC-009: A second concurrent execution for the same manifest CID is rejected (edge)
@@ -194,7 +200,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Steps:**
   1. **Start** a `crm-sync` execution with name = the manifest CID.
   2. **Immediately start** a second execution with the identical name, before the first completes.
-- **Expected result:** the second `start-execution` call fails with an execution-already-exists error; only one execution runs to completion for that CID.
+- **Expected result:** the second `start-execution` call fails with `ExecutionAlreadyExists`; only one execution runs to completion for that CID.
 
 ### B-02-TC-010: Gateway politeness — ≤30 req/min, backoff+jitter on 429/5xx (NFR)
 
@@ -205,8 +211,9 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Steps:**
   1. **Verify** the Step Functions Distributed Map's `MaxConcurrency` for `FetchPart` is within the plan's allowed range of 2–3 (`plan.md`'s Operations row; deployed value is 3, per `infra/lib/crm-sync-stack.ts`'s `FETCH_PART_MAP_CONCURRENCY`).
   2. **Simulate** a gateway returning 429 for a `FetchPart` request via the mocked fetcher.
-  3. **Verify** the retry uses exponential backoff with jitter, and that the token bucket admits no more than 30 requests in any 60-second window per gateway (per-invocation limit — the documented known limitation that this is not a cross-invocation aggregate cap, per `docs/evidence/B-02.md`'s E2 fixer-round item 6).
-  4. **Verify** after 5 exhausted retries on one gateway (not counting token-bucket waits, per the same fix), the fetch switches to the next gateway in order rather than retrying indefinitely.
+  3. **Verify** the retry uses exponential backoff with jitter (not a fixed delay).
+  4. **Verify** the token bucket admits no more than 30 requests in any 60-second window per gateway (per-invocation limit — the documented known limitation that this is not a cross-invocation aggregate cap, per `docs/evidence/B-02.md`'s E2 fixer-round item 6).
+  5. **Verify** after 5 exhausted retries on one gateway (not counting token-bucket waits, per the same fix), the fetch switches to the next gateway in order rather than retrying indefinitely.
 - **Expected result:** Map concurrency is within 2–3 (deployed: 3); rate stays at or under 30 req/min per gateway per invocation; backoff is exponential with jitter, not fixed; gateway switch happens at exactly 5 real fetch attempts.
 
 ### B-02-TC-011: A part's bytes fail sha256 → quarantined, alarm fires, previous index still serves (edge, negative)
@@ -218,9 +225,10 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Preconditions:** a previously promoted run exists with `manifestCid = M_prev` and `indexInfo().manifestCid = M_prev`.
 - **Steps:**
   1. **Trigger** a new sync run against a test manifest `M_test`, with one part's fetched bytes corrupted per the fault injection method above.
-  2. **Verify** the `crm-sync` state machine's `CloudWatch Logs` record that part as failed verification, and that the run's `index_meta.status` is `Held` (never `Validated`/`Promoted`) for `M_test`.
-  3. **Verify** the `crm-sync-fetch-part-dlq-depth` alarm transitions to `ALARM` state once the part lands on `crm-sync-fetch-part-dlq`.
-  4. **Query** `indexInfo()` immediately after.
+  2. **Verify** the `crm-sync` state machine's `CloudWatch Logs` record that part as failed verification.
+  3. **Verify** the run's `index_meta.status` is `Held` (never `Validated`/`Promoted`) for `M_test`.
+  4. **Verify** the `crm-sync-fetch-part-dlq-depth` alarm transitions to `ALARM` state once the part lands on `crm-sync-fetch-part-dlq`.
+  5. **Query** `indexInfo()` immediately after.
 - **Expected result:** `indexInfo().manifestCid` still equals `M_prev`, exactly as before the test run — the corrupted run (`M_test`) never promotes, even partially; the named CloudWatch alarm is in `ALARM` state until the held run is resolved.
 
 ### B-02-TC-012: Row count drop > 5% from the previous run → held for review (edge, negative)
@@ -230,8 +238,9 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 - **Target:** `apps/sync/handlers/validate.ts`'s drop-hold check (`apps/sync/test/validate.test.ts`).
 - **Steps:**
   1. **Simulate** `Validate` receiving a `BuildIndex` output whose property count is more than 5% below the currently promoted run's count (fixture, not a real Task A republish).
-  2. **Verify** `index_meta.status` is set to `Held` with `heldReason: "drop_over_5_percent"`.
-  3. **Query** `indexInfo()`.
+  2. **Verify** `index_meta.status` is set to `Held`.
+  3. **Verify** `heldReason` is set to `"drop_over_5_percent"`.
+  4. **Query** `indexInfo()`.
 - **Expected result:** the pointer is never flipped for this run; `indexInfo()` still serves the prior count; the hold is visible for operator review (not silently promoted, not silently discarded).
 
 ### B-02-TC-NF-01: Sync duration ≤ 5 min for the sample-manifest-sized run (NFR)
@@ -260,6 +269,20 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
   4. **Verify** the second invocation emits no `IndexColdLoadMs` value (cache hit, not a cold load).
 - **Expected result:** the first invocation's `IndexColdLoadMs` is ≤ 3,000 ms; the second invocation records no cold-load metric at all.
 
+### B-02-TC-NF-03: Sync duration ≤ 30 min for the full-county run (NFR)
+
+- **Priority / tags:** P2 · `@perf`
+- **Maps to:** NFR-001 (full-county threshold)
+- **Target:** the deployed `crm-sync` execution's wall-clock duration and the `SyncDurationMs` metric, at full-county scale (Travis County TCAD roll, 493,246 accounts per A-01).
+- **Preconditions:** the full-county manifest is published (Task A's A-11) and `DATA_MANIFEST_CID` is switched to it (the "S · Data switch" step, a config change only).
+- **Steps:**
+  1. **Record** the `crm-sync` execution's `startDate`.
+  2. **Trigger** the sync against the full-county manifest CID.
+  3. **Record** the execution's `stopDate` once it reaches `SUCCEEDED`.
+  4. **Read** the `SyncDurationMs` metric emitted by `Promote` for this execution.
+- **Expected result:** `stopDate - startDate` and `SyncDurationMs` both show ≤ 30 minutes (1,800,000 ms).
+- **Status:** **gap-linked, not run** — the full-county manifest is not yet published (A-11 pending), so this case cannot be exercised at any scale yet. See § 10.
+
 ## 9. Edge cases
 
 - Full-county scale (AC-2 at real scale) → deferred to the "S · Data switch" step; TC-004/TC-005 are re-run then, not re-written.
@@ -275,7 +298,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 | B-02-TC-009 | Second concurrent `start-execution` for the same CID is rejected | Proven via sequential reuse-rejection (the bare-CID-named execution is permanently blocked from reuse, `docs/evidence/B-02.md`), not a literal simultaneous-start race — Step Functions enforces execution-name uniqueness the same way in both cases, but a true concurrent-start race has not been separately triggered | Not a defect; re-run as a true concurrent test once `crm-leads` unblocks a full end-to-end rerun (T052) |
 | B-02-TC-NF-01 | `SyncDurationMs` ≤ 5 min | The metric is only emitted by a successful `Promote`; `Promote` has not yet completed (same root cause as TC-001) | Not a defect; `docs/evidence/B-02.md` records the Plan→Validate wall time (~8s) as an interim data point, well under budget. Re-run once B-07 deploys `crm-leads`. |
 | B-02-TC-NF-02 | `IndexColdLoadMs` ≤ 3s on a fresh Lambda sandbox | Never measured against a live, freshly-deployed sandbox in Phase D — only proven at the unit level (`apps/api/test/duckDbParquet.test.ts`'s cold-load-timeout and cold-load-race tests) | Not a defect, but genuinely not run live. Re-run against the deployed API Lambda the next time a cold invocation is observable (e.g. after the next redeploy). |
-| (NFR-001, full-county) | Sync duration ≤ 30 min at full-county scale | Full-county manifest not yet published (A-11 pending) — same deferral as TC-004. No TC is written for this specific threshold since it is not exercisable at any scale until then; TC-NF-01 proves the mechanism (duration measurement) at sample scale only. | Tracked in `docs/plan.md` EXT-01, not a defect — expected until the "S · Data switch" step |
+| B-02-TC-NF-03 | Sync duration ≤ 30 min at full-county scale | Full-county manifest not yet published (A-11 pending) — same deferral as TC-004. TC-NF-01 proves the mechanism (duration measurement) at sample scale only. | Tracked in `docs/plan.md` EXT-01, not a defect — expected until the "S · Data switch" step |
 
 ## 11. Execution log (filled in Phase 5)
 
@@ -295,6 +318,7 @@ The sync job fetches Task A's published property and roofing-permit tables by CI
 | B-02-TC-012 | 2026-10-23 | `f57624e` (unit-level) | PASS | `apps/sync/test/validate.test.ts`'s drop-hold assertions | — |
 | B-02-TC-NF-01 | 2026-10-23 | `81cbcb2` (deployed) | BLOCKED | `docs/evidence/B-02.md`: `SyncDurationMs` never emitted (Promote incomplete); interim Plan→Validate wall time ~8s recorded, well under the 5-min budget | Gap-linked, §10 |
 | B-02-TC-NF-02 | — | — | NOT RUN | Never measured live; unit-level cold-load-timeout/cold-load-race tests exist (`apps/api/test/duckDbParquet.test.ts`) but no live cold-sandbox measurement was taken | Gap-linked, §10 |
+| B-02-TC-NF-03 | — | — | NOT RUN | Full-county manifest not yet published (A-11 pending) | Gap-linked, §10 |
 
 ---
 
