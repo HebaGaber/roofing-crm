@@ -5,7 +5,7 @@ feature: FEAT-B01
 story: B-01
 test_cases: testplans/B-01-test-cases.md
 runtime_url: https://001-crm-shell.d1zmhc6kkyzsbe.amplifyapp.com
-build: 3846509
+build: ad3a2d4
 data_snapshot: n/a (no Oracle/Elephant data touched by this story)
 owner: Claude (session), approved by HebaGaber
 status: Complete
