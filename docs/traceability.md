@@ -67,5 +67,9 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G5 (B-02) | specs/002-lead-index/{plan,tasks}.md | | PASS (fixed C-03/C-04/C-07, 3 recorded judgment calls) | Approved | 2026-10-23 |
 | G6 (B-02) | testplans/B-02-test-cases.md | | FAIL (strict AI reading); ratified by the user at G7 Round 2 | Approved with exceptions (no-UI automation substitution) | 2026-10-23 |
 | G7 (B-02) | docs/gates/G7-B-02-precheck.md | | FAIL (strict AI reading, 4 checks); PASS against the walkthrough's own recommended bar | Approved | 2026-10-23 |
+| G4 (B-03) | stories/B-03-map-search.md | | PASS (3 wording fixes: NFR traceability, prototype paths, AC-4 wording) | Ready | 2026-10-23 |
+| G5 (B-03) | specs/003-map-search/{plan,tasks}.md | | FAIL (5 findings: synthetic data in hosted Playwright, missing `isAgedRoof`, task-before-its-file-exists ordering, imprecise paths); all fixed | Approved | 2026-10-23 |
+| G6 (B-03) | testplans/B-03-test-cases.md | | FAIL (3 findings: placeholder CIDs, missing login/URL steps, bundled steps); fixed by querying the live B-02 index directly | Approved with exceptions (GAP-1/3/4/5/6: Vitest-only proofs or explicitly blocked where real data can't demonstrate an AC yet) | 2026-10-23 |
+| G7 (B-03) | docs/gates/G7-B-03-precheck.md | | | pending Round 2 | 2026-10-24 |
 | G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

@@ -10,10 +10,10 @@ Every story also loads `apply-engineering-guidelines`. Agents follow `../assessm
 | --- | --- | --- | --- | --- |
 | B-01 Walking skeleton | `metagross` | `build-frontend-backends`, `integrate-ci-cd` | `metagross` | Turborepo + Cognito + MapLibre shell live at RUNTIME_URL; lockout redesigned mid-build (client-reported failures, server-enforced block) after `metagross`'s original PreAuthentication-only design proved a no-op against real Cognito |
 | B-02 Lead search index | `espeon` (index), `machamp` (batch); design with `alakazam` | `build-local-rag-pocs`, `build-rag-systems`, `build-batch-workflows`, `unify-metrics`, `use-elephant-mcp` | `espeon`, `alakazam`, `machamp`, `porygon`, `donphan` | espeon's local prototype (`scripts/local-rag-poc`) proved the query path against `contract/v1/sample.parquet` before any AWS resource existed, per `build-local-rag-pocs` discipline. ADR-01 (DuckDB over Parquet, no OpenSearch) and ADR-07 (vendor `query-core`/`contract`, never re-implement) both held through the build. E1 review found 3 Critical findings (propertyCount never persisted, ADR-02's CloudFront gateway never wired, a dead diverging cost gate); E2 fixed all of them and a later `/speckit-converge` round closed two more CRITICAL gaps the kit's own review scope hadn't covered (the manifest's own bytes were never verified against its CID — only downstream parts were; the API's `LeadIndex` port wasn't wrapped with the required Powertools observability). `donphan`'s MCP cross-check (AC-2) is the one mechanism built-but-unexercised: Travis County isn't yet published to this environment's Elephant MCP index. Final reviewer scores: espeon 90, alakazam 90, donphan 91, machamp 86, porygon 82 — all ≥75. |
-| B-03 Radius search | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
-| B-04 Roof age | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
-| B-05 Open permits | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
-| B-06 Permit + contractor + BBB | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
+| B-03 Radius search | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | Two parallel `metagross` builder groups converged cleanly on one shared `packages/domain`. First review found a Critical: the built UI (FilterSheet/ResultRow/PermitChip/PropertyDetail) was never wired into `Map.tsx`, which rendered a hand-rolled list instead — fixed, `audino` re-scored 48→84. User then compared the live preview directly against the real design prototype (not just the thin `.dc.html` wrappers) and found it structurally unlike it; a full UI rebuild against the actual served prototype boards followed, then a second `audino` full re-review (81/100) plus `smeargle`'s responsive pass found and fixed remaining token/tap-target issues. Also found and fixed, live: the shared tRPC client never attached the Cognito session (every authenticated call 401'd — nothing in this repo had exercised one before), a CDK Docker-bundling gap for `@duckdb/node-api` on the API Lambda, `indexInfo()` not catching `crm-leads`'s `ResourceNotFoundException` (B-07's table isn't deployed yet — GAP-7, affects every story), and a flat-color map (wrong free tile-style choice for this story's zoom level). |
+| B-04 Roof age | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | Merged into B-03's single build/review round above; see that row. |
+| B-05 Open permits | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | Merged into B-03's single build/review round above; see that row. |
+| B-06 Permit + contractor + BBB | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | Merged into B-03's single build/review round above; see that row. |
 | B-07 Leads | `metagross`; design with `mew` | `build-frontend-backends`, `use-neutral-lexicon` | `metagross` | — |
 | B-08 Lead list | `metagross` | `build-frontend-backends`, `frontend-bug-fix` | `metagross`, `audino` | — |
 | B-09 Agent | `alakazam` (retrieval), `ash` (runtime) | `build-rag-systems`, `build-ai-agents`, `use-elephant-mcp` | `alakazam`, `ash` | — |
@@ -41,11 +41,13 @@ Also left out, as arceus advised: `oracle` and the county ingestion skills (outs
 
 | Agent | Score (0–100) | Main deviations fixed |
 | --- | --- | --- |
-| `metagross` | — | — |
-| `espeon` | — | — |
-| `alakazam` | — | — |
-| `machamp` | — | — |
-| `porygon` | — | — |
-| `donphan` | — | — |
-| `audino` | — | — |
+| `metagross` (B-02) | 90 | — |
+| `metagross` (B-03) | 80 | Stale self-disclosure comment after an already-fixed CDK gap; double DuckDB pass for fresh counts (accepted, matches FR-004); BBB/contractor collapsed to `permits[0]` (accepted v1 shortcut) |
+| `espeon` | 90 | — |
+| `alakazam` | 90 | — |
+| `machamp` | 86 | — |
+| `porygon` | 82 | — |
+| `donphan` | 91 | — |
+| `audino` (B-03, round 1) | 48→84 | Critical: built UI never wired into `Map.tsx` (fixed) |
+| `audino` (B-03, full re-review after rebuild) | 81 | Shape-token misuse surviving the rebuild, 2 new hardcoded values, a phantom board name — all fixed |
 | `ash` | — | — |
