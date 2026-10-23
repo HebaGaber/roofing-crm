@@ -45,22 +45,22 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 
 ### Tests first (write failing before implementation)
 
-- [ ] T006 [P] [GA] Vitest: `leadRepo.create` writes `LEAD`+`SIGNALS`+`EVT#0` transactionally and rejects a second create for the same `pk` with `ConditionalCheckFailed` — `tests/apps/api/leadRepo.test.ts`
-- [ ] T007 [P] [GA] Vitest: `leadRepo.create` under 20 concurrent calls for the same key resolves to exactly 1 success and 19 `ConditionalCheckFailed` (NFR-001, 0 lost updates) — `tests/apps/api/leadRepo.concurrency.test.ts`
-- [ ] T008 [P] [GA] Vitest: `leadRepo.updateStatus`/`addNote` append a gapless `EVT#{sequence}` and update the `LEAD` projection; a write against a stale `eventSequence` is refused, never silently lost — `tests/apps/api/leadRepo.events.test.ts`
-- [ ] T009 [P] [GA] Vitest: `leadService.create`/`updateStatus`/`addNote`/`get`/`list` each call the right `leadRepo` method and surface `leadRepo`'s errors unchanged (no business rule duplicated in the service) — `tests/apps/api/services/leads.test.ts`
-- [ ] T010 [P] [GA] Vitest: `leads` tRPC router — `create` input is Zod-validated and maps `ConditionalCheckFailed` to `cause.code: "ALREADY_EXISTS"`; `addNote` rejects text over 4,000 chars (constitution §6); `updateStatus` rejects an unknown status value; `get` returns `NOT_FOUND` for a missing key — `tests/apps/api/routers/leads.test.ts`
-- [ ] T011 [P] [GA] Vitest: `leads.list` forwards `roofAgeMinYears`/`permitStatus`/`radiusMi` to the `LeadIndex` port (same call the map's `search.properties` makes, per research.md) and forwards `assignee`/`status`-only queries to `leadRepo`'s GSI1/GSI2 methods instead — `tests/apps/api/routers/leadsList.test.ts`
+- [X] T006 [P] [GA] Vitest: `leadRepo.create` writes `LEAD`+`SIGNALS`+`EVT#0` transactionally and rejects a second create for the same `pk` with `ConditionalCheckFailed` — `apps/api/test/leadRepo.test.ts`
+- [X] T007 [P] [GA] Vitest: `leadRepo.create` under 20 concurrent calls for the same key resolves to exactly 1 success and 19 `ConditionalCheckFailed` (NFR-001, 0 lost updates) — `apps/api/test/leadRepo.concurrency.test.ts`
+- [X] T008 [P] [GA] Vitest: `leadRepo.updateStatus`/`addNote` append a gapless `EVT#{sequence}` and update the `LEAD` projection; a write against a stale `eventSequence` is refused, never silently lost — `apps/api/test/leadRepo.events.test.ts`
+- [X] T009 [P] [GA] Vitest: `leadService.create`/`updateStatus`/`addNote`/`get`/`list` each call the right `leadRepo` method and surface `leadRepo`'s errors unchanged (no business rule duplicated in the service) — `apps/api/test/services/leads.test.ts`
+- [X] T010 [P] [GA] Vitest: `leads` tRPC router — `create` input is Zod-validated and maps `ConditionalCheckFailed` to `cause.code: "ALREADY_EXISTS"`; `addNote` rejects text over 4,000 chars (constitution §6); `updateStatus` rejects an unknown status value; `get` returns `NOT_FOUND` for a missing key — `apps/api/test/routers/leads.test.ts`
+- [X] T011 [P] [GA] Vitest: `leads.list` forwards `roofAgeMinYears`/`permitStatus`/`radiusMi` to the `LeadIndex` port (same call the map's `search.properties` makes, per research.md) and forwards `assignee`/`status`-only queries to `leadRepo`'s GSI1/GSI2 methods instead — `apps/api/test/routers/leadsList.test.ts`
 
 ### Implementation
 
-- [ ] T012 [GA] Finalize the `crm-leads` table (GSI1 pk=`assignee`/sk=`createdAt`, GSI2 pk=`status`/sk=`createdAt`) in `infra/lib/crm-data-stack.ts`, least-privilege `grant*` to the API Lambda (builds on T002's skeleton)
-- [ ] T013 [GA] Define the `LeadRepo` port interface and its DynamoDB implementation (`create`, `updateStatus`, `addNote`, `get`, `listByAssignee`, `listByStatus`) using `TransactWriteItems`, condition expressions per data-model.md — `apps/api/src/adapters/leadRepo.ts` (Data layer; the port interface is what `leadService`, T014, is injected with)
-- [ ] T014 [GA] Implement the Application-layer `createLeadService(leadRepo: LeadRepo)` factory (`create`, `updateStatus`, `addNote`, `get`, `list`) — `leadRepo` is received as an injected port argument, never imported/instantiated inside the service, per architecture-constitution.md §4 ("Services receive ... `LeadRepo` ... as injected ports"); calls `packages/domain`'s `leadKey`/`isNotInCurrentRun` for pure rules — `apps/api/src/services/leads.ts`. Wire the constructed service into `TrpcContext`'s `createContext` function, alongside the existing `leadIndex` wiring — `apps/api/src/handlers/health.ts` (edit; this is where `createContext` is defined)
-- [ ] T015 [GA] Implement the `leads` tRPC router (`create`, `updateStatus`, `addNote`, `get`) per contracts/leads.md: Zod-parse input, call `leadService`, map errors to `cause.code` — no business rule inline — `apps/api/src/routers/leads.ts`
-- [ ] T016 [GA] Implement `leads.list` on the same router: delegate to `leadService.list`, which forwards roof-age/permit/radius filters to the `LeadIndex` port and assignee/status-only queries to the GSIs; compute `notInCurrentRun` per lead at read time — extend `apps/api/src/routers/leads.ts` and `apps/api/src/services/leads.ts`
-- [ ] T017 [GA] Register the `leads` router on `AppRouter` — `apps/api/src/routers/index.ts`
-- [ ] T018 [GA] Add Powertools Logger/Tracer/Metrics calls to every `leads` router procedure (constitution §8/XIII) — `apps/api/src/routers/leads.ts`; confirm no owner-name or PII fields are logged (ADR-03 is unrelated to leads but the same no-PII-in-logs rule applies, constitution §12 P0-13)
+- [X] T012 [GA] Finalize the `crm-leads` table (GSI1 pk=`assignee`/sk=`createdAt`, GSI2 pk=`status`/sk=`createdAt`) in `infra/lib/crm-data-stack.ts`, least-privilege `grant*` to the API Lambda (builds on T002's skeleton)
+- [X] T013 [GA] Define the `LeadRepo` port interface and its DynamoDB implementation (`create`, `updateStatus`, `addNote`, `get`, `listByAssignee`, `listByStatus`) using `TransactWriteItems`, condition expressions per data-model.md — `apps/api/src/adapters/leadRepo.ts` (Data layer; the port interface is what `leadService`, T014, is injected with)
+- [X] T014 [GA] Implement the Application-layer `createLeadService(leadRepo: LeadRepo)` factory (`create`, `updateStatus`, `addNote`, `get`, `list`) — `leadRepo` is received as an injected port argument, never imported/instantiated inside the service, per architecture-constitution.md §4 ("Services receive ... `LeadRepo` ... as injected ports"); calls `packages/domain`'s `leadKey`/`isNotInCurrentRun` for pure rules — `apps/api/src/services/leads.ts`. Wire the constructed service into `TrpcContext`'s `createContext` function, alongside the existing `leadIndex` wiring — `apps/api/src/handlers/health.ts` (edit; this is where `createContext` is defined)
+- [X] T015 [GA] Implement the `leads` tRPC router (`create`, `updateStatus`, `addNote`, `get`) per contracts/leads.md: Zod-parse input, call `leadService`, map errors to `cause.code` — no business rule inline — `apps/api/src/routers/leads.ts`
+- [X] T016 [GA] Implement `leads.list` on the same router: delegate to `leadService.list`, which forwards roof-age/permit/radius filters to the `LeadIndex` port and assignee/status-only queries to the GSIs; compute `notInCurrentRun` per lead at read time — extend `apps/api/src/routers/leads.ts` and `apps/api/src/services/leads.ts`
+- [X] T017 [GA] Register the `leads` router on `AppRouter` — `apps/api/src/routers/index.ts`
+- [X] T018 [GA] Add Powertools Logger/Tracer/Metrics calls to every `leads` router procedure (constitution §8/XIII) — `apps/api/src/routers/leads.ts`; confirm no owner-name or PII fields are logged (ADR-03 is unrelated to leads but the same no-PII-in-logs rule applies, constitution §12 P0-13)
 
 ---
 
@@ -72,24 +72,24 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 
 ### Tests first (write failing before implementation)
 
-- [ ] T019 [P] [GB] Vitest: `leadFilters` URL-state codec round-trips roof-age/permit-status/radius/center through query params, mirroring `apps/web/src/routes/Map/ExploreFilters.state.ts`'s pattern — `tests/apps/web/leadFilters.state.test.ts`
-- [ ] T020 [P] [GB] React Testing Library: `LeadsList` renders an explicit empty state (no leads, or a filter combination matching zero) rather than an error or infinite spinner (edge case) — `tests/apps/web/LeadsList.test.tsx`
-- [ ] T021 [P] [GB] React Testing Library: `LeadDetail` renders `MissingValue`/"not in Run {n}" when `notInCurrentRun` is true, and never renders the signals snapshot as current in that case — `tests/apps/web/LeadDetail.test.tsx`
-- [ ] T022 [P] [GB] Playwright (component-level, pre-hosted-deploy smoke): `LeadCreateAction` wired into the existing `PropertyDetail` drawer calls `leads.create` and shows "Already a lead" on `ALREADY_EXISTS` — `tests/apps/web/LeadCreateAction.spec.ts`
+- [X] T019 [P] [GB] Vitest: `leadFilters` URL-state codec round-trips roof-age/permit-status/radius/center through query params, mirroring `apps/web/src/routes/Map/ExploreFilters.state.ts`'s pattern — `apps/web/test/leads/leadFilters.state.test.ts`
+- [X] T020 [P] [GB] React Testing Library: `LeadsList` renders an explicit empty state (no leads, or a filter combination matching zero) rather than an error or infinite spinner (edge case) — `apps/web/test/leads/LeadsList.test.tsx`
+- [X] T021 [P] [GB] React Testing Library: `LeadDetail` renders `MissingValue`/"not in Run {n}" when `notInCurrentRun` is true, and never renders the signals snapshot as current in that case — `apps/web/test/leads/LeadDetail.test.tsx`
+- [X] T022 [P] [GB] React Testing Library (deviation: apps/web has no Playwright component setup, so this is RTL; the hosted-URL Playwright proof stays in the Prove-live stage): `LeadCreateAction` wired into the existing `PropertyDetail` drawer calls `leads.create` and shows "Already a lead" on `ALREADY_EXISTS` — `apps/web/test/leads/LeadCreateAction.test.tsx`
 
 ### Implementation
 
-- [ ] T023 [GB] `leadFilters.state.ts`: URL-encoded filter state (roof-age min, permit status, radius, center) — `apps/web/src/routes/Leads/leadFilters.state.ts`
-- [ ] T024 [GB] `LeadsList.tsx`: paginated list consuming `leads.list` via `packages/api-client`, Atlas tokens only, filter UI reusing the map's existing filter components where shared — `apps/web/src/routes/Leads/LeadsList.tsx`
-- [ ] T025 [GB] `LeadDetail.tsx`: status/assignee/notes/history view consuming `leads.get`, `MissingValue` for `notInCurrentRun` — `apps/web/src/routes/Leads/LeadDetail.tsx`
-- [ ] T026 [GB] `LeadCreateAction.tsx`: "Create lead" action calling `leads.create`, showing "Already a lead" on `ALREADY_EXISTS` — new file `apps/web/src/routes/Leads/LeadCreateAction.tsx`, wired into the existing drawer at `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx` (edit, add the action point; do not restructure the existing drawer)
-- [ ] T027 [GB] Register the `/leads` and `/leads/:leadId` routes: edit `apps/web/src/App.tsx` (the app's existing router) and add a "Leads" nav entry in `apps/web/src/components/AppShell/AppShell.tsx`
+- [X] T023 [GB] `leadFilters.state.ts`: URL-encoded filter state (roof-age min, permit status, radius, center) — `apps/web/src/routes/Leads/leadFilters.state.ts`
+- [X] T024 [GB] `LeadsList.tsx`: paginated list consuming `leads.list` via `packages/api-client`, Atlas tokens only, filter UI reusing the map's existing filter components where shared — `apps/web/src/routes/Leads/LeadsList.tsx`
+- [X] T025 [GB] `LeadDetail.tsx`: status/assignee/notes/history view consuming `leads.get`, `MissingValue` for `notInCurrentRun` — `apps/web/src/routes/Leads/LeadDetail.tsx`
+- [X] T026 [GB] `LeadCreateAction.tsx`: "Create lead" action calling `leads.create`, showing "Already a lead" on `ALREADY_EXISTS` — new file `apps/web/src/routes/Leads/LeadCreateAction.tsx`, wired into the existing drawer at `apps/web/src/routes/Map/PropertyDetail/PropertyDetail.tsx` (edit, add the action point; do not restructure the existing drawer)
+- [X] T027 [GB] Register the `/leads` and `/leads/:leadId` routes: edit `apps/web/src/App.tsx` (the app's existing router) and add a "Leads" nav entry in `apps/web/src/components/AppShell.tsx` (path corrected: there is no `AppShell/AppShell.tsx`)
 
 ---
 
 ## Phase N: Polish & Cross-Cutting Concerns
 
-- [ ] T028 [P] No file change — verification only: run `pnpm turbo run lint type-check format` (ESLint, `tsc`, Prettier per the `justfile`'s recipes) across `apps/api`, `apps/web`, `packages/shared`, `packages/domain`; fix any findings in the files they point to
+- [X] T028 [P] No file change — verification only: run `pnpm turbo run lint type-check format` (ESLint, `tsc`, Prettier per the `justfile`'s recipes) across `apps/api`, `apps/web`, `packages/shared`, `packages/domain`; fix any findings in the files they point to
 - [ ] T029 No new file — manual/scripted run: execute `specs/007-leads/quickstart.md`'s six scenarios locally against a dev deploy (not the final hosted-URL proof — that is Phase D/TZ03) to catch integration issues before the review round; record the outcome in `specs/007-leads/run-log.md`
 - [ ] T030 [P] Update `docs/kit-usage.md` with one line for this story's agent usage (mew, metagross, audino) once Group GA/GB are both merged into the branch
 

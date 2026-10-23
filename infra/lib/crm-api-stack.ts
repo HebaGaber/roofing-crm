@@ -106,8 +106,19 @@ export class CrmApiStack extends Stack {
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
     props.lockoutTable.grantReadWriteData(trpcHandler);
     indexBucket.grantRead(trpcHandler);
-    dynamodb.Table.fromTableName(this, "LeadsTable", props.leadsTableName).grantReadData(
+    // B-07: leads read/write. TransactWriteItems is authorised per underlying action
+    // (PutItem/UpdateItem/ConditionCheckItem); Query on GSI1/GSI2 needs the index ARNs, which
+    // `grantIndexPermissions` adds. No Scan, no DeleteItem, no table-level admin actions.
+    const leadsTable = dynamodb.Table.fromTableAttributes(this, "LeadsTable", {
+      tableName: props.leadsTableName,
+      grantIndexPermissions: true,
+    });
+    leadsTable.grantReadData(trpcHandler);
+    leadsTable.grant(
       trpcHandler,
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:ConditionCheckItem",
     );
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {

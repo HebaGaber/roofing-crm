@@ -28,7 +28,8 @@ export class CrmDataStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
-    // B-07 T002: `crm-leads` skeleton (key schema only). GSI1/GSI2 and grants are added by T012.
+    // B-07 `crm-leads` (T002 skeleton, T012 GSIs). Grants to the API Lambda are in crm-api-stack.ts
+    // (it receives the table by name, like crm-sync-stack.ts).
     this.leadsTable = new dynamodb.Table(this, "LeadsTable", {
       tableName: "crm-leads",
       partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
@@ -36,6 +37,20 @@ export class CrmDataStack extends Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
       removalPolicy: RemovalPolicy.DESTROY, // Demo project (Article III addendum).
+    });
+    // Sparse indexes: only `sk=LEAD` items carry `assignee`/`status`, so only they are indexed
+    // (data-model.md GSIs). KEYS_ONLY would force a second read; ALL keeps list views one query.
+    this.leadsTable.addGlobalSecondaryIndex({
+      indexName: "GSI1",
+      partitionKey: { name: "assignee", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    this.leadsTable.addGlobalSecondaryIndex({
+      indexName: "GSI2",
+      partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
     });
     Tags.of(this.leadsTable).add("project_name", "roofing-crm");
 

@@ -1,0 +1,112 @@
+// T011: leads.list forwards geo/roof-age/permit filters to the LeadIndex port (the same calls
+// search.properties makes) and sends assignee/status-only queries to the repo's GSI methods.
+import { describe, expect, it, vi } from "vitest";
+import { createCallerFactory } from "../../src/trpc.js";
+import { appRouter } from "../../src/routers/index.js";
+import { createLeadService } from "../../src/services/leads.js";
+import type { LeadRepo } from "../../src/adapters/leadRepo.js";
+import type { LeadIndex } from "../../src/adapters/duckDbParquet.js";
+
+const caller = createCallerFactory(appRouter);
+const mk = (n: number, status: "new" | "won" = "new", m = "run2") => ({
+  leadKey: `48453:tcad:${n}`,
+  leadId: `L${n}`,
+  address: "a",
+  lat: 1,
+  lon: 2,
+  status,
+  assignee: "rep-1",
+  createdFrom: "map" as const,
+  sourceManifestCid: m,
+  createdAt: `2026-10-24T10:0${n}:00.000Z`,
+  eventSequence: 0,
+});
+const leads = [mk(1), mk(2, "won"), mk(3, "new", "run1")];
+
+function repo(): LeadRepo {
+  return {
+    create: vi.fn(),
+    updateStatus: vi.fn(),
+    addNote: vi.fn(),
+    get: vi.fn(),
+    listByAssignee: vi.fn(async () => leads),
+    listByStatus: vi.fn(async () => leads.filter((l) => l.status === "won")),
+  } as unknown as LeadRepo;
+}
+function index(): LeadIndex {
+  return {
+    indexInfo: vi.fn(async () => ({
+      manifestCid: "run2",
+      propertyCount: 2,
+      permitCount: 1,
+      promotedAt: "t",
+    })),
+    searchProperties: vi.fn(async () => [
+      { propertyCid: "bafyP1", requestIdentifier: "1" },
+      { propertyCid: "bafyP2", requestIdentifier: "3" },
+    ]),
+    searchPermits: vi.fn(async () => [{ propertyCid: "bafyP1", statusClass: "open" }]),
+    getProperty: vi.fn(),
+  } as unknown as LeadIndex;
+}
+const c = (r: LeadRepo, i?: LeadIndex) =>
+  caller({
+    requestId: "r",
+    userId: "rep-1",
+    leadService: createLeadService(r, i ? { leadIndex: i } : {}),
+  });
+
+describe("leads.list (T011)", () => {
+  it("roofAgeMinYears/radiusMi/center forward to LeadIndex.searchProperties and intersect with the caller's leads", async () => {
+    const r = repo();
+    const i = index();
+    const out = await c(r, i).leads.list({
+      filters: { roofAgeMinYears: 15, radiusMi: 5, centerLat: 30.2, centerLon: -97.7 },
+    });
+    expect(i.searchProperties).toHaveBeenCalledWith({
+      center: { lat: 30.2, lng: -97.7 },
+      radiusMi: 5,
+      roofAgeMinYears: 15,
+    });
+    expect(r.listByAssignee).toHaveBeenCalledWith("rep-1");
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1", "48453:tcad:3"]);
+    expect(out.totalCount).toBe(2);
+  });
+
+  it("permitStatus forwards to searchPermits and keeps only leads whose property has a matching permit", async () => {
+    const r = repo();
+    const i = index();
+    const out = await c(r, i).leads.list({ filters: { permitStatus: "open" } });
+    expect(i.searchPermits).toHaveBeenCalled();
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1"]);
+  });
+
+  it("status-only goes to listByStatus (GSI2); assignee-only to listByAssignee (GSI1); LeadIndex untouched", async () => {
+    const r = repo();
+    const i = index();
+    const a = await c(r, i).leads.list({ status: "won" });
+    expect(r.listByStatus).toHaveBeenCalledWith("won");
+    expect(a.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:2"]);
+    await c(r, i).leads.list({ assignee: "rep-9" });
+    expect(r.listByAssignee).toHaveBeenCalledWith("rep-9");
+    expect(i.searchProperties).not.toHaveBeenCalled();
+  });
+
+  it("annotates notInCurrentRun at read time from the current manifest, never stored", async () => {
+    const out = await c(repo(), index()).leads.list({});
+    expect(out.leads.map((l) => l.notInCurrentRun)).toEqual([false, false, true]);
+  });
+
+  it("limit <= 100 and cursor paging; totalCount stays the full match count", async () => {
+    const r = repo();
+    await expect(c(r).leads.list({ limit: 101 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    const p1 = await c(r).leads.list({ limit: 2 });
+    expect(p1.leads).toHaveLength(2);
+    expect(p1.totalCount).toBe(3);
+    const cursor = p1.nextCursor;
+    if (cursor === undefined) throw new Error("first page should carry a nextCursor");
+    const p2 = await c(r).leads.list({ limit: 2, cursor });
+    expect(p2.leads).toHaveLength(1);
+    expect(p2.nextCursor).toBeUndefined();
+  });
+});

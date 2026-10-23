@@ -5,6 +5,7 @@
 import { router } from "../trpc.js";
 import { authRouter } from "./auth.js";
 import { healthRouter } from "./health.js";
+import { leadsRouter } from "./leads.js";
 import { propertyRouter } from "./property.js";
 import { searchRouter } from "./search.js";
 
@@ -15,6 +16,8 @@ export const appRouter = router({
   // wired additively onto the existing B-01/B-02 routes.
   search: searchRouter,
   property: propertyRouter,
+  // B-07: lead capture, status, notes, list (contracts/leads.md).
+  leads: leadsRouter,
 });
 
 export type AppRouter = typeof appRouter;

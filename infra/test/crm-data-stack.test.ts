@@ -50,6 +50,28 @@ describe("CrmData (T038)", () => {
     });
   });
 
+  it("B-07 T012: crm-leads has sparse GSI1 (assignee/createdAt) and GSI2 (status/createdAt)", () => {
+    build().hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "crm-leads",
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "GSI1",
+          KeySchema: [
+            { AttributeName: "assignee", KeyType: "HASH" },
+            { AttributeName: "createdAt", KeyType: "RANGE" },
+          ],
+        },
+        {
+          IndexName: "GSI2",
+          KeySchema: [
+            { AttributeName: "status", KeyType: "HASH" },
+            { AttributeName: "createdAt", KeyType: "RANGE" },
+          ],
+        },
+      ],
+    });
+  });
+
   it("declares no Task A resources — this stack only ever reads Task A's public CID copies", () => {
     expect(() => build()).not.toThrow();
   });
