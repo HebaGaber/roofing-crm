@@ -72,6 +72,13 @@ export function addFetchPartDlqAndAlarm(
     retentionPeriod: Duration.days(14),
     enforceSSL: true,
   });
+  NagSuppressions.addResourceSuppressions(queue, [
+    {
+      id: "AwsSolutions-SQS3",
+      reason:
+        "This queue is itself FetchPart's terminal DLQ (constitution Article VII) — it is the sink a failed message lands on after exhausting retries, so it has no DLQ of its own by design; a part that fails here is held for operator review (architecture-constitution.md §8), never silently dropped.",
+    },
+  ]);
 
   const alarm = new cloudwatch.Alarm(scope, "FetchPartDlqAlarm", {
     alarmName: "crm-sync-fetch-part-dlq-depth",
@@ -301,8 +308,16 @@ export class CrmSyncStack extends Stack {
         {
           id: "AwsSolutions-IAM5",
           reason:
-            "The wildcards are CDK's own auto-generated, resource-scoped grants (NodejsFunction's log group; the imported S3 bucket/DynamoDB table grant* helpers, which synthesize a name-pattern ARN since both are imported by name rather than a typed cross-stack reference) — not an app-authored blanket grant.",
-          appliesTo: ["Resource::*"],
+            "The wildcards are CDK's own auto-generated, resource-scoped grants: Bucket.grantRead/grantReadWrite's action-group wildcards (s3:GetObject*, s3:List*, s3:GetBucket*, s3:DeleteObject*, s3:Abort*) scoped to this stack's own imported index bucket; the state machine role's Lambda-invoke grants, which CDK always suffixes with ':*' to cover every published version/alias of a function this stack itself creates; and every Lambda's X-Ray tracing permissions (xray:PutTraceSegments/PutTelemetryRecords, constitution Article VIII), which AWS does not support scoping to a resource ARN at all — not an app-authored blanket grant.",
+          appliesTo: [
+            { regex: "/^Action::s3:(GetObject|List|GetBucket|DeleteObject|Abort)\\*$/" },
+            { regex: "/^Resource::arn:aws:s3:::<IndexBucket[A-Za-z0-9]+>\\/\\*$/" },
+            {
+              regex:
+                "/^Resource::<(BuildIndexFunction|FetchPartFunction|PlanFunction|PromoteFunction|ValidateFunction)[A-Za-z0-9]+\\.Arn>:\\*$/",
+            },
+            "Resource::*",
+          ],
         },
       ],
       true,
