@@ -65,3 +65,9 @@ T001 e2e-helpers correction (after the row above): on inspection, `tests/e2e/res
 | 2026-10-23T07:57Z | `profiles/travis-austin@1.0.0` | `packages/oracle-profile-travis-austin` | 72ba7a3 | feature/oracle-pipeline |
 | 2026-10-23T08:45Z | `contract/v1` | `contract/v1` | be925c5 | feature/oracle-pipeline |
 | 2026-10-23T08:45Z | `docs/decisions/0002-lexicon-carriers.md` | `docs/decisions/0002-lexicon-carriers.md` | f3ddcbe | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `tests/e2e/manifest.spec.ts` | `tests/e2e/manifest.spec.ts` | a1fd50a | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `tests/e2e/cid-copy.spec.ts` | `tests/e2e/cid-copy.spec.ts` | 071eb1b | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `tests/e2e/fallback.spec.ts` | `tests/e2e/fallback.spec.ts` | a1fd50a | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `tests/e2e/verify-manifest.spec.ts` | `tests/e2e/verify-manifest.spec.ts` | a1fd50a | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `apps/api/test/query.test.ts` | `apps/api/test/query.test.ts` | 9191b3c | feature/oracle-pipeline |
+| 2026-10-23T08:57Z | `apps/api/test/duckdb-node.test.ts` | `apps/api/test/duckdb-node.test.ts` | a1fd50a | feature/oracle-pipeline |

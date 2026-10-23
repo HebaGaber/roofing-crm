@@ -20,6 +20,62 @@ import type { QueryEngine, Row } from "@crm/oracle-views";
  *  names from packages/oracle-contract/src/columns.ts). */
 export type ViewRow = Record<string, unknown>;
 
+/** DuckDB column types for `read_json`, matching packages/index-schema's CrmProperty/CrmPermit
+ *  shape exactly. Without this, `read_json_auto` infers BIGINT for whole numbers and
+ *  DATE/TIMESTAMP for ISO date strings, so the port reads back `bigint`/`Date` values that fail
+ *  CrmProperty/CrmPermit's `number`/`string` validation (found in T040's query.test.ts). */
+const MISSING_STRUCT_LIST = "STRUCT(field VARCHAR, reason VARCHAR)[]";
+
+export const CRM_PROPERTY_COLUMNS: Record<string, string> = {
+  propertyCid: "VARCHAR",
+  requestIdentifier: "VARCHAR",
+  latitude: "DOUBLE",
+  longitude: "DOUBLE",
+  coordinateSource: "VARCHAR",
+  propertyType: "VARCHAR",
+  propertyUsageType: "VARCHAR",
+  roofAgeYears: "INTEGER",
+  roofAgeBasis: "VARCHAR",
+  roofAgeConfidence: "VARCHAR",
+  isLongTenure: "BOOLEAN",
+  ownerKind: "VARCHAR",
+  ownerAreaClass: "VARCHAR",
+  ownerIsOutOfArea: "BOOLEAN",
+  sourceManifestCid: "VARCHAR",
+  missingReasons: MISSING_STRUCT_LIST,
+  capturedAt: "VARCHAR",
+  cid: "VARCHAR",
+  runId: "VARCHAR",
+};
+
+export const CRM_PERMIT_COLUMNS: Record<string, string> = {
+  propertyCid: "VARCHAR",
+  permitCid: "VARCHAR",
+  jurisdiction: "VARCHAR",
+  permitNumber: "VARCHAR",
+  improvementType: "VARCHAR",
+  improvementAction: "VARCHAR",
+  improvementStatus: "VARCHAR",
+  statusClass: "VARCHAR",
+  issueDate: "VARCHAR",
+  finalDate: "VARCHAR",
+  permitCloseDate: "VARCHAR",
+  finalInspectionDate: "VARCHAR",
+  openDays: "INTEGER",
+  contractorResolution: "VARCHAR",
+  contractorCompanyCid: "VARCHAR",
+  sourceManifestCid: "VARCHAR",
+  missingReasons: MISSING_STRUCT_LIST,
+  capturedAt: "VARCHAR",
+  cid: "VARCHAR",
+  runId: "VARCHAR",
+};
+
+export function duckDbColumnsClause(columns: Record<string, string>): string {
+  const entries = Object.entries(columns).map(([name, type]) => `${name}: '${type}'`);
+  return `{${entries.join(", ")}}`;
+}
+
 function asMissing(value: unknown): Missing[] {
   if (!Array.isArray(value)) return [];
   return value.map((m) => {
@@ -193,10 +249,10 @@ async function buildIndexCoreFromEvent(
     const propertyFile = join(tmpDir, "crm_property.parquet");
     const permitFile = join(tmpDir, "crm_permit.parquet");
     await connection.run(
-      `COPY (SELECT * FROM read_json_auto('${propertyJson}')) TO '${propertyFile}' (FORMAT parquet)`,
+      `COPY (SELECT * FROM read_json('${propertyJson}', columns = ${duckDbColumnsClause(CRM_PROPERTY_COLUMNS)})) TO '${propertyFile}' (FORMAT parquet)`,
     );
     await connection.run(
-      `COPY (SELECT * FROM read_json_auto('${permitJson}')) TO '${permitFile}' (FORMAT parquet)`,
+      `COPY (SELECT * FROM read_json('${permitJson}', columns = ${duckDbColumnsClause(CRM_PERMIT_COLUMNS)})) TO '${permitFile}' (FORMAT parquet)`,
     );
 
     const propertyKey = `index/${event.manifestCid}/crm_property.parquet`;
