@@ -26,9 +26,12 @@ function lockoutStore(): LockoutStore {
 export const authRouter = router({
   reportFailedAttempt: publicProcedure
     .input(z.object({ username: z.string().min(1) }))
-    .output(z.object({ ok: z.literal(true) }))
+    .output(z.object({ ok: z.literal(true), locked: z.boolean() }))
     .mutation(async ({ input }) => {
-      await recordFailedAttempt(lockoutStore(), input.username);
-      return { ok: true as const };
+      const counter = await recordFailedAttempt(lockoutStore(), input.username);
+      // `locked` tells the client this exact attempt just crossed the 4th-failure threshold, so
+      // it can show the typed lockout message immediately (AC-3) instead of waiting for a 5th
+      // attempt to hit the PreAuthentication gate — see lockout-handler.ts's recordFailedAttempt.
+      return { ok: true as const, locked: counter.lockedUntil !== null };
     }),
 });

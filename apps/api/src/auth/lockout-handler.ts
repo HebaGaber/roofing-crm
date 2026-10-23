@@ -66,13 +66,24 @@ export async function preAuthentication(store: LockoutStore, username: string): 
   }
 }
 
-/** Called after a failed password check. The 4th consecutive failure locks for 5 minutes. */
-export async function recordFailedAttempt(store: LockoutStore, username: string): Promise<void> {
+/**
+ * Called after a failed password check. The 4th consecutive failure locks for 5 minutes.
+ * Returns the updated counter so the caller (routers/auth.ts) can tell the client this exact
+ * attempt just caused the lock — Cognito's own response to this same attempt still says
+ * "incorrect password" (the PreAuthentication gate only knows about *prior* failures, found
+ * deploying), so without this the typed lockout message wouldn't appear until a 5th attempt.
+ */
+export async function recordFailedAttempt(
+  store: LockoutStore,
+  username: string,
+): Promise<LockoutCounter> {
   const counter = (await store.get(username)) ?? emptyCounter(username);
   const failedAttempts = counter.failedAttempts + 1;
   const lockedUntil =
     failedAttempts >= MAX_FAILED_ATTEMPTS ? Date.now() + LOCKOUT_COOLDOWN_MS : null;
-  await store.put({ username, failedAttempts, lockedUntil });
+  const updated: LockoutCounter = { username, failedAttempts, lockedUntil };
+  await store.put(updated);
+  return updated;
 }
 
 /** Called after a successful sign-in. Resets the counter to 0 without ever locking. */

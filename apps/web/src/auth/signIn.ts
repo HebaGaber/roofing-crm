@@ -61,21 +61,28 @@ export function signIn(username: string, password: string): Promise<Session> {
       onSuccess: (cognitoSession) => resolve(toSession(cognitoSession)),
       onFailure: (error: unknown) => {
         // Found deploying: Cognito's PreAuthentication trigger can't itself observe a failed
-        // password (see lockout-handler.ts). Report it here — only for a genuine wrong-password
-        // rejection, never for an already-locked rejection (that's the gate working correctly,
-        // not a new failure to count).
-        if (classifySignInError(error).kind === "invalid-credentials") {
-          void reportFailedAttempt(username);
+        // password (see lockout-handler.ts), so Cognito's own response to this exact attempt
+        // still says "incorrect password" even when it's the 4th failure. Report it here — only
+        // for a genuine wrong-password rejection, never for an already-locked rejection (that's
+        // the gate working correctly, not a new failure to count) — and if this attempt just
+        // crossed the threshold, reject with the typed lockout message directly instead of
+        // Cognito's, so AC-3's "the 4th attempt" (not the 5th) sees it.
+        if (classifySignInError(error).kind !== "invalid-credentials") {
+          reject(error as Error);
+          return;
         }
-        reject(error as Error);
+        reportFailedAttempt(username)
+          .then((locked) => reject(locked ? new Error(LOCKOUT_MESSAGE) : (error as Error)))
+          .catch(() => reject(error as Error));
       },
     });
   });
 }
 
-function reportFailedAttempt(username: string): Promise<void> {
+/** Best-effort: a reporting failure never masks the original sign-in error. */
+function reportFailedAttempt(username: string): Promise<boolean> {
   return createApiClient()
     .auth.reportFailedAttempt.mutate({ username })
-    .then(() => undefined)
-    .catch(() => undefined); // best-effort: never let a reporting failure mask the sign-in error.
+    .then((result) => result.locked)
+    .catch(() => false);
 }
