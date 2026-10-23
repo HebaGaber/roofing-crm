@@ -164,6 +164,12 @@ export class CrmSyncStack extends Stack {
           // standard NodejsFunction pattern for native-addon dependencies.
           externalModules: nodeModules,
           nodeModules,
+          // Found live (Runtime.ImportModuleError): nodeModules' install step runs on the build
+          // host by default, so a local pnpm install on this arm64 Mac resolves the darwin-arm64
+          // native binding, not the linux x86_64 one the Lambda runtime needs. Forcing Docker
+          // bundling runs that install inside the same Amazon Linux image the function deploys
+          // to, so the installed @duckdb/node-bindings variant always matches the runtime.
+          forceDockerBundling: nodeModules.length > 0,
         },
       });
       fn.role?.addToPrincipalPolicy(taskADenyStatement(this));
