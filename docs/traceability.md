@@ -57,5 +57,9 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G2 | docs/plan.md | 0.1 | PASS | Approved | 2026-10-21 |
 | Design CP | design/ | | | | |
 | G3 | docs/architecture-constitution.md | 1.0 | PASS | Approved | 2026-10-23 |
-| G4–G7 | per story; see `docs/progress.md` | | | | |
+| G4 (B-01) | stories/B-01-crm-shell.md | | PASS | Ready | 2026-10-23 |
+| G5 (B-01) | specs/001-crm-shell/{plan,tasks}.md | | PASS (4 rounds, structural fixes) | Approved | 2026-10-23 |
+| G6 (B-01) | testplans/B-01-test-cases.md | | PASS (4 rounds; TD-4 polish exceptions) | Approved with exceptions | 2026-10-23 |
+| G7 (B-01) | docs/gates/G7-B-01-precheck.md | | PASS (TD-5 coverage exception) | pending Round 2 | 2026-10-23 |
+| G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
