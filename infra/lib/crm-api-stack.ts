@@ -117,9 +117,12 @@ export class CrmApiStack extends Stack {
           // PascalCase, not CDK's usual camelCase: this L1 property is a raw passthrough map,
           // not a typed interface CDK converts for us (found deploying: camelCase keys were
           // silently rejected by the API Gateway resource handler with "Unrecognized field").
-          // Burst must cover a legitimate AC-3 run (4 wrong attempts, each reporting once, a
-          // few seconds apart) without 429ing it — found deploying: burst 2 did exactly that.
-          ThrottlingBurstLimit: 5,
+          // Burst must cover the full Playwright suite's legitimate use of this route, not just
+          // one AC-3 run: the suite runs AC-3's 4-wrong-attempt flow once per viewport project
+          // (3x) within a few minutes — found deploying: burst 2, then burst 5, each 429'd a
+          // later project's run once the earlier ones had spent it faster than the steady-state
+          // rate refilled.
+          ThrottlingBurstLimit: 15,
           ThrottlingRateLimit: 0.2, // steady-state: 1 request per 5s once the burst is spent
         },
       };
