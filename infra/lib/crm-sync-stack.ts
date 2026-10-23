@@ -124,6 +124,7 @@ export class CrmSyncStack extends Stack {
       functionName: string,
       entry: string,
       environment: Record<string, string>,
+      handlerExportName: string,
       nodeModules: string[] = [],
     ): NodejsFunction => {
       // An explicit LogGroup (rather than NodejsFunction's `logRetention` prop) avoids spinning
@@ -139,7 +140,7 @@ export class CrmSyncStack extends Stack {
         functionName,
         runtime: lambda.Runtime.NODEJS_22_X,
         entry,
-        handler: "handler",
+        handler: handlerExportName,
         memorySize: HANDLER_MEMORY_MB,
         timeout: HANDLER_TIMEOUT,
         tracing: lambda.Tracing.ACTIVE,
@@ -169,18 +170,26 @@ export class CrmSyncStack extends Stack {
       return fn;
     };
 
-    const planFn = makeHandler("PlanFunction", "crm-sync-plan", props.planHandlerEntry, {});
+    const planFn = makeHandler(
+      "PlanFunction",
+      "crm-sync-plan",
+      props.planHandlerEntry,
+      {},
+      "planHandler",
+    );
     const fetchPartFn = makeHandler(
       "FetchPartFunction",
       "crm-sync-fetch-part",
       props.fetchPartHandlerEntry,
       { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      "handler",
     );
     const buildIndexFn = makeHandler(
       "BuildIndexFunction",
       "crm-sync-build-index",
       props.buildIndexHandlerEntry,
       { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      "buildIndexHandler",
       ["@duckdb/node-api"],
     );
     const validateFn = makeHandler(
@@ -188,12 +197,14 @@ export class CrmSyncStack extends Stack {
       "crm-sync-validate",
       props.validateHandlerEntry,
       { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
+      "validateHandler",
     );
     const promoteFn = makeHandler(
       "PromoteFunction",
       "crm-sync-promote",
       props.promoteHandlerEntry,
       { CRM_LEADS_TABLE_NAME: props.leadsTableName },
+      "promoteHandler",
     );
 
     indexBucket.grantReadWrite(fetchPartFn);
