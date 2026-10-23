@@ -10,6 +10,12 @@
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface-variant);
+  /* A visually-hidden label still computes font-family/font-size, falling back to the UA
+     default (Arial) without an explicit token (found in smeargle's responsive review,
+     CR-B-03). Icon-only buttons still need an Atlas typography token so an audit of computed
+     styles never flags a native-browser fallback. */
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
   cursor: pointer;
 }
 
