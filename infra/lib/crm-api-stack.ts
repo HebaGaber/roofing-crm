@@ -102,6 +102,29 @@ export class CrmApiStack extends Stack {
     }
     accessLogGroup.grantWrite(new iam.ServicePrincipal("apigateway.amazonaws.com"));
 
+    // auth.reportFailedAttempt is public and unauthenticated by necessity (routers/auth.ts), so
+    // nothing stops a direct caller from invoking it without ever attempting a real sign-in —
+    // confirmed exploitable as a credential-free DoS against the one seeded admin account (code
+    // review, CR-B-01, Critical; decided with the user: rate-limit and accept the residual risk
+    // for this one-shared-login demo account, not a full Custom Auth Challenge rearchitecture).
+    // A tight route-level throttle (shared across all callers, not per-caller — HTTP API has no
+    // per-IP throttling) raises the bar against casual/scripted abuse without blocking the
+    // legitimate client's own occasional real report.
+    if (cfnStage !== undefined) {
+      cfnStage.routeSettings = {
+        ...(cfnStage.routeSettings as Record<string, unknown> | undefined),
+        "POST /trpc/auth.reportFailedAttempt": {
+          // PascalCase, not CDK's usual camelCase: this L1 property is a raw passthrough map,
+          // not a typed interface CDK converts for us (found deploying: camelCase keys were
+          // silently rejected by the API Gateway resource handler with "Unrecognized field").
+          // Burst must cover a legitimate AC-3 run (4 wrong attempts, each reporting once, a
+          // few seconds apart) without 429ing it — found deploying: burst 2 did exactly that.
+          ThrottlingBurstLimit: 5,
+          ThrottlingRateLimit: 0.2, // steady-state: 1 request per 5s once the burst is spent
+        },
+      };
+    }
+
     const integration = new integrations.HttpLambdaIntegration("TrpcIntegration", trpcHandler);
 
     // health.ping: the one route with no authorizer (contracts/health.md).
