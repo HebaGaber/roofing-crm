@@ -9,6 +9,7 @@ import { Component as ComingSoon } from "./routes/ComingSoon.js";
 import { Component as LeadDetail } from "./routes/Leads/LeadDetail.js";
 import { Component as LeadsList } from "./routes/Leads/LeadsList.js";
 import { Component as MapRoute } from "./routes/Map/Map.js";
+import { MapAlias } from "./routes/MapAlias.js";
 import { Component as SignIn } from "./routes/SignIn/SignIn.js";
 
 export function App(): ReactElement {
@@ -24,6 +25,7 @@ export function App(): ReactElement {
           }
         >
           <Route path="/" element={<MapRoute />} />
+          <Route path="/map" element={<MapAlias />} />
           <Route path="/leads" element={<LeadsList />} />
           <Route path="/leads/:leadKey" element={<LeadDetail />} />
           <Route path="/ask" element={<Ask />} />
