@@ -22,16 +22,27 @@
 // the "Zoom in" chip and the legend. The overview's hexagons and permit clusters come from
 // `search.countyOverview` (design-review-log row 10): the whole county, opening immediately with
 // no centre, re-fetched per whole-number zoom and filter; the client binning of loaded results is
-// only the fallback when that overview cannot be read (the legend says so).
+// only the fallback when that overview cannot be read (the legend says so). The first-visit
+// "What can I ask?" card (components/Onboarding) floats over the map area.
 import { useTRPC } from "@crm/api-client/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactElement,
+} from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
 import { CrmMap, type CrmMapHandle, type LatLng } from "../../components/Map/CrmMap.js";
-import { GpsButton } from "../../components/Map/GpsButton.js";
+import { GpsButton, LOW_ACCURACY_M } from "../../components/Map/GpsButton.js";
 import { LayersPopover, type LayersState } from "../../components/Map/LayersPopover.js";
 import { MapControls } from "../../components/Map/MapControls.js";
+import { MapStatusCard } from "../../components/Map/MapStatusCard.js";
 import { MapLegend } from "../../components/Map/MapLegend.js";
 import type { MapViewMode } from "../../components/Map/CrmMap.js";
 import {
@@ -41,6 +52,7 @@ import {
 } from "../../components/Map/hexbin.js";
 import type { CountyOverviewStatus } from "../../components/Map/MapLegend.js";
 import { RadiusControl } from "../../components/Map/RadiusControl.js";
+import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
@@ -58,6 +70,22 @@ const COUNTY_ZOOM_STEP = 9;
 /** The county overview changes only with a new promoted run; refetching it on every focus is waste. */
 const OVERVIEW_STALE_MS = 5 * 60_000;
 const DAYS_PER_YEAR = 365.25;
+/** From this width the map has a pointer to aim with (the board's 1440/768 pin mode); under it, a
+ *  fixed crosshair and "Place pin here" (the 390 board). Same break as Map.module.css's panes. */
+const WIDE_QUERY = "(min-width: 840px)";
+
+function useWide(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window.matchMedia !== "function") return () => undefined;
+      const list = window.matchMedia(WIDE_QUERY);
+      list.addEventListener("change", onChange);
+      return () => list.removeEventListener("change", onChange);
+    },
+    () => typeof window.matchMedia === "function" && window.matchMedia(WIDE_QUERY).matches,
+    () => false,
+  );
+}
 
 export function Component(): ReactElement {
   const trpc = useTRPC();
@@ -75,6 +103,14 @@ export function Component(): ReactElement {
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
   const [viewMode, setViewMode] = useState<MapViewMode>("overview");
   const [zoomStep, setZoomStep] = useState(COUNTY_ZOOM_STEP);
+  // Pin mode (boards CrmMapPinMode*), the GPS fix's accuracy circle, whether the centre came from
+  // GPS (its own card says if it is outside the county), and the map's status stack (a portal
+  // target for the GPS, pin-mode and pin-outside cards).
+  const [pinMode, setPinMode] = useState(false);
+  const [accuracyM, setAccuracyM] = useState<number | null>(null);
+  const [fromGps, setFromGps] = useState(false);
+  const [statusHost, setStatusHost] = useState<HTMLDivElement | null>(null);
+  const wide = useWide();
 
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
@@ -85,8 +121,22 @@ export function Component(): ReactElement {
     });
   }, []);
 
+  // A pin dropped, placed or dragged by hand: ends pin mode, and is not a GPS fix.
   const placePoint = useCallback(
     (point: LatLng) => {
+      setPinMode(false);
+      setAccuracyM(null);
+      setFromGps(false);
+      setSearchParams((prev) => patchMapParams(prev, { lat: point.lat, lng: point.lng }));
+    },
+    [setSearchParams],
+  );
+
+  // A GPS fix: the same centre change, but it keeps the accuracy `GpsButton` reports first.
+  const gpsLocated = useCallback(
+    (point: LatLng) => {
+      setPinMode(false);
+      setFromGps(true);
       setSearchParams((prev) => patchMapParams(prev, { lat: point.lat, lng: point.lng }));
     },
     [setSearchParams],
@@ -273,7 +323,15 @@ export function Component(): ReactElement {
         <TopBar />
       </div>
       <div className={styles.controls}>
-        <GpsButton onLocated={placePoint} isInCoverage={isInTravisCounty} />
+        <GpsButton
+          onLocated={gpsLocated}
+          onAccuracy={setAccuracyM}
+          isInCoverage={isInTravisCounty}
+          radiusMi={radiusMi}
+          onDropPin={() => setPinMode(true)}
+          onGoToCounty={() => mapHandleRef.current?.showCounty()}
+          statusHost={statusHost}
+        />
         <FilterSheet
           roofAgeMinYears={roofAgeMinYears}
           onRoofAgeMinYearsChange={setRoofAgeMinYears}
@@ -296,8 +354,14 @@ export function Component(): ReactElement {
           onZoomStepChange={setZoomStep}
           overviewCells={overviewCells}
           overviewPermits={overviewPermits}
+          pinMode={pinMode}
+          accuracy={accuracyM === null || center === null ? null : { meters: accuracyM }}
         />
-        <MapControls mapRef={mapHandleRef} />
+        <MapControls
+          mapRef={mapHandleRef}
+          pinMode={pinMode}
+          onDropPin={() => setPinMode((on) => !on)}
+        />
         <div className={styles.overlay}>
           <div className={styles.layersRow}>
             <LayersPopover value={layers} onChange={setLayers} />
@@ -311,6 +375,7 @@ export function Component(): ReactElement {
               />
             </div>
           </div>
+          <div ref={setStatusHost} className={styles.statusStack} data-map-status="" />
           {showOverviewChip ? (
             <p className={styles.chip} role="status" data-view-chip="overview">
               <span>Zoomed out: median roof age per hexagon</span>
@@ -326,7 +391,17 @@ export function Component(): ReactElement {
           ) : null}
           {center === null ? null : (
             <div className={styles.radiusOverlay}>
-              <RadiusControl radiusMi={radiusMi} onChange={setRadiusMi} originLabel="Dropped pin" />
+              <RadiusControl
+                radiusMi={radiusMi}
+                onChange={setRadiusMi}
+                originLabel={
+                  !fromGps
+                    ? "Dropped pin"
+                    : accuracyM !== null && accuracyM > LOW_ACCURACY_M
+                      ? "Your location (approximate)"
+                      : "Your location (GPS)"
+                }
+              />
             </div>
           )}
         </div>
@@ -338,13 +413,59 @@ export function Component(): ReactElement {
             </span>
           </p>
         ) : null}
+        <WhatCanIAsk />
+        {statusHost !== null && pinMode
+          ? createPortal(
+              <MapStatusCard
+                state="CrmMapPinMode390"
+                role="status"
+                icon="add_location_alt"
+                actions={[
+                  ...(wide
+                    ? []
+                    : [
+                        {
+                          label: "Place pin here",
+                          primary: true,
+                          onClick: () => {
+                            mapHandleRef.current?.placeAtCenter();
+                            setPinMode(false);
+                          },
+                        },
+                      ]),
+                  { label: "Cancel", onClick: () => setPinMode(false) },
+                ]}
+              >
+                {wide
+                  ? "Click the map where you want the search centre. You can drag the pin afterwards."
+                  : "Move the map so the crosshair is on the spot, then place the pin."}
+              </MapStatusCard>,
+              statusHost,
+            )
+          : null}
+        {statusHost !== null && pinOutsideCounty && !fromGps
+          ? createPortal(
+              <MapStatusCard
+                state="CrmMapPinOutside390"
+                role="alert"
+                icon="wrong_location"
+                actions={[
+                  {
+                    label: "Go to Travis County",
+                    onClick: () => mapHandleRef.current?.showCounty(),
+                  },
+                ]}
+              >
+                This pin is outside Travis County. The CRM covers Travis County only.
+              </MapStatusCard>,
+              statusHost,
+            )
+          : null}
       </div>
       <div className={styles.resultsSlot} data-empty={sheetEmpty}>
         <ResultsSheet>
           {pinOutsideCounty ? (
-            <p role="alert" data-state="CrmMapPinOutside390" className={styles.notice}>
-              Pin outside Travis County
-            </p>
+            <p className={styles.notice}>No search was run: the pin is outside Travis County.</p>
           ) : null}
           {isLoading ? (
             <p

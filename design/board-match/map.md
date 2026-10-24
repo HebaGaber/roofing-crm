@@ -1,51 +1,86 @@
 # Board match: group "map"
 
-Date: 2026-10-25. Started from commit 6d0c9e8. Method: board and live side by side at the board's
-width, the live app built from the working tree and served with every API call stubbed (no AWS, no
-sign-in). Side-by-side PNGs are in the coordinator's scratchpad under `board-match/map/sbs/`.
+Date: 2026-10-25. Started from commit 6d0c9e8; second pass after the overview commit. Method: board
+and live side by side at the board's width, the live app built from the working tree and served with
+every API call and the browser's geolocation stubbed (no AWS, no sign-in). Side-by-side PNGs are in
+the coordinator's scratchpad under `board-match/map/sbs/`.
 
-Status is only claimed for boards that were actually compared. Boards marked "Not yet compared"
-have no side-by-side yet; they are not claimed as matched.
+Status is only claimed for boards that were actually compared. A board marked "Not mine" belongs to
+another owner's files; "Not built" is a feature the CRM does not have yet.
 
-## What changed in this pass
+## What changed
+
+First pass:
 
 - **County overview**: below zoom 11 the map shows the whole county as hexagons from
-  `search.countyOverview` (design-review-log rows 10 and 69), with the legend saying what is
-  covered, what is left out and why, and the run. Opening the map with no centre shows it at once.
-- **A dropped pin or GPS fix shows markers**, never the county hexagons, at any zoom (a 5 mi ring on
-  a phone fits at zoom 10, which used to hide the radius results under hexagons).
-- **Index-down notice** now reads as the board does ("Lead index unavailable ... Your leads and
-  notes still open") with a Retry that asks again.
-- **Radius card** is one row (label, slider, value, unit) with the caption beneath, as drawn.
-- **Legend** scrolls inside its own card instead of growing over the Whole county card.
+  `search.countyOverview` (review-log rows 10 and 69), with the legend saying what is covered, what
+  is left out and why, and the run.
+- **A dropped pin or GPS fix shows markers**, never the county hexagons, at any zoom.
+- Index-down notice with the board's copy and a Retry; radius card as one row; legend scrolls inside
+  its card.
+
+Second pass:
+
+- **First-visit "What can I ask?" card** (HANDOFF section 4.10): `components/Onboarding/**`. One
+  dismissible, non-modal dialog over the map. One line on what the data is (Task A's published
+  Travis County run: roof age, permits, contractors where published; addresses and BBB ratings are
+  not published). Three example questions, verbatim from the golden queries G1, G3 and G4
+  (`tests/agent/golden.json`); each opens `/ask?q=...` with the question prefilled, never run.
+  Close, Got it and Escape dismiss; focus moves into the card; dismissal is kept in localStorage
+  under `crm.whatCanIAsk.v1` (every access in try/catch; the page works without storage);
+  `?first=1` forces it open; `openWhatCanIAsk()` and the window event `crm:open-what-can-i-ask`
+  reopen it. Mounted in `routes/Map/Map.tsx`.
+- **GPS states** are cards at the top of the map with the board's words and actions: locating
+  (spinner), located with accuracy ("You are here (±12 m). The 5 mi ring centres on you."), low
+  accuracy (over 500 m, with Drop pin), denied (Drop pin), unavailable or timed out (Drop pin, Try
+  again), outside the county (Go to Travis County). The accuracy circle is drawn on the map and the
+  radius caption follows the source ("Your location (GPS)", "Your location (approximate)").
+- **Pin mode**: a Drop pin control in the map controls; the board's card ("Click the map where you
+  want the search centre. You can drag the pin afterwards." from 840 px; a fixed crosshair and
+  "Place pin here" below it). The pin is draggable; dragging it re-centres the search.
+- **Pin outside the county** is a card on the map with Go to Travis County (the pin and ring stay).
+- **Tile failure** is a banner ("Map unavailable, results below. ...") with Retry, so the radius,
+  filters and results stay usable.
 
 ## Matrix
 
 | Board | Route + state | Status | Side-by-side | Notes |
 | --- | --- | --- | --- | --- |
-| CrmMap1440 | `/`, county view | Deviation: toolbar features not built | CrmMap1440.png | Whole-county hexagons, chip, legend, zoom column, Layers match. Missing vs board: Map + cards / List toggle, Area and Sort menus, Matches 11 / Close 2 tabs with no centre (no sample rows exist to match), permit clusters appear only where cells carry open or stalled permits. Hexagons look larger than the board because the grid is drawn at the whole-number zoom and the map sits at a fractional one (up to 2x); the board shows 24 px cells. County outline and outside shading deferred: review-log row 9. |
-| CrmMap768 | `/`, county view | Deviation: as CrmMap1440 | Not compared in detail | Same components as 1440 at this width. |
-| CrmMap390 | `/`, county view | Deviation: as CrmMap1440 | CrmMap390.png | Phone toolbar differs: board has a filter count chip, Map/List toggle, Area and Sort; live has Use my location and Filters. Bottom tabs, search, data chip match. |
-| CrmMapPin1440 | pin with 5 mi ring | Matched, data differs | CrmMapPin1440.png | Ring, pin, markers, radius card, three panes, results list. Board result cards are two-line rows with a lead pill; live cards use the published-data layout (TCAD id, "Address not published in this run"), which is the honest form (review-log row 1). |
-| CrmMapPin390 | pin with 5 mi ring | Deviation: radius card position | CrmMapPin390.png | Markers now show with the ring. Radius card sits at the top of the map, not the bottom, because the results sheet covers the bottom on phones. Pin explainer toast ("Pin at ... near Pflugerville") not built. |
-| CrmMapNoResults390 | zero results | Matched, copy differs | CrmMapNoResults390.png | Widen action present. Board also offers "Roof >= 13 yrs" and a headline "No roofs match within 0.5 mi"; live says "No properties within 5 mi" with Widen to 6 mi. |
-| CrmMapIndexDown390 | search fails | Matched | CrmMapIndexDown390.png | Notice copy and Retry now follow the board; it renders in the results sheet, the board draws it as a banner over the map (deviation: placement). Data chip "No index" state is the shell's. |
-| CrmMapLocating390 | loading | Matched, data differs | CrmMapLocating390.png | Captured with the results request pending; the board's "Locating" is the GPS lookup, not covered here. See GPS states below. |
-| CrmMapPinOutside390 | pin outside county | Not yet compared | pinoutside capture taken | State exists (`CrmMapPinOutside390`). |
-| CrmMapTiles390, CrmMapFailed390 | tiles blocked | Not yet compared | tiles-390 capture taken | State exists, e2e covers it (B-01). |
-| CrmProperty1440 / 768 / 390 | `sel` drawer | Not compared by me | CrmProperty1440.png, 768, 390 | The drawer is alakazam's (`routes/Map/PropertyDetail/**`), outside my files. Observed: side sheet and full-height sheet structure match. Board shows an address and a lead pill; live shows TCAD id and the missing-address reason (review-log rows 1 and 67). |
-| CrmPropertyFailed1440 / 390 | property.get fails | Not compared by me | CrmPropertyFailed*.png | Drawer owner. |
-| CrmMapGps1440 / 390 / 768, CrmMapGpsDenied390, GpsExplain390, GpsLow390, GpsOutside390, GpsUnavailable390, CrmGpsStates | GPS flows | Not yet compared | none | Needs geolocation stubs per state in the capture script. |
-| CrmMapPinMode1440 / 390, CrmMapPinMove1440 | pin mode, move | Not yet compared | none | |
-| CrmMapNoAddress390, CrmMapPartial390, CrmMapStates | map states | Not yet compared | none | |
-| CrmPropertyCreated390, Creating390, Dup390, NoAddress1440 / 390, NoContractor390, Partial390, ContractorBadge, PropertyDetail | drawer states | Not compared by me | none | Drawer and lead snackbar belong to other owners. |
+| Welcome1440 / 768 / 390 | `/?first=1` | Matched, data differs | Welcome1440, Welcome768, Welcome390 | Card position (16 px in from the map's left at 1440, x 96 at 768, full width at 390), header, intro line, three rows, Got it. The boards are the CountyLens shell; only the card is compared. Intro line and questions differ on purpose: the CRM's data and the golden queries. |
+| CrmMap1440 | `/`, county view | Deviation: toolbar not built | CrmMap1440 | Whole-county hexagons, chip, legend, controls match. Map + cards / List toggle, Area and Sort menus, Matches and Close tabs with no centre: not built. Hexagon size can look up to 2x the board's (drawn at the whole-number zoom). County outline: review-log row 9. |
+| CrmMap768 | `/`, county view | Deviation: as 1440 | CrmMap768 (first pass) | Same components. |
+| CrmMap390 | `/`, county view | Deviation: toolbar | CrmMap390 | Phone toolbar differs: board has filter count, Map/List toggle, Area, Sort; live has Use my location and Filters. |
+| CrmMapPin1440 | pin, 5 mi ring | Matched, data differs | CrmMapPin1440 | Result cards use the honest published-data layout (review-log row 1). |
+| CrmMapPin390 | pin, 5 mi ring | Deviation: radius card position, explainer toast | CrmMapPin390 | Radius card at the top, not the bottom (the results sheet covers the bottom on phones). Pin explainer toast not built. |
+| CrmMapPinMode1440 | pin mode | Matched | CrmMapPinMode1440 | Card, Cancel, pressed control. |
+| CrmMapPinMode390 | pin mode | Matched, one deviation | CrmMapPinMode390 | Crosshair, Place pin here, Cancel. The board also says a long-press drops the pin: not built, so the card does not claim it. |
+| CrmMapPinMove1440 | drag the pin | Matched in behaviour | none (a drag, not a state) | The pin is draggable and re-centres the search. Not captured as an image. |
+| CrmMapPinOutside390 | pin outside the county | Deviation: pin does not snap back | CrmMapPinOutside390 | Card and Go to Travis County match. The board returns the pin to its last spot inside the county; live keeps the pin where it was dropped and runs no search (the sheet says so). |
+| CrmMapGps390 | GPS fix | Matched | CrmMapGps390 | Card, copy, close, accuracy and caption. |
+| CrmMapGps768, CrmMapGps1440 | GPS fix | Matched | CrmMapGps768, CrmMapGps1440 | Same card. |
+| CrmMapGpsLow390 | low accuracy | Matched | CrmMapGpsLow390 | Copy, Drop pin, close, "Your location (approximate)". |
+| CrmMapGpsDenied390 | denied | Matched | CrmMapGpsDenied390 | |
+| CrmMapGpsUnavailable390 | unavailable or timed out | Matched | CrmMapGpsUnavailable390 | Drop pin and Try again. |
+| CrmMapGpsOutside390 | fix outside the county | Matched | CrmMapGpsOutside390 | Go to Travis County shows the county and leaves the pin. |
+| CrmMapLocating390 | locating | Matched | CrmMapLocating390 | Spinner card (reduced motion stops the spin). |
+| CrmMapGpsExplain390 | explain first | Deferred: would break e2e | none | A card before the browser prompt (Continue, Not now). It adds a step the B-03 e2e (AC-2 denied and outside flows) does not expect and `tests/e2e/**` is not mine to change. Proposal: add it, with the e2e clicking Continue, when the e2e owner agrees. |
+| CrmGpsStates | overview of the above | Matched | none | Every card on it is built except Explain first. |
+| CrmMapNoResults390 | zero results | Matched, copy differs | CrmMapNoResults390 | Widen action present; board also offers "Roof >= 13 yrs". |
+| CrmMapIndexDown390 | search fails | Matched, placement differs | CrmMapIndexDown390 | Copy and Retry match; it sits in the results sheet where the board draws a banner. |
+| CrmMapTiles390 | tiles loading | Not compared | tiles-390 capture only | Loading state of tiles is MapLibre's own. |
+| CrmMapFailed390 | tile failure | Matched, one deviation | CrmMapFailed390 | Banner, copy, Retry. The board shows the results as a list below (List view, not built); live keeps the map and the sheet. |
+| CrmMapPartial390 | permit coverage gap | Deferred: no data | none | The board says which jurisdictions have permits. Task A publishes no coverage areas (review-log row 70), so the CRM cannot say it. The hatched "no permit data" areas and the ring chip are the same gap. |
+| CrmMapNoAddress390 | no address in a result | Not mine | none | Result rows and the drawer carry this (`ResultRow`, drawer owners). Live shows the missing-address reason. |
+| CrmMapStates | overview | Matched | none | Loading, empty, error, rate-limited and GPS cards: the first four exist (`CrmMapLoading390`, no results, index down, tiles failed); the rate-limited gateway note is not built. |
+| CrmProperty1440 / 768 / 390 | `sel` drawer | Not mine | CrmProperty1440, 768, 390 (first pass) | The drawer is `routes/Map/PropertyDetail/**`. Structure matches; address and lead pill differ for the honest reason (review-log rows 1 and 67). |
+| CrmPropertyFailed1440 / 390, CrmPropertyNoAddress1440 / 390, CrmPropertyNoContractor390, CrmPropertyPartial390, PropertyDetail, ContractorBadge | drawer states and components | Not mine | CrmPropertyFailed images only | Drawer owner. |
+| CrmPropertyCreated390, Creating390, Dup390 | lead creation states | Not mine | none | `LeadCreateAction` and the lead snackbar belong to the leads group. |
 
-## Gaps (what the server or the app lacks)
+## Gaps
 
-- Map + cards / List toggle, Area menu, Sort menu, filter count chip, Triage button: no counterparts
-  built; Triage belongs to the candidates group.
-- Pin explainer toast and the pin and ring chips ("128 in 5 mi", "No permit data in part of this
-  ring"): permit coverage areas are not published (review-log row 70).
+- Map + cards / List toggle, Area, Sort, filter count chip, Triage button, results list view.
+- Pin explainer toast, in-ring chips, hatched no-permit areas (no coverage data), pin snap-back,
+  long-press to drop a pin, GPS Explain first (see above), rate-limited gateway note.
 - County outline and outside shading: review-log row 9.
-- Permit clusters in the county view show only cells with counted open or stalled permits; with the
-  sample slice that is few, so the board's cluster density is not reproduced.
+- The Ask route must read the `q` query param to prefill its box; until it does the example links
+  open Ask with an empty box.

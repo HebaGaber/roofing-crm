@@ -42,7 +42,12 @@ import {
   permitOpenBucket,
   roofAgeBucket,
 } from "../../format/buckets.js";
-import { buildMapInitOptions, computeMinZoom, TRAVIS_COUNTY_CENTER } from "./bounds.js";
+import {
+  buildMapInitOptions,
+  computeMinZoom,
+  TRAVIS_COUNTY_BOUNDS,
+  TRAVIS_COUNTY_CENTER,
+} from "./bounds.js";
 import {
   OVERVIEW_MAX_ZOOM,
   hexbin,
@@ -65,6 +70,9 @@ export interface LatLng {
   readonly lng: number;
 }
 
+const ACCURACY_SOURCE_ID = "crm-gps-accuracy";
+const ACCURACY_FILL_LAYER_ID = "crm-gps-accuracy-fill";
+const ACCURACY_LINE_LAYER_ID = "crm-gps-accuracy-line";
 const RADIUS_RING_SOURCE_ID = "crm-radius-ring";
 const RADIUS_RING_FILL_LAYER_ID = "crm-radius-ring-fill";
 const RADIUS_RING_LINE_LAYER_ID = "crm-radius-ring-line";
@@ -210,6 +218,11 @@ export interface CrmMapHandle {
   readonly recenter: () => void;
   /** From the overview, zooms in to the individual-marker view (the "Zoom in" chip). */
   readonly zoomToDetail: () => void;
+  /** Pin mode at touch widths ("Place pin here"): drops the pin at the map's centre, under the
+   *  crosshair. */
+  readonly placeAtCenter: () => void;
+  /** "Go to Travis County": shows the whole county, leaving any pin and ring where they are. */
+  readonly showCounty: () => void;
 }
 
 /** `overview` = hexagons and permit clusters; `detail` = individual markers. */
@@ -237,6 +250,11 @@ export interface CrmMapProps {
   readonly overviewPermits?: readonly OverviewPermitPoint[] | null;
   /** Fired with the whole-number zoom when it changes (the overview query's hexagon size). */
   readonly onZoomStepChange?: (zoomStep: number) => void;
+  /** Pin mode (boards CrmMapPinMode*): a crosshair cursor, and at touch widths a fixed crosshair
+   *  at the map's centre. The map click still drops the pin; this only changes what shows. */
+  readonly pinMode?: boolean;
+  /** A GPS fix's accuracy circle, drawn around `center` (board CrmMapGps390 / GpsLow390). */
+  readonly accuracy?: { readonly meters: number } | null;
 }
 
 /** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
@@ -283,6 +301,8 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     overviewCells = null,
     overviewPermits = null,
     onZoomStepChange,
+    pinMode = false,
+    accuracy = null,
   }: CrmMapProps,
   ref,
 ) {
@@ -435,7 +455,13 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       return;
     }
     if (markerRef.current === null) {
-      markerRef.current = new Marker().setLngLat([center.lng, center.lat]).addTo(map);
+      // Draggable (board CrmMapPinMove1440): dragging the pin re-centres the search there.
+      const marker = new Marker({ draggable: true }).setLngLat([center.lng, center.lat]).addTo(map);
+      marker.on("dragend", () => {
+        const at = marker.getLngLat();
+        onPinDropRef.current?.({ lat: at.lat, lng: at.lng });
+      });
+      markerRef.current = marker;
     } else {
       markerRef.current.setLngLat([center.lng, center.lat]);
     }
@@ -488,6 +514,39 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       paint: { "line-color": primaryColor, "line-width": 2 },
     });
   }, [center?.lat, center?.lng, radiusMi, styleReady]);
+
+  // A GPS fix's accuracy circle (boards CrmMapGps390, CrmMapGpsLow390): a translucent disc with an
+  // edge, radius = the reported accuracy. Display only, like the radius ring above.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !styleReady) return;
+    if (center === null || accuracy === null) {
+      for (const id of [ACCURACY_LINE_LAYER_ID, ACCURACY_FILL_LAYER_ID])
+        if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(ACCURACY_SOURCE_ID)) map.removeSource(ACCURACY_SOURCE_ID);
+      return;
+    }
+    const data = ringGeoJson(center, accuracy.meters / METERS_PER_MILE);
+    const source = map.getSource(ACCURACY_SOURCE_ID) as GeoJSONSource | undefined;
+    if (source !== undefined) {
+      source.setData(data);
+      return;
+    }
+    const color = resolveToken("--md-sys-color-primary");
+    map.addSource(ACCURACY_SOURCE_ID, { type: "geojson", data });
+    map.addLayer({
+      id: ACCURACY_FILL_LAYER_ID,
+      type: "fill",
+      source: ACCURACY_SOURCE_ID,
+      paint: { "fill-color": color, "fill-opacity": 0.16 },
+    });
+    map.addLayer({
+      id: ACCURACY_LINE_LAYER_ID,
+      type: "line",
+      source: ACCURACY_SOURCE_ID,
+      paint: { "line-color": color, "line-width": 1.5 },
+    });
+  }, [center?.lat, center?.lng, accuracy?.meters, styleReady]);
 
   // E-72 Layers: aged-roof markers. Re-created whenever the result set or the layer toggle
   // changes — the marker list is short (a radius search, never the whole county), so a full
@@ -687,6 +746,16 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         }
         map.flyTo({ center: [center.lng, center.lat], zoom: 12 });
       },
+      placeAtCenter: () => {
+        const at = mapRef.current?.getCenter();
+        if (at !== undefined) onPinDropRef.current?.({ lat: at.lat, lng: at.lng });
+      },
+      showCounty: () => {
+        mapRef.current?.fitBounds(TRAVIS_COUNTY_BOUNDS, {
+          padding: 24,
+          duration: prefersReducedMotion() ? 0 : 400,
+        });
+      },
       zoomToDetail: () => {
         const map = mapRef.current;
         if (map === null) return;
@@ -707,10 +776,15 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         className={styles.map}
         data-testid="crm-map"
         data-view-mode={overview ? "overview" : "detail"}
+        data-pin-mode={pinMode ? "true" : undefined}
       />
+      {pinMode ? <div className={styles.crosshair} aria-hidden="true" data-crosshair="" /> : null}
       {failed && (
         <div role="alert" data-state="CrmMapFailed390" className={styles.failed}>
-          <p className={styles.failedMessage}>Map tiles failed to load.</p>
+          <p className={styles.failedMessage}>
+            <strong>Map unavailable, results below.</strong> The map tiles didn&apos;t load; the
+            list, filters and leads still work.
+          </p>
           <button type="button" className={styles.retry} onClick={onRetry}>
             Retry
           </button>

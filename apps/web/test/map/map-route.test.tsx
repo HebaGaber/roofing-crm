@@ -10,6 +10,10 @@ import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const zoomToDetail = vi.fn();
+const placeAtCenter = vi.fn();
+const showCounty = vi.fn();
+/** The props the route last handed the map (pin mode, accuracy circle). */
+let lastMapProps: { pinMode?: boolean; accuracy?: { meters: number } | null } = {};
 let reportedMode: "overview" | "detail" = "overview";
 /** What the route last handed the map for the overview (null = client binning fallback). */
 let lastOverviewCells: readonly { id: string; count: number }[] | null | undefined;
@@ -23,9 +27,12 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       onZoomStepChange?: (zoom: number) => void;
       overviewCells?: readonly { id: string; count: number }[] | null;
       overviewPermits?: readonly { permits: number }[] | null;
+      pinMode?: boolean;
+      accuracy?: { meters: number } | null;
     },
     ref,
   ) {
+    lastMapProps = props;
     lastOverviewCells = props.overviewCells;
     lastOverviewPermits = props.overviewPermits;
     reportZoomStep = props.onZoomStepChange;
@@ -34,6 +41,8 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       zoomOut: vi.fn(),
       recenter: vi.fn(),
       zoomToDetail,
+      placeAtCenter,
+      showCounty,
     }));
     useEffect(() => props.onViewModeChange?.(reportedMode), [props]);
     return <div data-testid="crm-map" />;
@@ -153,6 +162,9 @@ afterEach(() => {
   zoomToDetail.mockReset();
   reportedMode = "overview";
   searchResult = { properties: [property] };
+  placeAtCenter.mockReset();
+  showCounty.mockReset();
+  lastMapProps = {};
   overviewCalls.length = 0;
   overviewFails = false;
   searchFails = false;
@@ -232,11 +244,31 @@ describe("Map route layout", () => {
 
   it("sel opens the drawer (aside[data-property-cid]) in its own slot, outside the results sheet", async () => {
     renderAt(`/?lat=30.4394&lng=-97.62&r=5&sel=${property.propertyCid}`);
-    const drawer = await screen.findByRole("dialog");
+    // The first-visit card is also a dialog, so the drawer is picked out by its element.
+    await screen.findByRole("dialog", { name: "What can I ask?" });
+    const drawer = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>("aside[role='dialog'][data-property-cid]");
+      if (found === null) throw new Error("drawer not rendered yet");
+      return found;
+    });
     expect(drawer.tagName).toBe("ASIDE");
     expect(drawer.getAttribute("data-property-cid")).toBe(property.propertyCid);
     const sheet = screen.getByRole("region", { name: "Results" });
     expect(sheet.contains(drawer)).toBe(false);
+  });
+});
+
+describe("Map route first-visit card", () => {
+  it("shows What can I ask? over the map area on the first visit, not once dismissed", async () => {
+    localStorage.clear();
+    const page = renderAt("/");
+    const card = await screen.findByRole("dialog", { name: "What can I ask?" });
+    expect(page.contains(card)).toBe(true);
+    cleanup();
+    localStorage.setItem("crm.whatCanIAsk.v1", "dismissed");
+    renderAt("/");
+    expect(screen.queryByRole("dialog", { name: "What can I ask?" })).toBeNull();
+    localStorage.clear();
   });
 });
 
@@ -293,5 +325,78 @@ describe("Map route county overview (search.countyOverview)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await screen.findByTestId("search-results");
     expect(searchCalls).toBeGreaterThan(before);
+  });
+});
+
+describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode*, CrmMapGps*, CrmMapPinOutside390)", () => {
+  const dropPinControl = (): HTMLElement => screen.getByRole("button", { name: "Drop pin" });
+
+  it("the Drop pin control starts pin mode, with the board's words, and Cancel leaves it", () => {
+    const page = renderAt("/");
+    fireEvent.click(dropPinControl());
+    const card = page.querySelector<HTMLElement>('[data-state="CrmMapPinMode390"]');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toMatch(/Move the map so the crosshair is on the spot/);
+    expect(lastMapProps.pinMode).toBe(true);
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: "Cancel" }));
+    expect(page.querySelector('[data-state="CrmMapPinMode390"]')).toBeNull();
+    expect(lastMapProps.pinMode).toBe(false);
+  });
+
+  it("Place pin here drops the pin at the crosshair (the map's centre) and ends pin mode", () => {
+    const page = renderAt("/");
+    fireEvent.click(dropPinControl());
+    fireEvent.click(screen.getByRole("button", { name: "Place pin here" }));
+    expect(placeAtCenter).toHaveBeenCalledTimes(1);
+    expect(page.querySelector('[data-state="CrmMapPinMode390"]')).toBeNull();
+  });
+
+  it("a pin outside the county says so on the map, once, and Go to Travis County shows the county", () => {
+    const page = renderAt("/?lat=30.6333&lng=-97.678&r=5");
+    const cards = page.querySelectorAll('[data-state="CrmMapPinOutside390"]');
+    expect(cards).toHaveLength(1);
+    expect(cards[0]?.textContent).toMatch(
+      /This pin is outside Travis County\. The CRM covers Travis County only\./,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Go to Travis County" }));
+    expect(showCounty).toHaveBeenCalledTimes(1);
+  });
+
+  it("a GPS fix shows its card in the map's status stack and hands the map its accuracy circle", () => {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (ok: PositionCallback) =>
+          ok({
+            coords: { latitude: 30.4394, longitude: -97.62, accuracy: 12 },
+          } as GeolocationPosition),
+      },
+    });
+    const page = renderAt("/");
+    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    const stack = page.querySelector("[data-map-status]");
+    expect(stack?.querySelector('[data-state="CrmMapGps390"]')?.textContent).toMatch(
+      /You are here \(±12 m\)/,
+    );
+    expect(lastMapProps.accuracy).toEqual({ meters: 12 });
+    expect(screen.getByText(/From Your location \(GPS\)/)).not.toBeNull();
+    // A pin dropped by hand is not a GPS fix: its accuracy circle goes away.
+    delete (navigator as { geolocation?: unknown }).geolocation;
+  });
+
+  it("a low-accuracy fix says the ring's origin is approximate", () => {
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: {
+        getCurrentPosition: (ok: PositionCallback) =>
+          ok({
+            coords: { latitude: 30.4394, longitude: -97.62, accuracy: 1600 },
+          } as GeolocationPosition),
+      },
+    });
+    renderAt("/");
+    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    expect(screen.getByText(/From Your location \(approximate\)/)).not.toBeNull();
+    delete (navigator as { geolocation?: unknown }).geolocation;
   });
 });

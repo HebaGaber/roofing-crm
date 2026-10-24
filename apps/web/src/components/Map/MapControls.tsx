@@ -12,11 +12,17 @@ export interface MapControlsProps {
   /** "Recentre" — E-67: with a pin/GPS point, re-fits that view; with none, returns to the
    *  whole-county view. */
   readonly recenterLabel?: string;
+  /** "Drop pin" (boards CrmMap*, last control): starts pin mode. Hidden when not given. */
+  readonly onDropPin?: () => void;
+  /** Pin mode is on: the Drop pin control shows as pressed. */
+  readonly pinMode?: boolean;
 }
 
 export function MapControls({
   mapRef,
   recenterLabel = "Recentre",
+  onDropPin,
+  pinMode = false,
 }: MapControlsProps): ReactElement {
   return (
     <div className={styles.stack}>
@@ -27,6 +33,15 @@ export function MapControls({
         label={recenterLabel}
         onClick={() => mapRef.current?.recenter()}
       />
+      {onDropPin === undefined ? null : (
+        <IconButton
+          icon="add_location_alt"
+          label="Drop pin"
+          active={pinMode}
+          aria-pressed={pinMode}
+          onClick={onDropPin}
+        />
+      )}
     </div>
   );
 }
