@@ -23,7 +23,7 @@ export {
   LeadStatus,
 } from "./schemas/lead.js";
 export { QueryPlan } from "./agent/queryPlan.js";
-export { AgentAnswer } from "./agent/answer.js";
+export { AgentAnswer, AnswerRow, answerPins, type AnswerPin } from "./agent/answer.js";
 export { AGENT_TURN_LIMIT_MS } from "./agent/limits.js";
 export {
   classifyPlaceConfidence,

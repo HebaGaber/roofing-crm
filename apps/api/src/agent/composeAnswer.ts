@@ -31,6 +31,7 @@ import {
   classifyPlaceConfidence,
   QueryPlan as QueryPlanSchema,
   type AgentAnswer,
+  type AnswerRow,
   type PlaceResolver,
   type QueryPlan,
 } from "@crm/shared";
@@ -43,6 +44,7 @@ import type {
   PropertyResult,
 } from "../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../adapters/leadRepo.js";
+import { nearestPlace } from "../services/agent/placeResolver.js";
 import { verifyCitations, type CitationFacts } from "../services/agent/verifyCitations.js";
 import { createAgentDispatch, type AgentDispatch } from "../services/agent/tools.js";
 import { generateOnce, withAgentTimeout, type CacheStrategy } from "./runAgent.js";
@@ -564,6 +566,26 @@ interface EvidenceRow {
   readonly facts: CitationFacts;
   readonly property?: PropertyResult;
   readonly permit?: PermitResult;
+  /** The property a permit row belongs to (for its point, tcadId and roof age); absent when the
+   *  index no longer has it. */
+  readonly owner?: PropertyResult;
+}
+
+type PointFields = Pick<Citation, "lat" | "lon" | "nearPlace">;
+
+/** Map fields of a citation/row, from the property row itself — never from model text. No
+ *  coordinates (or non-finite ones) -> no fields at all; the row's `missing` says why. */
+function pointFields(property: PropertyResult | undefined): PointFields {
+  const lat = property?.latitude;
+  const lon = property?.longitude;
+  if (lat === null || lat === undefined || lon === null || lon === undefined) return {};
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return {};
+  const near = nearestPlace({ lat, lon });
+  return {
+    lat,
+    lon,
+    ...(near === undefined ? {} : { nearPlace: { name: near.name, distanceMi: near.distanceMi } }),
+  };
 }
 
 function dateParts(...values: (string | null | undefined)[]): number[] {
@@ -595,6 +617,7 @@ function propertyRow(property: PropertyResult, id: number): EvidenceRow {
       tableCid: property.cid,
       manifestCid: property.sourceManifestCid,
       asOf: property.capturedAt,
+      ...pointFields(property),
     },
     facts: {
       numbers: present([property.roofAgeYears, property.latitude, property.longitude]),
@@ -608,10 +631,16 @@ function propertyRow(property: PropertyResult, id: number): EvidenceRow {
   };
 }
 
-function permitRow(permit: PermitResult, id: number, tcadId: string | undefined): EvidenceRow {
+function permitRow(
+  permit: PermitResult,
+  id: number,
+  owner: PropertyResult | undefined,
+): EvidenceRow {
+  const tcadId = owner?.requestIdentifier;
   return {
     id,
     permit,
+    ...(owner === undefined ? {} : { owner }),
     citation: {
       id,
       kind: "permit",
@@ -623,6 +652,7 @@ function permitRow(permit: PermitResult, id: number, tcadId: string | undefined)
       tableCid: permit.cid,
       manifestCid: permit.sourceManifestCid,
       asOf: permit.capturedAt,
+      ...pointFields(owner),
     },
     facts: {
       numbers: [
@@ -666,18 +696,85 @@ function runRow(info: IndexInfo, id: number): EvidenceRow {
   };
 }
 
-function evidenceRows(gathered: Gathered): EvidenceRow[] {
+async function evidenceRows(gathered: Gathered, leadIndex: LeadIndex): Promise<EvidenceRow[]> {
   if (gathered.coverage !== undefined) return [runRow(gathered.coverage, 1)];
-  const tcadByProperty = new Map(
-    gathered.properties.map((p) => [p.propertyCid, p.requestIdentifier]),
+  const propertyByCid = new Map<string, PropertyResult>(
+    gathered.properties.map((p) => [p.propertyCid, p]),
   );
   const rows: EvidenceRow[] = [];
   for (const p of gathered.properties.slice(0, MAX_ROWS_SHOWN)) {
     rows.push(propertyRow(p, rows.length + 1));
   }
-  for (const p of gathered.permits) {
-    if (rows.length >= MAX_ROWS_SHOWN) break;
-    rows.push(permitRow(p, rows.length + 1, tcadByProperty.get(p.propertyCid)));
+  const permits = gathered.permits.slice(0, Math.max(0, MAX_ROWS_SHOWN - rows.length));
+  // A permit-intent search returns permits only; each permit's own property row (its point, tcadId
+  // and roof age) is read from the index, once per distinct property.
+  const missingOwners = [
+    ...new Set(permits.map((p) => p.propertyCid).filter((cid) => !propertyByCid.has(cid))),
+  ];
+  await Promise.all(
+    missingOwners.map(async (cid) => {
+      const found = await leadIndex.getProperty(cid);
+      if (found !== null) propertyByCid.set(cid, found);
+    }),
+  );
+  for (const p of permits) {
+    rows.push(permitRow(p, rows.length + 1, propertyByCid.get(p.propertyCid)));
+  }
+  return rows;
+}
+
+/** Ask in the map: the Matches rows, server-built from the same evidence the compose step saw.
+ *  `citationId` is set on a row when a citation in the final answer points at it (by permitCid for
+ *  a permit row, else propertyCid). A run row is not a match. */
+function buildAnswerRows(
+  evidence: readonly EvidenceRow[],
+  citations: readonly Citation[],
+): AnswerRow[] {
+  const citedPermit = new Map(
+    citations.filter((c) => c.permitCid !== undefined).map((c) => [c.permitCid, c.id]),
+  );
+  const citedProperty = new Map(
+    citations.filter((c) => c.kind === "property").map((c) => [c.propertyCid, c.id]),
+  );
+  const rows: AnswerRow[] = [];
+  for (const row of evidence) {
+    const property = row.property ?? row.owner;
+    if (property === undefined) continue;
+    const point = pointFields(property);
+    const missing: AnswerRow["missing"] = [
+      ...property.missingReasons.map((m) => ({ field: m.field, reason: m.reason })),
+      ...(row.permit?.missingReasons ?? []).map((m) => ({ field: m.field, reason: m.reason })),
+    ];
+    if (point.lat === undefined && !missing.some((m) => m.reason === "no_coordinates")) {
+      missing.push({ field: "coordinates", reason: "no_coordinates" });
+    }
+    const citationId =
+      row.permit !== undefined
+        ? citedPermit.get(row.permit.permitCid)
+        : citedProperty.get(property.propertyCid);
+    const contractor =
+      row.permit === undefined ? null : sourceText(row.permit.contractorResolution);
+    rows.push({
+      propertyCid: property.propertyCid,
+      tcadId: property.requestIdentifier,
+      ...(point.lat === undefined ? {} : { lat: point.lat, lon: point.lon }),
+      ...(point.nearPlace === undefined ? {} : { nearPlace: point.nearPlace }),
+      ...(citationId === undefined ? {} : { citationId }),
+      ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
+      roofAgeBasis: property.roofAgeBasis,
+      ...(row.permit === undefined
+        ? {}
+        : {
+            permit: {
+              permitCid: row.permit.permitCid,
+              number: row.permit.permitNumber,
+              statusClass: row.permit.statusClass,
+              ...(row.permit.openDays === null ? {} : { openDays: row.permit.openDays }),
+            },
+          }),
+      ...(contractor === null ? {} : { contractorResolution: contractor }),
+      missing,
+    });
   }
   return rows;
 }
@@ -1083,7 +1180,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       gathered = await dispatchPlan(plan, scope.point, scope.countyWide, dispatch);
     }
 
-    const evidence = evidenceRows(gathered);
+    const evidence = await evidenceRows(gathered, leadIndex);
     // Coverage is worded by template from the run itself; no rows means nothing to word.
     if (gathered.kind === "coverage" || evidence.length === 0) {
       return { kind: "gathered", plan, gathered, evidence, composeText: undefined, ...stats() };
@@ -1246,6 +1343,8 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
   const outcome: AgentAnswer["outcome"] =
     gathered.kind === "coverage" || evidence.length > 0 ? "answered" : "empty_in_scope";
 
+  const answerRows = buildAnswerRows(evidence, citations);
+
   return {
     outcome,
     claims,
@@ -1254,6 +1353,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     resultSetId: traceId,
     counts: gathered.counts,
     missing: deriveMissing(plan, gathered),
+    ...(answerRows.length === 0 ? {} : { rows: answerRows }),
     ...(proposals === undefined ? {} : { proposals }),
     trace: trace(
       traceId,

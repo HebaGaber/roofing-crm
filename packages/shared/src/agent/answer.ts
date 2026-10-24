@@ -8,6 +8,41 @@
 import { z } from "zod";
 import { QueryPlan } from "./queryPlan.js";
 
+const NearPlace = z.object({ name: z.string(), distanceMi: z.number().nonnegative() });
+const MissingEntry = z.object({
+  field: z.string(),
+  reason: z.string(),
+  count: z.number().int().nonnegative().optional(),
+});
+
+// Ask in the map (AI mode): one row the compose step saw, built server-side from the dispatch row
+// (never from model text). `lat`/`lon` are absent when the row has no coordinates, and the reason
+// is then in `missing`. `citationId` is set when a kept claim cites this row.
+export const AnswerRow = z.object({
+  propertyCid: z.string(),
+  tcadId: z.string(),
+  lat: z.number().optional(),
+  lon: z.number().optional(),
+  nearPlace: NearPlace.optional(),
+  citationId: z.number().int().optional(),
+  roofAgeYears: z.number().optional(),
+  roofAgeBasis: z.enum(["permit", "new_construction", "built_year", "unknown"]).optional(),
+  permit: z
+    .object({
+      permitCid: z.string(),
+      number: z.string().nullable(),
+      statusClass: z.string().nullable(),
+      openDays: z.number().optional(),
+    })
+    .optional(),
+  contractorResolution: z.string().optional(),
+  missing: z.array(MissingEntry),
+});
+export type AnswerRow = z.infer<typeof AnswerRow>;
+
+/** A numbered pin on the map: `n` is the citation number the answer shows. */
+export type AnswerPin = { n: number; propertyCid: string; lat: number; lon: number };
+
 export const AgentAnswer = z.object({
   outcome: z.enum([
     "answered",
@@ -38,6 +73,12 @@ export const AgentAnswer = z.object({
       tableCid: z.string(),
       manifestCid: z.string(),
       asOf: z.string(),
+      // Built server-side from the dispatch rows, never from model text: a property citation
+      // carries the cited row's point, a permit citation its property's, a place citation the
+      // resolved point. `nearPlace` is the nearest gazetteer place ("near Pflugerville").
+      lat: z.number().optional(),
+      lon: z.number().optional(),
+      nearPlace: NearPlace.optional(),
     }),
   ),
   plan: QueryPlan, // "How I read this"
@@ -53,13 +94,9 @@ export const AgentAnswer = z.object({
   // row's own missing field, or `QueryPlan.unsupported[].reason` for a constraint the question
   // asked for. B-09 review (CR finding 10): `count` (optional, additive) is how many evidence rows
   // this turn carried that reason for that field; absent for a plan-level `unsupported` entry.
-  missing: z.array(
-    z.object({
-      field: z.string(),
-      reason: z.string(),
-      count: z.number().int().nonnegative().optional(),
-    }),
-  ),
+  missing: z.array(MissingEntry),
+  // Up to 25 rows, the same ones the compose step saw (Matches tab). Optional and additive.
+  rows: z.array(AnswerRow).max(25).optional(),
   // B-09 review (CR finding 7): set only on `needs_clarification` — the resolver's top places
   // (best first, at most 3) so the Ask screen can offer them as choices. `match` is the
   // `QueryPlan.area.resolved.match` kind. Optional and additive.
@@ -103,3 +140,17 @@ export const AgentAnswer = z.object({
   }),
 });
 export type AgentAnswer = z.infer<typeof AgentAnswer>;
+
+/** One pin per property citation that has coordinates; `n` is the citation number. A permit
+ *  citation is not a pin of its own (its property row is). Sorted by `n`. */
+export function answerPins(answer: Pick<AgentAnswer, "citations">): AnswerPin[] {
+  const pins: AnswerPin[] = [];
+  const seen = new Set<number>();
+  for (const c of answer.citations) {
+    if (c.kind !== "property" || c.propertyCid === undefined) continue;
+    if (c.lat === undefined || c.lon === undefined || seen.has(c.id)) continue;
+    seen.add(c.id);
+    pins.push({ n: c.id, propertyCid: c.propertyCid, lat: c.lat, lon: c.lon });
+  }
+  return pins.sort((a, b) => a.n - b.n);
+}

@@ -3,7 +3,7 @@
 // the finding it proves.
 import { describe, expect, it } from "vitest";
 import { createObservability } from "@crm/observability";
-import type { PlaceResolution, QueryPlan } from "@crm/shared";
+import { answerPins, type PlaceResolution, type QueryPlan } from "@crm/shared";
 import { runAsk, type RunAskInput } from "../../src/agent/composeAnswer.js";
 import { createPlaceResolver } from "../../src/services/agent/placeResolver.js";
 import {
@@ -513,5 +513,140 @@ describe("finding 17: citationsTotal counts every citation the model produced", 
     const answer = await run;
     expect(answer.claims.map((c) => c.text)).toEqual(["R-0001 qualifies."]);
     expect(answer.citations.map((c) => c.id)).toEqual([1]);
+  });
+});
+
+// Ask in the map (AI mode), wire: citation coordinates, nearPlace and rows[] are built from the
+// dispatch rows, never from model text.
+describe("map wire: citation coordinates, nearPlace and rows[]", () => {
+  it("a property citation carries the row's point and nearest place; rows[] marks the cited row", async () => {
+    const index = new FakeLeadIndex([
+      property(),
+      property({ propertyCid: PROPERTY_CID_B, requestIdentifier: "R-0002", roofAgeYears: 20 }),
+    ]);
+    const { run } = ask(
+      [
+        planText(PFLUGERVILLE_PLAN),
+        // The model tries to plant its own coordinates and place; they must be ignored.
+        compose(
+          [{ text: "R-0001 has a 32-year-old roof.", citationIds: [1] }],
+          [{ id: 1, propertyCid: PROPERTY_CID_A, lat: 1, lon: 2, nearPlace: { name: "Mars" } }],
+        ),
+      ],
+      index,
+    );
+    const answer = await run;
+    expect(answer.citations[0]).toMatchObject({
+      kind: "property",
+      lat: 30.4418,
+      lon: -97.6069,
+      nearPlace: { name: "Pflugerville" },
+    });
+    expect(answer.rows).toHaveLength(2);
+    expect(answer.rows?.[0]).toMatchObject({
+      propertyCid: PROPERTY_CID_A,
+      tcadId: "R-0001",
+      lat: 30.4418,
+      roofAgeYears: 32,
+      roofAgeBasis: "built_year",
+      citationId: 1,
+      missing: [],
+    });
+    expect(answer.rows?.[1]?.citationId).toBeUndefined();
+    expect(answerPins(answer)).toEqual([
+      { n: 1, propertyCid: PROPERTY_CID_A, lat: 30.4418, lon: -97.6069 },
+    ]);
+  });
+
+  it("a permit-intent answer: the permit citation takes its property's point; the row carries the permit", async () => {
+    const index = new FakeLeadIndex([property()], [permit()]);
+    const { run } = ask(
+      [
+        planText({
+          intent: "find_permits",
+          area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+          filters: { statusClass: ["open"] },
+        }),
+        compose(
+          [{ text: "Permit 2019-001234 has been open 2790 days.", citationIds: [1] }],
+          [{ id: 1, permitCid: PERMIT_CID_P }],
+        ),
+      ],
+      index,
+    );
+    const answer = await run;
+    expect(answer.citations[0]).toMatchObject({
+      kind: "permit",
+      lat: 30.4418,
+      lon: -97.6069,
+      nearPlace: { name: "Pflugerville" },
+    });
+    expect(answer.rows?.[0]).toMatchObject({
+      propertyCid: PROPERTY_CID_A,
+      tcadId: "R-0001",
+      citationId: 1,
+      permit: {
+        permitCid: PERMIT_CID_P,
+        number: "2019-001234",
+        statusClass: "open",
+        openDays: 2790,
+      },
+    });
+    expect(answer.rows?.[0]?.missing).toContainEqual(
+      expect.objectContaining({ field: "contractor", reason: "contractor_unresolved" }),
+    );
+    // A permit citation is not a pin of its own.
+    expect(answerPins(answer)).toEqual([]);
+  });
+
+  it("a row without coordinates has no lat/lon and says why in missing", async () => {
+    const noCoords = property({
+      propertyCid: PROPERTY_CID_B,
+      requestIdentifier: "R-0002",
+      latitude: null,
+      longitude: null,
+      coordinateSource: "none",
+      missingReasons: [{ field: "coordinates", reason: "no_coordinates" }],
+    });
+    // lookup_property reaches the row even though a radius search could not place it.
+    const index = new FakeLeadIndex([noCoords]);
+    const { run } = ask(
+      [
+        planText({
+          intent: "lookup_property",
+          area: { kind: "place", query: "R-0002", radiusMi: 5 },
+        }),
+        compose([{ text: "Property R-0002 is in this run.", citationIds: [1] }]),
+      ],
+      index,
+    );
+    const answer = await run;
+    expect(answer.citations[0]?.lat).toBeUndefined();
+    expect(answer.citations[0]?.nearPlace).toBeUndefined();
+    expect(answer.rows?.[0]?.lat).toBeUndefined();
+    expect(answer.rows?.[0]?.lon).toBeUndefined();
+    expect(answer.rows?.[0]?.missing).toEqual([{ field: "coordinates", reason: "no_coordinates" }]);
+    expect(answerPins(answer)).toEqual([]);
+  });
+
+  it("template citations carry coordinates too, and rows[] has at most 25 entries", async () => {
+    const many = Array.from({ length: 30 }, (_, i) =>
+      property({
+        propertyCid: `bafkrei${String(i).padStart(2, "0")}${"a".repeat(54)}`,
+        requestIdentifier: `R-${String(i + 1).padStart(4, "0")}`,
+      }),
+    );
+    const index = new FakeLeadIndex(many);
+    const { run } = ask([planText(PFLUGERVILLE_PLAN), "not json"], index);
+    const answer = await run;
+    expect(answer.rows).toHaveLength(25);
+    expect(answer.citations.every((c) => c.lat !== undefined)).toBe(true);
+    expect(answer.rows?.filter((r) => r.citationId !== undefined)).toHaveLength(3);
+  });
+
+  it("answers with no rows (empty, out of scope) carry no rows[]", async () => {
+    const index = new FakeLeadIndex([property({ roofAgeYears: 5 })]);
+    const { run } = ask([planText(PFLUGERVILLE_PLAN)], index);
+    expect((await run).rows).toBeUndefined();
   });
 });

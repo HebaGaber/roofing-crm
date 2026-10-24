@@ -85,8 +85,22 @@ fields:
 | --- | --- | --- |
 | `candidates` | `needs_clarification` only (empty when the area had no name) | `{name, score, match}[]`, best first, ≤ 3 |
 | `missing[].count` | a row-level reason | how many evidence rows carried that `field` + `reason` |
+| `citations[].lat`, `citations[].lon` | the cited row has coordinates | the cited property's point; a permit citation takes its property's point. Server-built from the dispatch rows, never from model text. Absent when the row has no coordinates |
+| `citations[].nearPlace` | with `lat`/`lon` | `{name, distanceMi}`: the nearest gazetteer place (`nearestPlace` in `placeResolver.ts`), so the UI can print "near Pflugerville" |
+| `rows` | at least one match row (absent for empty, refused and coverage answers) | up to 25 `AnswerRow`, the same rows the compose step saw, in dispatch order; see below |
 | `retryAfterSec` | `rate_limited` | whole seconds until the next window |
 | `resetsAt` | `paused` | ISO time the daily cap resets |
+
+`AnswerRow` (`@crm/shared`): `{propertyCid, tcadId, lat?, lon?, nearPlace?, citationId?, roofAgeYears?,
+roofAgeBasis?, permit?: {permitCid, number, statusClass, openDays?}, contractorResolution?, missing[]}`.
+One row per property match, or per permit for permit intents and property lookups (the permit's
+own property supplies `tcadId`, point and roof age). `citationId` is the number of the citation in
+this answer that points at the row (permit rows by `permitCid`, property rows by `propertyCid`);
+absent when no claim or template citation cites it. A row with no coordinates has no `lat`/`lon`
+and carries `{field: "coordinates", reason: "no_coordinates"}` in its `missing`. `contractorResolution`
+is control-stripped and capped at 120 chars. `answerPins(answer)` returns one `{n, propertyCid, lat,
+lon}` per property citation with coordinates, `n` being the citation id; permit and run citations
+are not pins. All of these fields are optional, so an older answer without them still validates.
 
 `counts` come from whichever dispatch ran: property search → `matched` = rows after every filter,
 `excludedNoRoofDate` = in-radius rows a roof-age filter excluded for having no roof date,
