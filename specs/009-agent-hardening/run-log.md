@@ -150,12 +150,28 @@ signal now available at county scale.
   they're scripted to match the one-call mechanism, not because the mechanism matches the
   contract. This is a real design decision, not a style fix. Committed `23e26ff`.
 
+- 2026-10-24 · F · **User decision:** fix the agent-loop architecture finding properly (not leave
+  as-is). `ash` rebuilt `runAgent.ts`/`composeAnswer.ts`/`agent.ts`/`tools.ts` to match ADR-06 §§4-6.3
+  exactly: a real plan call (no tools passed, Zod-validated against the full `QueryPlan` schema,
+  one repair call on failure) → a **code-enforced** scope gate (not a prompt instruction —
+  `runAsk`'s own control flow structurally cannot reach a tool call or the compose model on any
+  branch but in-scope, proven by a new test asserting the mock model's `doGenerate` was called
+  exactly once and the fake index's search methods were never invoked) → deterministic dispatch on
+  `QueryPlan.intent` (code decides which service to call, not the model) → a compose call (no
+  tools). `services/agent/tools.ts`'s AI-SDK `tool()` wrappers became plain callable functions.
+  Found and fixed a real latent bug along the way: `placeResolver`'s fuzzy runner-up list could
+  return a same-point duplicate of an exact match as its own "runner-up," zeroing the confidence
+  margin and wrongly routing an unambiguous place to `needs_clarification`. 31 shared + 166 api
+  (+2 new tests: scope-gate proof, repair-retry) + 156 web tests pass, tsc clean. Committed `e96e77d`.
+  **Also recorded (user, same turn): not waiting on Atlas registration, and not pursuing the
+  MCP swap-back this round** — confirmed this doesn't cost assessment points (constitution B1
+  allows CID-or-MCP as two sanctioned paths; already an accepted, documented, reversible
+  deviation; what's scored is the real data being present, not which lookup path reached it).
+  Direct-CID read is the final data path for this round. Committed `c24fd92`.
+
 ## Next step
 
-Awaiting your decision on the flagged architecture finding above (one-call agent loop vs. the
-contract's separate plan/scope-gate/compose calls) — tell me how you want this resolved, or if
-it's acceptable as-is for this round. Otherwise: TN02 (full test suite) and TN03 (quickstart step
-1) have been continuously satisfied throughout; what's left is Phase Z (deploy, reviewer scores,
+Both open decisions from Phase N are now resolved. What's left: Phase Z (deploy, reviewer scores,
 hosted Playwright/golden-query/dashboard proof) and T021/T047/T057/T060/the test-case token fill —
 all blocked on data readiness, deploy, and the A-13/A-14 merge status, per your "I will inform you"
 note. Stop before G7 approval, merge, push, or deploy — unchanged.
