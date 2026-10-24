@@ -287,3 +287,24 @@ describe("navigation", () => {
     expect(screen.getByTestId("where")?.textContent).toContain("/sign-in");
   });
 });
+
+describe("AppShell main region: full-bleed Map, padded everywhere else", () => {
+  it("drops the page margin on the Map route only", () => {
+    renderShell("/");
+    expect(screen.getByRole("main").getAttribute("data-layout")).toBe("full-bleed");
+    cleanup();
+    renderShell("/coming-soon/campaigns");
+    expect(screen.getByRole("main").getAttribute("data-layout")).toBe("padded");
+  });
+
+  it("the stylesheet zeroes the padding for the full-bleed class above the 600 px margin rule", () => {
+    const sheet = readFileSync(join(shellDir, "../AppShell.module.css"), "utf8");
+    const rule = /\.main\.mainFullBleed\s*\{([^}]*)\}/.exec(sheet);
+    expect(rule?.[1]).toMatch(/padding:\s*0;/);
+    // The compact and medium+ page margins still apply to every other route.
+    expect(sheet).toMatch(/\.main\s*\{[^}]*padding:\s*var\(--space-4\)/);
+    expect(sheet).toMatch(
+      /@media \(min-width: 600px\)[\s\S]*\.main\s*\{\s*padding:\s*var\(--space-6\)/,
+    );
+  });
+});

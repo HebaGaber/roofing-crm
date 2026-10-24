@@ -153,3 +153,9 @@
     padding: var(--space-6);
   }
 }
+
+/* The Map route is full bleed (CrmMap390/768/1440): no page margin at any width, so the map and
+   its panes meet the bar, the rail and the window edge. Two classes outrank the media rule above. */
+.main.mainFullBleed {
+  padding: 0;
+}

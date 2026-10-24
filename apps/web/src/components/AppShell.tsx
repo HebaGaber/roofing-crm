@@ -9,7 +9,7 @@
 // the page content); the grid areas place the bottom navigation below main on compact widths, so
 // nothing moves.
 import { useCallback, useState, type ReactElement, type UIEvent } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useMatch } from "react-router";
 import { Icon } from "@crm/ui";
 import { MoreSheet } from "./AppShell/MoreSheet.js";
 import { NavRail } from "./AppShell/NavRail.js";
@@ -21,6 +21,10 @@ export { DESTINATIONS, type Destination } from "./AppShell/navigation.js";
 
 export const APP_TITLE = "Roofing CRM";
 
+/** Routes whose page draws edge to edge inside the main region (no page margin): the Map screen
+ *  (CrmMap390/768/1440 put the map, panes and sheets flush against the bar, rail and window). */
+const FULL_BLEED_ROUTE = "/";
+
 export function AppShell(): ReactElement {
   // The main region is the scroll container (the bottom navigation stays in view on compact
   // widths without a non-token padding), so the bar's elevation follows its scroll offset.
@@ -28,6 +32,7 @@ export function AppShell(): ReactElement {
   const onScroll = useCallback((event: UIEvent<HTMLElement>) => {
     setScrolled(event.currentTarget.scrollTop > 0);
   }, []);
+  const fullBleed = useMatch({ path: FULL_BLEED_ROUTE, end: true }) !== null;
 
   return (
     <div className={styles.shell}>
@@ -53,7 +58,11 @@ export function AppShell(): ReactElement {
         <NavRail />
         <MoreSheet />
       </nav>
-      <main className={styles.main} onScroll={onScroll}>
+      <main
+        className={fullBleed ? `${styles.main} ${styles.mainFullBleed}` : styles.main}
+        data-layout={fullBleed ? "full-bleed" : "padded"}
+        onScroll={onScroll}
+      >
         <Outlet />
       </main>
     </div>
