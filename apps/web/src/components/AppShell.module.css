@@ -20,7 +20,9 @@
 /* Top app bar: 64 px, surface, title-large; elevation 2 while the main region is scrolled. */
 .bar {
   grid-area: bar;
-  z-index: 1;
+  /* Above every page layer (map controls 10, result/filter sheets up to 30), so the data panel
+     and the Apps / account menus open over the page, not under it. */
+  z-index: 40;
   box-sizing: border-box;
   height: var(--space-10);
   display: flex;
@@ -141,6 +143,10 @@
     justify-content: flex-start;
     gap: var(--space-3);
     padding: var(--space-2) 0 0;
+    /* Three destinations plus the Coming-soon group fit a 768 px-tall window; a shorter one
+       scrolls the rail rather than clipping its last items. */
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .main {

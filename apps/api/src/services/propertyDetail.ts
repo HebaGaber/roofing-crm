@@ -29,8 +29,14 @@ export function bbbFor(contractorResolution: string | null): {
  *  non-default deploy; this never falls back to a placeholder — the path is fixed by Task A's
  *  own route shape, not invented here. */
 export function lineageUrl(propertyCid: string): string {
+  return `${countyLensBaseUrl()}/explore?sel=${encodeURIComponent(propertyCid)}`;
+}
+
+/** CountyLens's origin (no trailing slash): the one config read shared by the lineage link and
+ *  the shell's Apps menu (routers/shell.ts), so both always point at the same deploy. */
+export function countyLensBaseUrl(): string {
   const base = process.env.EXPLORER_BASE_URL ?? "https://countylens.aldarraj.com";
-  return `${base.replace(/\/$/, "")}/explore?sel=${encodeURIComponent(propertyCid)}`;
+  return base.replace(/\/$/, "");
 }
 
 export interface PropertyDetailResult {
