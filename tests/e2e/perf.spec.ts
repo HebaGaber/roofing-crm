@@ -8,9 +8,11 @@
 // 20 timed runs after one untimed warm-up, p95 < 3,000 ms (architecture-constitution.md §10).
 import { expect, test } from "@playwright/test";
 import { runtimeUrl } from "./lib/runtime.js";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
+test.use({ storageState: AUTH_STATE_PATH });
+
 const TIMED_RUNS = 20;
 const P95_LIMIT_MS = 3_000;
 
@@ -25,14 +27,6 @@ function summarize(valuesMs: number[]): Summary {
   const pick = (p: number): number =>
     sorted[Math.min(sorted.length - 1, Math.ceil(p * sorted.length) - 1)] ?? 0;
   return { n: sorted.length, p50Ms: pick(0.5), p95Ms: pick(0.95) };
-}
-
-async function signIn(page: import("@playwright/test").Page, password: string): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
 }
 
 /** Clicks the map at the Pflugerville pin (AC-1) and returns once a search response landed. */
@@ -67,10 +61,10 @@ test.describe("B-03-TC-NF-01: radius change p95 < 3 s end to end, 20 runs", () =
   test.describe.configure({ timeout: 10 * 60_000 });
 
   test("@scenario:B-03-TC-NF-01", async ({ page }, testInfo) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
 
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await dropPinAndWait(page);
 
     // One untimed warm-up (the first search fills the browser's HTTP cache).

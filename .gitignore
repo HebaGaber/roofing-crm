@@ -8,6 +8,8 @@ cdk.context.json
 coverage/
 playwright-report/
 test-results/
+# Playwright's saved signed-in session (live Cognito tokens, tests/e2e/auth.setup.ts) — never commit
+playwright/.auth/
 .env
 .env.*
 !.env.example

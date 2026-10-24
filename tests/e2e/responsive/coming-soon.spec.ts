@@ -7,16 +7,13 @@
 // the "opens a real page, never a 404" behaviour is already asserted by B-01.spec.ts.
 import { expect, test } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "../lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project (tests/e2e/lib/auth.ts); this file tests layout, not sign-in.
+test.use({ storageState: AUTH_STATE_PATH });
 
 async function openComingSoon(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(SEEDED_PASSWORD as string);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
+  await openSignedIn(page);
   const moreTrigger = page.getByRole("button", { name: "More" });
   if (await moreTrigger.isVisible()) {
     await moreTrigger.click();
@@ -29,7 +26,7 @@ async function openComingSoon(page: import("@playwright/test").Page): Promise<vo
 
 test.describe("Responsive design: Coming Soon screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     await openComingSoon(page);
     await page.evaluate(() => document.fonts.ready);
   });

@@ -152,20 +152,51 @@ jobs:
           done
           echo "RUNTIME_URL=$url" >> "$GITHUB_ENV"
 
+      # Browser cache keyed by the installed @playwright/test version (each version pins its own
+      # Chromium build). The OS packages (`--with-deps`) live outside the cache and the runner
+      # image does not ship all of them, so `install-deps` always runs; only the browser
+      # download is skipped on a cache hit.
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Playwright system dependencies (browser cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       # The Playwright config refuses an explicit localhost RUNTIME_URL (config-guard.spec.ts);
       # RUNTIME_URL here is always the hosted branch URL.
       # CRM_TEST_PASSWORD is the seeded test user's password (repository secret, set from Secrets
-      # Manager `roofing-crm/admin-user`); without it the logged-in specs skip. The B-07 spec also
-      # needs AWS credentials, which CI does not have, so it skips itself on CI with a reason.
+      # Manager `roofing-crm/admin-user`); without it the logged-in specs skip. The `setup`
+      # project signs in once per phase and keeps the session under playwright/.auth/ (never
+      # uploaded). The B-07 spec also needs AWS credentials, which CI does not have, so it skips
+      # itself on CI with a reason.
+      # Two phases (playwright.config.ts PW_PHASE, Task A's pattern): `parallel` on 4 workers
+      # (the account's 10-concurrent-Lambda limit is why not more), then `isolated` on 1 (perf
+      # timings, the rate-limited paid agent, B-07's shared leads). Both always run; the step
+      # fails if either fails.
       - name: Playwright on the hosted URL
         env:
           CRM_TEST_PASSWORD: ${{ secrets.CRM_TEST_PASSWORD }}
-        run: pnpm exec playwright test
+        run: |
+          status=0
+          PW_PHASE=parallel pnpm exec playwright test || status=1
+          PW_PHASE=isolated pnpm exec playwright test || status=1
+          exit "$status"
 
-      - name: Upload the Playwright report
+      # One HTML report per phase: playwright-report/parallel and playwright-report/isolated.
+      - name: Upload the Playwright reports
         if: always()
         uses: actions/upload-artifact@v4
         with:

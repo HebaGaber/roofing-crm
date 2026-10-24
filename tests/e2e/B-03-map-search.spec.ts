@@ -12,23 +12,16 @@
 // case localhost itself (B-01.spec.ts's precedent; config-guard.spec.ts + playwright.config.ts
 // already enforce "never localhost" for any RUNTIME_URL that IS set).
 import { expect, test } from "@playwright/test";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
+test.use({ storageState: AUTH_STATE_PATH });
 
 // testplans/B-03-test-cases.md § 5: confirmed live, 2026-10-23.
 const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
 const LAGO_VISTA = { lat: 30.47, lng: -97.99 };
 /** Georgetown, Williamson County — well outside Travis County (TC-007). */
 const GEORGETOWN = { lat: 30.6333, lng: -97.678 };
-
-async function signIn(page: import("@playwright/test").Page, password: string): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
-}
 
 /** Clicks the map canvas at the given lat/lng by converting it to pixel coordinates via the live
  *  MapLibre instance (window.__crmMap, CrmMap.tsx's test-only hook — same seam B-01.spec.ts uses
@@ -65,9 +58,9 @@ test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () =>
   test("pin near Pflugerville: 5 mi draws a ring with the real count (0 on the sample slice, widen shown); 6 mi includes a real result inside the ring", async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await clickMapAt(page, PFLUGERVILLE);
@@ -123,9 +116,9 @@ test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () =>
 
 test.describe("AC-1 edge case: zero results near Lago Vista widen to a wider radius (B-03-TC-006)", () => {
   test('0.5 mi near Lago Vista shows "widen to {n} mi", not a blank list', async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await clickMapAt(page, LAGO_VISTA);
@@ -171,11 +164,11 @@ test.describe("AC-1 edge case: GPS outside Travis County shows an explicit state
     page,
     context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
     await context.grantPermissions(["geolocation"]);
     await context.setGeolocation({ latitude: GEORGETOWN.lat, longitude: GEORGETOWN.lng });
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await page.getByRole("button", { name: "Use my location" }).click();
@@ -191,10 +184,10 @@ test.describe("AC-2: GPS denied falls back to pin-drop with an explicit state (B
     page,
     context: _context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
     // No grantPermissions call: geolocation stays denied by default in a fresh context.
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await page.getByRole("button", { name: "Use my location" }).click();
