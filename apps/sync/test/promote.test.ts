@@ -62,6 +62,16 @@ describe("Promote", () => {
     });
   });
 
+  it("addresses the pointer with the pk+sk key crm-leads actually has (found live on the first real table)", async () => {
+    ddbMock.onAnyCommand().resolves({});
+
+    await promoteWithClient(input(), DynamoDBDocumentClient.from(new DynamoDBClient({})), obs);
+
+    expect(ddbMock.calls()[0]?.args[0].input).toMatchObject({
+      Key: { pk: "META#index", sk: "META" },
+    });
+  });
+
   it("never flips the pointer for a Held run", async () => {
     ddbMock.onAnyCommand().resolves({});
 

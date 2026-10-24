@@ -132,6 +132,8 @@ export interface ValidateEvent {
 }
 
 const META_INDEX_PK = "META#index";
+/** crm-leads has a pk+sk key (B-07); the pointer item lives at sk "META". */
+const META_INDEX_SK = "META";
 
 async function downloadToFile(s3: S3Client, bucket: string, key: string, destPath: string) {
   await downloadS3ObjectToFile(s3, bucket, key, destPath);
@@ -194,7 +196,7 @@ async function validateCoreFromEvent(
       let previousPromotedPropertyCount: number | null;
       try {
         const pointer = await ddb.send(
-          new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK } }),
+          new GetCommand({ TableName: tableName, Key: { pk: META_INDEX_PK, sk: META_INDEX_SK } }),
         );
         previousPromotedPropertyCount = extractPreviousPromotedPropertyCount(pointer.Item);
       } catch (error) {

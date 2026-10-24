@@ -125,6 +125,8 @@ export interface DuckDbParquetDeps {
 
 const DEFAULT_COLD_LOAD_TIMEOUT_MS = 3_000;
 const PK = "META#index";
+/** crm-leads has a pk+sk key (B-07); the pointer item lives at sk "META". */
+const SK = "META";
 
 export class DuckDbParquetLeadIndex implements LeadIndex {
   private readonly ddb: DynamoDBDocumentClient;
@@ -170,7 +172,9 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       // as "no run has ever been promoted," not a crash.
       let item;
       try {
-        item = await this.ddb.send(new GetCommand({ TableName: this.tableName, Key: { pk: PK } }));
+        item = await this.ddb.send(
+          new GetCommand({ TableName: this.tableName, Key: { pk: PK, sk: SK } }),
+        );
       } catch (error) {
         if (error instanceof ResourceNotFoundException) throw new IndexNotReadyError();
         throw error;
