@@ -5,7 +5,7 @@
 // the lead's property is still in the current run; otherwise a "Not in the current run" state
 // replaces it and no snapshot value is rendered as current (constitution XI, P0-4).
 // 1440: the Leads list sits on the left (LeadsPane); 768 and 390: a full page with Back to Leads.
-import { CidDisplay, Icon, Provenance, StatusPill } from "@crm/ui";
+import { Icon, Provenance, StatusPill } from "@crm/ui";
 import { LEAD_STATUSES, type LeadEvent, type LeadStatus } from "@crm/shared";
 import { useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
@@ -14,6 +14,8 @@ import { roofAgeBasisLabel } from "../../format/index.js";
 import { humanizeCode } from "../../format/labels.js";
 import { isNotFoundError, isStaleError } from "./leadErrors.js";
 import { LeadBanner } from "./LeadBanner.js";
+import { LeadCid } from "./LeadCid.js";
+import { LeadProgress } from "./LeadProgress.js";
 import { STATUS_LABEL } from "./LeadFilters.js";
 import {
   LEAD_STATUS_ICON,
@@ -78,11 +80,11 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
         <p className={styles.prose}>
           This property is absent from the data run now being served, so its roof age and permit
           signals are not shown. The lead was captured from manifest{" "}
-          <CidDisplay cid={lead.sourceManifestCid} />
+          <LeadCid cid={lead.sourceManifestCid} label="snapshot manifest" />
           {lead.currentManifestCid === undefined ? null : (
             <>
               {"; the run now served is manifest "}
-              <CidDisplay cid={lead.currentManifestCid} />
+              <LeadCid cid={lead.currentManifestCid} label="current run manifest" />
             </>
           )}
           . Status, notes and history still work.
@@ -103,7 +105,7 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
         />
         <Provenance>
           {"Lead captured from manifest "}
-          <CidDisplay cid={lead.sourceManifestCid} />
+          <LeadCid cid={lead.sourceManifestCid} label="snapshot manifest" />
         </Provenance>
       </section>
     );
@@ -111,6 +113,14 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
   return (
     <section className={styles.section} aria-label="Current signals">
       <h3 className={styles.sectionTitle}>Signals at creation</h3>
+      <Provenance>
+        {`From CountyLens, collected ${s.capturedAt.slice(0, 19).replace("T", " ")} UTC · manifest `}
+        <LeadCid cid={lead.sourceManifestCid} label="snapshot manifest" />
+      </Provenance>
+      <div className={styles.signalsHead} aria-hidden="true">
+        <span>Signal</span>
+        <span>At creation</span>
+      </div>
       <dl className={styles.fields}>
         <Field label="Roof age">
           {s.roofAgeYears === undefined ? (
@@ -121,13 +131,14 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
               {s.roofAgeBasis === undefined ? null : (
                 <span className={styles.sub}>{`Basis: ${basisText(s.roofAgeBasis)}`}</span>
               )}
+              <span className={styles.sub}>Confidence: not saved with the lead</span>
             </>
           )}
         </Field>
         {s.roofAgeYears === undefined || s.roofAgeBasis !== undefined ? null : (
           <Field label="Basis">{missing("Basis not available")}</Field>
         )}
-        <Field label="Open permit">
+        <Field label="Main permit">
           {s.openPermitId === undefined ? (
             missing("No open permit at capture")
           ) : (
@@ -146,7 +157,7 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
             <>
               {missing("Contractor not published")}
               <span className={styles.sub}>
-                The permit data in contract/v1 carries no contractor name.
+                Task A's published data does not include a contractor name for permits.
               </span>
             </>
           ) : (
@@ -164,13 +175,15 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
         </Field>
       </dl>
       <p className={styles.prose}>
+        <Icon name="help" size="small" />
+        {
+          " Change since this lead was created: not available yet. The page is not given the current run's signals to compare."
+        }
+      </p>
+      <p className={styles.prose}>
         The lead references this property. Owner details are read from the property when you open
         it; they are not copied into the lead.
       </p>
-      <Provenance>
-        {`Snapshot collected ${s.capturedAt.slice(0, 19).replace("T", " ")} UTC · manifest `}
-        <CidDisplay cid={lead.sourceManifestCid} />
-      </Provenance>
     </section>
   );
 }
@@ -456,7 +469,7 @@ function LeadBody({
           <button
             type="submit"
             className={styles.action}
-            disabled={addNote.isPending || updateStatus.isPending}
+            disabled={addNote.isPending || updateStatus.isPending || text.trim() === ""}
           >
             Add note
           </button>
@@ -469,6 +482,26 @@ function LeadBody({
         <Timeline events={lead.history} createdFrom={lead.createdFrom} mine={mine} />
       </section>
     </article>
+  );
+}
+
+/** The lead's title before its data has arrived: the TCAD id is in the link (`48453:tcad:{id}`),
+ *  so the loading and error pages keep the heading the boards show instead of going blank. */
+function LeadTitle({
+  leadKey,
+  meta,
+}: {
+  readonly leadKey: string;
+  readonly meta: string;
+}): ReactElement {
+  const id = leadKey.split(":").pop() ?? "";
+  return (
+    <header className={styles.titleBlock}>
+      <h2 id="lead-title" className={styles.title}>
+        {id === "" ? "Lead" : `TCAD ${id}`}
+      </h2>
+      <p className={styles.leadSub}>{meta}</p>
+    </header>
   );
 }
 
@@ -491,15 +524,17 @@ export function Component(): ReactElement {
     content = (
       <>
         <BackLink />
-        <p className={styles.loadingText} role="status">
-          Loading lead…
-        </p>
-        <Skeleton variant="cards" count={3} />
+        <LeadTitle leadKey={routeKey} meta="Loading lead…" />
+        <div className={styles.loadingCard} role="status" aria-busy="true">
+          <LeadProgress label="Loading the lead" />
+          <p className={styles.loadingText}>Loading lead…</p>
+          <Skeleton variant="cards" count={3} />
+        </div>
       </>
     );
   } else if (result.status === "error" && isNotFoundError(result.error)) {
     content = (
-      <section className={styles.stateCard} aria-labelledby="lead-not-found">
+      <section className={styles.stateCard} aria-labelledby="lead-not-found" role="status">
         <Icon name="delete" />
         <h2 id="lead-not-found" className={styles.stateTitle}>
           Lead not found
@@ -516,16 +551,17 @@ export function Component(): ReactElement {
     content = (
       <>
         <BackLink />
+        <LeadTitle leadKey={routeKey} meta="This lead did not load." />
         <LeadBanner
           kind="error"
           icon="error"
-          headline="This lead could not be loaded."
+          headline="This lead couldn't load."
           actionLabel="Retry"
           onAction={() => {
             void result.refetch();
           }}
         >
-          Nothing was lost.
+          The lead store didn't answer. Try again; nothing was changed.
         </LeadBanner>
       </>
     );

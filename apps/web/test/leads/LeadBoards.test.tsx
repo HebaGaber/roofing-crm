@@ -324,3 +324,173 @@ describe("Leads list state cards", () => {
     expect(screen.getByRole("button", { name: "Me" }).getAttribute("aria-pressed")).toBe("false");
   });
 });
+
+describe("Lead page review fixes", () => {
+  it("draws the signals as a two-column table with Signal / At creation and a Main permit row", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: {
+        ...lead,
+        signals: {
+          roofAgeYears: 23,
+          roofAgeBasis: "permit",
+          openPermitId: "2003-012345 BP",
+          openDays: 100,
+          capturedAt: "2026-10-20T00:00:00Z",
+        },
+      },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const section = screen.getByRole("region", { name: "Current signals" });
+    expect(within(section).getByText("Signal")).toBeTruthy();
+    expect(within(section).getByText("At creation")).toBeTruthy();
+    expect(within(section).getByText("Main permit")).toBeTruthy();
+    expect(within(section).queryByText("Open permit")).toBeNull();
+    expect(within(section).getByText(/Confidence: not saved with the lead/)).toBeTruthy();
+    expect(
+      within(section).getByText(/Change since this lead was created: not available/),
+    ).toBeTruthy();
+    expect(section.textContent).toMatch(/From CountyLens, collected 2026-10-20 00:00:00 UTC/);
+  });
+
+  it("says plainly that Task A's published data has no contractor name (no contract/v1)", () => {
+    renderDetail();
+    const section = screen.getByRole("region", { name: "Current signals" });
+    expect(section.textContent).toContain(
+      "Task A's published data does not include a contractor name",
+    );
+    expect(section.textContent).not.toContain("contract/v1");
+  });
+
+  it("keeps Add note disabled while the box is empty", () => {
+    renderDetail();
+    const button = screen.getByRole("button", { name: "Add note" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    fireEvent.change(screen.getByLabelText("Add a note"), { target: { value: "x" } });
+    expect(button.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("names each copy button by which id it copies", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...lead, notInCurrentRun: true, currentManifestCid: "bafkreicurrentmanifest" },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Copy snapshot manifest CID" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy current run manifest CID" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Copy CID" })).toBeNull();
+  });
+
+  it("keeps the CIDs inline in the not-in-run sentence (one paragraph, not separate blocks)", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...lead, notInCurrentRun: true, currentManifestCid: "bafkreicurrentmanifest" },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const sentence = within(screen.getByTestId("not-in-run")).getByText(/absent from the data run/);
+    expect(sentence.tagName).toBe("P");
+    expect(sentence.querySelectorAll("[data-cid]")).toHaveLength(2);
+  });
+
+  it("loading keeps the title from the link and shows the progress bar; error keeps it too", () => {
+    useLead.mockReturnValue({ status: "pending" });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "TCAD 0210577629" })).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Loading the lead" })).toBeTruthy();
+    cleanup();
+    useLead.mockReturnValue({ status: "error", error: new Error("x"), refetch: vi.fn() });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { name: "TCAD 0210577629" })).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "This lead couldn't load. The lead store didn't answer. Try again; nothing was changed.",
+    );
+  });
+
+  it("announces the not-found card politely", () => {
+    useLead.mockReturnValue({
+      status: "error",
+      error: { data: { code: "NOT_FOUND" } },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={["/leads/nope"]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("status").textContent).toContain("Lead not found");
+  });
+
+  it("the New status pill has no NEW badge glyph", async () => {
+    const { LEAD_STATUS_ICON } = await import("../../src/routes/Leads/LeadsList");
+    expect(LEAD_STATUS_ICON.new).not.toBe("fiber_new");
+  });
+});
+
+describe("Leads list review fixes", () => {
+  it("the empty state is a polite status, the loading state shows the progress bar", () => {
+    useLeadsList.mockReturnValue({
+      status: "success",
+      data: { leads: [], totalCount: 0 },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={["/leads"]}>
+        <LeadsList />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("heading", { name: "No leads yet" }).closest("[role=status]"),
+    ).not.toBeNull();
+    cleanup();
+    useLeadsList.mockReturnValue({ status: "pending" });
+    render(
+      <MemoryRouter initialEntries={["/leads"]}>
+        <LeadsList />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("progressbar", { name: "Loading your leads" })).toBeTruthy();
+  });
+
+  it("the lead link and All filters have a 48 px hit area", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const css = readFileSync(join(__dirname, "../../src/routes/Leads/Leads.module.css"), "utf8");
+    expect(css).toMatch(/\.cardLink\s*{[^}]*min-height: var\(--space-9\)/);
+    expect(css).toMatch(/\.link\s*{[^}]*min-height: var\(--space-9\)/);
+  });
+});

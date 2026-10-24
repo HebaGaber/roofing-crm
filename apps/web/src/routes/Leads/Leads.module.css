@@ -305,6 +305,9 @@
 }
 
 .cardLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   font-family: var(--md-sys-typescale-title-medium-font);
   font-size: var(--md-sys-typescale-title-medium-size);
@@ -370,9 +373,11 @@
   color: var(--md-sys-color-on-primary);
 }
 
+/* Atlas disabled button: 12% on-surface container, 38% on-surface label (no solid blue). */
 .action:disabled {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
   cursor: not-allowed;
-  opacity: 0.6;
 }
 
 .section {
@@ -399,17 +404,10 @@
 
 .fields > div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-1);
+  grid-template-columns: calc(var(--space-10) + var(--space-7)) minmax(0, 1fr);
+  gap: var(--space-4);
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
-
-@media (min-width: 480px) {
-  .fields > div {
-    grid-template-columns: calc(var(--space-10) * 2) minmax(0, 1fr);
-    gap: var(--space-4);
-  }
 }
 
 .fields dt {
@@ -494,6 +492,9 @@
 }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
@@ -690,7 +691,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-full);
   background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
+  color: color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent);
   cursor: not-allowed;
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
@@ -921,4 +922,103 @@
 
 .snackbar .snackbarAction {
   width: auto;
+}
+
+/* ---- CID with its own copy button (LeadCid) ---- */
+
+.cid {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  vertical-align: middle;
+}
+
+.cidText {
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  color: var(--md-sys-color-on-surface);
+}
+
+.cidCopy {
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--space-9);
+  height: var(--space-9);
+  /* 48 px hit area, but only a text line tall in the sentence it sits in (negative margin). */
+  margin: calc(-1 * var(--space-3)) 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.cidCopy:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+/* ---- Indeterminate progress bar (loading cards) ---- */
+
+.progressBar {
+  position: relative;
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.progressFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  animation: lead-progress 1.4s ease-in-out infinite;
+}
+
+@keyframes lead-progress {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    left: 70%;
+    animation: none;
+  }
+}
+
+.loadingCard {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+}
+
+/* ---- Signals: two columns at every width, with a heading row (CrmLead*) ---- */
+
+.signalsHead {
+  display: grid;
+  grid-template-columns: calc(var(--space-10) + var(--space-7)) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.titleBlock {
+  display: grid;
+  gap: var(--space-1);
 }

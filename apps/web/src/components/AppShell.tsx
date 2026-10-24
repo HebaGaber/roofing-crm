@@ -8,18 +8,29 @@
 // AppShell.module.css. DOM order is banner, navigation, main (ERR-13: Tab reaches the rail before
 // the page content); the grid areas place the bottom navigation below main on compact widths, so
 // nothing moves.
-import { useCallback, useState, type ReactElement, type UIEvent } from "react";
-import { NavLink, Outlet, useMatch } from "react-router";
-import { Icon } from "@crm/ui";
+import { useCallback, useState, type MouseEvent, type ReactElement, type UIEvent } from "react";
+import { Outlet, useMatch } from "react-router";
 import { MoreSheet } from "./AppShell/MoreSheet.js";
 import { NavRail } from "./AppShell/NavRail.js";
-import { DESTINATIONS } from "./AppShell/navigation.js";
+import { ShellNav } from "./AppShell/ShellNav.js";
 import { ShellTopBar } from "./AppShell/ShellTopBar.js";
 import styles from "./AppShell.module.css";
 
 export { DESTINATIONS, type Destination } from "./AppShell/navigation.js";
 
 export const APP_TITLE = "Roofing CRM";
+
+const MAIN_ID = "main-content";
+
+/** The hash alone moves the view but not always the focus; move both, so the next Tab starts in
+ *  the page. */
+function focusMain(event: MouseEvent<HTMLAnchorElement>): void {
+  const main = document.getElementById(MAIN_ID);
+  if (main === null) return;
+  event.preventDefault();
+  main.focus();
+  main.scrollIntoView?.({ block: "start" });
+}
 
 /** Routes whose page draws edge to edge inside the main region (no page margin): the Map screen
  *  (CrmMap390/768/1440 put the map, panes and sheets flush against the bar, rail and window). */
@@ -36,29 +47,22 @@ export function AppShell(): ReactElement {
 
   return (
     <div className={styles.shell}>
+      {/* The first Tab stop: jumps over the bar and navigation to the page (WCAG 2.4.1). It is
+          drawn only while focused. */}
+      <a className={styles.skip} href={`#${MAIN_ID}`} onClick={focusMain}>
+        Skip to content
+      </a>
       <header className={scrolled ? `${styles.bar} ${styles.barScrolled}` : styles.bar}>
         <ShellTopBar title={APP_TITLE} />
       </header>
       <nav className={styles.nav} aria-label="Primary">
-        {DESTINATIONS.map((destination) => (
-          <NavLink
-            key={destination.to}
-            to={destination.to}
-            end={destination.to === "/"}
-            className={({ isActive }) =>
-              isActive ? `${styles.item} ${styles.itemActive}` : styles.item
-            }
-          >
-            <span className={styles.pill}>
-              <Icon name={destination.icon} />
-            </span>
-            <span className={styles.label}>{destination.label}</span>
-          </NavLink>
-        ))}
+        <ShellNav />
         <NavRail />
         <MoreSheet />
       </nav>
       <main
+        id={MAIN_ID}
+        tabIndex={-1}
         className={fullBleed ? `${styles.main} ${styles.mainFullBleed}` : styles.main}
         data-layout={fullBleed ? "full-bleed" : "padded"}
         onScroll={onScroll}

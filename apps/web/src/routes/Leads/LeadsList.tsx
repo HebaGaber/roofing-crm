@@ -13,6 +13,7 @@ import { useMemo, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import { Skeleton } from "../../components/Skeleton.js";
 import { LeadBanner } from "./LeadBanner.js";
+import { LeadProgress } from "./LeadProgress.js";
 import { LeadActions, LeadFilters, STATUS_LABEL, filterSummary } from "./LeadFilters.js";
 import {
   hasActiveFilters,
@@ -36,7 +37,7 @@ export const LEAD_STATUS_KIND = {
 
 /** The board's status icons (CrmLeads*: Contacted phone, Qualified check, New new-box). */
 export const LEAD_STATUS_ICON = {
-  new: "fiber_new",
+  new: "add_circle",
   contacted: "call",
   qualified: "check_circle",
   won: "emoji_events",
@@ -148,10 +149,13 @@ export function Component(): ReactElement {
         <p className={styles.count}>
           <span>… leads</span>
         </p>
-        <p className={styles.loadingText} role="status">
-          Loading your leads…
-        </p>
-        <Skeleton variant="cards" count={3} />
+        <div className={styles.loadingCard} aria-busy="true">
+          <LeadProgress label="Loading your leads" />
+          <p className={styles.loadingText} role="status">
+            Loading your leads…
+          </p>
+          <Skeleton variant="cards" count={3} />
+        </div>
       </>
     );
   } else if (result.status === "error") {
@@ -172,7 +176,7 @@ export function Component(): ReactElement {
     );
   } else if (noLeadsYet) {
     body = (
-      <section className={styles.stateCard} aria-labelledby="leads-empty">
+      <section className={styles.stateCard} aria-labelledby="leads-empty" role="status">
         <Icon name="contact_page" />
         <h3 id="leads-empty" className={styles.stateTitle}>
           No leads yet
@@ -199,7 +203,7 @@ export function Component(): ReactElement {
             </>
           )}
         </p>
-        <section className={styles.stateCard} aria-labelledby="leads-nomatch">
+        <section className={styles.stateCard} aria-labelledby="leads-nomatch" role="status">
           <h3 id="leads-nomatch" className={styles.stateTitle}>
             No leads match these filters
           </h3>

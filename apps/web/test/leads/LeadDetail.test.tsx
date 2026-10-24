@@ -1,7 +1,7 @@
 // B-07 T021: LeadDetail (AC-5, FR-005, constitution XI). When the lead is not in the current run
 // the signals snapshot must NOT be rendered as current: a MissingValue-style "Not in Run" state
 // replaces it, with the snapshot's provenance still visible as history.
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -119,10 +119,12 @@ describe("LeadDetail", () => {
   it("disables Add note while the status change is saving (race guard)", () => {
     useLead.mockReturnValue({ status: "success", data: base, refetch: vi.fn() });
     renderDetail();
+    fireEvent.change(screen.getByLabelText("Add a note"), { target: { value: "Called" } });
     expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(false);
     cleanup();
     statusPending = true;
     renderDetail();
+    fireEvent.change(screen.getByLabelText("Add a note"), { target: { value: "Called" } });
     expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(true);
   });
 

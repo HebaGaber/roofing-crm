@@ -210,7 +210,7 @@ describe("top bar", () => {
 
 describe("navigation", () => {
   it("Ask uses the robot icon (smart_toy), as on CrmBottomNav", () => {
-    expect(DESTINATIONS.find((d) => d.to === "/ask")?.icon).toBe("smart_toy");
+    expect(DESTINATIONS.find((d) => d.label === "Ask")?.icon).toBe("smart_toy");
     renderShell();
     const ask = screen.getByRole("link", { name: "Ask" });
     expect(ask.querySelector('[data-icon="smart_toy"]')).not.toBeNull();
@@ -508,5 +508,89 @@ describe("Help menu (What can I ask?)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Help" }));
     expect(screen.queryByRole("menu", { name: "Apps" })).toBeNull();
     expect(screen.getByRole("menu", { name: "Help" })).toBeTruthy();
+  });
+});
+
+describe("rail nesting and the Ask destination (CrmShell1440, CrmBottomNav)", () => {
+  // Rail-only and bar-only links are display:none in one layout, which empties their accessible
+  // name, so they are found by their visible text inside the Primary navigation instead.
+  const link = (name: string): HTMLElement => {
+    const found = Array.from(
+      document.querySelectorAll<HTMLElement>('nav[aria-label="Primary"] > a'),
+    ).find((a) => a.textContent === name);
+    if (found === undefined) throw new Error(`no ${name} link`);
+    return found;
+  };
+
+  it("nests Filters and AI under Map in the rail, then Leads; Ask is the bottom bar's alone", () => {
+    renderShell("/");
+    expect(link("Map").getAttribute("href")).toBe("/");
+    expect(link("Filters").getAttribute("href")).toBe("/?mode=filters");
+    expect(link("AI").getAttribute("href")).toBe("/?mode=ai");
+    expect(link("Ask").getAttribute("href")).toBe("/?mode=ai");
+    expect(link("Leads").getAttribute("href")).toBe("/leads");
+    expect(document.querySelector('a[href="/ask"]')).toBeNull();
+    const order = Array.from(document.querySelectorAll('nav[aria-label="Primary"] > a')).map(
+      (a) => a.textContent,
+    );
+    expect(order).toEqual(["Map", "Filters", "AI", "Leads", "Ask"]);
+  });
+
+  it("each layout draws its own: Filters and AI are rail-only, Ask is bar-only", () => {
+    const shell = readFileSync(
+      join(__dirname, "../../../src/components/AppShell.module.css"),
+      "utf8",
+    );
+    expect(shell).toMatch(/\.itemRailOnly\s*{\s*display: none;/);
+    expect(shell).toMatch(/@media \(min-width: 600px\)[\s\S]*\.itemRailOnly\s*{\s*display: flex;/);
+    expect(shell).toMatch(/@media \(min-width: 600px\)[\s\S]*\.itemBarOnly\s*{\s*display: none;/);
+    renderShell("/");
+    expect(link("Filters").className).toContain("itemRailOnly");
+    expect(link("AI").className).toContain("itemNested");
+    expect(link("Ask").className).toContain("itemBarOnly");
+  });
+
+  it("follows the map mode: Map on the map, Filters in filters mode, AI and Ask in AI mode", () => {
+    renderShell("/");
+    expect(link("Map").getAttribute("aria-current")).toBe("page");
+    expect(link("AI").hasAttribute("aria-current")).toBe(false);
+    cleanup();
+    renderShell("/?mode=ai");
+    expect(link("AI").getAttribute("aria-current")).toBe("page");
+    expect(link("Ask").getAttribute("aria-current")).toBe("page");
+    expect(link("Map").hasAttribute("aria-current")).toBe(false);
+    cleanup();
+    renderShell("/?mode=filters");
+    expect(link("Filters").getAttribute("aria-current")).toBe("page");
+    expect(link("Map").getAttribute("aria-current")).toBe("page");
+  });
+
+  it("marks Leads on its own route and nothing on the map", () => {
+    renderShell("/coming-soon/jobs");
+    expect(link("Map").hasAttribute("aria-current")).toBe(false);
+    expect(link("AI").hasAttribute("aria-current")).toBe(false);
+  });
+});
+
+describe("Skip to content", () => {
+  it("is the first Tab stop, targets the main region and moves focus into it", () => {
+    renderShell("/");
+    const skip = screen.getByRole("link", { name: "Skip to content" });
+    const first = document.querySelector("a, button");
+    expect(first).toBe(skip);
+    const main = screen.getByRole("main");
+    expect(skip.getAttribute("href")).toBe(`#${main.id}`);
+    expect(main.getAttribute("tabindex")).toBe("-1");
+    fireEvent.click(skip);
+    expect(document.activeElement).toBe(main);
+  });
+
+  it("is out of sight until focused", () => {
+    const shell = readFileSync(
+      join(__dirname, "../../../src/components/AppShell.module.css"),
+      "utf8",
+    );
+    expect(shell).toMatch(/\.skip\s*{[^}]*transform: translateY/);
+    expect(shell).toMatch(/\.skip:focus-visible\s*{[^}]*transform: none/);
   });
 });

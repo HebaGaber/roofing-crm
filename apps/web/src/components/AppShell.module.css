@@ -128,6 +128,12 @@
   text-align: center;
 }
 
+/* Which layout a destination belongs to (navigation.ts `where`): the bottom bar below 600 px, the
+   rail from 600 px. Map's children (Filters, AI) are the rail's, smaller under Map. */
+.itemRailOnly {
+  display: none;
+}
+
 /* Medium and up (Atlas § 4): navigation rail, 80 px wide, left of the main region; 24 px margins. */
 @media (min-width: 600px) {
   .shell {
@@ -136,6 +142,29 @@
     grid-template-areas:
       "bar bar"
       "nav main";
+  }
+
+  .itemRailOnly {
+    display: flex;
+  }
+
+  .itemBarOnly {
+    display: none;
+  }
+
+  /* Nested under Map (CrmShell1440): a smaller icon pill and quieter label. */
+  .itemNested {
+    min-height: var(--space-8);
+  }
+
+  .itemNested .pill {
+    width: var(--space-9);
+    height: var(--space-6);
+  }
+
+  .itemNested .label {
+    font-size: var(--md-sys-typescale-label-small-size);
+    line-height: var(--md-sys-typescale-label-small-line-height);
   }
 
   .nav {
@@ -166,4 +195,36 @@
    its panes meet the bar, the rail and the window edge. Two classes outrank the media rule above. */
 .main.mainFullBleed {
   padding: 0;
+}
+
+/* Skip to content: out of sight until it has focus, then a filled button at the top left, above
+   the bar (z-index 50, over the menus' 40). */
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 50;
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  text-decoration: none;
+  transform: translateY(calc(-1 * var(--space-10) * 2));
+}
+
+.skip:focus-visible {
+  transform: none;
+  outline: 2px solid var(--md-sys-color-on-primary);
+  outline-offset: -4px;
+}
+
+.main:focus {
+  outline: none;
 }

@@ -2,14 +2,16 @@
 // "Create lead" is one tap, no form (AC-1, AC-2, FR-001). Calls `leads.create` through leadsApi
 // and answers with a snackbar: "Lead created" with Open lead and an optional note (Skip / Save
 // note). An `ALREADY_EXISTS` error (the dedupe on {fips}:tcad:{request_identifier}, ADR-04) is
-// shown as "Already a lead", never as a failure. There is no Undo: `leads` has no undo procedure
-// yet (design/board-match/leads.md, API gaps). The snackbar renders inside this component's own
+// shown as "Already a lead", never as a failure. Undo calls `leads.undoCreate` with the leadId the
+// create returned; a refusal is shown as the reason the lead was kept. The snackbar renders inside this component's own
 // subtree (position fixed), so it stays with the drawer or permit row that made the lead.
 import { leadKey as leadKeyOf } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { Icon, StatusPill } from "@crm/ui";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import { useUndoCreateLead } from "../Map/Candidates/candidatesApi.js";
+import { undoOneText, type UndoAnswer } from "../Map/Candidates/undoCopy.js";
 import { LeadBanner } from "./LeadBanner.js";
 import { useAddLeadNote, useCreateLead, type LeadCreateInput } from "./leadsApi.js";
 import styles from "./Leads.module.css";
@@ -65,15 +67,27 @@ function Snackbar({
   headline,
   leadHref,
   note,
+  undo,
   onDismiss,
 }: {
   readonly headline: string;
   readonly leadHref: string;
   /** Present only for a lead that was just created: the optional first note. */
   readonly note?: { readonly leadKey: string } | undefined;
+  /** Present only for a lead that was just created: Undo removes it (`leads.undoCreate`). */
+  readonly undo?:
+    | {
+        readonly leadKey: string;
+        readonly leadId: string;
+        readonly onDone: (answer: UndoAnswer | "failed") => void;
+        /** Why the server kept the lead, once it refused. */
+        readonly kept: string | null;
+      }
+    | undefined;
   readonly onDismiss: () => void;
 }): ReactElement {
   const addNote = useAddLeadNote();
+  const undoCreate = useUndoCreateLead();
   const [noteOpen, setNoteOpen] = useState(note !== undefined);
   const [text, setText] = useState("");
   const saveNote = (): void => {
@@ -89,6 +103,24 @@ function Snackbar({
       <div className={styles.snackbarRow}>
         <Icon name={note === undefined ? "description" : "check_circle"} size="medium" />
         <p className={styles.snackbarText}>{headline}</p>
+        {undo === undefined ? null : (
+          <button
+            type="button"
+            className={styles.snackbarAction}
+            disabled={undoCreate.isPending || undo.kept !== null}
+            onClick={() =>
+              undoCreate.mutate(
+                { leadKey: undo.leadKey, leadId: undo.leadId },
+                {
+                  onSuccess: (answer) => undo.onDone(answer),
+                  onError: () => undo.onDone("failed"),
+                },
+              )
+            }
+          >
+            {undoCreate.isPending ? "Undoing…" : "Undo"}
+          </button>
+        )}
         <Link className={styles.snackbarAction} to={leadHref}>
           Open lead
         </Link>
@@ -104,6 +136,7 @@ function Snackbar({
           <Icon name="close" size="medium" />
         </button>
       </div>
+      {undo?.kept == null ? null : <p className={styles.snackbarSaved}>{undo.kept}</p>}
       {note === undefined ? null : noteOpen ? (
         <div className={styles.snackbarNote}>
           <label htmlFor="snackbar-note" className={styles.snackbarLabel}>
@@ -157,6 +190,9 @@ export function LeadCreateAction({
 }): ReactElement | null {
   const create = useCreateLead();
   const [dismissed, setDismissed] = useState(false);
+  /** What Undo answered: the lead was removed, or why it was kept. */
+  const [removed, setRemoved] = useState<string | null>(null);
+  const [kept, setKept] = useState<string | null>(null);
   const input = toCreateInput(property, permits, permit);
 
   if (input === null) {
@@ -180,6 +216,25 @@ export function LeadCreateAction({
             headline="Lead created · New · assigned to you"
             leadHref={leadHref}
             note={{ leadKey: create.data?.leadKey ?? key }}
+            undo={
+              create.data === undefined
+                ? undefined
+                : {
+                    leadKey: create.data.leadKey,
+                    leadId: create.data.leadId,
+                    kept,
+                    onDone: (answer) => {
+                      if (answer !== "failed" && answer.deleted) {
+                        setRemoved(undoOneText(answer));
+                        setKept(null);
+                        setDismissed(false);
+                        create.reset();
+                      } else {
+                        setKept(undoOneText(answer));
+                      }
+                    },
+                  }
+            }
             onDismiss={() => setDismissed(true)}
           />
         )}
@@ -202,6 +257,22 @@ export function LeadCreateAction({
   }
   return (
     <div className={styles.createState}>
+      {removed === null ? null : (
+        <div className={styles.snackbar} role="status" data-snackbar="">
+          <div className={styles.snackbarRow}>
+            <Icon name="delete" size="medium" />
+            <p className={styles.snackbarText}>{removed}</p>
+            <button
+              type="button"
+              className={styles.snackbarClose}
+              aria-label="Dismiss"
+              onClick={() => setRemoved(null)}
+            >
+              <Icon name="close" size="medium" />
+            </button>
+          </div>
+        </div>
+      )}
       {create.error === null || create.error === undefined ? null : (
         <LeadBanner kind="error" icon="error" headline={failureText()} />
       )}

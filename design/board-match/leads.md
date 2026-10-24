@@ -14,8 +14,8 @@ Rules for the table: example data (addresses, names, run numbers) is not a diffe
 | CrmLeadsError390 | `/leads?status=new` 390, list fails | Matched | sbs/CrmLeadsError390.png | Headline, reason, Retry; the Filters chip and New chip stay (filters kept in the URL). |
 | CrmLeadsFiltered1440 | `/leads?status=new&roof=15&permit=open&lat&lng&r=5` 1440 | Deviation: one status, one permit status, no Permit open ≥, no Sort, no place picker (G-2, G-4, G-11; review-log rows 58, 59) | sbs/CrmLeadsFiltered1440.png | Within is a point (latitude, longitude) or the device location, not a named place. |
 | CrmLeadsLoading390 | `/leads` 390, pending | Matched | sbs/CrmLeadsLoading390.png | Count reads … leads, Loading your leads… (polite status), three skeleton cards. |
-| CrmLeadsNoAddress1440 | `/leads` 1440 | Matched, data differs | sbs/CrmLeadsNoAddress1440.png | Title is the TCAD id and the line says Address not published with the coordinates. Missing: near {place} and the L-id (the list has no place; lead ids are ULIDs). |
-| CrmLeadsNoAddress390 | `/leads` 390 | Matched, data differs | sbs/CrmLeadsNoAddress390.png | Same as CrmLeadsNoAddress1440. |
+| CrmLeadsNoAddress1440 | `/leads` 1440 | Deviation (G-1): the row-fact columns are missing, the address fallback is matched | sbs/CrmLeadsNoAddress1440.png | Title is the TCAD id and the line says Address not published with the coordinates. Missing: near {place} and the L-id (the list has no place; lead ids are ULIDs). |
+| CrmLeadsNoAddress390 | `/leads` 390 | Deviation (G-1): the row-fact columns are missing, the address fallback is matched | sbs/CrmLeadsNoAddress390.png | Same as CrmLeadsNoAddress1440. |
 | CrmLeadsNoContractor1440 | `/leads` 1440 | Deviation: no Contractor column (G-1) | sbs/CrmLeadsNoContractor1440.png | The reason is shown on the Lead page (Contractor not published, with why). |
 | CrmLeadsNoContractor390 | `/leads` 390 | Deviation: no contractor line on cards (G-1) | sbs/CrmLeadsNoContractor390.png | Same as CrmLeadsNoContractor1440. |
 | CrmLeadsNoMatch390 | `/leads?status=won&roof=25&permit=stalled` 390 | Matched, data differs | sbs/CrmLeadsNoMatch390.png | Omits the count of all leads (the API returns only the filtered count). One Clear filters button, in the card. |
@@ -27,9 +27,9 @@ Rules for the table: example data (addresses, names, run numbers) is not a diffe
 | CrmLead768 | `/leads/{key}` 768 | Deviation: same as CrmLead1440 | sbs/CrmLead768.png | Full page with Back to Leads. |
 | CrmLead390 | `/leads/{key}` 390 | Deviation: same as CrmLead1440 | sbs/CrmLead390.png | Full page with Back to Leads. |
 | CrmLeadChanged390 | lead with a newer run | Deferred: needs current signals from `leads.get` (G-6) | sbs/CrmLeadChanged390.png | The page cannot say what changed, so it does not show a Now column or Changed pill. |
-| CrmLeadCreate1440 | drawer, Create lead tapped | Deviation: no Undo (G-7) | sbs/CrmLeadCreate1440.png | Snackbar Lead created · New · assigned to you, Open lead, View leads, Add a note (optional) with Skip and Save note, Dismiss. No L-id (ULID). View leads stays because tests/e2e/B-07.spec.ts follows it. |
-| CrmLeadCreate390 | drawer 390, Create lead tapped | Deviation: no Undo (G-7) | sbs/CrmLeadCreate390.png | Snackbar above the bottom bar. |
-| CrmLeadCreate768 | drawer 768, Create lead tapped | Deviation: no Undo (G-7) | sbs/CrmLeadCreate768.png | Same snackbar, centred. |
+| CrmLeadCreate1440 | drawer, Create lead tapped | Matched, data differs | sbs/CrmLeadCreate1440.png | Snackbar (with Undo) Lead created · New · assigned to you, Open lead, View leads, Add a note (optional) with Skip and Save note, Dismiss. No L-id (ULID). View leads stays because tests/e2e/B-07.spec.ts follows it. |
+| CrmLeadCreate390 | drawer 390, Create lead tapped | Matched, data differs | sbs/CrmLeadCreate390.png | Snackbar (with Undo) above the bottom bar. |
+| CrmLeadCreate768 | drawer 768, Create lead tapped | Matched, data differs | sbs/CrmLeadCreate768.png | Same snackbar, centred. |
 | CrmLeadDeleted390 | `/leads/{unknown key}` 390 | Deviation: the API cannot tell deleted from unknown (G-9) | sbs/CrmLeadDeleted390.png | Card says Lead not found, the link may be wrong or the lead deleted; no deleted-by line. |
 | CrmLeadDetail1440 | superseded by CrmLead1440 | Deviation: same as CrmLead1440 | sbs/CrmLeadDetail1440.png | Board kept by the handoff, no longer linked. |
 | CrmLeadDetail390 | superseded by CrmLead390 | Deviation: same as CrmLead1440 | sbs/CrmLeadDetail390.png | As above. |
@@ -42,7 +42,7 @@ Rules for the table: example data (addresses, names, run numbers) is not a diffe
 | CrmLeadDup390 | drawer 390, existing lead | Deviation: no status or assignee in the message (G-8) | sbs/CrmLeadDup390.png | Same. |
 | CrmLeadElsewhere390 | status change refused (STALE_SEQUENCE) | Matched, data differs | sbs/CrmLeadElsewhere390.png | Banner This lead was updated by someone else with Reload (no name: the API does not say who, G-10). The page now sends the loaded event sequence so this is detected. |
 | CrmLeadLoading390 | lead pending 390 | Matched | sbs/CrmLeadLoading390.png | Back to Leads, Loading lead… status line, skeleton. |
-| CrmLeadNoAddress390 | `/leads/{key}` 390 | Matched, data differs | sbs/CrmLeadNoAddress390.png | Title TCAD id, Address not published with coordinates; no near {place}. |
+| CrmLeadNoAddress390 | `/leads/{key}` 390 | Deviation (G-1): the row-fact columns are missing, the address fallback is matched | sbs/CrmLeadNoAddress390.png | Title TCAD id, Address not published with coordinates; no near {place}. |
 | CrmLeadNoContractor390 | `/leads/{key}` 390 | Matched | sbs/CrmLeadNoContractor390.png | Contractor not published pill with the reason, BBB Not checked · no name to look up. |
 | CrmLeadSaveFailed390 | status save fails | Matched | sbs/CrmLeadSaveFailed390.png | Couldn't save the status. The change is undone. Nothing else changed. with Try again; the menu snaps back. |
 | CrmLeadSaving390 | status save pending | Matched | sbs/CrmLeadSaving390.png | Saving the status… beside the menus while the select is disabled; Saved after. |
@@ -52,6 +52,16 @@ Rules for the table: example data (addresses, names, run numbers) is not a diffe
 ## Summary
 
 42 boards: 22 Deviation, 13 Matched, 6 Matched, data differs, 1 Deferred.
+
+## Independent review round (fixes applied)
+
+- Signals: a two-column table at every width with a Signal / At creation heading, the line From CountyLens ... manifest above it, Main permit (was Open permit), a Confidence line (not saved with the lead: honest) and a Change-since line (not available: G-6).
+- Add note is the faded disabled Save-style while the box is empty; Next steps buttons are faded and disabled with the reason on screen.
+- Not-in-run card: the manifest ids sit inline in the sentences (the 48 px copy button no longer stretches the line).
+- The New status icon is a plain circle-plus (the stray NEW badge glyph is gone).
+- Loading and error keep the lead title and meta line; loading has the progress bar; error copy: This lead couldn't load. The lead store didn't answer. Try again; nothing was changed.
+- Accessibility: the TCAD link and All filters link have a 48 px hit area; each copy button names its id (Copy snapshot manifest CID, Copy current run manifest CID); Skip to content is the first Tab stop (shown on focus, moves focus to main); the lead-not-found card and the empty and no-match states are polite status regions; the reason line says Task A's published data does not include a contractor name (no contract/v1).
+- Undo on the create snackbar, see G-7.
 
 ## What changed (top fixes)
 
@@ -79,7 +89,7 @@ Changed text that `tests/e2e/B-07.spec.ts` reads (coordinator to update, not edi
 - G-4 permit filter and sort: `filters.permitStatuses: ('open'|'stalled')[]`, `filters.permitOpenMinYears: number`, `sort: 'activity'|'roof'|'open'|'near'`.
 - G-5 View property and lineage: store `propertyCid` on the lead and return it (and the lineage URL) from `leads.get`.
 - G-6 changed signals: `leads.get` returns `currentSignals?: LeadSignals & { runId }` and `signalsRunId` for the snapshot, so the Now column and Changed pill can be drawn.
-- G-7 Undo: `leads.undoCreate({ leadKey })`, a soft delete within a short window that writes a history event (review-log row 13).
+- G-7 Undo: RESOLVED. `leads.undoCreate({ leadKey, leadId })` is deployed; the one-tap snackbar (drawer and permit row) offers Undo, shows Lead removed, or Lead kept with the server's reason.
 - G-8 duplicate message: the ALREADY_EXISTS error data carries `{ leadKey, status, assignee }`.
 - G-9 deleted: `leads.get` returns `deleted: { by, at }` instead of NOT_FOUND for a soft-deleted lead.
 - G-10 who changed it: STALE_SEQUENCE error data carries `updatedBy`.

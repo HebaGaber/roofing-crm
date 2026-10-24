@@ -70,14 +70,17 @@ describe("LeadDetail load states", () => {
     renderDetail();
     expect(useLead).toHaveBeenCalledWith(KEY);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "TCAD 0201885122" })).toBeNull();
+    // The title comes from the link while the data loads; no signals or notes are drawn yet.
+    expect(screen.getByRole("heading", { name: "TCAD 0201885122" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Notes" })).toBeNull();
+    expect(screen.getByRole("progressbar", { name: "Loading the lead" })).toBeTruthy();
   });
 
   it("shows a Retry banner for a lead that cannot be loaded (including not found)", () => {
     const refetch = vi.fn();
     useLead.mockReturnValue({ status: "error", error: new Error("NOT_FOUND"), refetch });
     renderDetail();
-    expect(screen.getByRole("alert").textContent).toMatch(/could not be loaded/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn.t load/i);
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -189,7 +192,7 @@ describe("LeadDetail signals", () => {
     ]) {
       expect(screen.getByText(reason)).toBeTruthy();
     }
-    expect(screen.getByText(/Snapshot collected 2026-10-20 00:00:00 UTC/)).toBeTruthy();
+    expect(screen.getByText(/collected 2026-10-20 00:00:00 UTC/)).toBeTruthy();
   });
 
   it("shows present signals including permit age in days and BBB rating", () => {

@@ -4,19 +4,60 @@
 // and every `data-roadmap-section` stay in step with the Coming Soon route.
 import { ROADMAP_SECTIONS, type RoadmapSection } from "@crm/shared";
 
+/** The map screen's three modes, in the URL as `?mode=` (absent = map). The AI mode is the
+ *  agent (CRM-HANDOFF 4.7): it lives inside the map, so Ask is not a page of its own. */
+export type ShellMode = "map" | "filters" | "ai";
+
 export interface Destination {
-  readonly to: "/" | "/leads" | "/ask";
+  /** Where the link goes (a path, with `?mode=` for the map's modes). */
+  readonly to: string;
+  /** The route the destination lives on, matched exactly. */
+  readonly route: "/" | "/leads";
+  /** For the map's destinations: which `mode` makes this one the current page. */
+  readonly modes?: readonly ShellMode[];
   readonly label: string;
   /** Material Symbols Rounded glyph name (Atlas § 6). */
   readonly icon: string;
+  /** Where it is drawn: "bar" = bottom bar only (below 600 px), "rail" = rail only (from 600 px),
+   *  "both" = in either. */
+  readonly where: "bar" | "rail" | "both";
+  /** A child of Map in the rail (CrmShell1440): a smaller pill under Map. */
+  readonly nested?: boolean;
 }
 
+/** CrmShell1440 / CrmBottomNav. Rail: Map with Filters and AI nested under it, then Leads.
+ *  Bottom bar: Map, Leads, Ask, where Ask opens the map in AI mode (`/?mode=ai`), so the same
+ *  destination is "AI" in the rail and "Ask" on a phone, as the boards draw it. */
 export const DESTINATIONS: readonly Destination[] = [
-  { to: "/", label: "Map", icon: "map" },
-  { to: "/leads", label: "Leads", icon: "contact_page" },
-  // CrmBottomNav / CrmShell1440 draw Ask with the robot glyph (Atlas § 6: `smart_toy` = agent).
-  { to: "/ask", label: "Ask", icon: "smart_toy" },
+  { to: "/", route: "/", modes: ["map", "filters"], label: "Map", icon: "map", where: "both" },
+  {
+    to: "/?mode=filters",
+    route: "/",
+    modes: ["filters"],
+    label: "Filters",
+    icon: "tune",
+    where: "rail",
+    nested: true,
+  },
+  {
+    to: "/?mode=ai",
+    route: "/",
+    modes: ["ai"],
+    label: "AI",
+    icon: "auto_awesome",
+    where: "rail",
+    nested: true,
+  },
+  { to: "/leads", route: "/leads", label: "Leads", icon: "contact_page", where: "both" },
+  // CrmBottomNav draws Ask with the robot glyph (Atlas § 6: `smart_toy` = agent).
+  { to: "/?mode=ai", route: "/", modes: ["ai"], label: "Ask", icon: "smart_toy", where: "bar" },
 ];
+
+/** Reads the map mode out of a query string; anything else is the map. */
+export function shellModeOf(search: string): ShellMode {
+  const mode = new URLSearchParams(search).get("mode");
+  return mode === "ai" || mode === "filters" ? mode : "map";
+}
 
 const ROADMAP_ICON_AND_LINE: Readonly<Record<RoadmapSection, { icon: string; line: string }>> = {
   campaigns: { icon: "campaign", line: "Plan outreach to groups of leads." },

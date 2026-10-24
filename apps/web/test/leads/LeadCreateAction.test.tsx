@@ -1,14 +1,22 @@
 // B-07 T022 (deviation: RTL instead of Playwright component test, as apps/web has no Playwright
 // component setup): LeadCreateAction wired into the PropertyDetail drawer calls leads.create and
 // shows "Already a lead" on ALREADY_EXISTS (AC-1/AC-2).
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 
 const mutate = vi.fn();
 const noteMutate = vi.fn();
-let mutationState: { isPending: boolean; isSuccess: boolean; error: unknown } = {
+const undoMutate = vi.fn();
+let undoState: { isPending: boolean } = { isPending: false };
+let mutationState: {
+  isPending: boolean;
+  isSuccess: boolean;
+  error: unknown;
+  data?: { leadKey: string; leadId: string };
+  reset?: () => void;
+} = {
   isPending: false,
   isSuccess: false,
   error: null,
@@ -16,6 +24,10 @@ let mutationState: { isPending: boolean; isSuccess: boolean; error: unknown } = 
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate, ...mutationState }),
   useAddLeadNote: () => ({ mutate: noteMutate, isPending: false, isSuccess: false, error: null }),
+}));
+
+vi.mock("../../src/routes/Map/Candidates/candidatesApi", () => ({
+  useUndoCreateLead: () => ({ mutate: undoMutate, ...undoState }),
 }));
 
 import { toCreateInput } from "../../src/routes/Leads/LeadCreateAction";
@@ -28,6 +40,8 @@ afterEach(() => {
   cleanup();
   mutate.mockReset();
   mutationState = { isPending: false, isSuccess: false, error: null };
+  undoMutate.mockReset();
+  undoState = { isPending: false };
 });
 
 const property = {
@@ -238,5 +252,63 @@ describe("lead snackbar (CrmLeadCreate*, CrmLeadDup*)", () => {
       "You're offline. The lead was not saved.",
     );
     vi.restoreAllMocks();
+  });
+});
+
+describe("Undo on the create snackbar", () => {
+  const created = { leadKey: "48453:tcad:0201885122", leadId: "01JLEADID" };
+
+  it("offers Undo beside Open lead and sends the leadKey and leadId the create returned", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null, data: created } as never;
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(undoMutate.mock.calls[0]?.[0]).toEqual(created);
+  });
+
+  it("says Lead removed and offers Create lead again once the undo deleted it", () => {
+    const reset = vi.fn(() => {
+      mutationState = { isPending: false, isSuccess: false, error: null };
+    });
+    mutationState = {
+      isPending: false,
+      isSuccess: true,
+      error: null,
+      data: created,
+      reset,
+    } as never;
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    const options = undoMutate.mock.calls[0]?.[1] as { onSuccess: (a: unknown) => void };
+    act(() => options.onSuccess({ deleted: true }));
+    expect(reset).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status").textContent).toContain("Lead removed");
+  });
+
+  it("keeps the lead and says why when the server refuses the undo", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null, data: created } as never;
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    const options = undoMutate.mock.calls[0]?.[1] as { onSuccess: (a: unknown) => void };
+    act(() => options.onSuccess({ deleted: false, reason: "CHANGED" }));
+    expect(screen.getByRole("status").textContent).toContain(
+      "Lead kept: it was updated after it was created.",
+    );
+    expect(screen.getByRole("button", { name: "Undo" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("says the lead is still saved when the undo call itself fails", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null, data: created } as never;
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    const options = undoMutate.mock.calls[0]?.[1] as { onError: () => void };
+    act(() => options.onError());
+    expect(screen.getByRole("status").textContent).toContain("The lead is still saved");
+  });
+
+  it("shows Undoing… while it runs", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null, data: created } as never;
+    undoState = { isPending: true };
+    renderDrawer();
+    expect(screen.getByRole("button", { name: "Undoing…" }).hasAttribute("disabled")).toBe(true);
   });
 });
