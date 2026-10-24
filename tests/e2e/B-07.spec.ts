@@ -179,6 +179,12 @@ async function listLeadKeys(page: Page): Promise<string[]> {
   return data.leads.map((lead) => lead.leadKey);
 }
 
+/** The SAVED notes only. The "Notes" region also contains the textarea, and React renders the
+ *  text typed into it as content, so asserting on the whole region passes before anything is
+ *  saved (found live: the test then reloaded mid-save and flaked). */
+const savedNotes = (page: Page): Locator =>
+  page.getByRole("region", { name: "Notes" }).locator("ol");
+
 /** Opens the Map drawer for a property through the `sel` deep link (no pin-drop needed). */
 async function openDrawer(page: Page, cid: string): Promise<Locator> {
   await page.goto(`/?sel=${cid}`); // the Map is the app's index route, not /map
