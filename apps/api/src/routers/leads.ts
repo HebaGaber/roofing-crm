@@ -45,7 +45,14 @@ const ListInput = z.object({
   filters: LeadFilters.refine(
     (f) => f.radiusMi === undefined || (f.centerLat !== undefined && f.centerLon !== undefined),
     { message: "radiusMi requires centerLat and centerLon" },
-  ).optional(),
+  )
+    .refine(
+      (f) =>
+        (f.radiusMi === undefined) === (f.centerLat === undefined) &&
+        (f.centerLat === undefined) === (f.centerLon === undefined),
+      { message: "radiusMi, centerLat and centerLon must be given together or not at all" },
+    )
+    .optional(),
   assignee: z.string().min(1).optional(),
   status: LeadStatus.optional(),
   cursor: z.string().max(32).optional(),
@@ -137,7 +144,9 @@ export const leadsRouter = router({
 
   addNote: publicProcedure
     .input(
-      LeadKeyInput.extend({ text: z.string().min(1).max(NOTE_MAX_CHARS) }).merge(SequenceInput),
+      LeadKeyInput.extend({ text: z.string().trim().min(1).max(NOTE_MAX_CHARS) }).merge(
+        SequenceInput,
+      ),
     )
     .mutation(({ input, ctx }) =>
       observed("addNote", ctx.requestId, METRIC_NAMES.LeadsNoteAdded, () =>

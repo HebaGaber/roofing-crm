@@ -4,7 +4,7 @@
 // this file or in the router: the dedupe key comes from `leadKey()`, not-in-run (AC-5) from
 // `isNotInCurrentRun()` plus an index presence check, and all duplicate/sequence enforcement is the repo's DynamoDB conditions.
 import { randomBytes } from "node:crypto";
-import { isNotInCurrentRun, leadKey } from "@crm/domain";
+import { isNotInCurrentRun, leadKey, requestIdentifierOf } from "@crm/domain";
 import type { LeadEvent, LeadFilters, LeadSignals, LeadStatus } from "@crm/shared";
 import type { LeadIndex, SearchPropertiesQuery } from "../adapters/duckDbParquet.js";
 import type { LeadRepo, StoredLead } from "../adapters/leadRepo.js";
@@ -77,6 +77,9 @@ export function newUlid(nowMs: number = Date.now()): string {
 }
 
 const DEFAULT_LIMIT = 50;
+/** The index search applies LIMIT 100 when no center+radius is given; a lead filter must see the
+ *  whole index or it silently drops matching leads, so ask for effectively everything. */
+const INDEX_SCAN_LIMIT = 1_000_000;
 
 export function createLeadService(
   leadRepo: LeadRepo,
@@ -94,7 +97,7 @@ export function createLeadService(
       return undefined; // no promoted run yet: staleness unknown, so never flagged
     }
   }
-  const requestIdOf = (lead: StoredLead): string => lead.leadKey.split(":tcad:")[1] ?? "";
+  const requestIdOf = (lead: StoredLead): string => requestIdentifierOf(lead.leadKey);
 
   /** AC-5: flagged only when the manifest differs AND the lead's property is absent from the
    *  current run. Only manifest-differing leads need the presence check, batched into one query;
@@ -120,7 +123,7 @@ export function createLeadService(
    *  the same LeadIndex calls the map's search.properties makes (AC-4). */
   async function matchingRequestIdentifiers(filters: LeadFilters): Promise<Set<string>> {
     if (leadIndex === undefined) throw new LeadIndexUnavailableError();
-    const query: SearchPropertiesQuery = {};
+    const query: SearchPropertiesQuery = { limit: INDEX_SCAN_LIMIT };
     if (
       filters.radiusMi !== undefined &&
       filters.centerLat !== undefined &&
@@ -211,15 +214,10 @@ export function createLeadService(
         filters.radiusMi !== undefined ||
         filters.permitStatus !== undefined;
 
-      // assignee/status-only queries hit GSI1/GSI2; with neither, default to the caller's leads.
-      let candidates: StoredLead[];
-      if (input.assignee === undefined && input.status !== undefined) {
-        candidates = await leadRepo.listByStatus(input.status);
-      } else {
-        candidates = await leadRepo.listByAssignee(input.assignee ?? by);
-        if (input.status !== undefined)
-          candidates = candidates.filter((l) => l.status === input.status);
-      }
+      // The default scope is always the caller's own leads (GSI1); status filters in memory.
+      let candidates = await leadRepo.listByAssignee(input.assignee ?? by);
+      if (input.status !== undefined)
+        candidates = candidates.filter((l) => l.status === input.status);
 
       if (geo) {
         const ids = await matchingRequestIdentifiers(filters);

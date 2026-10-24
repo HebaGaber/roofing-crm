@@ -70,6 +70,7 @@ describe("leads.list (T011)", () => {
       center: { lat: 30.2, lng: -97.7 },
       radiusMi: 5,
       roofAgeMinYears: 15,
+      limit: 1_000_000,
     });
     expect(r.listByAssignee).toHaveBeenCalledWith("rep-1");
     expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1", "48453:tcad:3"]);
@@ -84,15 +85,56 @@ describe("leads.list (T011)", () => {
     expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1"]);
   });
 
-  it("status-only goes to listByStatus (GSI2); assignee-only to listByAssignee (GSI1); LeadIndex untouched", async () => {
+  it("status-only defaults to the caller's leads (GSI1, filtered in memory); explicit assignee to listByAssignee; LeadIndex untouched", async () => {
     const r = repo();
     const i = index();
     const a = await c(r, i).leads.list({ status: "won" });
-    expect(r.listByStatus).toHaveBeenCalledWith("won");
+    expect(r.listByStatus).not.toHaveBeenCalled();
+    expect(r.listByAssignee).toHaveBeenCalledWith("rep-1");
     expect(a.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:2"]);
     await c(r, i).leads.list({ assignee: "rep-9" });
     expect(r.listByAssignee).toHaveBeenCalledWith("rep-9");
     expect(i.searchProperties).not.toHaveBeenCalled();
+  });
+
+  it("a status filter does not show another user's leads", async () => {
+    const other = { ...mk(9), assignee: "rep-2" };
+    const r = repo();
+    r.listByAssignee = vi.fn(async (who: string) =>
+      who === "rep-1" ? leads : who === "rep-2" ? [other] : [],
+    );
+    const out = await c(r).leads.list({ status: "new" });
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1", "48453:tcad:3"]);
+  });
+
+  it("a lead on the 120th property is listed when the index only returns all rows for a large limit", async () => {
+    const many = Array.from({ length: 150 }, (_, n) => ({
+      propertyCid: `bafyP${n + 1}`,
+      requestIdentifier: String(n + 1),
+    }));
+    const i = index();
+    i.searchProperties = vi.fn(async (q: { limit?: number }) =>
+      many.slice(0, q.limit ?? 100),
+    ) as unknown as LeadIndex["searchProperties"];
+    const r = repo();
+    r.listByAssignee = vi.fn(async () => [mk(120)]);
+    const out = await c(r, i).leads.list({ filters: { roofAgeMinYears: 15 } });
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:120"]);
+  });
+
+  it("rejects a partial location filter and accepts all-or-none", async () => {
+    const r = repo();
+    const i = index();
+    await expect(
+      c(r, i).leads.list({ filters: { centerLat: 30.2, centerLon: -97.7 } }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(c(r, i).leads.list({ filters: { radiusMi: 5 } })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      c(r, i).leads.list({ filters: { radiusMi: 5, centerLat: 30.2, centerLon: -97.7 } }),
+    ).resolves.toBeDefined();
+    await expect(c(r, i).leads.list({ filters: {} })).resolves.toBeDefined();
   });
 
   it("annotates notInCurrentRun at read time from the current manifest, never stored", async () => {

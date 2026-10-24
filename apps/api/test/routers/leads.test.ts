@@ -75,6 +75,17 @@ describe("leads router (T010)", () => {
     });
   });
 
+  it("addNote rejects whitespace-only text and stores the trimmed text", async () => {
+    const { c } = ctx();
+    await c.leads.create(input);
+    await expect(c.leads.addNote({ leadKey: KEY, text: "   " })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await c.leads.addNote({ leadKey: KEY, text: "  hello  " });
+    const d = await c.leads.get({ leadKey: KEY });
+    expect(d.notes.map((n) => n.change)).toEqual(['note: "hello"']);
+  });
+
   it("updateStatus rejects an unknown status and updates a valid one", async () => {
     const { c } = ctx();
     await c.leads.create(input);

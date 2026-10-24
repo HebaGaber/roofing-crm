@@ -55,3 +55,19 @@ dependency moves out of B-07 into a later story.
 | 6.1 | Several fixes were written in one pass with their tests, not shown failing first (the API tests for the snapshot and AC-5 work). The web tests were seen failing first |
 | 6.2 | The approved test-case document (`testplans/B-07-test-cases.md`) predates the route fix (`/` not `/map`), TC-002's per-permit button, TC-015b, and the saved-notes-list assertion; it needs a version bump |
 | 6.3 | Defects found only by running on the live stack (all fixed, each with a unit test): missing tRPC error formatter, wrong `META#index` key on a pk+sk table, first-ever Promote, TransactionConflict surfacing as HTTP 500, oldest-first lead list, note shown with its storage wrapper, un-tokened Status select, permit missing from the snapshot, AC-5 flagging on manifest change alone |
+
+## 7. Found by the review round (2026-10-24; not fixed in B-07)
+
+| # | Source | Finding | Severity |
+| --- | --- | --- | --- |
+| 7.1 | metagross, code-review | Ownership and roles: `get`, `updateStatus` and `addNote` accept any `leadKey` with no ownership or role check; an explicit `assignee` on `list` can read another user's leads. The product rule (private leads, or a shared team view) is undecided | Medium |
+| 7.2 | metagross | Throttling (`ProvisionedThroughputExceeded`) and `TransactionInProgress` are not retried; no `ClientRequestToken` on create, so a retry after an ambiguous failure of a create could report "Already a lead" for the caller's own write | Medium |
+| 7.3 | code-review | The web client never sends `expectedSequence`, so two open sessions on one lead overwrite each other's status or note without a `STALE_SEQUENCE` error | Medium |
+| 7.4 | code-review | `append` maps any `ConditionalCheckFailed` to "changed since you loaded it", which hides a deleted lead or an existing event item | Low |
+| 7.5 | code-review | `notInRunKeys` and `currentManifest` swallow index errors with no log, so an index outage makes stale leads look current | Medium |
+| 7.6 | code-review | Lead filters now ask the index for up to 1,000,000 rows (fixed the 100-row truncation); untested at full-county size (about 442k parcels) in the Lambda. Filtering should move into the index query | Medium |
+| 7.7 | metagross | `withAppCode` copies any string `cause.code` (including AWS SDK error codes) to the wire; unexpected errors are logged by code only, with no error name | Low |
+| 7.8 | metagross | `crm-leads` table name is hard-coded in the CDK stack, which blocks several environments | Low |
+| 7.9 | audino | No per-datum provenance on assignee and created-at in the list card and detail; filter groups use a `<span>` label; the Status field's `<dt>` is not associated with the select; status shown lower-case in the detail but capitalised in the list; no inline validation on the numeric filter inputs; focus is not moved to the error banner after a failed create | Low to Medium |
+| 7.10 | audino | TC-016 accepts either "No leads yet" or a count and skips when the user already has leads, so it proves the empty state only on a fresh list; the token audit covers a fixed property list on two pages and not the create, empty and error states | Medium |
+| 7.11 | metagross | The vitals spec `A-13-vitals.spec.ts` (Oracle) was deleted to unblock CI; it could not run in this repo | Info |
