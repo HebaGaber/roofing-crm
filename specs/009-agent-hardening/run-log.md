@@ -121,12 +121,40 @@ signal now available at county scale.
   shared + 14 observability + 155 web tests pass, full `pnpm test` (18 packages) green. Committed
   `7f8b60b`. T047 (running the harness for real) stays blocked on data readiness, same as T021.
 
+- 2026-10-24 · E · Phase 6 (US3, T048-T056; T057 explicitly not attempted, needs a live deploy):
+  `metagross` built the full responsive suite's Ask/Leads specs, fixed a real gap (`CrmSyncStack`'s
+  existing DLQ+alarm construct never actually had `alarmEmail` set, so its SNS topic never
+  existed), added the `RoofingCrm` dashboard + a citation-groundedness alarm. 30 infra tests pass
+  (+2), `cdk synth --strict` independently re-verified clean. Committed `9176d08`.
+- 2026-10-24 · E · Phase 7 (US5, T058-T059; T060 pending Phase Z): `audino` re-diffed every screen.
+  8 pre-existing screens: zero new drift (git diff confirms only the `/ask` route+nav touched
+  them). Ask screens: fixed a real gap (the "How I read this" plan summary was on the wire but
+  never rendered) plus copy alignment; deferred with concrete reasons (not force-fixed) anything
+  that would reopen ADR-06's accepted outcome-state set or need a backend contract change the
+  story didn't build (bulk lead confirm, interactive place-correction chips, exact rate-limit
+  countdown). Committed `d471573`. **All 5 user stories' buildable code is now implemented.**
+- 2026-10-24 · E · Phase N (`/simplify`): 4 parallel review agents over the full diff, 13 bounded
+  fixes applied (deduped `isConditionalCheckFailed`/`mapIndexNotReady`/`causeWithCode`, a real
+  efficiency fix replacing two independent full-table-scan `tcadId` lookups with one indexed
+  `getPropertyByRequestIdentifier`, `loadConfig`'s fail-fast contract restored, zod unified to
+  3.25.76 workspace-wide). **One finding deliberately not auto-fixed, flagged to the user**: the
+  altitude review found `runAgent.ts` makes one `generateText` call with tools always available,
+  while `contracts/agent-api.md` describes a separate plan call (Zod-validated, one repair retry)
+  → a code-enforced scope short-circuit → only then tool calls → compose. The one-call design has
+  no room for a repair retry, and the "no tool calls on an out-of-scope question" guarantee is
+  currently only a system-prompt instruction, not code-enforced. All downstream tests pass because
+  they're scripted to match the one-call mechanism, not because the mechanism matches the
+  contract. This is a real design decision, not a style fix. Committed `23e26ff`.
+
 ## Next step
 
-Phase 6 (US3, responsive + observable: DLQ-alarm confirm, `RoofingCrm` dashboard, full responsive
-suite, T048-T057) — all `metagross`-owned. Then Phase 7 (US5, prototype re-audit, T058-T060).
-T021/T047 and the test-case token fill stay open, needing your go-ahead given AWS cost/time, same
-as before. Stop before G7 approval, merge, push, or deploy — unchanged.
+Awaiting your decision on the flagged architecture finding above (one-call agent loop vs. the
+contract's separate plan/scope-gate/compose calls) — tell me how you want this resolved, or if
+it's acceptable as-is for this round. Otherwise: TN02 (full test suite) and TN03 (quickstart step
+1) have been continuously satisfied throughout; what's left is Phase Z (deploy, reviewer scores,
+hosted Playwright/golden-query/dashboard proof) and T021/T047/T057/T060/the test-case token fill —
+all blocked on data readiness, deploy, and the A-13/A-14 merge status, per your "I will inform you"
+note. Stop before G7 approval, merge, push, or deploy — unchanged.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
