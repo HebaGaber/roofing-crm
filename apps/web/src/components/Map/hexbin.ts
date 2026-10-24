@@ -1,16 +1,37 @@
-// Zoomed-out overview (design-review-log row 10; CRM-HANDOFF E-67/E-72; prototype Explore1440
-// `heat`): properties aggregated into pointy-top hexagons in Web Mercator pixel space at the
-// map's whole-number zoom, coloured by median roof age. Pure and O(n) (plus a per-cell sort for
-// the median), with no dependency: a full county (441,961 rows) bins in well under a second.
+// Zoomed-out overview (design-review-log rows 10 and 69; CRM-HANDOFF E-67/E-72; prototype
+// Explore1440 `heat`): properties aggregated into pointy-top hexagons in Web Mercator pixel space
+// at the map's whole-number zoom, coloured by median roof age. The grid itself (projection, cell
+// rounding, rings) is `@crm/domain`'s hexGrid, the same one `search.countyOverview`'s DuckDB SQL is
+// pinned to, so a server cell and a client cell with the same id are the same hexagon.
+//
+// Two sources feed the hexagon layer: the server's whole-county cells (`overviewToHexCells`, the
+// normal path), and — only when that overview cannot be read — the client binning of the
+// properties loaded around a pin (`hexbin`), which the legend then labels as partial.
 // The roof-age scale is the shared one in `src/format/buckets.ts`, never re-derived here.
+import {
+  DEFAULT_ROOF_AGE_YEARS,
+  HEX_OVERVIEW_MAX_ZOOM,
+  HEX_RADIUS_PX,
+  hexAxialOf,
+  hexCellCenter,
+  hexCellId,
+  hexCellRing,
+} from "@crm/domain";
 import { roofAgeBucket } from "../../format/buckets.js";
 
 /** Below this zoom the map shows the hexagon overview; at or above it, individual markers.
  *  The county view opens at 9; a pin's radius view lands at 11–13. */
-export const OVERVIEW_MAX_ZOOM = 11;
-
+export const OVERVIEW_MAX_ZOOM = HEX_OVERVIEW_MAX_ZOOM;
 export function isOverviewZoom(zoom: number): boolean {
   return zoom < OVERVIEW_MAX_ZOOM;
+}
+
+/** The county hexagon view: zoomed out AND no search centre. A dropped pin or GPS fix is a radius
+ *  search whose results are listed beside the map, so they show as markers at any zoom (a 5 mi
+ *  ring on a phone fits at zoom 10, below the overview threshold); "Recentre" with no pin
+ *  returns to the county view. */
+export function isOverviewView(zoom: number, hasCentre: boolean): boolean {
+  return !hasCentre && isOverviewZoom(zoom);
 }
 
 export interface HexPoint {
@@ -42,39 +63,6 @@ export interface HexbinOptions {
   readonly agedYears?: number;
 }
 
-const TILE = 256;
-const SQRT3 = Math.sqrt(3);
-
-function project(lng: number, lat: number, world: number): [number, number] {
-  const x = ((lng + 180) / 360) * world;
-  const sin = Math.sin((lat * Math.PI) / 180);
-  const y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * world;
-  return [x, y];
-}
-
-function unproject(x: number, y: number, world: number): [number, number] {
-  const lng = (x / world) * 360 - 180;
-  const n = Math.PI * (1 - (2 * y) / world);
-  const lat = (Math.atan(Math.sinh(n)) * 180) / Math.PI;
-  return [lng, lat];
-}
-
-/** Axial (q, r) of the hexagon containing pixel (x, y), cube-rounded. */
-function axialOf(x: number, y: number, size: number): [number, number] {
-  const qf = ((SQRT3 / 3) * x - y / 3) / size;
-  const rf = ((2 / 3) * y) / size;
-  const sf = -qf - rf;
-  let q = Math.round(qf);
-  let r = Math.round(rf);
-  const s = Math.round(sf);
-  const dq = Math.abs(q - qf);
-  const dr = Math.abs(r - rf);
-  const ds = Math.abs(s - sf);
-  if (dq > dr && dq > ds) q = -r - s;
-  else if (dr > ds) r = -q - s;
-  return [q, r];
-}
-
 function median(sorted: readonly number[]): number | null {
   const n = sorted.length;
   if (n === 0) return null;
@@ -94,15 +82,13 @@ interface Acc {
 
 export function hexbin(points: readonly HexPoint[], options: HexbinOptions): HexCell[] {
   const z = Math.max(0, Math.floor(options.zoom));
-  const world = TILE * 2 ** z;
-  const size = options.radiusPx ?? 24;
-  const agedYears = options.agedYears ?? 15;
+  const size = options.radiusPx ?? HEX_RADIUS_PX;
+  const agedYears = options.agedYears ?? DEFAULT_ROOF_AGE_YEARS;
   const cells = new Map<string, Acc>();
 
   for (const point of points) {
-    const [x, y] = project(point.lng, point.lat, world);
-    const [q, r] = axialOf(x, y, size);
-    const key = `${q}:${r}`;
+    const { q, r } = hexAxialOf(point.lat, point.lng, z, size);
+    const key = `${String(q)}:${String(r)}`;
     let acc = cells.get(key);
     if (acc === undefined) {
       acc = { q, r, count: 0, ages: [], aged: 0 };
@@ -117,24 +103,65 @@ export function hexbin(points: readonly HexPoint[], options: HexbinOptions): Hex
   }
 
   const out: HexCell[] = [];
-  for (const [key, acc] of cells) {
-    const cx = size * SQRT3 * (acc.q + acc.r / 2);
-    const cy = size * 1.5 * acc.r;
-    const ring: [number, number][] = [];
-    for (let i = 0; i <= 6; i += 1) {
-      const angle = ((60 * (i % 6) - 30) * Math.PI) / 180;
-      ring.push(unproject(cx + size * Math.cos(angle), cy + size * Math.sin(angle), world));
-    }
+  for (const acc of cells.values()) {
     acc.ages.sort((a, b) => a - b);
     out.push({
-      id: `${z}:${key}`,
-      center: unproject(cx, cy, world),
-      ring,
+      id: hexCellId(z, acc.q, acc.r),
+      center: hexCellCenter(acc.q, acc.r, z, size),
+      ring: hexCellRing(acc.q, acc.r, z, size),
       count: acc.count,
       withRoofAge: acc.ages.length,
       medianRoofAge: median(acc.ages),
       agedCount: acc.aged,
     });
+  }
+  return out;
+}
+
+/** One `search.countyOverview` cell, structurally (the web never imports the API's types). */
+export interface OverviewCellInput {
+  readonly q: number;
+  readonly r: number;
+  readonly lat: number;
+  readonly lng: number;
+  readonly count: number;
+  readonly withRoofAge: number;
+  readonly medianRoofAge: number | null;
+  readonly agedCount: number;
+  readonly openPermits?: number;
+  readonly stalledPermits?: number;
+  readonly maxOpenDays?: number | null;
+}
+
+/** The server's whole-county cells as `HexCell`s: the ring is drawn from the shared grid at the
+ *  response's own zoom, the centre is the server's (rounded) one. */
+export function overviewToHexCells(cells: readonly OverviewCellInput[], zoom: number): HexCell[] {
+  const z = Math.max(0, Math.floor(zoom));
+  return cells.map((cell) => ({
+    id: hexCellId(z, cell.q, cell.r),
+    center: [cell.lng, cell.lat] as const,
+    ring: hexCellRing(cell.q, cell.r, z),
+    count: cell.count,
+    withRoofAge: cell.withRoofAge,
+    medianRoofAge: cell.medianRoofAge,
+    agedCount: cell.agedCount,
+  }));
+}
+
+/** A permit-cluster input point: one per cell that has counted permits, weighted by `permits`. */
+export interface OverviewPermitPoint {
+  readonly lat: number;
+  readonly lng: number;
+  readonly permits: number;
+  readonly openDays: number;
+}
+
+export function overviewPermitPoints(cells: readonly OverviewCellInput[]): OverviewPermitPoint[] {
+  const out: OverviewPermitPoint[] = [];
+  for (const cell of cells) {
+    const permits = (cell.openPermits ?? 0) + (cell.stalledPermits ?? 0);
+    if (permits === 0) continue;
+    out.push({ lat: cell.lat, lng: cell.lng, permits, openDays: cell.maxOpenDays ?? 0 });
   }
   return out;
 }

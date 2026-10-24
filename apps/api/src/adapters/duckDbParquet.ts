@@ -17,7 +17,16 @@ import {
 } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { bboxFor, distanceMeters, milesToMeters, type LatLng } from "@crm/domain";
+import {
+  bboxFor,
+  DEFAULT_ROOF_AGE_YEARS,
+  distanceMeters,
+  HEX_RADIUS_PX,
+  hexCellCenter,
+  hexWorldSize,
+  milesToMeters,
+  type LatLng,
+} from "@crm/domain";
 
 /** DuckDB's own single-quote escaping (double the quote) — the one rule every string literal
  *  interpolated into a SQL string in this adapter must follow consistently (CR-B-02 finding #4:
@@ -131,6 +140,121 @@ export interface LeadIndex {
   presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>>;
   /** Run identifier (provenance `runId`) of the promoted run; undefined when it has no rows. */
   currentRunId(): Promise<string | undefined>;
+  /** Whole-county hexagon aggregate for the map's zoomed-out view (design-review-log row 10).
+   *  Optional on the port so the many single-purpose test doubles of `LeadIndex` need not grow
+   *  a stub; the service answers a typed "not implemented" when an index lacks it. */
+  countyOverview?(query: CountyOverviewQuery): Promise<CountyOverview>;
+}
+
+export interface CountyOverviewQuery {
+  /** Whole-number map zoom below `HEX_OVERVIEW_MAX_ZOOM`; picks the hexagon size. */
+  zoom: number;
+  roofAgeMinYears?: number;
+  propertyUsageType?: string;
+  /** The Layers "Open and stalled permits" switch: add per-cell permit counts. */
+  permits?: boolean;
+  /** Permit status filter (Filters → Permit status); unset = open and stalled. */
+  permitStatus?: "open" | "stalled";
+  /** Permit open at least this many days (Filters → Permit open ≥ N yrs). */
+  permitOpenDaysMin?: number;
+}
+
+export interface CountyOverviewCell {
+  /** Axial cell coordinates on `@crm/domain`'s hex grid at `zoom`. */
+  q: number;
+  r: number;
+  /** Cell centre, rounded to 5 decimals (about 1 m). */
+  lat: number;
+  lng: number;
+  count: number;
+  /** Properties in the cell with a published roof age. */
+  withRoofAge: number;
+  /** Median published roof age, 1 decimal; null when none is published in the cell. */
+  medianRoofAge: number | null;
+  /** Properties whose roof age is at least `agedYears`. */
+  agedCount: number;
+  /** Present only when `permits` was asked for. */
+  openPermits?: number;
+  stalledPermits?: number;
+  /** Longest open duration of the counted permits; null when none is counted. */
+  maxOpenDays?: number | null;
+}
+
+export interface CountyOverview {
+  zoom: number;
+  agedYears: number;
+  cells: CountyOverviewCell[];
+  counts: {
+    /** Every property in the promoted run. */
+    total: number;
+    /** Properties that pass the filters. */
+    matched: number;
+    /** Matched properties drawn in a hexagon. */
+    binned: number;
+    /** Matched properties not drawn: no published coordinates. */
+    excludedNoCoordinates: number;
+    /** Properties the roof-age minimum dropped only for having no roof date (0 without one). */
+    excludedNoRoofDate: number;
+    /** Drawn properties with no published roof age (in the count, not the median). */
+    binnedWithoutRoofAge: number;
+    /** Counted permits on drawn properties; present only when `permits` was asked for. */
+    openPermits?: number;
+    stalledPermits?: number;
+  };
+  manifestCid: string;
+  /** Provenance: the promoted run's id; null when the run has no property rows. */
+  runId: string | null;
+}
+
+/** Per-sandbox overview cache, keyed by manifestCid + normalised filters: the same pattern (and
+ *  the same invalidation — a promotion changes the manifestCid) as `sandboxCache` below. Bounded:
+ *  the oldest entry is dropped past `OVERVIEW_CACHE_MAX`. */
+const overviewCache = new Map<string, Promise<CountyOverview>>();
+const OVERVIEW_CACHE_MAX = 64;
+
+function overviewCacheKey(manifestCid: string, query: CountyOverviewQuery): string {
+  return JSON.stringify([
+    manifestCid,
+    Math.floor(query.zoom),
+    query.roofAgeMinYears ?? null,
+    query.propertyUsageType ?? null,
+    query.permits === true,
+    query.permits === true ? (query.permitStatus ?? null) : null,
+    query.permits === true ? (query.permitOpenDaysMin ?? null) : null,
+  ]);
+}
+
+const round = (value: number, places: number): number => {
+  const f = 10 ** places;
+  return Math.round(value * f) / f;
+};
+
+/** SQL twin of `@crm/domain`'s `hexAxialOf` (projectMercator + hexAxialOfPixel), same operation
+ *  order so DuckDB's doubles match JavaScript's; `floor(v + 0.5)` is `Math.round` (half up, also
+ *  for negatives, where SQL `round` would go half away from zero). Pinned by
+ *  test/countyOverview.test.ts. Reads `lat`/`lng` columns; yields `q`, `r`. */
+function hexCellSql(zoom: number, source: string): string {
+  const world = hexWorldSize(zoom);
+  const size = HEX_RADIUS_PX;
+  return `
+    proj AS (
+      SELECT *, ((lng + 180) / 360) * ${world} AS x,
+        (0.5 - ln((1 + sin((lat * pi()) / 180)) / (1 - sin((lat * pi()) / 180))) / (4 * pi())) * ${world} AS y
+      FROM ${source}
+    ),
+    frac AS (
+      SELECT *, ((sqrt(3) / 3) * x - y / 3) / ${size} AS qf, ((2.0 / 3.0) * y) / ${size} AS rf FROM proj
+    ),
+    rounded AS (
+      SELECT *, floor(qf + 0.5) AS q0, floor(rf + 0.5) AS r0, floor(-qf - rf + 0.5) AS s0 FROM frac
+    ),
+    axial AS (
+      SELECT *,
+        CASE WHEN abs(q0 - qf) > abs(r0 - rf) AND abs(q0 - qf) > abs(s0 - (-qf - rf)) THEN -r0 - s0 ELSE q0 END AS q,
+        CASE WHEN abs(q0 - qf) > abs(r0 - rf) AND abs(q0 - qf) > abs(s0 - (-qf - rf)) THEN r0
+             WHEN abs(r0 - rf) > abs(s0 - (-qf - rf)) THEN -q0 - s0 ELSE r0 END AS r
+      FROM rounded
+    )`;
 }
 
 interface BoundIndex {
@@ -462,6 +586,162 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const rows = reader.getRowObjectsJS() as unknown as { requestIdentifier: string }[];
       return new Set(rows.map((r) => r.requestIdentifier));
     });
+  }
+
+  /** search.countyOverview: one DuckDB pass bins every matched, mapped property into the shared
+   *  hex grid (median roof age per cell) and, with `permits`, joins the per-property open/stalled
+   *  permit counts in the same pass; a second small query counts what cannot be drawn. Cached per
+   *  manifestCid + filters (`overviewCache`), so a warm repeat costs one pointer read. */
+  async countyOverview(query: CountyOverviewQuery): Promise<CountyOverview> {
+    return withObservabilityOperation(this.obs, "LeadIndex.countyOverview", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const cacheKey = overviewCacheKey(manifestCid, query);
+      const cached = overviewCache.get(cacheKey);
+      if (cached !== undefined) {
+        this.obs.logger.info("countyOverview cache hit", { zoom: query.zoom });
+        return cached;
+      }
+      const startedAt = Date.now();
+      const pending = this.computeCountyOverview(manifestCid, query);
+      overviewCache.set(cacheKey, pending);
+      pending.catch(() => overviewCache.delete(cacheKey));
+      if (overviewCache.size > OVERVIEW_CACHE_MAX) {
+        const oldest = overviewCache.keys().next().value;
+        if (oldest !== undefined) overviewCache.delete(oldest);
+      }
+      const result = await pending;
+      this.obs.logger.info("countyOverview computed", {
+        zoom: query.zoom,
+        cells: result.cells.length,
+        durationMs: Date.now() - startedAt,
+      });
+      return result;
+    });
+  }
+
+  private async computeCountyOverview(
+    manifestCid: string,
+    query: CountyOverviewQuery,
+  ): Promise<CountyOverview> {
+    const { connection } = await this.ensureLoaded(manifestCid);
+    const zoom = Math.max(0, Math.floor(query.zoom));
+    const usage =
+      query.propertyUsageType === undefined
+        ? "TRUE"
+        : `"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`;
+    const roof =
+      query.roofAgeMinYears === undefined
+        ? "TRUE"
+        : `"roofAgeYears" >= ${String(Number(query.roofAgeMinYears))}`;
+    const matched = `(${usage}) AND (${roof})`;
+
+    const totalsReader = await connection.runAndReadAll(
+      `SELECT count(*)::INTEGER AS total,
+         (count(*) FILTER (WHERE ${matched}))::INTEGER AS matched,
+         (count(*) FILTER (WHERE ${matched} AND (latitude IS NULL OR longitude IS NULL)))::INTEGER AS "noCoordinates",
+         (count(*) FILTER (WHERE ${usage} AND "roofAgeYears" IS NULL))::INTEGER AS "noRoofDate",
+         min("runId") AS "runId"
+       FROM crm_property`,
+    );
+    const totals = totalsReader.getRowObjectsJS()[0] as unknown as {
+      total: number;
+      matched: number;
+      noCoordinates: number;
+      noRoofDate: number;
+      runId: string | null;
+    };
+
+    const withPermits = query.permits === true;
+    const permitWhere = [
+      query.permitStatus === undefined
+        ? `"statusClass" IN ('open', 'stalled')`
+        : `"statusClass" = '${query.permitStatus === "open" ? "open" : "stalled"}'`,
+      ...(query.permitOpenDaysMin === undefined
+        ? []
+        : [`"openDays" >= ${String(Number(query.permitOpenDaysMin))}`]),
+    ].join(" AND ");
+    const permitCte = withPermits
+      ? `perm AS (
+           SELECT "propertyCid",
+             count(*) FILTER (WHERE "statusClass" = 'open') AS o,
+             count(*) FILTER (WHERE "statusClass" = 'stalled') AS s,
+             max("openDays") AS m
+           FROM crm_permit WHERE ${permitWhere} GROUP BY "propertyCid"
+         ),`
+      : "";
+    const src = withPermits
+      ? `SELECT p.latitude AS lat, p.longitude AS lng, p."roofAgeYears" AS age, perm.o, perm.s, perm.m
+         FROM crm_property p LEFT JOIN perm ON perm."propertyCid" = p."propertyCid"
+         WHERE ${matched} AND p.latitude IS NOT NULL AND p.longitude IS NOT NULL`
+      : `SELECT latitude AS lat, longitude AS lng, "roofAgeYears" AS age
+         FROM crm_property WHERE ${matched} AND latitude IS NOT NULL AND longitude IS NOT NULL`;
+    const permitCols = withPermits
+      ? `, coalesce(sum(o), 0)::INTEGER AS "openPermits", coalesce(sum(s), 0)::INTEGER AS "stalledPermits", max(m)::INTEGER AS "maxOpenDays"`
+      : "";
+    const cellsReader = await connection.runAndReadAll(
+      `WITH ${permitCte} src AS (${src}), ${hexCellSql(zoom, "src")}
+       SELECT q::INTEGER AS q, r::INTEGER AS r, count(*)::INTEGER AS count,
+         count(age)::INTEGER AS "withRoofAge", median(age)::DOUBLE AS "medianRoofAge",
+         (count(*) FILTER (WHERE age >= ${String(DEFAULT_ROOF_AGE_YEARS)}))::INTEGER AS "agedCount"
+         ${permitCols}
+       FROM axial GROUP BY q, r ORDER BY r, q`,
+    );
+    const rows = cellsReader.getRowObjectsJS() as unknown as {
+      q: number;
+      r: number;
+      count: number;
+      withRoofAge: number;
+      medianRoofAge: number | null;
+      agedCount: number;
+      openPermits?: number;
+      stalledPermits?: number;
+      maxOpenDays?: number | null;
+    }[];
+
+    let binned = 0;
+    let withAge = 0;
+    let openPermits = 0;
+    let stalledPermits = 0;
+    const cells: CountyOverviewCell[] = rows.map((row) => {
+      binned += row.count;
+      withAge += row.withRoofAge;
+      const [lng, lat] = hexCellCenter(row.q, row.r, zoom);
+      const cell: CountyOverviewCell = {
+        q: row.q,
+        r: row.r,
+        lat: round(lat, 5),
+        lng: round(lng, 5),
+        count: row.count,
+        withRoofAge: row.withRoofAge,
+        medianRoofAge: row.medianRoofAge === null ? null : round(row.medianRoofAge, 1),
+        agedCount: row.agedCount,
+      };
+      if (withPermits) {
+        openPermits += row.openPermits ?? 0;
+        stalledPermits += row.stalledPermits ?? 0;
+        cell.openPermits = row.openPermits ?? 0;
+        cell.stalledPermits = row.stalledPermits ?? 0;
+        cell.maxOpenDays = row.maxOpenDays ?? null;
+      }
+      return cell;
+    });
+
+    return {
+      zoom,
+      agedYears: DEFAULT_ROOF_AGE_YEARS,
+      cells,
+      counts: {
+        total: totals.total,
+        matched: totals.matched,
+        binned,
+        excludedNoCoordinates: totals.noCoordinates,
+        excludedNoRoofDate: query.roofAgeMinYears === undefined ? 0 : totals.noRoofDate,
+        binnedWithoutRoofAge: binned - withAge,
+        ...(withPermits ? { openPermits, stalledPermits } : {}),
+      },
+      manifestCid,
+      runId: totals.runId ?? null,
+    };
   }
 
   async currentRunId(): Promise<string | undefined> {

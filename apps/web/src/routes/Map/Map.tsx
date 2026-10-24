@@ -19,9 +19,12 @@
 // draggable bottom sheet over the map (ResultsSheet), the drawer a full-height sheet. One DOM at
 // every width, so every data-state / data-testid / data-route hook is unchanged. Plus the
 // zoomed-out overview (PO, 2026-10-25): hexagons and permit clusters below the overview zoom,
-// the "Zoom in" chip and the legend.
+// the "Zoom in" chip and the legend. The overview's hexagons and permit clusters come from
+// `search.countyOverview` (design-review-log row 10): the whole county, opening immediately with
+// no centre, re-fetched per whole-number zoom and filter; the client binning of loaded results is
+// only the fallback when that overview cannot be read (the legend says so).
 import { useTRPC } from "@crm/api-client/react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { useSearchParams } from "react-router";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
@@ -31,6 +34,12 @@ import { LayersPopover, type LayersState } from "../../components/Map/LayersPopo
 import { MapControls } from "../../components/Map/MapControls.js";
 import { MapLegend } from "../../components/Map/MapLegend.js";
 import type { MapViewMode } from "../../components/Map/CrmMap.js";
+import {
+  OVERVIEW_MAX_ZOOM,
+  overviewPermitPoints,
+  overviewToHexCells,
+} from "../../components/Map/hexbin.js";
+import type { CountyOverviewStatus } from "../../components/Map/MapLegend.js";
 import { RadiusControl } from "../../components/Map/RadiusControl.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
@@ -44,6 +53,11 @@ import styles from "./Map.module.css";
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
 const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, gaps: false };
+/** The map opens on the whole county at this zoom (CrmMap's COUNTY_ZOOM). */
+const COUNTY_ZOOM_STEP = 9;
+/** The county overview changes only with a new promoted run; refetching it on every focus is waste. */
+const OVERVIEW_STALE_MS = 5 * 60_000;
+const DAYS_PER_YEAR = 365.25;
 
 export function Component(): ReactElement {
   const trpc = useTRPC();
@@ -60,6 +74,7 @@ export function Component(): ReactElement {
   const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
   const [viewMode, setViewMode] = useState<MapViewMode>("overview");
+  const [zoomStep, setZoomStep] = useState(COUNTY_ZOOM_STEP);
 
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
@@ -189,12 +204,68 @@ export function Component(): ReactElement {
       .filter((m): m is NonNullable<typeof m> => m !== null);
   }, [filteredPermits, query.data]);
 
+  // The whole-county overview (zoomed out only). Same filters as the markers: roof-age minimum
+  // and, with the permit layer on, permit status and "open at least N yrs" (the client filter
+  // above drops openDays / 365.25 < N, so the server's day threshold is ceil(N × 365.25)).
+  const overviewWanted = viewMode === "overview" && (layers.roofs || layers.permits);
+  const overviewInput = useMemo(
+    () => ({
+      zoom: Math.max(0, Math.min(zoomStep, OVERVIEW_MAX_ZOOM - 1)),
+      ...(roofAgeMinYears === undefined ? {} : { roofAgeMinYears }),
+      ...(layers.permits
+        ? {
+            permits: true,
+            ...(permitStatus === "any" ? {} : { permitStatus }),
+            ...(permitOpenYrs === undefined
+              ? {}
+              : { permitOpenDaysMin: Math.ceil(permitOpenYrs * DAYS_PER_YEAR) }),
+          }
+        : {}),
+    }),
+    [zoomStep, roofAgeMinYears, layers.permits, permitStatus, permitOpenYrs],
+  );
+  const overviewQuery = useQuery({
+    ...trpc.search.countyOverview.queryOptions(overviewInput),
+    enabled: overviewWanted,
+    // Keep the previous zoom's hexagons on screen while the next zoom's load (they are still
+    // geographically right, just a different size).
+    placeholderData: keepPreviousData,
+    staleTime: OVERVIEW_STALE_MS,
+  });
+  const overview = overviewQuery.isError ? undefined : overviewQuery.data;
+  const overviewCells = useMemo(
+    () => (overview === undefined ? null : overviewToHexCells(overview.cells, overview.zoom)),
+    [overview],
+  );
+  const overviewPermits = useMemo(
+    () =>
+      overview === undefined || overview.counts.openPermits === undefined
+        ? null
+        : overviewPermitPoints(overview.cells),
+    [overview],
+  );
+  const countyStatus = useMemo<CountyOverviewStatus>(() => {
+    if (overviewQuery.isError) return { state: "error" };
+    if (overview === undefined) return { state: "loading" };
+    return {
+      state: "ready",
+      binned: overview.counts.binned,
+      excludedNoCoordinates: overview.counts.excludedNoCoordinates,
+      excludedNoRoofDate: overview.counts.excludedNoRoofDate,
+      binnedWithoutRoofAge: overview.counts.binnedWithoutRoofAge,
+      runId: overview.runId,
+    };
+  }, [overviewQuery.isError, overview]);
+
   const hasResults = query.data !== undefined && query.data.properties.length > 0;
   const isLoading = searchInput !== null && query.isLoading;
   const isIndexDown = searchInput !== null && query.isError;
   const sheetEmpty =
     !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
-  const showOverviewChip = viewMode === "overview" && layers.roofs && roofMarkers.length > 0;
+  const showOverviewChip =
+    viewMode === "overview" &&
+    layers.roofs &&
+    ((overviewCells?.length ?? 0) > 0 || roofMarkers.length > 0);
 
   return (
     <section aria-label="Map" data-route="map" className={styles.page}>
@@ -222,6 +293,9 @@ export function Component(): ReactElement {
           permitMarkers={permitMarkers}
           layers={layers}
           onViewModeChange={setViewMode}
+          onZoomStepChange={setZoomStep}
+          overviewCells={overviewCells}
+          overviewPermits={overviewPermits}
         />
         <MapControls mapRef={mapHandleRef} />
         <div className={styles.overlay}>
@@ -233,6 +307,7 @@ export function Component(): ReactElement {
                 roofs={layers.roofs}
                 permits={layers.permits}
                 loadedCount={roofMarkers.length}
+                county={countyStatus}
               />
             </div>
           </div>
@@ -283,7 +358,13 @@ export function Component(): ReactElement {
           ) : null}
           {isIndexDown ? (
             <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
-              The index could not be read. Try again shortly.
+              <span>
+                <strong>Lead index unavailable.</strong> Map results can&apos;t load right now. Your
+                leads and notes still open.
+              </span>
+              <button type="button" className={styles.widen} onClick={() => void query.refetch()}>
+                Retry
+              </button>
             </p>
           ) : null}
           {isZeroResult ? (

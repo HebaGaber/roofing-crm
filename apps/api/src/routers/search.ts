@@ -3,13 +3,29 @@
 // lives in ../services/search.ts, shared with the new agent tools (Phase 4) — this router only
 // validates input, calls the service, and shapes the tRPC response (manifestCid/traceId, typed
 // error mapping).
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { HEX_OVERVIEW_MAX_ZOOM, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import {
+  countyOverview as countyOverviewService,
+  CountyOverviewUnavailableError,
   searchPermits as searchPermitsService,
   searchProperties as searchPropertiesService,
 } from "../services/search.js";
+
+const CountyOverviewInput = z.object({
+  zoom: z
+    .number()
+    .int()
+    .min(0)
+    .max(HEX_OVERVIEW_MAX_ZOOM - 1),
+  roofAgeMinYears: z.number().int().min(0).max(200).optional(),
+  propertyUsageType: z.string().min(1).max(64).optional(),
+  permits: z.boolean().optional(),
+  permitStatus: z.enum(["open", "stalled"]).optional(),
+  permitOpenDaysMin: z.number().int().min(0).max(36_500).optional(),
+});
 
 const LatLngInput = z.object({
   lat: z.number().min(-90).max(90),
@@ -54,4 +70,20 @@ export const searchRouter = router({
         mapIndexNotReady(error);
       }
     }),
+
+  // design-review-log row 10: the whole-county hexagon aggregate for the map's zoomed-out view.
+  // Behind the same Cognito JWT authorizer as every route but health.ping/auth.reportFailedAttempt
+  // (infra/lib/crm-api-stack.ts). `zoom` is the whole-number map zoom, overview zooms only.
+  countyOverview: publicProcedure.input(CountyOverviewInput).query(async ({ input, ctx }) => {
+    const leadIndex = requireLeadIndex(ctx);
+    try {
+      const result = await countyOverviewService(leadIndex, input);
+      return { ...result, traceId: ctx.requestId };
+    } catch (error) {
+      if (error instanceof CountyOverviewUnavailableError) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: error.message, cause: error });
+      }
+      mapIndexNotReady(error);
+    }
+  }),
 });

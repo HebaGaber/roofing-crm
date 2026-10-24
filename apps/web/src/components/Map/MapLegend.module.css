@@ -10,6 +10,10 @@
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line-height);
+  /* A county note with its exclusions can run long: scroll inside the card instead of growing
+     over the "Whole county" card and the radius control. */
+  max-height: min(46vh, 360px);
+  overflow-y: auto;
 }
 
 .summary {
@@ -84,8 +88,15 @@
 }
 
 .note {
+  display: grid;
+  gap: var(--space-1);
   margin: 0;
   color: var(--md-sys-color-on-surface-variant);
+}
+
+.noteLine {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 /* Swatch fills: the Atlas data-viz tokens (one class per legend step). */

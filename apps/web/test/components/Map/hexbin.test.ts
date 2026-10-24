@@ -5,9 +5,13 @@ import {
   OVERVIEW_MAX_ZOOM,
   hexbin,
   hexCellsToFeatureCollection,
+  isOverviewView,
   isOverviewZoom,
+  overviewToHexCells,
+  overviewPermitPoints,
   type HexPoint,
 } from "../../../src/components/Map/hexbin.js";
+import { HEX_OVERVIEW_MAX_ZOOM, hexAxialOf } from "@crm/domain";
 import { permitOpenBucket, roofAgeBucket } from "../../../src/format/index.js";
 
 const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
@@ -101,12 +105,69 @@ describe("hexbin", () => {
   });
 });
 
+describe("shared grid", () => {
+  it("bins on @crm/domain's grid, the one search.countyOverview's SQL is pinned to", () => {
+    expect(OVERVIEW_MAX_ZOOM).toBe(HEX_OVERVIEW_MAX_ZOOM);
+    const [cell] = hexbin([at(AUSTIN, 10)], { zoom: 9 });
+    const { q, r } = hexAxialOf(AUSTIN.lat, AUSTIN.lng, 9);
+    expect(cell?.id).toBe(`9:${String(q)}:${String(r)}`);
+  });
+});
+
+describe("overviewToHexCells (search.countyOverview cells)", () => {
+  const { q, r } = hexAxialOf(AUSTIN.lat, AUSTIN.lng, 9);
+  const serverCell = {
+    q,
+    r,
+    lat: 30.26,
+    lng: -97.74,
+    count: 4,
+    withRoofAge: 3,
+    medianRoofAge: 21,
+    agedCount: 2,
+  };
+
+  it("draws the same hexagon the client binning draws for the same point", () => {
+    const [server] = overviewToHexCells([serverCell], 9);
+    const [client] = hexbin([at(AUSTIN, 21)], { zoom: 9 });
+    expect(server?.id).toBe(client?.id);
+    expect(server?.ring).toEqual(client?.ring);
+    expect(server?.center).toEqual([-97.74, 30.26]);
+    expect(server).toMatchObject({ count: 4, withRoofAge: 3, medianRoofAge: 21, agedCount: 2 });
+  });
+
+  it("feeds the existing feature collection (colour token from the median)", () => {
+    const fc = hexCellsToFeatureCollection(overviewToHexCells([serverCell], 9));
+    expect(fc.features[0]?.properties.token).toBe("--viz-roof-age-20-24");
+  });
+
+  it("turns cells with counted permits into weighted cluster points at the cell centre", () => {
+    const points = overviewPermitPoints([
+      { ...serverCell, openPermits: 2, stalledPermits: 1, maxOpenDays: 900 },
+      { ...serverCell, q: q + 1, openPermits: 0, stalledPermits: 0, maxOpenDays: null },
+      serverCell,
+    ]);
+    expect(points).toEqual([{ lat: 30.26, lng: -97.74, permits: 3, openDays: 900 }]);
+  });
+});
+
 describe("overview zoom", () => {
   it("is the overview below the threshold and individual pins at or above it", () => {
     expect(isOverviewZoom(9)).toBe(true);
     expect(isOverviewZoom(OVERVIEW_MAX_ZOOM - 0.01)).toBe(true);
     expect(isOverviewZoom(OVERVIEW_MAX_ZOOM)).toBe(false);
     expect(isOverviewZoom(14)).toBe(false);
+  });
+});
+
+describe("overview view", () => {
+  it("is the county hexagons only while zoomed out with no search centre", () => {
+    expect(isOverviewView(9, false)).toBe(true);
+    expect(isOverviewView(10.4, false)).toBe(true);
+    // A dropped pin or GPS fix is a radius search: its results show as markers at any zoom.
+    expect(isOverviewView(10.4, true)).toBe(false);
+    expect(isOverviewView(8, true)).toBe(false);
+    expect(isOverviewView(12, false)).toBe(false);
   });
 });
 

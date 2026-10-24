@@ -9,11 +9,15 @@
 // filtering decision always comes from the server's `search.properties`, which uses
 // `packages/domain`'s exact `distanceMeters` haversine cut, never this preview math).
 //
-// Overview (design-review-log row 10, CRM-HANDOFF E-67/E-72, PO 2026-10-25): below
-// OVERVIEW_MAX_ZOOM the roof markers become hexagons coloured by median roof age (hexbin.ts) and
-// the permit markers become count clusters coloured by the longest open duration (MapLibre's
-// own GeoJSON clustering); clicking either zooms in. Both are WebGL layers, not DOM markers, so
-// they stay fast with a full county. Every colour is an Atlas token, resolved from the DOM.
+// Overview (design-review-log rows 10 and 69, CRM-HANDOFF E-67/E-72, PO 2026-10-25): below
+// OVERVIEW_MAX_ZOOM the map shows hexagons coloured by median roof age and permit count clusters
+// coloured by the longest open duration (MapLibre's own GeoJSON clustering, weighted by each
+// point's `permits`). The cells come from `search.countyOverview` (`overviewCells`, the whole
+// county); only when the caller has none does the component bin the loaded markers itself
+// (hexbin.ts). A click on a hexagon drops a pin there (which zooms to its radius view), so the
+// county view stays "tap the map to drop a pin"; a click on a permit cluster expands it. Both are
+// WebGL layers, not DOM markers, so they stay fast with a full county. Every colour is an Atlas
+// token, resolved from the DOM.
 import {
   Map as MapLibreMap,
   Marker,
@@ -43,7 +47,9 @@ import {
   OVERVIEW_MAX_ZOOM,
   hexbin,
   hexCellsToFeatureCollection,
-  isOverviewZoom,
+  isOverviewView,
+  type HexCell,
+  type OverviewPermitPoint,
 } from "./hexbin.js";
 import styles from "./CrmMap.module.css";
 
@@ -71,6 +77,8 @@ const HEX_LINE_LAYER_ID = "crm-hex-line";
 const PERMIT_CLUSTER_SOURCE_ID = "crm-permit-clusters";
 const PERMIT_CLUSTER_LAYER_ID = "crm-permit-clusters-circle";
 const OVERVIEW_LAYER_IDS = [HEX_FILL_LAYER_ID, PERMIT_CLUSTER_LAYER_ID] as const;
+/** The opening (whole-county) zoom. */
+const COUNTY_ZOOM = 9;
 /** Paint colours MapLibre cannot read from CSS variables: resolved from the live Atlas tokens.
  *  Only if a token is unset (never in the app, which loads tokens.css) does a CSS named colour
  *  stand in, so a paint call never fails. */
@@ -222,6 +230,13 @@ export interface CrmMapProps {
   readonly layers?: CrmMapLayers;
   /** Fired when the view switches between the hexagon overview and individual markers. */
   readonly onViewModeChange?: (mode: MapViewMode) => void;
+  /** Whole-county hexagons from `search.countyOverview`; `null`/absent = bin `roofMarkers`. */
+  readonly overviewCells?: readonly HexCell[] | null;
+  /** Whole-county permit cluster points (one per cell, weighted); `null`/absent = use
+   *  `permitMarkers`. */
+  readonly overviewPermits?: readonly OverviewPermitPoint[] | null;
+  /** Fired with the whole-number zoom when it changes (the overview query's hexagon size). */
+  readonly onZoomStepChange?: (zoomStep: number) => void;
 }
 
 /** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
@@ -265,6 +280,9 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     permitMarkers = [],
     layers = { roofs: true, permits: true },
     onViewModeChange,
+    overviewCells = null,
+    overviewPermits = null,
+    onZoomStepChange,
   }: CrmMapProps,
   ref,
 ) {
@@ -278,10 +296,12 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const [styleReady, setStyleReady] = useState(false);
   const onPinDropRef = useRef(onPinDrop);
   onPinDropRef.current = onPinDrop;
-  const [zoom, setZoom] = useState(9);
-  const overview = isOverviewZoom(zoom);
+  const [zoom, setZoom] = useState(COUNTY_ZOOM);
+  const overview = isOverviewView(zoom, center !== null);
   const onViewModeChangeRef = useRef(onViewModeChange);
   onViewModeChangeRef.current = onViewModeChange;
+  const onZoomStepChangeRef = useRef(onZoomStepChange);
+  onZoomStepChangeRef.current = onZoomStepChange;
 
   const onRetry = useCallback(() => {
     setFailed(false);
@@ -295,7 +315,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     const map = new MapLibreMap({
       container: containerRef.current,
       style: styleUrl,
-      zoom: 9,
+      zoom: COUNTY_ZOOM,
       ...buildMapInitOptions(),
     });
     mapRef.current = map;
@@ -329,12 +349,12 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     };
 
     const onClick = (event: MapMouseEvent): void => {
-      // A click on a hexagon or a permit cluster zooms into it (its own layer handler below);
-      // it never also drops a pin there.
-      const present = OVERVIEW_LAYER_IDS.filter((id) => map.getLayer(id) !== undefined);
+      // A click on a permit cluster expands it (its own layer handler below) and never also
+      // drops a pin there. A click on a hexagon drops the pin: with the whole county covered,
+      // every county-view click lands on one, and the pin's radius fit is the zoom-in.
       if (
-        present.length > 0 &&
-        map.queryRenderedFeatures(event.point, { layers: present }).length > 0
+        map.getLayer(PERMIT_CLUSTER_LAYER_ID) !== undefined &&
+        map.queryRenderedFeatures(event.point, { layers: [PERMIT_CLUSTER_LAYER_ID] }).length > 0
       ) {
         return;
       }
@@ -355,14 +375,6 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         zoom: toZoom,
         duration: prefersReducedMotion() ? 0 : 400,
       });
-    };
-
-    const onHexClick = (
-      event: MapMouseEvent & { features?: { properties: Record<string, unknown> }[] },
-    ): void => {
-      const props = event.features?.[0]?.properties;
-      if (props === undefined) return;
-      zoomInto(Number(props.centerLng), Number(props.centerLat), OVERVIEW_MAX_ZOOM + 0.5);
     };
 
     const onClusterClick = (
@@ -397,7 +409,6 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     map.on("error", onError);
     map.on("click", onClick);
     map.on("zoomend", onZoomEnd);
-    map.on("click", HEX_FILL_LAYER_ID, onHexClick);
     map.on("click", PERMIT_CLUSTER_LAYER_ID, onClusterClick);
     for (const id of OVERVIEW_LAYER_IDS) {
       map.on("mouseenter", id, pointer);
@@ -518,21 +529,26 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     onViewModeChangeRef.current?.(overview ? "overview" : "detail");
   }, [overview]);
 
-  // Overview: hexagons of the roof markers at the current whole-number zoom.
+  // Overview: the server's whole-county cells, or (fallback) the loaded roof markers binned at
+  // the current whole-number zoom.
   const zoomStep = Math.floor(zoom);
+  useEffect(() => {
+    onZoomStepChangeRef.current?.(zoomStep);
+  }, [zoomStep]);
   const hexData = useMemo(
     () =>
       hexCellsToFeatureCollection(
-        hexbin(
-          roofMarkers.map((p) => ({
-            lat: p.lat,
-            lng: p.lng,
-            roofAgeYears: p.roofAgeYears ?? null,
-          })),
-          { zoom: zoomStep },
-        ),
+        overviewCells ??
+          hexbin(
+            roofMarkers.map((p) => ({
+              lat: p.lat,
+              lng: p.lng,
+              roofAgeYears: p.roofAgeYears ?? null,
+            })),
+            { zoom: zoomStep },
+          ),
       ),
-    [roofMarkers, zoomStep],
+    [overviewCells, roofMarkers, zoomStep],
   );
   useEffect(() => {
     const map = mapRef.current;
@@ -544,7 +560,9 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       if (map.getSource(HEX_SOURCE_ID)) map.removeSource(HEX_SOURCE_ID);
       return;
     }
-    const maxCount = Math.max(1, ...hexData.features.map((f) => f.properties.count));
+    // At least 2, so the interpolate stops below stay strictly ascending (MapLibre rejects
+    // equal stops, e.g. when every cell holds one property).
+    const maxCount = Math.max(2, ...hexData.features.map((f) => f.properties.count));
     const data = hexData as unknown as GeoJSON.FeatureCollection;
     const source = map.getSource(HEX_SOURCE_ID) as GeoJSONSource | undefined;
     if (source !== undefined) {
@@ -579,17 +597,25 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   }, [hexData, overview, layers.roofs, styleReady]);
 
   // Overview: permit count clusters (MapLibre's GeoJSON clustering), coloured by the longest
-  // open duration in the cluster, ringed for a 3:1 edge.
+  // open duration in the cluster, sized by the summed `permits`, ringed for a 3:1 edge. Server
+  // points carry a cell's permit count; a loaded permit marker counts 1.
   const permitData = useMemo<GeoJSON.FeatureCollection>(
     () => ({
       type: "FeatureCollection",
-      features: permitMarkers.map((p) => ({
-        type: "Feature",
-        properties: { openDays: p.openDays ?? 0 },
-        geometry: { type: "Point", coordinates: [p.lng, p.lat] },
-      })),
+      features:
+        overviewPermits === null
+          ? permitMarkers.map((p) => ({
+              type: "Feature",
+              properties: { openDays: p.openDays ?? 0, permits: 1 },
+              geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+            }))
+          : overviewPermits.map((p) => ({
+              type: "Feature",
+              properties: { openDays: p.openDays, permits: p.permits },
+              geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+            })),
     }),
-    [permitMarkers],
+    [overviewPermits, permitMarkers],
   );
   useEffect(() => {
     const map = mapRef.current;
@@ -611,7 +637,10 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       cluster: true,
       clusterRadius: 40,
       clusterMaxZoom: OVERVIEW_MAX_ZOOM,
-      clusterProperties: { maxOpenDays: ["max", ["get", "openDays"]] },
+      clusterProperties: {
+        maxOpenDays: ["max", ["get", "openDays"]],
+        permits: ["+", ["get", "permits"]],
+      },
     });
     map.addLayer({
       id: PERMIT_CLUSTER_LAYER_ID,
@@ -621,7 +650,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         "circle-color": clusterColorExpression(),
         "circle-radius": [
           "step",
-          ["coalesce", ["get", "point_count"], 1],
+          ["coalesce", ["get", "permits"], ["get", "point_count"], 1],
           8,
           5,
           12,
@@ -646,7 +675,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         if (map === null) return;
         if (center === null) {
           map.setCenter(TRAVIS_COUNTY_CENTER);
-          map.setZoom(9);
+          map.setZoom(COUNTY_ZOOM);
           return;
         }
         if (radiusMi !== undefined) {

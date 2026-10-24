@@ -11,12 +11,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const zoomToDetail = vi.fn();
 let reportedMode: "overview" | "detail" = "overview";
+/** What the route last handed the map for the overview (null = client binning fallback). */
+let lastOverviewCells: readonly { id: string; count: number }[] | null | undefined;
+let lastOverviewPermits: readonly { permits: number }[] | null | undefined;
+let reportZoomStep: ((zoom: number) => void) | undefined;
 
 vi.mock("../../src/components/Map/CrmMap.js", () => ({
   CrmMap: forwardRef(function StubMap(
-    props: { onViewModeChange?: (mode: "overview" | "detail") => void },
+    props: {
+      onViewModeChange?: (mode: "overview" | "detail") => void;
+      onZoomStepChange?: (zoom: number) => void;
+      overviewCells?: readonly { id: string; count: number }[] | null;
+      overviewPermits?: readonly { permits: number }[] | null;
+    },
     ref,
   ) {
+    lastOverviewCells = props.overviewCells;
+    lastOverviewPermits = props.overviewPermits;
+    reportZoomStep = props.onZoomStepChange;
     useImperativeHandle(ref, () => ({
       zoomIn: vi.fn(),
       zoomOut: vi.fn(),
@@ -52,6 +64,43 @@ const property = {
 
 let searchResult: { properties: (typeof property)[] } = { properties: [property] };
 
+const RUN = "travis-202609-permits-20261021t103516z";
+function overviewFor(input: { zoom: number; permits?: boolean }) {
+  return {
+    zoom: input.zoom,
+    agedYears: 15,
+    cells: [
+      {
+        q: -29,
+        r: 1499,
+        lat: 30.26,
+        lng: -97.74,
+        count: 120,
+        withRoofAge: 100,
+        medianRoofAge: 21,
+        agedCount: 70,
+        ...(input.permits === true ? { openPermits: 3, stalledPermits: 2, maxOpenDays: 900 } : {}),
+      },
+    ],
+    counts: {
+      total: 125,
+      matched: 125,
+      binned: 120,
+      excludedNoCoordinates: 5,
+      excludedNoRoofDate: 0,
+      binnedWithoutRoofAge: 20,
+      ...(input.permits === true ? { openPermits: 3, stalledPermits: 2 } : {}),
+    },
+    manifestCid: "bafkreimanifest",
+    runId: RUN,
+    traceId: "t",
+  };
+}
+const overviewCalls: unknown[] = [];
+let overviewFails = false;
+let searchFails = false;
+let searchCalls = 0;
+
 const opts = (key: string, fn: () => unknown) => (input: unknown) => ({
   queryKey: [key, input],
   queryFn: async () => fn(),
@@ -60,8 +109,24 @@ const opts = (key: string, fn: () => unknown) => (input: unknown) => ({
 vi.mock("@crm/api-client/react", () => ({
   useTRPC: () => ({
     search: {
-      properties: { queryOptions: opts("search.properties", () => searchResult) },
+      properties: {
+        queryOptions: opts("search.properties", () => {
+          searchCalls += 1;
+          if (searchFails) throw new Error("index down");
+          return searchResult;
+        }),
+      },
       permits: { queryOptions: opts("search.permits", () => ({ permits: [] })) },
+      countyOverview: {
+        queryOptions: (input: { zoom: number; permits?: boolean }) => ({
+          queryKey: ["search.countyOverview", input],
+          queryFn: async () => {
+            overviewCalls.push(input);
+            if (overviewFails) throw new Error("index down");
+            return overviewFor(input);
+          },
+        }),
+      },
     },
     property: {
       get: {
@@ -88,6 +153,12 @@ afterEach(() => {
   zoomToDetail.mockReset();
   reportedMode = "overview";
   searchResult = { properties: [property] };
+  overviewCalls.length = 0;
+  overviewFails = false;
+  searchFails = false;
+  searchCalls = 0;
+  lastOverviewCells = undefined;
+  lastOverviewPermits = undefined;
 });
 
 function renderAt(url: string): HTMLElement {
@@ -166,5 +237,61 @@ describe("Map route layout", () => {
     expect(drawer.getAttribute("data-property-cid")).toBe(property.propertyCid);
     const sheet = screen.getByRole("region", { name: "Results" });
     expect(sheet.contains(drawer)).toBe(false);
+  });
+});
+
+describe("Map route county overview (search.countyOverview)", () => {
+  it("with no centre, loads the whole county at the opening zoom and hands its cells to the map", async () => {
+    renderAt("/");
+    await screen.findByText(/Hexagons cover the whole county: 120 properties/);
+    expect(overviewCalls[0]).toEqual({ zoom: 9, permits: true });
+    expect(lastOverviewCells?.map((c) => c.count)).toEqual([120]);
+    expect(lastOverviewPermits?.map((p) => p.permits)).toEqual([5]);
+    expect(screen.getByText(/5 not on the map: no coordinates published/)).not.toBeNull();
+    expect(screen.getByText(new RegExp(`Source: run ${RUN}`))).not.toBeNull();
+    // The overview chip shows with county cells even before any pin.
+    expect(screen.getByText("Zoomed out: median roof age per hexagon")).not.toBeNull();
+  });
+
+  it("re-asks with the map's whole-number zoom and the roof-age filter", async () => {
+    renderAt("/?roof=15");
+    await screen.findByText(/Hexagons cover the whole county/);
+    reportZoomStep?.(10);
+    await vi.waitFor(() =>
+      expect(overviewCalls).toContainEqual({ zoom: 10, roofAgeMinYears: 15, permits: true }),
+    );
+  });
+
+  it("in the marker view, shows no county note and stops re-asking on zoom", async () => {
+    reportedMode = "detail";
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("search-results");
+    const before = overviewCalls.length;
+    reportZoomStep?.(8);
+    await screen.findByText("Roof age, yrs");
+    expect(overviewCalls).toHaveLength(before);
+    expect(document.querySelector("[data-overview-state]")).toBeNull();
+  });
+
+  it("when the overview fails, says so and falls back to binning the loaded results", async () => {
+    overviewFails = true;
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByText(/county overview could not be read/);
+    expect(screen.getByText(/only the 1 properties loaded around your pin/)).not.toBeNull();
+    expect(lastOverviewCells).toBeNull();
+    expect(lastOverviewPermits).toBeNull();
+  });
+
+  it("when the search index is down, the notice says so and Retry asks again", async () => {
+    searchFails = true;
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    const notice = await screen.findByText(/Lead index unavailable/);
+    expect(notice.closest('[data-state="CrmMapIndexDown390"]')).not.toBeNull();
+    expect(screen.getByText(/Your leads and notes still open/)).not.toBeNull();
+    const before = searchCalls;
+    searchFails = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByTestId("search-results");
+    expect(searchCalls).toBeGreaterThan(before);
   });
 });

@@ -6,7 +6,13 @@
 // tRPC response (manifestCid/traceId, error mapping); the new agent tools (Phase 4,
 // services/agent/tools.ts) call these same functions instead of a second copy.
 import { isLongOpen } from "@crm/domain";
-import type { LeadIndex, PermitResult, PropertyResult } from "../adapters/duckDbParquet.js";
+import type {
+  CountyOverview,
+  CountyOverviewQuery,
+  LeadIndex,
+  PermitResult,
+  PropertyResult,
+} from "../adapters/duckDbParquet.js";
 
 export interface SearchCenter {
   lat: number;
@@ -130,4 +136,45 @@ export async function searchPermits(
     })),
     manifestCid,
   };
+}
+
+/** Thrown when the wired `LeadIndex` has no `countyOverview` (only a test double can lack it). */
+export class CountyOverviewUnavailableError extends Error {
+  readonly code = "COUNTY_OVERVIEW_UNAVAILABLE" as const;
+  constructor() {
+    super("LeadIndex: this index does not serve the county overview");
+  }
+}
+
+export interface CountyOverviewInput {
+  zoom: number;
+  // `| undefined` for the same exactOptionalPropertyTypes reason as SearchPropertiesInput.
+  roofAgeMinYears?: number | undefined;
+  propertyUsageType?: string | undefined;
+  permits?: boolean | undefined;
+  permitStatus?: "open" | "stalled" | undefined;
+  permitOpenDaysMin?: number | undefined;
+}
+
+/** search.countyOverview (design-review-log row 10): the whole-county hexagon aggregate for the
+ *  map's zoomed-out view. The aggregation and its sandbox cache live in the adapter; this only
+ *  drops unset filters (so the cache key and the SQL never see an explicit `undefined`). */
+export async function countyOverview(
+  leadIndex: LeadIndex,
+  input: CountyOverviewInput,
+): Promise<CountyOverview> {
+  if (leadIndex.countyOverview === undefined) throw new CountyOverviewUnavailableError();
+  const query: CountyOverviewQuery = {
+    zoom: input.zoom,
+    ...(input.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: input.roofAgeMinYears }),
+    ...(input.propertyUsageType === undefined
+      ? {}
+      : { propertyUsageType: input.propertyUsageType }),
+    ...(input.permits === undefined ? {} : { permits: input.permits }),
+    ...(input.permitStatus === undefined ? {} : { permitStatus: input.permitStatus }),
+    ...(input.permitOpenDaysMin === undefined
+      ? {}
+      : { permitOpenDaysMin: input.permitOpenDaysMin }),
+  };
+  return leadIndex.countyOverview(query);
 }

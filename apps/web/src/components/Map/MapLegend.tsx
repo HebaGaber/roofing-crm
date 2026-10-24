@@ -1,9 +1,10 @@
 // Map legend (CRM-HANDOFF E-72 "Legend per layer"; prototype Explore1440 `atlas-legend`): the
 // roof-age scale (per hexagon in the overview, per marker when zoomed in), the permit
 // open-duration scale, what the shapes mean, and — in the overview — what the hexagons cover:
-// only the properties loaded around the pin, because the search API publishes no county-wide
-// aggregate yet (design-review-log row 10's `search.countyOverview` was never built). A
-// collapsible <details>: open by default from 600 px, collapsed on compact screens.
+// the whole county from `search.countyOverview` (design-review-log row 10), with what it leaves
+// out and why and the run it read; while it loads or if it fails, says so (and, on failure, that
+// the hexagons cover only the properties loaded around a pin). A collapsible <details>: open by
+// default from 600 px, collapsed on compact screens.
 import { useState, type ReactElement } from "react";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
@@ -13,8 +14,85 @@ export interface MapLegendProps {
   readonly mode: MapViewMode;
   readonly roofs: boolean;
   readonly permits: boolean;
-  /** Properties the current search loaded (what the hexagons summarise). */
+  /** Properties the current search loaded (what the fallback hexagons summarise). */
   readonly loadedCount: number;
+  /** The whole-county overview's state; absent = not requested (hexagons from loaded results). */
+  readonly county?: CountyOverviewStatus;
+}
+
+export type CountyOverviewStatus =
+  | { readonly state: "loading" }
+  | { readonly state: "error" }
+  | {
+      readonly state: "ready";
+      readonly binned: number;
+      readonly excludedNoCoordinates: number;
+      readonly excludedNoRoofDate: number;
+      readonly binnedWithoutRoofAge: number;
+      readonly runId: string | null;
+    };
+
+const n = (value: number): string => value.toLocaleString("en-US");
+
+function loadedNote(loadedCount: number): string {
+  return loadedCount === 0
+    ? "No properties loaded yet: drop a pin or use your location."
+    : `Hexagons summarise the ${n(loadedCount)} properties loaded around your pin.`;
+}
+
+function CountyNote({
+  county,
+  loadedCount,
+}: {
+  readonly county: CountyOverviewStatus;
+  readonly loadedCount: number;
+}): ReactElement {
+  if (county.state === "loading") {
+    return (
+      <p className={styles.note} data-overview-state="loading" role="status">
+        Loading the county overview…
+      </p>
+    );
+  }
+  if (county.state === "error") {
+    return (
+      <p className={styles.note} data-overview-state="error" role="alert">
+        The county overview could not be read. Try again shortly.
+        {loadedCount > 0
+          ? ` Hexagons show only the ${n(loadedCount)} properties loaded around your pin.`
+          : ""}
+      </p>
+    );
+  }
+  return (
+    <div className={styles.note} data-overview-state="ready">
+      <p className={styles.noteLine}>
+        {county.binned === 0
+          ? "No properties match these filters."
+          : `Hexagons cover the whole county: ${n(county.binned)} properties.`}
+      </p>
+      {county.excludedNoCoordinates > 0 ? (
+        <p className={styles.noteLine}>
+          {`${n(county.excludedNoCoordinates)} not on the map: no coordinates published.`}
+        </p>
+      ) : null}
+      {county.excludedNoRoofDate > 0 ? (
+        <p className={styles.noteLine}>
+          {`${n(county.excludedNoRoofDate)} left out by the roof-age filter: no roof date published.`}
+        </p>
+      ) : null}
+      {county.binnedWithoutRoofAge > 0 ? (
+        <p className={styles.noteLine}>
+          {`${n(county.binnedWithoutRoofAge)} counted but left out of the median: no roof age published.`}
+        </p>
+      ) : null}
+      <p className={styles.noteLine} data-provenance="">
+        {county.runId === null
+          ? "Source: promoted index, run id not published."
+          : `Source: run ${county.runId}.`}
+      </p>
+    </div>
+  );
 }
 
 /** Token → CSS-module class holding `background: var(<token>)` (no inline styles). */
@@ -61,6 +139,7 @@ export function MapLegend({
   roofs,
   permits,
   loadedCount,
+  county,
 }: MapLegendProps): ReactElement | null {
   const [open, setOpen] = useState(startsOpen);
   if (!roofs && !permits) return null;
@@ -99,16 +178,15 @@ export function MapLegend({
       ) : null}
       <p className={styles.line}>
         {overview
-          ? "Stronger hexagon fill = more properties · circle = permit cluster, sized by count · select either to zoom in"
+          ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · tap a hexagon to drop a pin there, or a circle to zoom in"
           : "● roof · ◆ open or stalled permit · dark ring = open over 5 yrs"}
       </p>
       {overview ? (
-        <p className={styles.note}>
-          {loadedCount === 0
-            ? "No properties loaded yet: drop a pin or use your location. "
-            : `Hexagons summarise the ${loadedCount} properties loaded around your pin. `}
-          A county-wide overview is not published by the search API yet.
-        </p>
+        county === undefined ? (
+          <p className={styles.note}>{loadedNote(loadedCount)}</p>
+        ) : (
+          <CountyNote county={county} loadedCount={loadedCount} />
+        )
       ) : null}
     </details>
   );
