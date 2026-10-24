@@ -11,7 +11,9 @@ export type AiProviderEnv = Record<string, string | undefined>;
 
 export class UnsupportedAiProviderError extends Error {
   constructor(readonly provider: string | undefined) {
-    super(`getModel: unsupported AI_PROVIDER "${String(provider)}" — expected "bedrock" or "gateway".`);
+    super(
+      `getModel: unsupported AI_PROVIDER "${String(provider)}" — expected "bedrock" or "gateway".`,
+    );
   }
 }
 

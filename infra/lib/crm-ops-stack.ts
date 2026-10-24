@@ -205,8 +205,9 @@ export class CrmOpsStack extends Stack {
     // Cast to `IWidget`: aws-cdk-lib's own `GraphWidget`/`AlarmStatusWidget` classes don't satisfy
     // `IWidget` under this repo's `exactOptionalPropertyTypes` (a pre-existing aws-cdk-lib/TS
     // strictness mismatch, not a real type-safety issue here — found wiring this dashboard).
-    const asWidget = (widget: cloudwatch.GraphWidget | cloudwatch.AlarmStatusWidget): cloudwatch.IWidget =>
-      widget as unknown as cloudwatch.IWidget;
+    const asWidget = (
+      widget: cloudwatch.GraphWidget | cloudwatch.AlarmStatusWidget,
+    ): cloudwatch.IWidget => widget as unknown as cloudwatch.IWidget;
 
     const widgets: cloudwatch.IWidget[][] = [
       [

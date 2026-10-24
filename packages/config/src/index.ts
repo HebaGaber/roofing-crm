@@ -71,9 +71,7 @@ export function loadConfig(env: LoadConfigEnv = process.env): RuntimeConfig {
   }
   const agentModelId = env.AGENT_MODEL_ID;
   if (agentModelId === undefined || agentModelId === "") {
-    throw new Error(
-      "@crm/config: AGENT_MODEL_ID is not set — refusing to default to any model.",
-    );
+    throw new Error("@crm/config: AGENT_MODEL_ID is not set — refusing to default to any model.");
   }
   const parsed = RuntimeConfig.safeParse({ region, dataManifestCid, aiProvider, agentModelId });
   if (!parsed.success) {

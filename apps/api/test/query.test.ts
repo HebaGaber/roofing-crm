@@ -383,18 +383,16 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
         await makeIndex().searchProperties({ ownerAreaClass: ["regional", "out_of_area"] }),
       ),
     ).toEqual([P2]);
-    await expect(
-      makeIndex().searchProperties({ ownerAreaClass: ["region'al"] }),
-    ).resolves.toEqual([]);
+    await expect(makeIndex().searchProperties({ ownerAreaClass: ["region'al"] })).resolves.toEqual(
+      [],
+    );
   });
 
   // T043 (B-09/US2, G4 "10+ years"): the index stores only the fixed >10yr isLongTenure
   // boolean (P1=true, P2=false, P3=null), so every tenureYearsMin value is answered at that one
   // cutoff (see SearchPropertiesQuery.tenureYearsMin's doc comment).
   it("searchProperties tenureYearsMin keeps only isLongTenure rows, at any requested threshold", async () => {
-    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 10 }))).toEqual([
-      P1,
-    ]);
+    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 10 }))).toEqual([P1]);
     expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 5 }))).toEqual([P1]);
   });
 
@@ -457,12 +455,8 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
   // propertyCids scoping — a quote in the value is escaped the same way every other string
   // filter in this adapter is.
   it("searchPermits permitNumber matches exactly, and a quote in the value cannot break the query", async () => {
-    expect(permitCids(await makeIndex().searchPermits({ permitNumber: "2026-001" }))).toEqual([
-      K1,
-    ]);
-    await expect(
-      makeIndex().searchPermits({ permitNumber: "2026-00'1" }),
-    ).resolves.toEqual([]);
+    expect(permitCids(await makeIndex().searchPermits({ permitNumber: "2026-001" }))).toEqual([K1]);
+    await expect(makeIndex().searchPermits({ permitNumber: "2026-00'1" })).resolves.toEqual([]);
   });
 
   it("searchPermits propertyCid returns only that property's permits, each passing the CrmPermit schema", async () => {

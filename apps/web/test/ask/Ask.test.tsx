@@ -41,7 +41,9 @@ const PLAN: AgentAnswer["plan"] = {
 function answeredFixture(overrides: Partial<AgentAnswer> = {}): AgentAnswer {
   return {
     outcome: "answered",
-    claims: [{ text: "3 properties near Pflugerville have roofs over 20 years old.", citationIds: [1] }],
+    claims: [
+      { text: "3 properties near Pflugerville have roofs over 20 years old.", citationIds: [1] },
+    ],
     citations: [
       {
         id: 1,
@@ -56,7 +58,13 @@ function answeredFixture(overrides: Partial<AgentAnswer> = {}): AgentAnswer {
     ],
     plan: PLAN,
     resultSetId: "resultset-1",
-    counts: { matched: 3, shown: 1, excludedNoCoordinates: 0, excludedNoRoofDate: 0, truncated: false },
+    counts: {
+      matched: 3,
+      shown: 1,
+      excludedNoCoordinates: 0,
+      excludedNoRoofDate: 0,
+      truncated: false,
+    },
     missing: [],
     proposals: [{ tcadId: "0201885122", alreadyLead: false }],
     trace: {
@@ -118,7 +126,7 @@ describe("Ask screen", () => {
     expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("idle");
   });
 
-  it("renders an answered response's claims and citations, data-state=\"answer\"", () => {
+  it('renders an answered response\'s claims and citations, data-state="answer"', () => {
     askState = { ...askState, data: answeredFixture() };
     renderAsk();
     expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("answer");
@@ -127,11 +135,15 @@ describe("Ask screen", () => {
     ).toBeTruthy();
     // the citation shows the property's CID (truncated text, full value in data-cid)
     expect(
-      screen.getByText((_, el) => el?.getAttribute("data-cid") === answeredFixture().citations[0]?.propertyCid),
+      screen.getByText(
+        (_, el) => el?.getAttribute("data-cid") === answeredFixture().citations[0]?.propertyCid,
+      ),
     ).toBeTruthy();
     // "open on map" links to the map route selecting that property
     const link = screen.getByRole("link", { name: "Open on map" });
-    expect(link.getAttribute("href")).toContain(encodeURIComponent(answeredFixture().citations[0]?.propertyCid ?? ""));
+    expect(link.getAttribute("href")).toContain(
+      encodeURIComponent(answeredFixture().citations[0]?.propertyCid ?? ""),
+    );
   });
 
   it('shows "How I read this" from the returned plan (T059, AC-8 re-diff fix)', () => {

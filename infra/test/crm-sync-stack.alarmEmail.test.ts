@@ -8,7 +8,7 @@
 // not just the construct's own capability (already covered by crm-sync-stack.test.ts).
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { createCrmStacks } from "../src/app.js";
 import type { CrmAppConfig } from "../src/config.js";
 
@@ -24,23 +24,19 @@ const CONFIG: CrmAppConfig = {
 };
 
 describe("CrmSyncStack composition (T050/T052, AC-6)", () => {
-  it(
-    "is instantiated with the SNS alarm-email subscriber wired to an actual email",
-    () => {
-      // Building the full app (every stack, including CrmSync/CrmApi's Docker-bundled native
-      // DuckDB handlers) is slower than a single-stack fixture — same reason
-      // crm-sync-stack.test.ts's own build() is hoisted into beforeAll.
-      const app = new App();
-      createCrmStacks(app, CONFIG);
-      const template = Template.fromStack(
-        app.node.findChild("CrmSync") as import("aws-cdk-lib").Stack,
-      );
+  it("is instantiated with the SNS alarm-email subscriber wired to an actual email", () => {
+    // Building the full app (every stack, including CrmSync/CrmApi's Docker-bundled native
+    // DuckDB handlers) is slower than a single-stack fixture — same reason
+    // crm-sync-stack.test.ts's own build() is hoisted into beforeAll.
+    const app = new App();
+    createCrmStacks(app, CONFIG);
+    const template = Template.fromStack(
+      app.node.findChild("CrmSync") as import("aws-cdk-lib").Stack,
+    );
 
-      template.hasResourceProperties("AWS::SNS::Subscription", {
-        Protocol: "email",
-        Endpoint: "eng.heba.gaber@gmail.com",
-      });
-    },
-    240_000,
-  );
+    template.hasResourceProperties("AWS::SNS::Subscription", {
+      Protocol: "email",
+      Endpoint: "eng.heba.gaber@gmail.com",
+    });
+  }, 240_000);
 });

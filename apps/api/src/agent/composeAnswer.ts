@@ -29,11 +29,7 @@ import type { LeadIndex, PermitResult, PropertyResult } from "../adapters/duckDb
 import type { LeadRepo } from "../adapters/leadRepo.js";
 import { verifyCitations } from "../services/agent/verifyCitations.js";
 import { createAgentDispatch, type AgentDispatch } from "../services/agent/tools.js";
-import {
-  generateOnce,
-  withAgentTimeout,
-  type CacheStrategy,
-} from "./runAgent.js";
+import { generateOnce, withAgentTimeout, type CacheStrategy } from "./runAgent.js";
 import type { LanguageModel } from "ai";
 
 type Claim = AgentAnswer["claims"][number];
@@ -152,7 +148,13 @@ export async function checkScope(
     if (found.status === "found" && found.kind === "zcta") {
       return {
         status: "in_scope",
-        point: { lat: found.point.lat, lon: found.point.lon, name: found.name, match: "zip", score: 1 },
+        point: {
+          lat: found.point.lat,
+          lon: found.point.lon,
+          name: found.name,
+          match: "zip",
+          score: 1,
+        },
       };
     }
     return { status: "out_of_scope" };
@@ -185,8 +187,14 @@ export async function checkScope(
 interface DispatchedResult {
   readonly properties: ReadonlyMap<string, PropertyResult>;
   readonly permits: ReadonlyMap<string, PermitResult>;
-  readonly searchCounts: { readonly afterRadius: number; readonly afterRoofAge: number } | undefined;
-  readonly proposals: ReadonlyArray<{ tcadId: string; alreadyLead: boolean; leadId: string | undefined }>;
+  readonly searchCounts:
+    | { readonly afterRadius: number; readonly afterRoofAge: number }
+    | undefined;
+  readonly proposals: ReadonlyArray<{
+    tcadId: string;
+    alreadyLead: boolean;
+    leadId: string | undefined;
+  }>;
   readonly manifestCid: string;
 }
 
@@ -274,7 +282,8 @@ async function dispatchPlan(
         tenureYearsMin: plan.filters.tenureYearsMin,
       });
       const tcadIds = searchResult.properties.map((p) => p.requestIdentifier);
-      const proposed = tcadIds.length > 0 ? await dispatch.proposeLeads({ tcadIds }) : { proposals: [] };
+      const proposed =
+        tcadIds.length > 0 ? await dispatch.proposeLeads({ tcadIds }) : { proposals: [] };
       return {
         properties: new Map(searchResult.properties.map((p) => [p.propertyCid, p])),
         permits: new Map(),
@@ -393,8 +402,7 @@ export function emitCitationMetrics(
   obs.metrics.addMetric(METRIC_NAMES.AgentCitationsVerified, MetricUnit.Count, citationsVerified);
   // Nothing was ever cited (e.g. empty_in_scope) -> trivially 100: there is no ungrounded claim to
   // report, and 0/0 must never render as the dashboard's alarm-triggering 0%.
-  const groundednessRate =
-    citationsTotal === 0 ? 100 : (citationsVerified / citationsTotal) * 100;
+  const groundednessRate = citationsTotal === 0 ? 100 : (citationsVerified / citationsTotal) * 100;
   obs.metrics.addMetric(
     METRIC_NAMES.AgentCitationGroundednessRate,
     MetricUnit.Percent,
@@ -462,7 +470,11 @@ export interface RunAskInput {
 }
 
 type PlanTurnResult =
-  | { readonly kind: "invalid_plan"; readonly modelCalls: number; readonly cacheStrategy: CacheStrategy }
+  | {
+      readonly kind: "invalid_plan";
+      readonly modelCalls: number;
+      readonly cacheStrategy: CacheStrategy;
+    }
   | {
       readonly kind: "scope_blocked";
       readonly status: "out_of_scope" | "not_found" | "needs_clarification";
@@ -496,9 +508,15 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
   const modelId = typeof model === "string" ? model : model.modelId;
   const dispatch = createAgentDispatch({ leadIndex, leadRepo, placeResolver });
 
+  const addTokens = (a: number | undefined, b: number | undefined): number | undefined =>
+    a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+
   const timed = await withAgentTimeout<PlanTurnResult>(async (signal) => {
     // Step 3: plan call.
-    const planCall = await generateOnce({ model, system: PLAN_SYSTEM_PROMPT, prompt: question }, signal);
+    const planCall = await generateOnce(
+      { model, system: PLAN_SYSTEM_PROMPT, prompt: question },
+      signal,
+    );
     let modelCalls = 1;
     let cacheStrategy = planCall.cacheStrategy;
     let cacheReadTokens = planCall.cacheReadTokens;
@@ -518,8 +536,8 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       );
       modelCalls = 2;
       cacheStrategy = repairCall.cacheStrategy;
-      cacheReadTokens = repairCall.cacheReadTokens;
-      cacheWriteTokens = repairCall.cacheWriteTokens;
+      cacheReadTokens = addTokens(cacheReadTokens, repairCall.cacheReadTokens);
+      cacheWriteTokens = addTokens(cacheWriteTokens, repairCall.cacheWriteTokens);
       parsed = tryParsePlan(repairCall.text);
     }
 
@@ -550,6 +568,9 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       signal,
     );
     modelCalls += 1;
+    // The trace reports cache tokens for the whole turn (plan, optional repair, compose).
+    const totalRead = addTokens(cacheReadTokens, composeCall.cacheReadTokens);
+    const totalWrite = addTokens(cacheWriteTokens, composeCall.cacheWriteTokens);
 
     return {
       kind: "composed",
@@ -558,8 +579,8 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       composeText: composeCall.text,
       modelCalls,
       cacheStrategy: composeCall.cacheStrategy,
-      ...(composeCall.cacheReadTokens === undefined ? {} : { cacheReadTokens: composeCall.cacheReadTokens }),
-      ...(composeCall.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: composeCall.cacheWriteTokens }),
+      ...(totalRead === undefined ? {} : { cacheReadTokens: totalRead }),
+      ...(totalWrite === undefined ? {} : { cacheWriteTokens: totalWrite }),
     };
   });
 
@@ -584,11 +605,26 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
 
   if (turn.kind === "scope_blocked") {
     emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
-    return emptyAnswer(turn.status, turn.plan, traceId, turn.modelCalls, modelId, turn.cacheStrategy);
+    return emptyAnswer(
+      turn.status,
+      turn.plan,
+      traceId,
+      turn.modelCalls,
+      modelId,
+      turn.cacheStrategy,
+    );
   }
 
   // turn.kind === "composed" — step 7: server citation verification.
-  const { plan, gathered, composeText, modelCalls, cacheStrategy, cacheReadTokens, cacheWriteTokens } = turn;
+  const {
+    plan,
+    gathered,
+    composeText,
+    modelCalls,
+    cacheStrategy,
+    cacheReadTokens,
+    cacheWriteTokens,
+  } = turn;
 
   const matched = gathered.searchCounts?.afterRoofAge ?? gathered.searchCounts?.afterRadius ?? 0;
   const counts: AgentAnswer["counts"] = gathered.searchCounts

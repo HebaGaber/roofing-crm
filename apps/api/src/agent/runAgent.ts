@@ -121,10 +121,20 @@ export async function generateOnce(
   // non-system message. Both are plain-string `system`/`prompt` on the Gateway path (no cache
   // control exists there), and cache-annotated `SystemModelMessage`/`ModelMessage[]` on Bedrock.
   const system = useBedrockCaching
-    ? { role: "system" as const, content: input.system, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }
+    ? {
+        role: "system" as const,
+        content: input.system,
+        providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS,
+      }
     : input.system;
   const prompt: string | ModelMessage[] = useBedrockCaching
-    ? [{ role: "user" as const, content: input.prompt, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }]
+    ? [
+        {
+          role: "user" as const,
+          content: input.prompt,
+          providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS,
+        },
+      ]
     : input.prompt;
 
   const result = await generateText({

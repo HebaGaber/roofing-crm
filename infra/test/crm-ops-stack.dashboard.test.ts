@@ -7,7 +7,7 @@
 // per contracts/observability.md's widget list.
 import { App } from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
-import { describe, expect, it } from "vitest";
+import { describe, it } from "vitest";
 import { CrmOpsStack } from "../lib/crm-ops-stack.js";
 
 const ENV = { region: "eu-north-1", account: "515618610572" };

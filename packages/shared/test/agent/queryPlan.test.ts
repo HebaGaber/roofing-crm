@@ -24,26 +24,20 @@ describe("QueryPlan", () => {
 
   it("accepts the full 0.5-25 mi radius bound inclusive (FR-001, same bound as search.*)", () => {
     expect(
-      QueryPlan.safeParse(
-        basePlan({ area: { kind: "place", query: "x", radiusMi: 0.5 } }),
-      ).success,
+      QueryPlan.safeParse(basePlan({ area: { kind: "place", query: "x", radiusMi: 0.5 } })).success,
     ).toBe(true);
     expect(
-      QueryPlan.safeParse(basePlan({ area: { kind: "place", query: "x", radiusMi: 25 } }))
-        .success,
+      QueryPlan.safeParse(basePlan({ area: { kind: "place", query: "x", radiusMi: 25 } })).success,
     ).toBe(true);
   });
 
   it("rejects a radiusMi outside 0.5-25", () => {
     expect(
-      QueryPlan.safeParse(
-        basePlan({ area: { kind: "place", query: "x", radiusMi: 0.4 } }),
-      ).success,
+      QueryPlan.safeParse(basePlan({ area: { kind: "place", query: "x", radiusMi: 0.4 } })).success,
     ).toBe(false);
     expect(
-      QueryPlan.safeParse(
-        basePlan({ area: { kind: "place", query: "x", radiusMi: 25.1 } }),
-      ).success,
+      QueryPlan.safeParse(basePlan({ area: { kind: "place", query: "x", radiusMi: 25.1 } }))
+        .success,
     ).toBe(false);
   });
 
@@ -53,9 +47,9 @@ describe("QueryPlan", () => {
         true,
       );
     }
-    expect(
-      QueryPlan.safeParse(basePlan({ slotSources: { radiusMi: "guessed" } })).success,
-    ).toBe(false);
+    expect(QueryPlan.safeParse(basePlan({ slotSources: { radiusMi: "guessed" } })).success).toBe(
+      false,
+    );
   });
 
   it("accepts only the four unsupported[] reasons", () => {

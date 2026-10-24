@@ -132,7 +132,11 @@ export function createPlaceResolver(): PlaceResolver {
           .slice(0, TOP_N - 1)
           .map((c) => placeCandidate(c.name, c.score, "fuzzy"))
           .filter((c): c is PlaceCandidate => c !== undefined);
-        return { status: "resolved", candidates: [primary, ...runnersUp], source: GAZETTEER_SOURCE };
+        return {
+          status: "resolved",
+          candidates: [primary, ...runnersUp],
+          source: GAZETTEER_SOURCE,
+        };
       }
 
       // ZIP-shaped but not a Travis ZCTA (lookup() already checked): a known-outside-scope code,

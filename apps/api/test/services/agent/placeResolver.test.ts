@@ -17,6 +17,13 @@ import { describe, expect, it } from "vitest";
 import { classifyPlaceConfidence } from "@crm/shared";
 import { createPlaceResolver, rankCandidates } from "../../../src/services/agent/placeResolver.js";
 
+/** Indexes a ranked list, failing the test loudly instead of using a non-null assertion. */
+function at<T>(items: readonly T[], i: number): T {
+  const item = items[i];
+  if (item === undefined) throw new Error(`expected a candidate at index ${i}`);
+  return item;
+}
+
 describe("placeResolver: exact/alias match", () => {
   it("scores an exact Travis place name 1.0, match kind 'exact'", async () => {
     const resolver = createPlaceResolver();
@@ -84,7 +91,7 @@ describe("rankCandidates: the pure scoring/ranking step behind the margin<0.05 c
   it("ranks an exact candidate 1.0, strictly ahead of any other candidate", () => {
     const ranked = rankCandidates("Austin", ["Austin", "Elgin", "Manor"]);
     expect(ranked[0]).toMatchObject({ name: "Austin", score: 1 });
-    expect(ranked[0]!.score).toBeGreaterThan(ranked[1]!.score);
+    expect(at(ranked, 0).score).toBeGreaterThan(at(ranked, 1).score);
   });
 
   it("two equally-plausible misspelled candidates land within 0.05 of each other (clarify band)", () => {
@@ -95,16 +102,16 @@ describe("rankCandidates: the pure scoring/ranking step behind the margin<0.05 c
     const [first, second] = ranked;
     expect(new Set([first?.name, second?.name])).toEqual(new Set(["Elgin", "Elgen"]));
 
-    const margin = first!.score - second!.score;
+    const margin = at(ranked, 0).score - at(ranked, 1).score;
     expect(margin).toBeLessThan(0.05);
     // thresholds.ts (T011) is the thing that actually turns this score+margin into a band;
     // asserting it here ties the two fixtures together instead of re-deriving the band inline.
-    expect(classifyPlaceConfidence(first!.score, margin)).toBe("clarify");
+    expect(classifyPlaceConfidence(at(ranked, 0).score, margin)).toBe("clarify");
   });
 
   it("a clear top candidate (large margin) is in the auto band, not clarify", () => {
     const ranked = rankCandidates("Austin", ["Austin", "Round Rock", "Lakeway"]);
-    const margin = ranked[0]!.score - ranked[1]!.score;
-    expect(classifyPlaceConfidence(ranked[0]!.score, margin)).toBe("auto");
+    const margin = at(ranked, 0).score - at(ranked, 1).score;
+    expect(classifyPlaceConfidence(at(ranked, 0).score, margin)).toBe("auto");
   });
 });

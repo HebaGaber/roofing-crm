@@ -112,7 +112,10 @@ describe("agent.ask (T027) — out-of-scope ZIP 99999, code-enforced scope gate"
   it("returns outcome out_of_scope with zero results/claims, exactly one model call, and zero LeadIndex search calls", async () => {
     const { c, model, leadIndex } = ctx();
 
-    const answer = await c.agent.ask({ question: "roofing leads in 99999", threadId: "thread-oos-1" });
+    const answer = await c.agent.ask({
+      question: "roofing leads in 99999",
+      threadId: "thread-oos-1",
+    });
 
     expect(answer.outcome).toBe("out_of_scope");
     expect(answer.claims).toEqual([]);

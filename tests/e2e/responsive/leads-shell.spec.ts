@@ -105,9 +105,7 @@ test.describe("Responsive design: LeadDetail screen", () => {
     await gotoLeadsList(page);
   });
 
-  test("renders with no horizontal overflow and passes the Atlas token audit", async ({
-    page,
-  }) => {
+  test("renders with no horizontal overflow and passes the Atlas token audit", async ({ page }) => {
     // Reaching LeadDetail needs a real lead on the deployed index (a seeded/fixture-free
     // navigation step, not business-logic coverage — tests/e2e/B-07.spec.ts owns the lead
     // lifecycle itself). When the hosted account has none yet, this is an honest skip, not a

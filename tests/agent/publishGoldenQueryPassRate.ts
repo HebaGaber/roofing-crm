@@ -13,11 +13,7 @@
 // test runner. It is written and type-checked here, never invoked live, exactly as
 // `golden.test.ts`'s own header comment describes for T042/T047 -- the same env-guarded
 // not-yet-deployed situation, not a new exception.
-import {
-  CloudWatchClient,
-  PutMetricDataCommand,
-  StandardUnit,
-} from "@aws-sdk/client-cloudwatch";
+import { CloudWatchClient, PutMetricDataCommand, StandardUnit } from "@aws-sdk/client-cloudwatch";
 
 export const GOLDEN_QUERY_PASS_RATE_NAMESPACE = "RoofingCrm";
 export const GOLDEN_QUERY_PASS_RATE_METRIC_NAME = "GoldenQueryPassRate";
@@ -46,7 +42,8 @@ export function goldenQueryPassRatePercent(passedCount: number, totalCount: numb
 
 export async function publishGoldenQueryPassRate(input: GoldenQueryPassRateInput): Promise<void> {
   const client =
-    input.client ?? new CloudWatchClient(input.region === undefined ? {} : { region: input.region });
+    input.client ??
+    new CloudWatchClient(input.region === undefined ? {} : { region: input.region });
   const value = goldenQueryPassRatePercent(input.passedCount, input.totalCount);
   await client.send(
     new PutMetricDataCommand({

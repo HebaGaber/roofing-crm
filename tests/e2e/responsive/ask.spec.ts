@@ -133,11 +133,9 @@ test.describe("Responsive design: Ask screen", () => {
     page,
   }) => {
     await ask(page, NOT_FOUND_QUESTION);
-    await expect(page.locator(ASK_ROOT)).toHaveAttribute(
-      "data-state",
-      /not_found|low_confidence/,
-      { timeout: 25_000 },
-    );
+    await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", /not_found|low_confidence/, {
+      timeout: 25_000,
+    });
     const { scrollWidth, clientWidth } = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,

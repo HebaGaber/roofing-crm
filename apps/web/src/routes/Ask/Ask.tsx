@@ -93,7 +93,8 @@ type Plan = AgentAnswer["plan"];
 function describeFilters(filters: Plan["filters"]): readonly string[] {
   const parts: string[] = [];
   if (filters.kind !== undefined) parts.push(filters.kind);
-  if (filters.roofAgeMinYears !== undefined) parts.push(`roof age ≥ ${filters.roofAgeMinYears} yrs`);
+  if (filters.roofAgeMinYears !== undefined)
+    parts.push(`roof age ≥ ${filters.roofAgeMinYears} yrs`);
   if (filters.roofConfidenceMin !== undefined) {
     parts.push(`roof confidence ≥ ${filters.roofConfidenceMin}`);
   }
@@ -101,7 +102,8 @@ function describeFilters(filters: Plan["filters"]): readonly string[] {
     parts.push(`permit ${filters.statusClass.join("/")}`);
   }
   if (filters.openYearsMin !== undefined) parts.push(`open ≥ ${filters.openYearsMin} yrs`);
-  if (filters.tenureYearsMin !== undefined) parts.push(`owner tenure ≥ ${filters.tenureYearsMin} yrs`);
+  if (filters.tenureYearsMin !== undefined)
+    parts.push(`owner tenure ≥ ${filters.tenureYearsMin} yrs`);
   if (filters.permitNumber !== undefined) parts.push(`permit # ${filters.permitNumber}`);
   return parts;
 }
@@ -158,10 +160,7 @@ function CitationLine({ citation }: { readonly citation: Citation }): ReactEleme
         <CidDisplay cid={citation.manifestCid} />
       </Provenance>
       {citation.kind === "property" && citation.propertyCid !== undefined ? (
-        <Link
-          className={styles.openMap}
-          to={`/?sel=${encodeURIComponent(citation.propertyCid)}`}
-        >
+        <Link className={styles.openMap} to={`/?sel=${encodeURIComponent(citation.propertyCid)}`}>
           Open on map
         </Link>
       ) : null}

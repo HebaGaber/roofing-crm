@@ -89,7 +89,10 @@ describe("verifyCitations", () => {
   });
 
   it("strips a claim whose citationId was never in this turn's tool results (a planted/fabricated id)", async () => {
-    const leadIndex = fakeLeadIndex({ [PROPERTY_CID_A]: MANIFEST_CID, [PROPERTY_CID_B]: MANIFEST_CID });
+    const leadIndex = fakeLeadIndex({
+      [PROPERTY_CID_A]: MANIFEST_CID,
+      [PROPERTY_CID_B]: MANIFEST_CID,
+    });
     const result = await verifyCitations({
       claims: [
         { text: "A real, cited claim.", citationIds: [1] },
@@ -164,9 +167,7 @@ describe("verifyCitations", () => {
     const leadIndex = fakeLeadIndex({});
     const result = await verifyCitations({
       claims: [{ text: "This run covers Travis County.", citationIds: [2] }],
-      citations: [
-        { ...citation({ id: 2 }), kind: "run", propertyCid: undefined },
-      ],
+      citations: [{ ...citation({ id: 2 }), kind: "run", propertyCid: undefined }],
       toolResultCitationIds: new Set([2]),
       leadIndex,
       manifestCid: MANIFEST_CID,

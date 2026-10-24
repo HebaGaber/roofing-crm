@@ -71,9 +71,7 @@ interface GoldenFile {
   };
 }
 
-const golden = JSON.parse(
-  readFileSync(join(__dirname, "golden.json"), "utf8"),
-) as GoldenFile;
+const golden = JSON.parse(readFileSync(join(__dirname, "golden.json"), "utf8")) as GoldenFile;
 
 // ---------------------------------------------------------------------------------------------
 // Environment guards -- see the file header for exactly which vars gate which block.
@@ -187,7 +185,9 @@ async function assertCorrectness(
   const center = { lat: resolved.lat, lng: resolved.lon };
   const citedCids =
     kind === "properties"
-      ? answer.citations.filter((c) => c.propertyCid !== undefined).map((c) => c.propertyCid as string)
+      ? answer.citations
+          .filter((c) => c.propertyCid !== undefined)
+          .map((c) => c.propertyCid as string)
       : answer.citations.filter((c) => c.permitCid !== undefined).map((c) => c.permitCid as string);
   if (citedCids.length === 0) return; // nothing cited to check recall over
 
@@ -333,37 +333,34 @@ async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<Rep
 // explicitly said CloudWatch access is available.
 const PUBLISH_GOLDEN_QUERY_PASS_RATE = process.env.CRM_PUBLISH_GOLDEN_METRIC === "true";
 
-describe.skipIf(!canRun)(
-  "golden queries G1-G7 against the deployed agent (RUNTIME_URL)",
-  () => {
-    it("runs GOLDEN_REPEATS repeats, each paced under 5 asks/min, grounded/correct/honest", async () => {
-      const client = await makeClient();
-      let passedCount = 0;
-      let totalCount = 0;
-      let firstFailure: unknown;
-      try {
-        for (let repeatIndex = 0; repeatIndex < golden.grading.repeats; repeatIndex += 1) {
-          try {
-            const tally = await runOneRepeat(client, repeatIndex);
-            passedCount += tally.passedCount;
-            totalCount += tally.totalCount;
-          } catch (error) {
-            // runOneRepeat already tallied its own queries before rethrowing its first failure;
-            // this file has no per-query count on that path, so count the whole repeat's worth
-            // of queries as attempted-and-failed rather than silently omitting it from the rate.
-            totalCount += golden.queries.length;
-            firstFailure ??= error;
-          }
-        }
-      } finally {
-        if (PUBLISH_GOLDEN_QUERY_PASS_RATE && totalCount > 0) {
-          await publishGoldenQueryPassRate({ passedCount, totalCount });
+describe.skipIf(!canRun)("golden queries G1-G7 against the deployed agent (RUNTIME_URL)", () => {
+  it("runs GOLDEN_REPEATS repeats, each paced under 5 asks/min, grounded/correct/honest", async () => {
+    const client = await makeClient();
+    let passedCount = 0;
+    let totalCount = 0;
+    let firstFailure: unknown;
+    try {
+      for (let repeatIndex = 0; repeatIndex < golden.grading.repeats; repeatIndex += 1) {
+        try {
+          const tally = await runOneRepeat(client, repeatIndex);
+          passedCount += tally.passedCount;
+          totalCount += tally.totalCount;
+        } catch (error) {
+          // runOneRepeat already tallied its own queries before rethrowing its first failure;
+          // this file has no per-query count on that path, so count the whole repeat's worth
+          // of queries as attempted-and-failed rather than silently omitting it from the rate.
+          totalCount += golden.queries.length;
+          firstFailure ??= error;
         }
       }
-      if (firstFailure !== undefined) throw firstFailure;
-    });
-  },
-);
+    } finally {
+      if (PUBLISH_GOLDEN_QUERY_PASS_RATE && totalCount > 0) {
+        await publishGoldenQueryPassRate({ passedCount, totalCount });
+      }
+    }
+    if (firstFailure !== undefined) throw firstFailure;
+  });
+});
 
 describe.skipIf(canRun)(
   "golden queries G1-G7 against the deployed agent (local run, no deployed env)",

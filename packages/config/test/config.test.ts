@@ -18,7 +18,11 @@ describe("loadConfig", () => {
 
   it("falls back to AWS_REGION", () => {
     expect(
-      loadConfig({ AWS_REGION: "eu-north-1", DATA_MANIFEST_CID: SAMPLE_MANIFEST_CID, ...AI_FIELDS }),
+      loadConfig({
+        AWS_REGION: "eu-north-1",
+        DATA_MANIFEST_CID: SAMPLE_MANIFEST_CID,
+        ...AI_FIELDS,
+      }),
     ).toEqual({ region: "eu-north-1", dataManifestCid: SAMPLE_MANIFEST_CID, ...DEFAULT_AI_FIELDS });
   });
 
@@ -43,7 +47,11 @@ describe("loadConfig", () => {
 
   it("reads DATA_MANIFEST_CID from the environment, never a hard-coded constant", () => {
     expect(
-      loadConfig({ AWS_REGION: "eu-north-1", DATA_MANIFEST_CID: SAMPLE_MANIFEST_CID, ...AI_FIELDS }),
+      loadConfig({
+        AWS_REGION: "eu-north-1",
+        DATA_MANIFEST_CID: SAMPLE_MANIFEST_CID,
+        ...AI_FIELDS,
+      }),
     ).toEqual({
       region: "eu-north-1",
       dataManifestCid: SAMPLE_MANIFEST_CID,

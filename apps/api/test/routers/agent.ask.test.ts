@@ -29,8 +29,7 @@ import { agentRouter } from "../../src/routers/agent.js";
 
 const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
 
-const REAL_PROPERTY_CID =
-  "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const REAL_PROPERTY_CID = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 // Planted in the mocked compose output only — never returned by any dispatch call this turn, so
 // the server-side citation verifier must strip any claim that cites it (the test's core
 // assertion).
@@ -180,7 +179,10 @@ describe("agent.ask (T026) — plan + compose, code-driven dispatch in between",
   it("stays within the <=3 model-calls budget, dispatches via the real LeadIndex, and never lets a planted fake citation reach claims", async () => {
     const { c, model, leadIndex } = ctx();
 
-    const answer = await c.agent.ask({ question: "roofing opportunities near Pflugerville", threadId: "thread-1" });
+    const answer = await c.agent.ask({
+      question: "roofing opportunities near Pflugerville",
+      threadId: "thread-1",
+    });
 
     expect(answer.trace.modelCalls).toBeLessThanOrEqual(3);
     expect(answer.trace.modelCalls).toBe(2);

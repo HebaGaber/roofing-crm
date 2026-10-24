@@ -15,9 +15,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const TOOLS_PATH = fileURLToPath(
-  new URL("../../../src/services/agent/tools.ts", import.meta.url),
-);
+const TOOLS_PATH = fileURLToPath(new URL("../../../src/services/agent/tools.ts", import.meta.url));
 
 const FORBIDDEN_IMPORTS = ["LeadService", "requireLeadService"] as const;
 
@@ -44,9 +42,7 @@ describe("services/agent/tools.ts import guard (T029)", () => {
     // `await import(...)`), the bare identifiers must not appear in the file at all — the
     // confirm-flow write path is reachable only from routers/agent.ts's confirmLead handler.
     for (const forbidden of FORBIDDEN_IMPORTS) {
-      expect(source.includes(forbidden), `tools.ts must never reference ${forbidden}`).toBe(
-        false,
-      );
+      expect(source.includes(forbidden), `tools.ts must never reference ${forbidden}`).toBe(false);
     }
   });
 });

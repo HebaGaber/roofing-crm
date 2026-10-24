@@ -162,7 +162,8 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
 
   async function getPropertyDispatch({ tcadId, propertyCid }: GetPropertyArgs) {
     const cid =
-      propertyCid ?? (tcadId !== undefined ? await propertyCidForTcadId(leadIndex, tcadId) : undefined);
+      propertyCid ??
+      (tcadId !== undefined ? await propertyCidForTcadId(leadIndex, tcadId) : undefined);
     if (cid === undefined) return { found: false as const };
 
     const detail = await propertyDetail(leadIndex, cid);

@@ -23,7 +23,10 @@ export type PlaceConfidenceBand = "auto" | "clarify" | "refuse";
  *  refuse below `clarifyMinScore`, regardless of margin; everything else clarifies. */
 export function classifyPlaceConfidence(score: number, margin: number): PlaceConfidenceBand {
   if (score < PLACE_CONFIDENCE_BANDS.clarifyMinScore) return "refuse";
-  if (score >= PLACE_CONFIDENCE_BANDS.autoMinScore && margin >= PLACE_CONFIDENCE_BANDS.autoMinMargin) {
+  if (
+    score >= PLACE_CONFIDENCE_BANDS.autoMinScore &&
+    margin >= PLACE_CONFIDENCE_BANDS.autoMinMargin
+  ) {
     return "auto";
   }
   return "clarify";
