@@ -10,7 +10,8 @@ import { withObservability, type Observability } from "@crm/observability";
 import { RunManifestV1, RunsIndexV1 } from "@crm/oracle-contract";
 import { isCidV1 } from "@crm/oracle-contract/cid";
 import { PROFILE } from "@crm/oracle-profile-travis-austin";
-import { gazetteer } from "@crm/oracle-views";
+import { boundPartNames, gazetteer } from "@crm/oracle-views";
+import { BUILD_INDEX_VIEWS } from "../src/batchCoverage.js";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
@@ -400,8 +401,18 @@ async function planCore(
   // USD_PER_BYTE constant, ~6x stricter than costGate.ts's) — costGate.ts's
   // estimateCostFromManifest/evaluateCostGate is now the one place this math lives; Plan just
   // calls it, same as it calls the digest guard above.
-  const { predictedSpendUsd, predictedDocCount, predictedBytes } =
-    estimateCostFromManifest(manifest);
+  // B-09 (query-core 502bfe6): only the table parts the two views BuildIndex reads are fetched —
+  // the same selection bindManifest makes, so FetchPart, this cost gate and BuildIndex all work
+  // from this one list (Run 1: 124 of 204 parts, ~322 of ~556 MB). Each part keeps the CID and
+  // SHA-256 from the CID-verified manifest above.
+  const boundNames = new Set(boundPartNames(manifest.artifacts, BUILD_INDEX_VIEWS));
+  const fetchedArtifacts = manifest.artifacts.filter(
+    (artifact) => artifact.kind === PART_KIND && boundNames.has(artifact.name),
+  );
+  const { predictedSpendUsd, predictedDocCount, predictedBytes } = estimateCostFromManifest({
+    artifacts: fetchedArtifacts,
+    coverage: manifest.coverage,
+  });
   const costGateResult = evaluateCostGate({ predictedSpendUsd, predictedDocCount, predictedBytes });
 
   if (costGateResult.held) {
@@ -421,14 +432,12 @@ async function planCore(
   const { createS3PartWriter } = await import("../src/s3PartWriter.js");
   await createS3PartWriter(bucket).putIfAbsent(manifestKey, manifestBytes);
 
-  const parts: PlanPart[] = manifest.artifacts
-    .filter((artifact) => artifact.kind === PART_KIND)
-    .map((artifact) => ({
-      name: artifact.name,
-      path: artifact.name,
-      cid: artifact.cid,
-      sha256: artifact.sha256,
-    }));
+  const parts: PlanPart[] = fetchedArtifacts.map((artifact) => ({
+    name: artifact.name,
+    path: artifact.name,
+    cid: artifact.cid,
+    sha256: artifact.sha256,
+  }));
 
   return {
     manifestCid,

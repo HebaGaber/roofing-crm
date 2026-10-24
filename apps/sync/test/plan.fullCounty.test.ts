@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { rawCid } from "@crm/oracle-views";
+import { boundPartNames, rawCid } from "@crm/oracle-views";
 import { planHandler, type PlanResult } from "../handlers/plan.js";
 
 interface Manifest {
@@ -92,7 +92,8 @@ describe("Plan: full-county manifest shape (B-09)", () => {
     const cid = await serve(m);
     const result = (await planHandler({ manifestCidHint: cid })) as PlanResult;
     expect(result.status).toBeUndefined();
-    expect(result.costEstimate.predictedBytes).toBe(tables);
+    // Never more than the table parts (and, with the view-scoped list below, often fewer).
+    expect(result.costEstimate.predictedBytes).toBeLessThanOrEqual(tables);
   });
 
   it("carries parcels_published as null when Task A does not publish it, and permits_emitted forward", async () => {
@@ -100,5 +101,66 @@ describe("Plan: full-county manifest shape (B-09)", () => {
     const result = (await planHandler({ manifestCidHint: cid })) as PlanResult;
     expect(result.coverageParcelsPublished).toBeNull();
     expect(result.coveragePermitsEmitted).toBe(17_387);
+  });
+
+  // --- B-09: fetch only the parts the two views BuildIndex reads (query-core 502bfe6) ---
+
+  const VIEWS = ["v_property", "v_roofing_permit"] as const;
+
+  /** The pilot's `tables/<group>/<table>/<part>` names rewritten into Run 1's batched layout:
+   *  county tables split over two batches, permit tables in a third. */
+  function batched(): Manifest {
+    const m = fullCountyShape();
+    let county = 0;
+    m.artifacts = m.artifacts.flatMap((a) => {
+      if (a.kind !== "table") return [a];
+      const [, group, table, part] = a.name.split("/");
+      if (group === "county") {
+        county += 1;
+        const batch = county % 2 === 0 ? "b02" : "b01";
+        return [{ ...a, name: `run/county-batched/tables/${batch}/${table}/${part}` }];
+      }
+      return [{ ...a, name: `run/permits-batched/tables/b01/${table}/${part}` }];
+    });
+    return m;
+  }
+
+  it.each([
+    ["the pilot layout", fullCountyShape],
+    ["Run 1's batched layout", batched],
+  ])(
+    "lists only the table parts v_property/v_roofing_permit read, for %s",
+    async (_label, make) => {
+      const m = make();
+      const expected = boundPartNames(m.artifacts, VIEWS);
+      const allTables = m.artifacts.filter((a) => a.kind === "table");
+      expect(expected.length).toBeGreaterThan(0);
+      expect(expected.length).toBeLessThan(allTables.length);
+      const cid = await serve(m);
+
+      const result = (await planHandler({ manifestCidHint: cid })) as PlanResult;
+
+      expect(result.parts.map((p) => p.path).sort()).toEqual([...expected].sort());
+      // Each listed part keeps the CID and SHA-256 from the CID-verified manifest, for FetchPart.
+      for (const part of result.parts) {
+        const artifact = m.artifacts.find((a) => a.name === part.path);
+        expect(part).toMatchObject({ cid: artifact?.cid, sha256: artifact?.sha256 });
+      }
+    },
+  );
+
+  it("sizes the cost gate from exactly the parts it lists (one source with FetchPart and BuildIndex)", async () => {
+    const m = batched();
+    const cid = await serve(m);
+    const result = (await planHandler({ manifestCidHint: cid })) as PlanResult;
+    const listed = new Set(result.parts.map((p) => p.path));
+    const listedBytes = m.artifacts
+      .filter((a) => listed.has(a.name))
+      .reduce((sum, a) => sum + a.size, 0);
+    const allTableBytes = m.artifacts
+      .filter((a) => a.kind === "table")
+      .reduce((sum, a) => sum + a.size, 0);
+    expect(result.costEstimate.predictedBytes).toBe(listedBytes);
+    expect(listedBytes).toBeLessThan(allTableBytes);
   });
 });

@@ -272,6 +272,22 @@ describe("BuildIndex: binds full-county batched parts by explicit local path (B-
     for (const p of parts) expect(gets).toContain(contentAddressedKey(MANIFEST_CID, p.path));
   });
 
+  it("fails loudly if bindManifest asks for a part Plan did not list (Plan and bind drifted apart)", async () => {
+    const parts = [{ path: "run/county-batched/tables/b01/property/part-00000.parquet" }];
+    await buildIndexHandler({ ...STREAM_EVENT_BASE, parts } as never);
+    const oracleViews = await import("@crm/oracle-views");
+    const options = vi.mocked(oracleViews.bindManifest).mock.calls.at(-1)?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string }
+      | undefined;
+    expect(options?.partUrl?.({ name: parts[0]?.path ?? "", cid: "" })).toMatch(/\.parquet$/);
+    expect(() =>
+      options?.partUrl?.({
+        name: "run/county-batched/tables/b01/address/part-00000.parquet",
+        cid: "",
+      }),
+    ).toThrow(/not in Plan's part list/);
+  });
+
   it("names local part files by content hash, so a hostile part path never shapes a filesystem path", async () => {
     await expect(
       buildIndexHandler({

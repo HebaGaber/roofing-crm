@@ -90,4 +90,59 @@ describe("BuildIndex: batch coverage against the manifest's own batch list", () 
     expect(manifestTableArtifactNames(bytes)).toEqual([b("b01", "property")]);
     expect(manifestTableArtifactNames(new TextEncoder().encode("{}"))).toEqual([]);
   });
+
+  // --- B-09: Plan now fetches only boundPartNames(artifacts, [v_property, v_roofing_permit]) ---
+
+  it("does not hold on tables the views never read, which Plan no longer fetches", () => {
+    // b01 is fully bound for what the views need; its address/parcel parts were never fetched.
+    const coverage = batchCoverage({
+      tableArtifactNames: [
+        b("b01", "property"),
+        b("b01", "geometry"),
+        b("b01", "address"),
+        b("b01", "parcel"),
+        pi("b01", "property_improvement"),
+        pi("b01", "property"), // property_improvement.property: same name, a table no view reads
+      ],
+      boundTables: [
+        bound("county", "property", [b("b01", "property")]),
+        bound("county", "geometry", [b("b01", "geometry")]),
+        bound("property_improvement", "property_improvement", [pi("b01", "property_improvement")]),
+      ],
+      countyPropertyRowsByPart: new Map([[b("b01", "property"), 40_000]]),
+    });
+    expect(coverage).toEqual({ batchesListed: 2, unboundBatches: [], emptyCountyBatches: [] });
+  });
+
+  it("still holds when a needed county batch contributed nothing to the bind", () => {
+    const coverage = batchCoverage({
+      tableArtifactNames: names,
+      boundTables: [
+        bound("county", "property", [b("b01", "property")]),
+        bound("county", "geometry", [b("b01", "geometry")]),
+        bound("property_improvement", "property_improvement", [pi("b01", "property_improvement")]),
+      ],
+      countyPropertyRowsByPart: new Map([[b("b01", "property"), 40_000]]),
+    });
+    expect(coverage.unboundBatches).toEqual(["run/county-batched/tables/b02"]);
+  });
+
+  it("still holds on a batch whose data group cannot be resolved but which carries a table the views read", () => {
+    // Only `company` (listed for both groups, never an anchor) and an unknown table: bindManifest
+    // cannot resolve this batch's group, so boundPartNames lists none of it — the conservative
+    // name rule must still flag it rather than letting a skipped batch validate.
+    const coverage = batchCoverage({
+      tableArtifactNames: [...names, b("b09", "company"), b("b09", "mystery_table")],
+      boundTables: [
+        bound("county", "property", [b("b01", "property"), b("b02", "property")]),
+        bound("county", "geometry", [b("b01", "geometry"), b("b02", "geometry")]),
+        bound("property_improvement", "property_improvement", [pi("b01", "property_improvement")]),
+      ],
+      countyPropertyRowsByPart: new Map([
+        [b("b01", "property"), 40_000],
+        [b("b02", "property"), 41_000],
+      ]),
+    });
+    expect(coverage.unboundBatches).toEqual(["run/county-batched/tables/b09"]);
+  });
 });

@@ -420,8 +420,17 @@ async function buildIndexCoreFromEvent(
     // FetchPart wrote it to S3 under — so no path from the manifest ever shapes a local path.
     const partsDir = join(tmpDir, "parts");
     await mkdir(partsDir, { recursive: true });
-    const partFile = (path: string): string =>
-      join(partsDir, `${contentAddressedKey(event.manifestCid, path)}.parquet`);
+    // Plan lists exactly the parts bindManifest reads for the two views (boundPartNames). If the
+    // two ever drift, fail here by name — never read a part that was not fetched and verified.
+    const listed = new Set(event.parts.map((part) => part.path));
+    const partFile = (path: string): string => {
+      if (!listed.has(path)) {
+        throw new Error(
+          `BuildIndex: bindManifest asked for part "${path}", not in Plan's part list`,
+        );
+      }
+      return join(partsDir, `${contentAddressedKey(event.manifestCid, path)}.parquet`);
+    };
     for (const part of event.parts) {
       const s3Key = contentAddressedKey(event.manifestCid, part.path);
       await downloadToFile(event.bucket, s3Key, partFile(part.path));
