@@ -9,6 +9,7 @@
       "002-lead-index",
       "003-map-search",
       "007-leads",
+      "009-agent-hardening",
       "feature/roofing-crm"
     ],
     "crm:allowedRegions": ["eu-north-1"],
