@@ -29,6 +29,7 @@
     "@crm/index-schema": "workspace:*",
     "@crm/observability": "workspace:*",
     "@crm/oracle-contract": "workspace:*",
+    "@crm/oracle-views": "workspace:*",
     "@crm/shared": "workspace:*",
     "@trpc/server": "11.19.0",
     "zod": "3.25.76"

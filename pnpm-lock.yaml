@@ -71,6 +71,9 @@ importers:
       '@crm/oracle-contract':
         specifier: workspace:*
         version: link:../../packages/oracle-contract
+      '@crm/oracle-views':
+        specifier: workspace:*
+        version: link:../../packages/oracle-views
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
