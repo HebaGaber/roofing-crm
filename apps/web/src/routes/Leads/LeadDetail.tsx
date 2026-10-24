@@ -158,6 +158,7 @@ function LeadBody({ lead }: { readonly lead: LeadDetailData }): ReactElement {
           <Field label="Status">
             <select
               aria-label="Status"
+              className={styles.select}
               value={lead.status}
               disabled={updateStatus.isPending}
               onChange={(e) => {
