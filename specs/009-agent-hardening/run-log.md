@@ -81,12 +81,34 @@ signal now available at county scale.
   a silent reinterpretation of the gate, it's a recorded, user-directed exception, same category as
   B-02's/B-03's/B-07's prior "approved with exceptions" gates.
 - 2026-10-24 · E · `/speckit-implement` started under the exception above.
+- 2026-10-24 · E · Phase 1 (Setup, T001-T005): done directly (trivial scaffolding + `ai`/
+  `@ai-sdk/amazon-bedrock` deps). Found and fixed a real regression from T001's zod bump:
+  `packages/shared`/`packages/index-schema` were still on zod 3.24.1, which became a structurally
+  incompatible instance under `exactOptionalPropertyTypes` once apps/api moved to 3.25.76 —
+  `tsc --noEmit` failed on `leads.ts`/`property.ts` even though vitest passed. Bumped both to
+  3.25.76. Committed `5b604d9`.
+- 2026-10-24 · E · Phase 2 (Foundational, T006-T019): `alakazam` + `ash` builder subagents in
+  parallel, no cross-dependency between their task sets. 140 apps/api + 29 shared + 79 sync + 143
+  web tests pass, tsc clean, `cdk synth --strict` succeeds with the new `crm-agent-usage` table
+  and its scoped UpdateItem-only grant visible in the synthesized templates. Committed `e5e6b61`.
+- 2026-10-24 · E · Phase 3 (US4 data switch, T020/T022/T023 done directly; T021 **not done**):
+  investigated how the manifest pointer actually works — `DATA_MANIFEST_CID`
+  (`packages/config/src/index.ts`) drives what Task A's sync job ingests/promotes; switching it
+  to the Run 1 CID means actually running that full 441,961-property ingestion against real AWS
+  infra and then flipping the env var in CI/Amplify — a real deploy/cost action, not a code
+  change (the module's own comment says so). Wrote T020's test skip-guarded on the deployed env
+  vars being present (mirrors `tests/agent/golden.test.ts`'s `RUNTIME_URL` requirement); recorded
+  the AC-7 deviation in `docs/architecture-constitution.md` §13 (T022); confirmed T023 needs no
+  change (per-row/per-lead CID provenance already exists generically via `CidDisplay`). Committed
+  `6421e47`. **T021 stays open, needs your explicit go-ahead** — it's the actual "data readiness"
+  action, same category as the G6 block, not a coding task.
 
 ## Next step
 
-Continue `/speckit-implement`, delegating each task group to its `soofi-xyz-team-kit:{builder}`
-subagent plus `apply-engineering-guidelines`, per constitution XV. T047 and the test-case token
-fill stay blocked on data readiness. Stop before G7 approval, merge, push, or deploy — unchanged.
+Continue `/speckit-implement` into Phase 4 (US1, the core agent) — none of its tasks need real
+data to write or unit-test (only T047's golden-query *run* and the live Playwright suite do).
+T021 (the real data switch) and T047/test-token-fill (its downstream validation) stay open,
+needing your go-ahead given AWS cost/time. Stop before G7 approval, merge, push, or deploy — unchanged.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
