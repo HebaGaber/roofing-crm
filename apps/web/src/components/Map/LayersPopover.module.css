@@ -41,3 +41,12 @@
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
 }
+
+/* A layer the published data cannot draw: shown, disabled, with its reason. */
+.disabled {
+  cursor: default;
+}
+
+.disabled .label {
+  color: var(--md-sys-color-on-surface-variant);
+}

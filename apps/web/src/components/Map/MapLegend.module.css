@@ -1,0 +1,130 @@
+/* Map legend (Atlas legend pattern, prototype `atlas-legend`). Atlas tokens only. */
+.legend {
+  box-sizing: border-box;
+  width: min(300px, 100%);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  min-height: var(--space-9);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.block {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.scale {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-small-font);
+  font-size: var(--md-sys-typescale-label-small-size);
+}
+
+.step .swatch {
+  width: 100%;
+  height: var(--space-2);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+}
+
+.swatch {
+  display: inline-block;
+  width: var(--space-3);
+  height: var(--space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
+}
+
+.line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.note {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* Swatch fills: the Atlas data-viz tokens (one class per legend step). */
+.roof0 {
+  background: var(--viz-roof-age-0-9);
+}
+
+.roof10 {
+  background: var(--viz-roof-age-10-14);
+}
+
+.roof15 {
+  background: var(--viz-roof-age-15-19);
+}
+
+.roof20 {
+  background: var(--viz-roof-age-20-24);
+}
+
+.roof25 {
+  background: var(--viz-roof-age-25-plus);
+}
+
+.open0 {
+  background: var(--viz-permit-open-lt-1y);
+}
+
+.open1 {
+  background: var(--viz-permit-open-1-3y);
+}
+
+.open3 {
+  background: var(--viz-permit-open-3-5y);
+}
+
+.open5 {
+  background: var(--viz-permit-open-gt-5y);
+}
+
+.none {
+  background: var(--md-sys-color-surface-container-highest);
+}

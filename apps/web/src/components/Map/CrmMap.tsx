@@ -8,10 +8,43 @@
 // equirectangular approximation, kept local to this component; the actual inside/outside-radius
 // filtering decision always comes from the server's `search.properties`, which uses
 // `packages/domain`'s exact `distanceMeters` haversine cut, never this preview math).
-import { Map as MapLibreMap, Marker, type MapLibreEvent, type MapMouseEvent } from "maplibre-gl";
+//
+// Overview (design-review-log row 10, CRM-HANDOFF E-67/E-72, PO 2026-10-25): below
+// OVERVIEW_MAX_ZOOM the roof markers become hexagons coloured by median roof age (hexbin.ts) and
+// the permit markers become count clusters coloured by the longest open duration (MapLibre's
+// own GeoJSON clustering); clicking either zooms in. Both are WebGL layers, not DOM markers, so
+// they stay fast with a full county. Every colour is an Atlas token, resolved from the DOM.
+import {
+  Map as MapLibreMap,
+  Marker,
+  type ExpressionSpecification,
+  type GeoJSONSource,
+  type MapLibreEvent,
+  type MapMouseEvent,
+} from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  PERMIT_OPEN_BUCKETS,
+  ROOF_AGE_BUCKETS,
+  permitOpenBucket,
+  roofAgeBucket,
+} from "../../format/buckets.js";
 import { buildMapInitOptions, computeMinZoom, TRAVIS_COUNTY_CENTER } from "./bounds.js";
+import {
+  OVERVIEW_MAX_ZOOM,
+  hexbin,
+  hexCellsToFeatureCollection,
+  isOverviewZoom,
+} from "./hexbin.js";
 import styles from "./CrmMap.module.css";
 
 /** Default demo style: no API key required. MapLibre's own "demotiles" (the original default
@@ -32,12 +65,16 @@ const RADIUS_RING_LINE_LAYER_ID = "crm-radius-ring-line";
 const RING_POINTS = 64;
 const EARTH_RADIUS_M = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
-/** Hardcoding Atlas's light-mode primary hex here would never follow dark mode like every other
- *  primary-colored element (constitution: "UI uses only Atlas tokens") — MapLibre paint
- *  properties need a literal value, not a CSS var string, so the live `--md-sys-color-primary`
- *  is resolved from the DOM at the point the layer is created/updated instead (found in review,
- *  CR-B-03). Falls back to the light-mode hex only if the token is somehow unset. */
-const FALLBACK_PRIMARY_COLOR = "#0B57D0";
+const HEX_SOURCE_ID = "crm-hex";
+const HEX_FILL_LAYER_ID = "crm-hex-fill";
+const HEX_LINE_LAYER_ID = "crm-hex-line";
+const PERMIT_CLUSTER_SOURCE_ID = "crm-permit-clusters";
+const PERMIT_CLUSTER_LAYER_ID = "crm-permit-clusters-circle";
+const OVERVIEW_LAYER_IDS = [HEX_FILL_LAYER_ID, PERMIT_CLUSTER_LAYER_ID] as const;
+/** Paint colours MapLibre cannot read from CSS variables: resolved from the live Atlas tokens.
+ *  Only if a token is unset (never in the app, which loads tokens.css) does a CSS named colour
+ *  stand in, so a paint call never fails. */
+const UNSET_TOKEN_COLOR = "gray";
 
 declare global {
   interface Window {
@@ -46,12 +83,57 @@ declare global {
   }
 }
 
+/** The live value of an Atlas token (`--md-sys-color-primary`), following dark mode. */
+function resolveToken(token: string): string {
+  if (typeof document === "undefined") return UNSET_TOKEN_COLOR;
+  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return value === "" ? UNSET_TOKEN_COLOR : value;
+}
+
 function resolvePrimaryColor(): string {
-  if (typeof document === "undefined") return FALLBACK_PRIMARY_COLOR;
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue("--md-sys-color-primary")
-    .trim();
-  return value === "" ? FALLBACK_PRIMARY_COLOR : value;
+  return resolveToken("--md-sys-color-primary");
+}
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+/** The ring's [[west, south], [east, north]] box, for fitting the view to a new pin. */
+function ringBounds(center: LatLng, radiusMi: number): [[number, number], [number, number]] {
+  const east = ringPoint(center, 90, radiusMi);
+  const north = ringPoint(center, 0, radiusMi);
+  const dLng = east[0] - center.lng;
+  const dLat = north[1] - center.lat;
+  return [
+    [center.lng - dLng, center.lat - dLat],
+    [center.lng + dLng, center.lat + dLat],
+  ];
+}
+
+/** Hexagon fill: the median's `--viz-roof-age-*` token; no published roof age → surface variant. */
+function hexColorExpression(): ExpressionSpecification {
+  const pairs = ROOF_AGE_BUCKETS.flatMap((b) => [b.token, resolveToken(b.token)]);
+  return [
+    "match",
+    ["get", "token"],
+    ...pairs,
+    resolveToken("--md-sys-color-surface-container-highest"),
+  ] as unknown as ExpressionSpecification;
+}
+
+/** Cluster colour: the longest open duration in the cluster, on the `--viz-permit-open-*` scale. */
+function clusterColorExpression(): ExpressionSpecification {
+  const [first, ...rest] = PERMIT_OPEN_BUCKETS;
+  return [
+    "step",
+    ["coalesce", ["get", "maxOpenDays"], ["get", "openDays"], 0],
+    resolveToken(first?.token ?? "--md-sys-color-outline"),
+    ...rest.flatMap((b) => [b.minDays, resolveToken(b.token)]),
+  ] as unknown as ExpressionSpecification;
 }
 
 /** Display-only ring point at `bearingDeg` from `center`, `radiusMi` away (equirectangular
@@ -89,6 +171,9 @@ export interface RoofMarkerPoint {
   readonly lat: number;
   readonly lng: number;
   readonly roofAgeConfidence: "high" | "medium" | "low" | "none";
+  /** Published roof age, years; null when not published (the marker and hexagon say so by
+   *  using the neutral "no roof age" colour, explained in the legend). */
+  readonly roofAgeYears?: number | null;
 }
 
 /** A permit shown as a Layers → "Open and stalled permits" marker (E-72): coloured by
@@ -100,6 +185,8 @@ export interface PermitMarkerPoint {
   readonly lng: number;
   readonly statusClass: string | null;
   readonly isLongOpen: boolean;
+  /** Open duration, days (for the cluster colour); null when not published. */
+  readonly openDays?: number | null;
 }
 
 export interface CrmMapLayers {
@@ -113,7 +200,12 @@ export interface CrmMapHandle {
   /** Re-centres and zooms to fit `center`/`radiusMi` (the pin/GPS view), or — with no center —
    *  resets to the whole-county view (E-67's "Recentre returns to the county view"). */
   readonly recenter: () => void;
+  /** From the overview, zooms in to the individual-marker view (the "Zoom in" chip). */
+  readonly zoomToDetail: () => void;
 }
+
+/** `overview` = hexagons and permit clusters; `detail` = individual markers. */
+export type MapViewMode = "overview" | "detail";
 
 export interface CrmMapProps {
   readonly styleUrl?: string;
@@ -128,28 +220,35 @@ export interface CrmMapProps {
   /** E-72 Layers: open/stalled permit markers, shown when `layers.permits` is on. */
   readonly permitMarkers?: readonly PermitMarkerPoint[];
   readonly layers?: CrmMapLayers;
+  /** Fired when the view switches between the hexagon overview and individual markers. */
+  readonly onViewModeChange?: (mode: MapViewMode) => void;
 }
 
-const ROOF_MARKER_COLOR: Readonly<Record<RoofMarkerPoint["roofAgeConfidence"], string>> = {
-  high: "#B3261E",
-  medium: "#E8730A",
-  low: "#8E6A00",
-  none: "#747775",
-};
+/** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
+function roofMarkerColor(point: RoofMarkerPoint): string {
+  const bucket = roofAgeBucket(point.roofAgeYears ?? null);
+  return bucket === null ? "var(--md-sys-color-surface-container-highest)" : `var(${bucket.token})`;
+}
 
-const PERMIT_MARKER_COLOR: Readonly<Record<string, string>> = {
-  open: "#0B57D0",
-  stalled: "#8E6A00",
-};
+/** A permit marker's fill: its open duration on the `--viz-permit-open-*` scale. */
+function permitMarkerColor(point: PermitMarkerPoint): string {
+  const bucket = permitOpenBucket(point.openDays ?? null);
+  return bucket === null ? "var(--md-sys-color-surface-container-highest)" : `var(${bucket.token})`;
+}
 
-function dot(color: string, ringed: boolean): HTMLDivElement {
+/** A DOM marker: a round dot (roof) or a diamond (permit, the legend's "◆"). Colours are CSS
+ *  token references, so they follow dark mode with no re-render. */
+function dot(color: string, ringed: boolean, shape: "round" | "diamond" = "round"): HTMLDivElement {
   const el = document.createElement("div");
   el.style.width = "14px";
   el.style.height = "14px";
-  el.style.borderRadius = "50%";
+  el.style.borderRadius = shape === "round" ? "50%" : "2px";
+  if (shape === "diamond") el.style.transform = "rotate(45deg)";
   el.style.background = color;
   el.style.boxSizing = "border-box";
-  el.style.border = ringed ? "3px solid #000" : "2px solid #fff";
+  el.style.border = ringed
+    ? "3px solid var(--md-sys-color-on-surface)"
+    : "2px solid var(--md-sys-color-surface)";
   // 24px hit area around the 14px visible dot (CRM-HANDOFF §10 fix 3: markers keep their 14px
   // look with a 24px hit area).
   el.style.outline = "5px solid transparent";
@@ -165,6 +264,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     roofMarkers = [],
     permitMarkers = [],
     layers = { roofs: true, permits: true },
+    onViewModeChange,
   }: CrmMapProps,
   ref,
 ) {
@@ -173,9 +273,15 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const markerRef = useRef<Marker | null>(null);
   const [failed, setFailed] = useState(false);
   const [retryToken, setRetryToken] = useState(0);
+  const radiusRef = useRef(radiusMi);
+  radiusRef.current = radiusMi;
   const [styleReady, setStyleReady] = useState(false);
   const onPinDropRef = useRef(onPinDrop);
   onPinDropRef.current = onPinDrop;
+  const [zoom, setZoom] = useState(9);
+  const overview = isOverviewZoom(zoom);
+  const onViewModeChangeRef = useRef(onViewModeChange);
+  onViewModeChangeRef.current = onViewModeChange;
 
   const onRetry = useCallback(() => {
     setFailed(false);
@@ -223,18 +329,80 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     };
 
     const onClick = (event: MapMouseEvent): void => {
+      // A click on a hexagon or a permit cluster zooms into it (its own layer handler below);
+      // it never also drops a pin there.
+      const present = OVERVIEW_LAYER_IDS.filter((id) => map.getLayer(id) !== undefined);
+      if (
+        present.length > 0 &&
+        map.queryRenderedFeatures(event.point, { layers: present }).length > 0
+      ) {
+        return;
+      }
       onPinDropRef.current?.({ lat: event.lngLat.lat, lng: event.lngLat.lng });
     };
 
     const onLoad = (): void => {
       applyMinZoom();
+      setZoom(map.getZoom());
       setStyleReady(true);
+    };
+
+    const onZoomEnd = (): void => setZoom(map.getZoom());
+
+    const zoomInto = (lng: number, lat: number, toZoom: number): void => {
+      map.easeTo({
+        center: [lng, lat],
+        zoom: toZoom,
+        duration: prefersReducedMotion() ? 0 : 400,
+      });
+    };
+
+    const onHexClick = (
+      event: MapMouseEvent & { features?: { properties: Record<string, unknown> }[] },
+    ): void => {
+      const props = event.features?.[0]?.properties;
+      if (props === undefined) return;
+      zoomInto(Number(props.centerLng), Number(props.centerLat), OVERVIEW_MAX_ZOOM + 0.5);
+    };
+
+    const onClusterClick = (
+      event: MapMouseEvent & {
+        features?: { properties: Record<string, unknown>; geometry: GeoJSON.Geometry }[];
+      },
+    ): void => {
+      const feature = event.features?.[0];
+      if (feature === undefined || feature.geometry.type !== "Point") return;
+      const [lng, lat] = feature.geometry.coordinates as [number, number];
+      const clusterId = feature.properties.cluster_id;
+      const source = map.getSource(PERMIT_CLUSTER_SOURCE_ID) as GeoJSONSource | undefined;
+      if (typeof clusterId !== "number" || source === undefined) {
+        zoomInto(lng, lat, OVERVIEW_MAX_ZOOM + 0.5);
+        return;
+      }
+      void source
+        .getClusterExpansionZoom(clusterId)
+        .then((z) => zoomInto(lng, lat, Math.max(z, map.getZoom() + 1)))
+        .catch(() => zoomInto(lng, lat, OVERVIEW_MAX_ZOOM + 0.5));
+    };
+
+    const pointer = (): void => {
+      map.getCanvas().style.cursor = "pointer";
+    };
+    const unpointer = (): void => {
+      map.getCanvas().style.cursor = "";
     };
 
     map.on("load", onLoad);
     map.on("resize", applyMinZoom);
     map.on("error", onError);
     map.on("click", onClick);
+    map.on("zoomend", onZoomEnd);
+    map.on("click", HEX_FILL_LAYER_ID, onHexClick);
+    map.on("click", PERMIT_CLUSTER_LAYER_ID, onClusterClick);
+    for (const id of OVERVIEW_LAYER_IDS) {
+      map.on("mouseenter", id, pointer);
+      map.on("mouseleave", id, unpointer);
+    }
 
     return () => {
       map.remove();
@@ -260,6 +428,16 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     } else {
       markerRef.current.setLngLat([center.lng, center.lat]);
     }
+    // CRM-HANDOFF §4.2: "Picking an area, a GPS fix or a pin zooms in and draws the ring" — a
+    // new centre fits the view to its ring (the radius view shows individual markers). Only on
+    // a centre change: changing the radius keeps the person's own zoom.
+    if (radiusRef.current !== undefined) {
+      map.fitBounds(ringBounds(center, radiusRef.current), {
+        padding: 32,
+        duration: prefersReducedMotion() ? 0 : 400,
+      });
+    }
+    // radiusMi is read through a ref on purpose: a radius change must not refit the view.
   }, [center?.lat, center?.lng, styleReady]);
 
   // The radius ring (AC-1): a GeoJSON polygon redrawn on every center/radiusMi change, per
@@ -308,14 +486,14 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     const map = mapRef.current;
     for (const marker of roofMarkerRefs.current) marker.remove();
     roofMarkerRefs.current = [];
-    if (map === null || !styleReady || !layers.roofs) return;
+    if (map === null || !styleReady || !layers.roofs || overview) return;
     for (const point of roofMarkers) {
-      const marker = new Marker({ element: dot(ROOF_MARKER_COLOR[point.roofAgeConfidence], false) })
+      const marker = new Marker({ element: dot(roofMarkerColor(point), false) })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
       roofMarkerRefs.current.push(marker);
     }
-  }, [roofMarkers, layers.roofs, styleReady]);
+  }, [roofMarkers, layers.roofs, styleReady, overview]);
 
   // E-72 Layers: open/stalled permit markers, ringed when `isLongOpen` already flagged the
   // permit ("Open > 5 yrs" — the flag itself comes from `packages/domain`'s `isLongOpen` via the
@@ -325,15 +503,138 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     const map = mapRef.current;
     for (const marker of permitMarkerRefs.current) marker.remove();
     permitMarkerRefs.current = [];
-    if (map === null || !styleReady || !layers.permits) return;
+    if (map === null || !styleReady || !layers.permits || overview) return;
     for (const point of permitMarkers) {
-      const color = PERMIT_MARKER_COLOR[point.statusClass ?? ""] ?? "#747775";
-      const marker = new Marker({ element: dot(color, point.isLongOpen) })
+      const marker = new Marker({
+        element: dot(permitMarkerColor(point), point.isLongOpen, "diamond"),
+      })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
       permitMarkerRefs.current.push(marker);
     }
-  }, [permitMarkers, layers.permits, styleReady]);
+  }, [permitMarkers, layers.permits, styleReady, overview]);
+
+  useEffect(() => {
+    onViewModeChangeRef.current?.(overview ? "overview" : "detail");
+  }, [overview]);
+
+  // Overview: hexagons of the roof markers at the current whole-number zoom.
+  const zoomStep = Math.floor(zoom);
+  const hexData = useMemo(
+    () =>
+      hexCellsToFeatureCollection(
+        hexbin(
+          roofMarkers.map((p) => ({
+            lat: p.lat,
+            lng: p.lng,
+            roofAgeYears: p.roofAgeYears ?? null,
+          })),
+          { zoom: zoomStep },
+        ),
+      ),
+    [roofMarkers, zoomStep],
+  );
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !styleReady) return;
+    const show = overview && layers.roofs && hexData.features.length > 0;
+    if (!show) {
+      for (const id of [HEX_LINE_LAYER_ID, HEX_FILL_LAYER_ID])
+        if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(HEX_SOURCE_ID)) map.removeSource(HEX_SOURCE_ID);
+      return;
+    }
+    const maxCount = Math.max(1, ...hexData.features.map((f) => f.properties.count));
+    const data = hexData as unknown as GeoJSON.FeatureCollection;
+    const source = map.getSource(HEX_SOURCE_ID) as GeoJSONSource | undefined;
+    if (source !== undefined) {
+      source.setData(data);
+    } else {
+      map.addSource(HEX_SOURCE_ID, { type: "geojson", data });
+      map.addLayer({
+        id: HEX_FILL_LAYER_ID,
+        type: "fill",
+        source: HEX_SOURCE_ID,
+        paint: { "fill-color": hexColorExpression() },
+      });
+      // §10 fix 4: a 3:1 edge where fills alone fail — on-surface-variant outline.
+      map.addLayer({
+        id: HEX_LINE_LAYER_ID,
+        type: "line",
+        source: HEX_SOURCE_ID,
+        paint: { "line-color": resolveToken("--md-sys-color-on-surface-variant"), "line-width": 1 },
+      });
+    }
+    // Stronger fill = more properties in the hexagon (the legend says so).
+    map.setPaintProperty(HEX_FILL_LAYER_ID, "fill-opacity", [
+      "interpolate",
+      ["linear"],
+      ["get", "count"],
+      1,
+      0.45,
+      maxCount,
+      0.9,
+    ]);
+    map.setPaintProperty(HEX_FILL_LAYER_ID, "fill-color", hexColorExpression());
+  }, [hexData, overview, layers.roofs, styleReady]);
+
+  // Overview: permit count clusters (MapLibre's GeoJSON clustering), coloured by the longest
+  // open duration in the cluster, ringed for a 3:1 edge.
+  const permitData = useMemo<GeoJSON.FeatureCollection>(
+    () => ({
+      type: "FeatureCollection",
+      features: permitMarkers.map((p) => ({
+        type: "Feature",
+        properties: { openDays: p.openDays ?? 0 },
+        geometry: { type: "Point", coordinates: [p.lng, p.lat] },
+      })),
+    }),
+    [permitMarkers],
+  );
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !styleReady) return;
+    const show = overview && layers.permits && permitData.features.length > 0;
+    if (!show) {
+      if (map.getLayer(PERMIT_CLUSTER_LAYER_ID)) map.removeLayer(PERMIT_CLUSTER_LAYER_ID);
+      if (map.getSource(PERMIT_CLUSTER_SOURCE_ID)) map.removeSource(PERMIT_CLUSTER_SOURCE_ID);
+      return;
+    }
+    const source = map.getSource(PERMIT_CLUSTER_SOURCE_ID) as GeoJSONSource | undefined;
+    if (source !== undefined) {
+      source.setData(permitData);
+      return;
+    }
+    map.addSource(PERMIT_CLUSTER_SOURCE_ID, {
+      type: "geojson",
+      data: permitData,
+      cluster: true,
+      clusterRadius: 40,
+      clusterMaxZoom: OVERVIEW_MAX_ZOOM,
+      clusterProperties: { maxOpenDays: ["max", ["get", "openDays"]] },
+    });
+    map.addLayer({
+      id: PERMIT_CLUSTER_LAYER_ID,
+      type: "circle",
+      source: PERMIT_CLUSTER_SOURCE_ID,
+      paint: {
+        "circle-color": clusterColorExpression(),
+        "circle-radius": [
+          "step",
+          ["coalesce", ["get", "point_count"], 1],
+          8,
+          5,
+          12,
+          25,
+          16,
+          100,
+          20,
+        ],
+        "circle-stroke-color": resolveToken("--md-sys-color-surface"),
+        "circle-stroke-width": 3,
+      },
+    });
+  }, [permitData, overview, layers.permits, styleReady]);
 
   useImperativeHandle(
     ref,
@@ -348,15 +649,36 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
           map.setZoom(9);
           return;
         }
+        if (radiusMi !== undefined) {
+          map.fitBounds(ringBounds(center, radiusMi), {
+            padding: 32,
+            duration: prefersReducedMotion() ? 0 : 400,
+          });
+          return;
+        }
         map.flyTo({ center: [center.lng, center.lat], zoom: 12 });
       },
+      zoomToDetail: () => {
+        const map = mapRef.current;
+        if (map === null) return;
+        map.easeTo({
+          ...(center === null ? {} : { center: [center.lng, center.lat] as [number, number] }),
+          zoom: OVERVIEW_MAX_ZOOM + 0.5,
+          duration: prefersReducedMotion() ? 0 : 400,
+        });
+      },
     }),
-    [center?.lat, center?.lng],
+    [center?.lat, center?.lng, radiusMi],
   );
 
   return (
     <div className={styles.wrapper}>
-      <div ref={containerRef} className={styles.map} data-testid="crm-map" />
+      <div
+        ref={containerRef}
+        className={styles.map}
+        data-testid="crm-map"
+        data-view-mode={overview ? "overview" : "detail"}
+      />
       {failed && (
         <div role="alert" data-state="CrmMapFailed390" className={styles.failed}>
           <p className={styles.failedMessage}>Map tiles failed to load.</p>

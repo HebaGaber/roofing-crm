@@ -11,6 +11,7 @@ import { isLongOpen, openDurationLabel } from "@crm/domain";
 import { StatusPill } from "@crm/ui";
 import type { CrmPermit } from "@crm/index-schema";
 import type { ReactElement } from "react";
+import { permitStatusShortLabel } from "../../format/index.js";
 
 export interface PermitChipProps {
   readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber">;
@@ -19,7 +20,7 @@ export interface PermitChipProps {
 export function PermitChip({ permit }: PermitChipProps): ReactElement {
   const longOpen = isLongOpen(permit.openDays);
   const label = openDurationLabel(permit.openDays);
-  const statusLabel = permit.statusClass ?? "status class not available";
+  const statusLabel = permitStatusShortLabel(permit.statusClass);
   return (
     <span
       data-permit-chip={permit.statusClass ?? ""}

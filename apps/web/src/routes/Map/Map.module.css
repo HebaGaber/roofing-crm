@@ -1,44 +1,173 @@
-/* Atlas tokens only (constitution P0-14). */
+/* Map screen layout (CRM-HANDOFF §4.2; prototype Explore1440 `Lo`: CrmMap390/768/1440).
+   Atlas tokens only (constitution P0-14); Material window classes: compact < 600, medium
+   600–839, expanded ≥ 840 (the app's rail switches at 600).
+
+   < 840 px: top bar, a one-row toolbar (Use my location, Filters sheet), then the map filling the
+   rest. Results are a bottom sheet over the map (ResultsSheet; absolute to .page). The drawer is
+   a full-height sheet over everything.
+   ≥ 840 px: three panes — Filters 320 px | map | results 360 px — with the top bar over map and
+   results; the drawer is a 440 px side sheet on the right edge (prototype drawer 1000→1440). */
+
 .page {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas:
+    "top"
+    "controls"
+    "map";
   width: 100%;
   height: 100%;
-  min-height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--md-sys-color-surface-container-low);
 }
 
+.top {
+  grid-area: top;
+  min-width: 0;
+}
+
 .controls {
+  grid-area: controls;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-4);
-  padding: var(--space-4);
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0 var(--space-4) var(--space-2);
 }
 
 .mapArea {
+  grid-area: map;
   position: relative;
-  flex: 1 1 auto;
-  min-height: 420px;
-  /* The map canvas keeps its own 480px minimum; without this it spilled over the notice below
-     (for example "Widen to {n} mi") on a 1440x900 screen and swallowed the click (found live). */
+  min-width: 0;
+  min-height: 320px;
   overflow: hidden;
 }
 
-.radiusOverlay {
+/* Floating controls over the map: a top-left stack (Layers + legend, the zoomed-out chip, the
+   radius card). It clears the zoom/recentre column on the right; only its children take clicks,
+   so the map stays droppable around them. */
+.overlay {
   position: absolute;
-  bottom: var(--space-4);
+  top: var(--space-4);
   left: var(--space-4);
+  right: calc(var(--space-9) + var(--space-6));
   z-index: 10;
-  width: min(320px, calc(100% - var(--space-8)));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.overlay > * {
+  pointer-events: auto;
+}
+
+.layersRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+
+.legendSlot {
+  min-width: 0;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.chipAction {
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.chipAction:focus-visible,
+.widen:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.radiusOverlay {
+  width: min(320px, 100%);
+}
+
+/* With no centre yet (E-67): a card at the bottom of the map saying how to start. */
+.countyCard {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-4);
+  z-index: 10;
+  display: grid;
+  gap: var(--space-1);
+  box-sizing: border-box;
+  width: min(360px, calc(100% - var(--space-8)));
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  transform: translateX(-50%);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.countyCard strong {
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+/* Below 840 px the slot is not a grid cell: ResultsSheet positions itself over the map. With
+   nothing to show (no centre, no state), the sheet is hidden and the map is fully visible. */
+.resultsSlot {
+  display: contents;
+}
+
+.resultsSlot[data-empty="true"] > * {
+  display: none;
+}
+
+/* The property drawer: a full-height sheet over the whole screen below 840 px. */
+.drawerSlot {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  box-shadow: var(--md-sys-elevation-level3);
 }
 
 .notice {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   margin: 0;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-3);
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-body-medium-font);
   font-size: var(--md-sys-typescale-body-medium-size);
@@ -46,7 +175,7 @@
 }
 
 .widen {
-  min-height: 48px;
+  min-height: var(--space-9);
   padding: 0 var(--space-4);
   border: 1px solid var(--md-sys-color-outline);
   border-radius: var(--md-sys-shape-corner-full);
@@ -67,4 +196,95 @@
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-sys-typescale-body-medium-font);
   font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+/* Compact: the legend sits collapsed beside Layers; the zoomed-out chip and the radius card
+   stack below them. */
+@media (max-width: 599.98px) {
+  .chip {
+    font-family: var(--md-sys-typescale-label-medium-font);
+    font-size: var(--md-sys-typescale-label-medium-size);
+  }
+}
+
+/* Expanded: three panes. */
+@media (min-width: 840px) {
+  .page {
+    grid-template-columns: 320px minmax(0, 1fr) 360px;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "controls top top"
+      "controls map results";
+  }
+
+  .controls {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    overflow-y: auto;
+    border-right: 1px solid var(--md-sys-color-outline-variant);
+    background: var(--md-sys-color-surface);
+  }
+
+  .mapArea {
+    min-height: 0;
+  }
+
+  /* The overlay spans the map: Layers and the chip top-left, the legend bottom-left and the
+     radius card bottom-right (prototype radL = map right − 284). */
+  .overlay {
+    inset: var(--space-4);
+    display: grid;
+    grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "layers ."
+      "chip ."
+      ". ."
+      "legend radius";
+    align-items: start;
+  }
+
+  .layersRow {
+    display: contents;
+  }
+
+  .layersRow > :first-child {
+    grid-area: layers;
+    justify-self: start;
+  }
+
+  .legendSlot {
+    grid-area: legend;
+    align-self: end;
+  }
+
+  .chip {
+    grid-area: chip;
+    justify-self: start;
+  }
+
+  .radiusOverlay {
+    grid-area: radius;
+    align-self: end;
+    justify-self: end;
+    width: 268px;
+  }
+
+  .resultsSlot {
+    display: block;
+    grid-area: results;
+    min-height: 0;
+  }
+
+  .resultsSlot[data-empty="true"] > * {
+    display: flex;
+  }
+
+  .drawerSlot {
+    inset: 0 0 0 auto;
+    width: 440px;
+  }
 }

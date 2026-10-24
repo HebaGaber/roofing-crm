@@ -11,6 +11,15 @@
 // result cards, and a fuller property detail drawer — all layered on the SAME state machine this
 // file already had (query/permitsQuery/detailQuery, the URL-state helpers, the named CrmMap*
 // states). No backend call shape changed; only what renders around them.
+//
+// UI fix (2026-10-25, side-by-side audit vs CrmMap390/768/1440, CrmProperty*): breakpoint layout
+// (Map.module.css). ≥ 840 px: three panes — Filters left (320 px), map centre, results right
+// (360 px), the property drawer a 440 px side sheet over the right edge. < 840 px: the map fills
+// the screen under a one-row toolbar (Use my location, Filters sheet), results in a peeking,
+// draggable bottom sheet over the map (ResultsSheet), the drawer a full-height sheet. One DOM at
+// every width, so every data-state / data-testid / data-route hook is unchanged. Plus the
+// zoomed-out overview (PO, 2026-10-25): hexagons and permit clusters below the overview zoom,
+// the "Zoom in" chip and the legend.
 import { useTRPC } from "@crm/api-client/react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -20,18 +29,21 @@ import { CrmMap, type CrmMapHandle, type LatLng } from "../../components/Map/Crm
 import { GpsButton } from "../../components/Map/GpsButton.js";
 import { LayersPopover, type LayersState } from "../../components/Map/LayersPopover.js";
 import { MapControls } from "../../components/Map/MapControls.js";
+import { MapLegend } from "../../components/Map/MapLegend.js";
+import type { MapViewMode } from "../../components/Map/CrmMap.js";
 import { RadiusControl } from "../../components/Map/RadiusControl.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
+import { ResultsSheet } from "./ResultsSheet.js";
 import { TopBar } from "./TopBar.js";
 import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
-const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, gaps: true };
+const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, gaps: false };
 
 export function Component(): ReactElement {
   const trpc = useTRPC();
@@ -47,6 +59,7 @@ export function Component(): ReactElement {
   const [layers, setLayers] = useState<LayersState>(DEFAULT_LAYERS);
   const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
+  const [viewMode, setViewMode] = useState<MapViewMode>("overview");
 
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
@@ -153,6 +166,7 @@ export function Component(): ReactElement {
           lat: p.latitude as number,
           lng: p.longitude as number,
           roofAgeConfidence: p.roofAgeConfidence,
+          roofAgeYears: p.roofAgeYears,
         })),
     [query.data],
   );
@@ -169,14 +183,24 @@ export function Component(): ReactElement {
           lng: property.longitude,
           statusClass: permit.statusClass,
           isLongOpen: permit.isLongOpen,
+          openDays: permit.openDays,
         };
       })
       .filter((m): m is NonNullable<typeof m> => m !== null);
   }, [filteredPermits, query.data]);
 
+  const hasResults = query.data !== undefined && query.data.properties.length > 0;
+  const isLoading = searchInput !== null && query.isLoading;
+  const isIndexDown = searchInput !== null && query.isError;
+  const sheetEmpty =
+    !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
+  const showOverviewChip = viewMode === "overview" && layers.roofs && roofMarkers.length > 0;
+
   return (
     <section aria-label="Map" data-route="map" className={styles.page}>
-      <TopBar />
+      <div className={styles.top}>
+        <TopBar />
+      </div>
       <div className={styles.controls}>
         <GpsButton onLocated={placePoint} isInCoverage={isInTravisCounty} />
         <FilterSheet
@@ -187,7 +211,6 @@ export function Component(): ReactElement {
           permitOpenYrs={permitOpenYrs}
           onPermitOpenYrsChange={setPermitOpenYrs}
         />
-        <LayersPopover value={layers} onChange={setLayers} />
       </div>
       <div className={styles.mapArea}>
         <CrmMap
@@ -198,68 +221,115 @@ export function Component(): ReactElement {
           roofMarkers={roofMarkers}
           permitMarkers={permitMarkers}
           layers={layers}
+          onViewModeChange={setViewMode}
         />
         <MapControls mapRef={mapHandleRef} />
-        {center === null ? null : (
-          <div className={styles.radiusOverlay}>
-            <RadiusControl radiusMi={radiusMi} onChange={setRadiusMi} originLabel="Dropped pin" />
+        <div className={styles.overlay}>
+          <div className={styles.layersRow}>
+            <LayersPopover value={layers} onChange={setLayers} />
+            <div className={styles.legendSlot}>
+              <MapLegend
+                mode={viewMode}
+                roofs={layers.roofs}
+                permits={layers.permits}
+                loadedCount={roofMarkers.length}
+              />
+            </div>
           </div>
-        )}
-      </div>
-      {pinOutsideCounty ? (
-        <p role="alert" data-state="CrmMapPinOutside390" className={styles.notice}>
-          Pin outside Travis County
-        </p>
-      ) : null}
-      {searchInput !== null && query.isLoading ? (
-        <p
-          role="progressbar"
-          aria-label="Loading results"
-          data-state="CrmMapLoading390"
-          className={styles.notice}
-        >
-          Loading results…
-        </p>
-      ) : null}
-      {searchInput !== null && query.isError ? (
-        <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
-          The index could not be read. Try again shortly.
-        </p>
-      ) : null}
-      {isZeroResult ? (
-        <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
-          No properties within {radiusMi} mi.
-          {widenTo === null ? null : (
-            <button type="button" className={styles.widen} onClick={() => setRadiusMi(widenTo)}>
-              {`Widen to ${widenTo} mi`}
-            </button>
+          {showOverviewChip ? (
+            <p className={styles.chip} role="status" data-view-chip="overview">
+              <span>Zoomed out: median roof age per hexagon</span>
+              <button
+                type="button"
+                className={styles.chipAction}
+                aria-label="Zoom in to individual properties"
+                onClick={() => mapHandleRef.current?.zoomToDetail()}
+              >
+                Zoom in
+              </button>
+            </p>
+          ) : null}
+          {center === null ? null : (
+            <div className={styles.radiusOverlay}>
+              <RadiusControl radiusMi={radiusMi} onChange={setRadiusMi} originLabel="Dropped pin" />
+            </div>
           )}
-        </p>
-      ) : null}
-      {query.data !== undefined && query.data.properties.length > 0 ? (
-        <ResultsPanel count={query.data.properties.length}>
-          <ul className={styles.results} aria-label="Results" data-testid="search-results">
-            {query.data.properties.map((property) => (
-              <li key={property.propertyCid}>
-                <ResultRow
-                  row={property}
-                  selected={sel === property.propertyCid}
-                  onSelect={selectProperty}
-                  {...(center === null ? {} : { center })}
-                  {...(permitView
-                    ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
-                    : {})}
-                />
-              </li>
-            ))}
-          </ul>
-        </ResultsPanel>
-      ) : null}
+        </div>
+        {center === null ? (
+          <p className={styles.countyCard} data-county-card="">
+            <strong>Whole county</strong>
+            <span>
+              Tap the map to drop a pin, or use your location, to list properties within a radius.
+            </span>
+          </p>
+        ) : null}
+      </div>
+      <div className={styles.resultsSlot} data-empty={sheetEmpty}>
+        <ResultsSheet>
+          {pinOutsideCounty ? (
+            <p role="alert" data-state="CrmMapPinOutside390" className={styles.notice}>
+              Pin outside Travis County
+            </p>
+          ) : null}
+          {isLoading ? (
+            <p
+              role="progressbar"
+              aria-label="Loading results"
+              data-state="CrmMapLoading390"
+              className={styles.notice}
+            >
+              Loading results…
+            </p>
+          ) : null}
+          {isIndexDown ? (
+            <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
+              The index could not be read. Try again shortly.
+            </p>
+          ) : null}
+          {isZeroResult ? (
+            <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
+              No properties within {radiusMi} mi.
+              {widenTo === null ? null : (
+                <button type="button" className={styles.widen} onClick={() => setRadiusMi(widenTo)}>
+                  {`Widen to ${widenTo} mi`}
+                </button>
+              )}
+            </p>
+          ) : null}
+          {sheetEmpty ? (
+            <p className={styles.notice} data-results-empty="">
+              No centre chosen yet, so no results. Drop a pin on the map or use your location to
+              list properties within a radius.
+            </p>
+          ) : null}
+          {query.data !== undefined && hasResults ? (
+            <ResultsPanel count={query.data.properties.length}>
+              <ul className={styles.results} aria-label="Results" data-testid="search-results">
+                {query.data.properties.map((property) => (
+                  <li key={property.propertyCid}>
+                    <ResultRow
+                      row={property}
+                      selected={sel === property.propertyCid}
+                      onSelect={selectProperty}
+                      {...(center === null ? {} : { center })}
+                      {...(permitView
+                        ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
+                        : {})}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </ResultsPanel>
+          ) : null}
+        </ResultsSheet>
+      </div>
       {sel !== null && detailQuery.data !== undefined ? (
-        <PropertyDetail
-          data={detailQuery.data satisfies PropertyDetailData}
-          onClose={closeDetail}
-        />
+        <div className={styles.drawerSlot}>
+          <PropertyDetail
+            data={detailQuery.data satisfies PropertyDetailData}
+            onClose={closeDetail}
+          />
+        </div>
       ) : null}
     </section>
   );

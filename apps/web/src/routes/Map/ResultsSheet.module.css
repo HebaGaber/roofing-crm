@@ -1,0 +1,90 @@
+/* Results sheet / pane (CRM-HANDOFF §4.2; prototype `cards`, `sheet-handle`). Atlas tokens only.
+   Compact and medium (< 840 px): a bottom sheet over the map — peek shows the header and the
+   first card, full leaves the map's top strip visible. Expanded (≥ 840 px): the static right
+   pane of the three-pane layout (Map.module.css places it), no handle. */
+.sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  max-height: 40%;
+  border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level3);
+  transition: max-height var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-emphasized);
+}
+
+.sheet[data-sheet="full"] {
+  max-height: calc(100% - var(--space-10));
+}
+
+/* 600–839 px (prototype 768: the cards take about half the height). */
+@media (min-width: 600px) and (max-width: 839.98px) {
+  .sheet[data-sheet="peek"] {
+    max-height: 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition: none;
+  }
+}
+
+/* The 32 × 4 grab bar, centred in a full-width 48 px hit area (§10 fix 12). */
+.handle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: var(--space-9);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::after {
+  content: "";
+  width: var(--space-8);
+  height: var(--space-1);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-outline);
+}
+
+.handle:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 840px) {
+  .sheet,
+  .sheet[data-sheet="full"] {
+    position: static;
+    z-index: auto;
+    max-height: none;
+    height: 100%;
+    border-left: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .handle {
+    display: none;
+  }
+
+  .body {
+    flex: 1 1 auto;
+  }
+}
