@@ -5,6 +5,7 @@
 // (traceId, error mapping); the new agent `getProperty` tool (Phase 4) calls this same function
 // instead of a second copy.
 import type { LeadIndex, PermitResult, PropertyResult } from "../adapters/duckDbParquet.js";
+import { nearestPlace, type NearestPlace } from "./agent/placeResolver.js";
 
 /** contract/v1's `bbb_status` is pinned `BBB_SOURCE = "always not_checked in v1"`
  *  (packages/oracle-contract/src/columns.ts) — no live BBB lookup exists in this story's data
@@ -46,6 +47,10 @@ export interface PropertyDetailResult {
   bbbStatusReason: string | null;
   lineageUrl: string;
   manifestCid: string;
+  /** The nearest travis-places@1.0.0 place centroid to the property's coordinates, for the
+   *  drawer header "TCAD {id} · near {place}" (E-93). Absent when the property is not in this
+   *  run or has no coordinates — the drawer then says why from the row's own `missing` entry. */
+  nearPlace?: NearestPlace;
 }
 
 /** contracts/property-detail.md step 1: never throws when the CID isn't in the currently
@@ -78,6 +83,11 @@ export async function propertyDetail(
   // vendored fallback rule (no contractor can have been matched with nothing to match it on).
   const { bbbStatus, bbbStatusReason } = bbbFor(permits[0]?.contractorResolution ?? null);
 
+  const near =
+    property.latitude === null || property.longitude === null
+      ? undefined
+      : nearestPlace({ lat: property.latitude, lon: property.longitude });
+
   return {
     property,
     permits,
@@ -85,5 +95,6 @@ export async function propertyDetail(
     bbbStatusReason,
     lineageUrl: lineageUrl(propertyCid),
     manifestCid,
+    ...(near === undefined ? {} : { nearPlace: near }),
   };
 }

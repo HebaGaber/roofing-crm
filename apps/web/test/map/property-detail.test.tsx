@@ -151,3 +151,61 @@ describe("PropertyDetail drawer", () => {
     );
   });
 });
+
+describe("PropertyDetail drawer · near {place} (E-93)", () => {
+  const SHA = "a".repeat(64);
+  const withPlace: PropertyDetailData = {
+    ...data,
+    nearPlace: {
+      name: "Pflugerville",
+      distanceMi: 1.4,
+      source: "travis-places@1.0.0",
+      sha256: SHA,
+    },
+  };
+
+  it("titles the drawer 'TCAD {id} · near {place}'", () => {
+    renderDrawer(withPlace);
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading.textContent).toContain("TCAD 192820 · near Pflugerville");
+    expect(heading.textContent).not.toContain(" in Pflugerville");
+  });
+
+  it("shows the gazetteer as the place's provenance on hover", () => {
+    renderDrawer(withPlace);
+    const place = document.querySelector('[data-field="near_place"]');
+    expect(place?.textContent).toBe("near Pflugerville");
+    const title = place?.getAttribute("title") ?? "";
+    expect(title).toContain("1.4 mi");
+    expect(title).toContain("travis-places@1.0.0");
+    expect(title).toContain(SHA);
+  });
+
+  it("keeps the address line and the e2e hooks with a place in the title", () => {
+    const drawer = renderDrawer(withPlace);
+    expect(drawer.getAttribute("data-property-cid")).toBe(property.propertyCid);
+    expect(
+      screen.getByText(/Address not published in this run · 30\.26550, -97\.74300/),
+    ).not.toBeNull();
+  });
+
+  it("with no coordinates: no place, and the contract's reason says why", () => {
+    const noCoords = {
+      ...property,
+      latitude: null,
+      longitude: null,
+      missingReasons: [
+        ...property.missingReasons,
+        { field: "latitude", reason: "no_coordinates" },
+        { field: "longitude", reason: "no_coordinates" },
+      ],
+    } as unknown as Provenanced<CrmProperty>;
+    renderDrawer({ ...data, property: noCoords });
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading.textContent).toContain("TCAD 192820");
+    expect(heading.textContent).not.toContain("near");
+    const reason = document.querySelector('[data-field="near_place"]');
+    expect(reason?.textContent).toContain("Nearest place not shown");
+    expect(reason?.textContent).toContain("No coordinates for this parcel");
+  });
+});

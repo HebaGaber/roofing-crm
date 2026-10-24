@@ -27,7 +27,7 @@ import {
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
-import { MissingSummary, RowProvenance, RowTitle, TypePill } from "../ResultRow.js";
+import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import styles from "./PropertyDetail.module.css";
 
 /** The exact shape `property.get` returns (contracts/property-detail.md) — kept local rather
@@ -39,6 +39,17 @@ export interface PropertyDetailData {
   readonly bbbStatus: "not_checked" | null;
   readonly bbbStatusReason: string | null;
   readonly lineageUrl: string;
+  /** The nearest travis-places@1.0.0 place centroid, computed server-side by `property.get`;
+   *  absent when the property has no coordinates. */
+  readonly nearPlace?: NearPlace;
+}
+
+/** `property.get`'s `nearPlace` (apps/api services/agent/placeResolver.ts `NearestPlace`). */
+export interface NearPlace {
+  readonly name: string;
+  readonly distanceMi: number;
+  readonly source: string;
+  readonly sha256: string;
 }
 
 export interface PropertyDetailProps {
@@ -150,6 +161,68 @@ function RoofAgeMissing({
   return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
 }
 
+/** "near {place}" with the gazetteer as its provenance on hover. The gazetteer holds centroid
+ *  points only, so the drawer never claims "in {place}". */
+function NearPlaceLabel({ nearPlace }: { readonly nearPlace: NearPlace }): ReactElement {
+  return (
+    <span
+      data-field="near_place"
+      title={`Nearest place centroid, ${nearPlace.distanceMi} mi away · ${nearPlace.source} · sha256 ${nearPlace.sha256}`}
+    >
+      {`near ${nearPlace.name}`}
+    </span>
+  );
+}
+
+/** No coordinates → no place, and the row's own `missing` reason says why (P0-4). */
+function NearPlaceMissing({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const entry = property.missingReasons.find((m) =>
+    ["latitude", "longitude", "lat_lon"].includes(m.field),
+  );
+  const reason = missingReasonText(entry?.field ?? "lat_lon", entry?.reason ?? "no_coordinates");
+  return (
+    <span className={styles.titleSub} data-field="near_place">
+      {`Nearest place not shown · ${reason}`}
+    </span>
+  );
+}
+
+/** Drawer header (E-93): "TCAD {id} · near {place}", then "Address not published in this run ·
+ *  lat, lon". */
+function DrawerTitle({
+  property,
+  nearPlace,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly nearPlace: NearPlace | undefined;
+}): ReactElement {
+  const hasCoords = property.latitude !== null && property.longitude !== null;
+  return (
+    <span className={styles.titleStack}>
+      <span>
+        {`TCAD ${property.requestIdentifier}`}
+        {nearPlace === undefined ? null : (
+          <>
+            {" · "}
+            <NearPlaceLabel nearPlace={nearPlace} />
+          </>
+        )}
+      </span>
+      <span className={styles.titleSub}>
+        Address not published in this run
+        {property.latitude === null || property.longitude === null
+          ? ""
+          : ` · ${property.latitude.toFixed(5)}, ${property.longitude.toFixed(5)}`}
+      </span>
+      {hasCoords ? null : <NearPlaceMissing property={property} />}
+    </span>
+  );
+}
+
 export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactElement {
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
@@ -197,7 +270,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
     >
       <header className={styles.drawerHead}>
         <h3 id={titleId} className={styles.drawerTitle}>
-          <RowTitle row={property} />
+          <DrawerTitle property={property} nearPlace={data.nearPlace} />
         </h3>
         <IconButton icon="close" label="Close" onClick={onClose} />
       </header>

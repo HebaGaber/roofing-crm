@@ -147,3 +147,17 @@
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
 }
+
+/* Drawer header stack (E-93): "TCAD {id} · near {place}", then the address line. */
+.titleStack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.titleSub {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
+}

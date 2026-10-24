@@ -8,10 +8,11 @@
 // `packages/shared/src/agent/thresholds.ts`'s `classifyPlaceConfidence` makes that call from the
 // candidates this returns (ports.ts's own docstring on `PlaceResolution`), using the top
 // candidate's score and its margin over the runner-up.
+import { distanceMeters, type LatLng } from "@crm/domain";
 import { gazetteer } from "@crm/oracle-views";
 import type { PlaceCandidate, PlaceResolution, PlaceResolver } from "@crm/shared";
 
-const GAZETTEER_SOURCE = "travis-places@1.0.0";
+const GAZETTEER_SOURCE = "travis-places@1.0.0" as const;
 const TOP_N = 3;
 
 function normalise(text: string): string {
@@ -115,6 +116,49 @@ function distinctPlaces(
     out.push(c);
   }
   return out;
+}
+
+/** The nearest gazetteer place to a point, with the gazetteer as provenance (property drawer
+ *  header "TCAD {id} · near {place}", CRM-HANDOFF E-93). `name` is the bare place name as the
+ *  boards print it ("Pflugerville", not the Census "Pflugerville city"). */
+export interface NearestPlace {
+  readonly name: string;
+  readonly distanceMi: number;
+  readonly source: typeof GAZETTEER_SOURCE;
+  readonly sha256: string;
+}
+
+const METERS_PER_MILE = 1609.344;
+
+/** Every place centroid, built once at module load from the vendored gazetteer (31 Travis places;
+ *  bundled JSON, so no file read per request). */
+const PLACE_CENTROIDS: readonly { name: string; point: LatLng }[] = gazetteer
+  .listPlaceNames()
+  .flatMap((name) => {
+    const found = gazetteer.lookup(name);
+    return found.status === "found"
+      ? [{ name, point: { lat: found.point.lat, lng: found.point.lon } }]
+      : [];
+  });
+
+/** The closest place centroid to `point`: one linear scan over the place list (O(places)).
+ *  The gazetteer carries centroid points only — no boundaries — so this can only ever support
+ *  "near {place}", never "in {place}". Non-finite coordinates return undefined, never a guess. */
+export function nearestPlace(point: { lat: number; lon: number }): NearestPlace | undefined {
+  if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) return undefined;
+  const from: LatLng = { lat: point.lat, lng: point.lon };
+  let best: { name: string; meters: number } | undefined;
+  for (const place of PLACE_CENTROIDS) {
+    const meters = distanceMeters(from, place.point);
+    if (best === undefined || meters < best.meters) best = { name: place.name, meters };
+  }
+  if (best === undefined) return undefined;
+  return {
+    name: best.name,
+    distanceMi: Math.round((best.meters / METERS_PER_MILE) * 10) / 10,
+    source: GAZETTEER_SOURCE,
+    sha256: gazetteer.GAZETTEER.sha256,
+  };
 }
 
 const ZIP_SHAPED = /^(?:zip\s*)?\d{5}$/i;
