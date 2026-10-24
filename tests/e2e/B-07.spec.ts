@@ -207,6 +207,17 @@ async function createFromDrawer(drawer: Locator): Promise<Locator> {
 }
 
 const leadCount = (page: Page): Locator => page.getByText(/^\d+ leads?$/);
+/** Below 600 px the lead filters sit in a sheet behind "Filters"; from 600 px they are inline. */
+async function openLeadFilters(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: /^Filters/ });
+  if (await toggle.isVisible()) await toggle.click();
+}
+async function setLeadArea(page: Page, lat: number, lng: number, miles: string): Promise<void> {
+  await page.getByLabel("Area").selectOption("point");
+  await page.getByLabel("Center latitude").fill(String(lat));
+  await page.getByLabel("Center longitude").fill(String(lng));
+  await page.getByLabel("Radius, mi").selectOption(miles);
+}
 const leadLink = (page: Page, f: Facts): Locator =>
   page.getByRole("link", { name: `TCAD ${f.requestIdentifier}` });
 
@@ -562,6 +573,7 @@ test.describe("B-07 leads", () => {
       );
 
     await page.goto("/leads");
+    await openLeadFilters(page);
     await page
       .getByRole("group", { name: "Roof age threshold" })
       .getByRole("button", { name: "20", exact: true })
@@ -570,9 +582,7 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await page.getByLabel("Center latitude").fill(String(ROUND_ROCK.lat));
-    await page.getByLabel("Center longitude").fill(String(ROUND_ROCK.lng));
-    await page.getByLabel("Radius, mi").fill("10");
+    await setLeadArea(page, ROUND_ROCK.lat, ROUND_ROCK.lng, "10");
 
     if (expected.length === 0) {
       await expect(page.getByText("No leads match these filters")).toBeVisible();
@@ -595,6 +605,7 @@ test.describe("B-07 leads", () => {
 
   test("B-07-TC-012 filters in URL reopen same view", async ({ page, browser, baseURL }) => {
     await page.goto("/leads");
+    await openLeadFilters(page);
     await page
       .getByRole("group", { name: "Roof age threshold" })
       .getByRole("button", { name: "20", exact: true })
@@ -603,9 +614,7 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await page.getByLabel("Center latitude").fill(String(ROUND_ROCK.lat));
-    await page.getByLabel("Center longitude").fill(String(ROUND_ROCK.lng));
-    await page.getByLabel("Radius, mi").fill("10");
+    await setLeadArea(page, ROUND_ROCK.lat, ROUND_ROCK.lng, "10");
     await expect(page).toHaveURL(/roof=20/);
     const url = new URL(page.url());
     for (const [key, value] of [
@@ -630,6 +639,7 @@ test.describe("B-07 leads", () => {
       const second = await other.newPage();
       await signIn(second, SEEDED_PASSWORD ?? "");
       await second.goto(`${url.pathname}${url.search}`);
+      await openLeadFilters(second);
       await expect(
         second
           .getByRole("group", { name: "Roof age threshold" })

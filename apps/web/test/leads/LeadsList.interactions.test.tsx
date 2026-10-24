@@ -30,6 +30,13 @@ function renderAt(url: string): void {
   );
 }
 
+/** The filter controls sit in the compact sheet in jsdom (its CSS has no viewport width, so the
+ *  600 px media query never applies): open it the way a 390 px user does. */
+function renderOpen(url: string): void {
+  renderAt(url);
+  fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+}
+
 const url = (): string => screen.getByTestId("where").textContent ?? "";
 const params = (): URLSearchParams => new URLSearchParams(url().split("?")[1] ?? "");
 
@@ -91,7 +98,7 @@ describe("LeadsList rows", () => {
 describe("LeadsList filters write the URL", () => {
   it("selecting a roof-age chip sets roof, and pressing it again clears it", () => {
     withLeads();
-    renderAt("/leads");
+    renderOpen("/leads");
     const chip = screen.getByRole("button", { name: "20", pressed: false });
     fireEvent.click(chip);
     expect(params().get("roof")).toBe("20");
@@ -105,27 +112,89 @@ describe("LeadsList filters write the URL", () => {
 
   it("selecting a permit status chip sets permit, and pressing it again clears it", () => {
     withLeads();
-    renderAt("/leads");
+    renderOpen("/leads");
     fireEvent.click(screen.getByRole("button", { name: "Stalled" }));
     expect(params().get("permit")).toBe("stalled");
     fireEvent.click(screen.getByRole("button", { name: "Stalled" }));
     expect(params().has("permit")).toBe(false);
   });
 
-  it("the status select filters by status and 'Any' removes it", () => {
+  it("Permit status offers Open, Stalled and Any only (no Closed: design-review-log row 6)", () => {
     withLeads();
-    renderAt("/leads");
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "won" } });
+    renderOpen("/leads?permit=open");
+    const group = screen.getByRole("group", { name: "Permit status" });
+    const names = within(group)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
+    expect(names).toEqual(["Open", "Stalled", "Any"]);
+    expect(within(group).getByRole("button", { name: "Open" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    fireEvent.click(within(group).getByRole("button", { name: "Any" }));
+    expect(params().has("permit")).toBe(false);
+    expect(within(group).getByRole("button", { name: "Any" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("Status chips list every lead status; one is chosen at a time and pressing it again clears it", () => {
+    withLeads();
+    renderOpen("/leads");
+    const group = screen.getByRole("group", { name: "Lead status" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["New", "Contacted", "Qualified", "Won", "Lost"]);
+    fireEvent.click(within(group).getByRole("button", { name: "Won" }));
     expect(params().get("status")).toBe("won");
-    fireEvent.change(screen.getByLabelText("Status"), { target: { value: "" } });
+    expect(useLeadsList).toHaveBeenLastCalledWith(expect.objectContaining({ status: "won" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Contacted" }));
+    expect(params().get("status")).toBe("contacted");
+    fireEvent.click(within(group).getByRole("button", { name: "Contacted" }));
     expect(params().has("status")).toBe(false);
   });
 
-  it("latitude, longitude and radius write the URL and an emptied field removes its key", () => {
+  it("Assignee commits on Enter or leaving the box, not on every keystroke", () => {
     withLeads();
-    renderAt("/leads");
+    renderOpen("/leads");
+    const box = screen.getByLabelText("Assignee");
+    fireEvent.change(box, { target: { value: "rep@exa" } });
+    expect(params().has("assignee")).toBe(false);
+    fireEvent.change(box, { target: { value: "rep@example.com" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(params().get("assignee")).toBe("rep@example.com");
+    expect(useLeadsList).toHaveBeenLastCalledWith(
+      expect.objectContaining({ assignee: "rep@example.com" }),
+    );
+    const committed = screen.getByLabelText("Assignee");
+    expect((committed as HTMLInputElement).value).toBe("rep@example.com");
+    fireEvent.change(committed, { target: { value: "" } });
+    fireEvent.blur(committed);
+    expect(params().has("assignee")).toBe(false);
+  });
+
+  it("Within: Anywhere by default, the radius waits for an area, and choosing a point reveals its coordinates", () => {
+    withLeads();
+    renderOpen("/leads");
+    const area = screen.getByLabelText("Area") as HTMLSelectElement;
+    expect(area.value).toBe("anywhere");
+    expect(screen.queryByLabelText("Center latitude")).toBeNull();
+    const radius = screen.getByLabelText("Radius, mi") as HTMLSelectElement;
+    expect(radius.disabled).toBe(true);
+    expect(radius.tagName).toBe("SELECT");
+    expect(Array.from(radius.options).map((o) => o.value)).toEqual([
+      "0.5",
+      "1",
+      "2",
+      "5",
+      "10",
+      "25",
+    ]);
+    fireEvent.change(area, { target: { value: "point" } });
     fireEvent.change(screen.getByLabelText("Center latitude"), { target: { value: "30.27" } });
     fireEvent.change(screen.getByLabelText("Center longitude"), { target: { value: "-97.74" } });
+    expect((screen.getByLabelText("Radius, mi") as HTMLSelectElement).disabled).toBe(false);
     fireEvent.change(screen.getByLabelText("Radius, mi"), { target: { value: "10" } });
     expect(params().get("lat")).toBe("30.27");
     expect(params().get("lng")).toBe("-97.74");
@@ -138,11 +207,43 @@ describe("LeadsList filters write the URL", () => {
     fireEvent.change(screen.getByLabelText("Center latitude"), { target: { value: "" } });
     expect(params().has("lat")).toBe(false);
     expect(params().get("lng")).toBe("-97.74");
+    // Back to Anywhere removes the whole area.
+    fireEvent.change(screen.getByLabelText("Area"), { target: { value: "anywhere" } });
+    expect(params().has("lng")).toBe(false);
+    expect(params().has("r")).toBe(false);
+    expect(screen.queryByLabelText("Center latitude")).toBeNull();
+  });
+
+  it("a center in the URL opens the point area with its values, and an off-preset radius is kept and shown", () => {
+    withLeads();
+    renderOpen("/leads?lat=30.5&lng=-97.6&r=7.5");
+    expect((screen.getByLabelText("Area") as HTMLSelectElement).value).toBe("point");
+    expect((screen.getByLabelText("Center latitude") as HTMLInputElement).value).toBe("30.5");
+    expect((screen.getByLabelText("Radius, mi") as HTMLSelectElement).value).toBe("7.5");
+  });
+
+  it("Use my location fills the center from the device, and says why when it cannot", () => {
+    withLeads();
+    const getCurrentPosition = vi.fn((ok: PositionCallback) =>
+      ok({ coords: { latitude: 30.25, longitude: -97.75 } } as GeolocationPosition),
+    );
+    vi.stubGlobal("navigator", { ...navigator, geolocation: { getCurrentPosition } });
+    renderOpen("/leads");
+    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    expect(params().get("lat")).toBe("30.25");
+    expect(params().get("lng")).toBe("-97.75");
+    getCurrentPosition.mockImplementationOnce(((
+      _ok: PositionCallback,
+      fail: PositionErrorCallback,
+    ) => fail({ code: 1, message: "denied" } as GeolocationPositionError)) as never);
+    fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
+    expect(screen.getByText(/location permission was denied/i)).toBeTruthy();
+    vi.unstubAllGlobals();
   });
 
   it("Clear filters removes every filter and is hidden when none is active", () => {
     withLeads();
-    renderAt("/leads?roof=20&permit=open&status=new&lat=30&lng=-97&r=8&assignee=a%40b.c");
+    renderOpen("/leads?roof=20&permit=open&status=new&lat=30&lng=-97&r=8&assignee=a%40b.c");
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(url()).toBe("/leads");
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
@@ -150,7 +251,7 @@ describe("LeadsList filters write the URL", () => {
 
   it("a filter change drops a stale page cursor", () => {
     withLeads();
-    renderAt("/leads?cursor=abc");
+    renderOpen("/leads?cursor=abc");
     fireEvent.click(screen.getByRole("button", { name: "25" }));
     expect(params().get("roof")).toBe("25");
     expect(params().has("cursor")).toBe(false);
@@ -174,5 +275,74 @@ describe("LeadsList pagination", () => {
     fireEvent.click(screen.getByRole("button", { name: "First page" }));
     expect(params().has("cursor")).toBe(false);
     expect(screen.queryByRole("button", { name: "First page" })).toBeNull();
+  });
+});
+
+describe("LeadsList list actions and the compact Filters sheet", () => {
+  it("Copy link copies the current URL, filters included, and confirms it", async () => {
+    withLeads();
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    renderAt("/leads?roof=20&status=new");
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = new URL(String((writeText.mock.calls[0] as unknown[])[0]));
+    expect(copied.pathname).toBe("/leads");
+    expect(copied.searchParams.get("roof")).toBe("20");
+    expect(copied.searchParams.get("status")).toBe("new");
+    expect(await screen.findByText("Link copied")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Copy link says where the link is when the clipboard refuses", async () => {
+    withLeads();
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      clipboard: { writeText: () => Promise.reject(new Error("blocked")) },
+    });
+    renderAt("/leads");
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    expect(await screen.findByText(/couldn.t copy/i)).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("Show on map opens the map on the same area and roof age", () => {
+    withLeads();
+    renderAt("/leads?roof=20&lat=30.2&lng=-97.7&r=10");
+    const href = screen.getByRole("link", { name: "Show on map" }).getAttribute("href") ?? "";
+    expect(href.startsWith("/map?")).toBe(true);
+    expect(new URLSearchParams(href.split("?")[1]).get("r")).toBe("10");
+  });
+
+  it("the Filters button shows the active count and opens a dismissible sheet", () => {
+    withLeads();
+    renderAt("/leads?roof=20&status=new");
+    const toggle = screen.getByRole("button", { name: "Filters, 2 active" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const sheet = screen.getByRole("dialog", { name: "Filters" });
+    expect(sheet.getAttribute("aria-modal")).toBe("true");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /^Show \d+ leads?$/ }));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("with no filter on, the Filters button carries no count", () => {
+    withLeads();
+    renderAt("/leads");
+    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
+  });
+
+  it("summarises the active filters in one sentence", () => {
+    withLeads();
+    renderAt("/leads?status=new&roof=20&permit=stalled&lat=30.2&lng=-97.7&r=10&assignee=sam");
+    expect(
+      screen.getByText(
+        "New · assigned to sam · roof ≥ 20 yrs · stalled permit · within 10 mi of 30.2000, -97.7000",
+      ),
+    ).toBeTruthy();
   });
 });

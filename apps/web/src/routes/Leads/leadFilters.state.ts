@@ -3,14 +3,20 @@
 // bounds are dropped rather than clamped into a different question, and `patch` returns a new
 // URLSearchParams.
 //
-// URL keys: `roof` (roofAgeMinYears), `permit` (open|closed|stalled), `lat`,`lng` (the radius
-// center) with `r` (radiusMi), `status`, `assignee`, `cursor` (opaque page cursor from leads.list).
+// URL keys: `roof` (roofAgeMinYears), `permit` (open|stalled; no "closed": design-review-log row 6,
+// the CRM's permit filter is Open / Stalled / Any), `lat`,`lng` (the area center) with `r`
+// (radiusMi), `status`, `assignee`, `cursor` (opaque page cursor from leads.list). Example:
+// /leads?status=new&assignee=rep%40example.com&roof=20&permit=open&lat=30.5&lng=-97.6&r=10
 import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { LEAD_STATUSES, type LeadFilters, type LeadStatus } from "@crm/shared";
 
 export const DEFAULT_LEAD_RADIUS_MI = 5;
 export const LEAD_PAGE_SIZE = 25;
-export const PERMIT_STATUSES = ["open", "closed", "stalled"] as const;
+/** The permit filters the CRM offers (design-review-log row 6). `leads.list` also accepts "closed";
+ *  the CRM never asks for it, and a `permit=closed` link is read as no permit filter. */
+export const PERMIT_STATUSES = ["open", "stalled"] as const;
+/** "Within" presets, inside the shared 0.5-25 mi bounds (@crm/domain). */
+export const RADIUS_PRESETS_MI: readonly number[] = [0.5, 1, 2, 5, 10, 25];
 export type LeadPermitStatus = (typeof PERMIT_STATUSES)[number];
 
 export interface LeadCenter {
@@ -122,4 +128,31 @@ export function hasActiveFilters(query: LeadQuery): boolean {
     query.status !== undefined ||
     query.assignee !== undefined
   );
+}
+
+/** How many filters are on. The area and its radius are one filter (the radius alone is not). */
+export function activeFilterCount(query: LeadQuery): number {
+  return [
+    query.status !== undefined,
+    query.assignee !== undefined,
+    query.roofAgeMinYears !== undefined,
+    query.permitStatus !== undefined,
+    query.center !== null,
+  ].filter(Boolean).length;
+}
+
+/** "Show on map": the map's own URL keys (Map/ExploreFilters.state.ts reads `lat`,`lng`,`r`,
+ *  `roof` and `permits=1`, the permit layer). The map has no lead-status, assignee or
+ *  permit-status key, so those stay on the list. */
+export function leadsMapHref(query: LeadQuery): string {
+  const params = new URLSearchParams();
+  if (query.center !== null) {
+    params.set("lat", String(query.center.lat));
+    params.set("lng", String(query.center.lng));
+    params.set("r", String(query.radiusMi));
+  }
+  if (query.roofAgeMinYears !== undefined) params.set("roof", String(query.roofAgeMinYears));
+  if (query.permitStatus !== undefined) params.set("permits", "1");
+  const search = params.toString();
+  return search === "" ? "/map" : `/map?${search}`;
 }

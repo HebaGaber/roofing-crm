@@ -1,36 +1,26 @@
 // B-07 T024: paginated lead list (AC-4, FR-004). Consumes `leads.list` through leadsApi (the one
-// shared tRPC client), filters live in the URL (leadFilters.state.ts), Atlas tokens and components
-// only. States: loading skeleton, error banner with Retry, an explicit empty state (no leads yet)
+// shared tRPC client), filters live in the URL (leadFilters.state.ts) and render in LeadFilters
+// (status, assignee, roof, permit, within; Copy link, Show on map; a sheet below 600 px), Atlas
+// tokens and components only. Created time is formatted locally (no shared `src/format` yet). States: loading skeleton, error banner with Retry, an explicit empty state (no leads yet)
 // and a distinct no-match state (filters match zero) -- never an endless spinner. A lead whose
 // source property left the current run is flagged, never shown as if current (AC-5).
 import { StatusPill } from "@crm/ui";
-import { LEAD_STATUSES, type LeadStatus } from "@crm/shared";
+import type { LeadStatus } from "@crm/shared";
 import { useMemo, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import { EmptyState } from "../../components/EmptyState.js";
 import { ErrorBanner } from "../../components/ErrorBanner.js";
 import { Skeleton } from "../../components/Skeleton.js";
-import { ROOF_AGE_CHIPS } from "../Map/FilterSheet.js";
-import filterStyles from "../Map/FilterSheet.module.css";
+import { LeadFilters, STATUS_LABEL } from "./LeadFilters.js";
 import {
-  PERMIT_STATUSES,
   hasActiveFilters,
   parseLeadQuery,
   patchLeadParams,
   toLeadsListInput,
-  type LeadQuery,
   type LeadQueryPatch,
 } from "./leadFilters.state.js";
 import { useLeadsList, type LeadListItem } from "./leadsApi.js";
 import styles from "./Leads.module.css";
-
-const STATUS_LABEL: Readonly<Record<LeadStatus, string>> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  won: "Won",
-  lost: "Lost",
-};
 
 export const LEAD_STATUS_KIND = {
   new: "info",
@@ -39,142 +29,6 @@ export const LEAD_STATUS_KIND = {
   won: "verified",
   lost: "unavailable",
 } as const satisfies Record<LeadStatus, "info" | "warning" | "verified" | "unavailable">;
-
-function Filters({
-  query,
-  onPatch,
-}: {
-  readonly query: LeadQuery;
-  readonly onPatch: (patch: LeadQueryPatch) => void;
-}): ReactElement {
-  return (
-    <section className={styles.filters} aria-label="Lead filters">
-      <div className={filterStyles.group}>
-        <span className={filterStyles.groupLabel}>Roof age ≥</span>
-        <div className={filterStyles.chips} role="group" aria-label="Roof age threshold">
-          {ROOF_AGE_CHIPS.map((years) => (
-            <button
-              key={years}
-              type="button"
-              className={`${filterStyles.chip} ${
-                query.roofAgeMinYears === years ? filterStyles.chipSelected : ""
-              }`}
-              aria-pressed={query.roofAgeMinYears === years}
-              onClick={() => onPatch({ roof: query.roofAgeMinYears === years ? null : years })}
-            >
-              {years}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={filterStyles.group}>
-        <span className={filterStyles.groupLabel}>Permit status</span>
-        <div className={filterStyles.chips} role="group" aria-label="Permit status">
-          {PERMIT_STATUSES.map((status) => (
-            <button
-              key={status}
-              type="button"
-              className={`${filterStyles.chip} ${
-                query.permitStatus === status ? filterStyles.chipSelected : ""
-              }`}
-              aria-pressed={query.permitStatus === status}
-              onClick={() => onPatch({ permit: query.permitStatus === status ? null : status })}
-            >
-              {status[0]?.toUpperCase()}
-              {status.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={styles.filterRow}>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-status">
-            Status
-          </label>
-          <select
-            id="lead-status"
-            className={filterStyles.select}
-            value={query.status ?? ""}
-            onChange={(e) =>
-              onPatch({ status: LEAD_STATUSES.find((s) => s === e.target.value) ?? null })
-            }
-          >
-            <option value="">Any</option>
-            {LEAD_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABEL[status]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-lat">
-            Center latitude
-          </label>
-          <input
-            id="lead-lat"
-            className={filterStyles.input}
-            type="number"
-            step="any"
-            value={query.center?.lat ?? ""}
-            onChange={(e) => onPatch({ lat: committedNumber(e.target.value) })}
-          />
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-lng">
-            Center longitude
-          </label>
-          <input
-            id="lead-lng"
-            className={filterStyles.input}
-            type="number"
-            step="any"
-            value={query.center?.lng ?? ""}
-            onChange={(e) => onPatch({ lng: committedNumber(e.target.value) })}
-          />
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-radius">
-            Radius, mi
-          </label>
-          <input
-            id="lead-radius"
-            className={filterStyles.input}
-            type="number"
-            step="0.5"
-            value={query.radiusMi}
-            onChange={(e) => onPatch({ r: committedNumber(e.target.value) })}
-          />
-        </div>
-      </div>
-      {hasActiveFilters(query) ? (
-        <button
-          type="button"
-          className={styles.clear}
-          onClick={() =>
-            onPatch({
-              roof: null,
-              permit: null,
-              lat: null,
-              lng: null,
-              r: null,
-              status: null,
-              assignee: null,
-            })
-          }
-        >
-          Clear filters
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function committedNumber(text: string): number | null {
-  if (text.trim() === "") return null;
-  const n = Number(text);
-  return Number.isFinite(n) ? n : null;
-}
 
 function LeadCard({ lead }: { readonly lead: LeadListItem }): ReactElement {
   return (
@@ -264,7 +118,12 @@ export function Component(): ReactElement {
           Leads
         </h2>
       </header>
-      <Filters query={query} onPatch={patch} />
+      <LeadFilters
+        query={query}
+        params={searchParams}
+        onPatch={patch}
+        totalCount={result.status === "success" ? result.data.totalCount : undefined}
+      />
       {body}
     </section>
   );
