@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bulkSummary,
   MAX_BULK_CONCURRENCY,
+  runBulkCreateMany,
   runBulkCreate,
 } from "../../src/routes/Map/Candidates/bulkCreate";
 
@@ -72,5 +73,75 @@ describe("bulkSummary", () => {
     expect(bulkSummary(2, 1, 0)).toBe("2 leads created · 1 already a lead");
     expect(bulkSummary(1, 0, 0)).toBe("1 lead created");
     expect(bulkSummary(0, 2, 1)).toBe("0 leads created · 2 already leads · 1 not saved");
+  });
+});
+
+describe("runBulkCreateMany", () => {
+  const rows = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `p${String(i)}`,
+      input: { fips: "48453", requestIdentifier: String(i) },
+    }));
+  const key = (i: number) => `48453:tcad:${String(i)}`;
+
+  it("sends batches of at most 25, one at a time, and maps the answer back to row ids", async () => {
+    const sizes: number[] = [];
+    let live = 0;
+    let peak = 0;
+    const out = await runBulkCreateMany(rows(60), async (inputs) => {
+      live += 1;
+      peak = Math.max(peak, live);
+      sizes.push(inputs.length);
+      await new Promise((r) => setTimeout(r, 2));
+      live -= 1;
+      return {
+        created: inputs
+          .filter((_, i) => i % 3 === 0)
+          .map((x) => ({
+            leadKey: `${x.fips}:tcad:${x.requestIdentifier}`,
+            leadId: `L${x.requestIdentifier}`,
+          })),
+        already: inputs
+          .filter((_, i) => i % 3 === 1)
+          .map((x) => `${x.fips}:tcad:${x.requestIdentifier}`),
+        failed: inputs
+          .filter((_, i) => i % 3 === 2)
+          .map((x) => ({ leadKey: `${x.fips}:tcad:${x.requestIdentifier}`, code: "X" })),
+      };
+    });
+    expect(sizes).toEqual([25, 25, 10]);
+    expect(peak).toBe(1);
+    expect(out.created.map((c) => c.id)).toEqual([
+      "p0",
+      "p3",
+      "p6",
+      ...out.created.slice(3).map((c) => c.id),
+    ]);
+    expect(out.created[0]?.result).toEqual({ leadKey: key(0), leadId: "L0" });
+    expect(out.created.length + out.already.length + out.failed.length).toBe(60);
+  });
+
+  it("a batch whose call fails marks only that batch failed; progress is reported", async () => {
+    const progress: number[] = [];
+    let call = 0;
+    const out = await runBulkCreateMany(
+      rows(30),
+      async (inputs) => {
+        call += 1;
+        if (call === 1) throw new Error("offline");
+        return {
+          created: inputs.map((x) => ({
+            leadKey: `${x.fips}:tcad:${x.requestIdentifier}`,
+            leadId: "L",
+          })),
+          already: [],
+          failed: [],
+        };
+      },
+      (done) => progress.push(done),
+    );
+    expect(out.failed).toHaveLength(25);
+    expect(out.created).toHaveLength(5);
+    expect(progress).toEqual([25, 30]);
   });
 });

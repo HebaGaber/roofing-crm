@@ -160,6 +160,17 @@ export class CrmApiStack extends Stack {
       "dynamodb:UpdateItem",
       "dynamodb:ConditionCheckItem",
     );
+    // leads.undoCreate deletes the LEAD, SIGNALS and EVT#0 items in one TransactWriteItems call,
+    // which is authorised per underlying action: DeleteItem. Granted on the TABLE ARN only (never
+    // the GSI ARNs) and nowhere else; the conditions that make a delete safe live in the
+    // transaction itself (leadRepo.undoCreate). leads.presence's BatchGetItem is already part of
+    // grantReadData above, so no separate grant is added for it.
+    trpcHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:DeleteItem"],
+        resources: [leadsTable.tableArn],
+      }),
+    );
 
     // B-09 T017: `crm-agent-usage` rate-limit/spend-cap guard — rateLimiter.ts/spendCap.ts only
     // ever send one conditional UpdateItem per check (no reads, no transactions), so this grant
@@ -290,7 +301,7 @@ export class CrmApiStack extends Stack {
         {
           id: "AwsSolutions-IAM5",
           reason:
-            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; no Scan, no DeleteItem (see the grant comment above).",
+            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; DeleteItem is granted separately on the table ARN only, never on the indexes (see the grant comments above).",
           appliesTo: [
             {
               regex:

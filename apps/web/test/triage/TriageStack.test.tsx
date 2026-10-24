@@ -9,10 +9,12 @@ import { candidates, FILTERS, must, permit, property } from "../candidates/fixtu
 
 let result: CandidatesResult;
 const mutateAsync = vi.fn();
+const undoMutate = vi.fn();
 vi.mock("../../src/routes/Map/Candidates/candidatesApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/routes/Map/Candidates/candidatesApi")>()),
   useCandidates: () => result,
   useCreateCandidateLead: () => ({ mutateAsync }),
+  useUndoCreateLead: () => ({ mutateAsync: undoMutate }),
   usePropertyDetail: () => ({
     isError: false,
     data: {
@@ -55,6 +57,7 @@ const title = (): string => must(card().querySelector("h3")).textContent ?? "";
 beforeEach(() => {
   result = ready();
   mutateAsync.mockReset();
+  undoMutate.mockReset();
   onBack.mockReset();
   onOpenDetails.mockReset();
   Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
@@ -84,7 +87,7 @@ describe("TriageStack", () => {
     expect(title()).toBe("TCAD 0201885121");
   });
 
-  it("Create lead calls leads.create with origin map and moves on without an Undo", async () => {
+  it("Create lead calls leads.create with origin map and moves on, offering Undo", async () => {
     mutateAsync.mockResolvedValue({ leadKey: "48453:tcad:0201885121", leadId: "L-7" });
     mount();
     fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
@@ -95,11 +98,53 @@ describe("TriageStack", () => {
     };
     expect(input.createdFrom).toBe("map");
     expect(input.requestIdentifier).toBe("0201885121");
-    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open lead" }).getAttribute("href")).toBe(
       "/leads/48453%3Atcad%3A0201885121",
     );
     expect(screen.getByRole("heading", { name: "Triage · 2 of 3" })).toBeTruthy();
+  });
+
+  it("Undo after Create calls undoCreate for that lead and brings the card back", async () => {
+    mutateAsync.mockResolvedValue({ leadKey: "48453:tcad:0201885121", leadId: "L-7" });
+    undoMutate.mockResolvedValue({ deleted: true });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
+    await screen.findByText("Lead created · L-7");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Lead removed")).toBeTruthy();
+    expect(must(undoMutate.mock.calls[0])[0]).toEqual({
+      leadKey: "48453:tcad:0201885121",
+      leadId: "L-7",
+    });
+    expect(screen.getByRole("heading", { name: "Triage · 1 of 3" })).toBeTruthy();
+    expect(title()).toBe("TCAD 0201885121");
+  });
+
+  it("when the server keeps the lead, says why and does not bring the card back", async () => {
+    mutateAsync.mockResolvedValue({ leadKey: "48453:tcad:0201885121", leadId: "L-7" });
+    undoMutate.mockResolvedValue({ deleted: false, reason: "CHANGED" });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
+    await screen.findByText("Lead created · L-7");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Lead kept: it was updated after it was created.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Triage · 2 of 3" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("a failed undo call says the lead is still saved and keeps Undo available", async () => {
+    mutateAsync.mockResolvedValue({ leadKey: "48453:tcad:0201885121", leadId: "L-7" });
+    undoMutate.mockRejectedValueOnce(new Error("net")).mockResolvedValueOnce({ deleted: true });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
+    await screen.findByText("Lead created · L-7");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByText("Couldn’t undo. The lead is still saved.")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Triage · 2 of 3" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await screen.findByText("Lead removed");
+    expect(screen.getByRole("heading", { name: "Triage · 1 of 3" })).toBeTruthy();
   });
 
   it("a failed create returns the card with Try again, and retry succeeds", async () => {

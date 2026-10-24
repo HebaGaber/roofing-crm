@@ -4,19 +4,21 @@
 // own `search.properties` + `search.permits` cache entries (candidatesApi). CRM additions: a
 // checkbox per row and the selection bar "Create {n} leads" (E-54) with a confirmation sheet
 // (E-75), the "Lead · {status}" mark (E-52), the "Hide existing leads" toggle (E-74) and "Why is
-// this a lead?". Bulk create calls `leads.create` once per property, ≤ 2 at a time; duplicates
-// come back ALREADY_EXISTS and are counted, never failed. No Undo: the API has no lead delete
-// (reported as a gap, see design/board-match/candidates-triage.md).
+// this a lead?". Bulk create calls `leads.createMany` (25 per call); duplicates come back as
+// `already` and are counted, never failed. The result snackbar's Undo calls `leads.undoCreate` for
+// exactly the leads that create made and reports, honestly, any the server kept and why.
 import { MAX_RADIUS_MI } from "@crm/domain";
 import { Icon, Popover } from "@crm/ui";
 import { useCallback, useEffect, useId, useMemo, useState, type ReactElement } from "react";
 import { useNavigate } from "react-router";
 import { Skeleton } from "../../../components/Skeleton.js";
 import { bulkSummary } from "./bulkCreate.js";
+import { undoSummary } from "./undoCopy.js";
 import { CandidateRow } from "./CandidateRow.js";
 import {
   candidateCreateInput,
   useBulkCreateLeads,
+  useUndoCreatedLeads,
   useCandidates,
   type LeadCreateInput,
 } from "./candidatesApi.js";
@@ -65,6 +67,8 @@ export interface CandidateListProps {
 
 interface Result {
   readonly message: string;
+  /** The leads this create made; present only while Undo is still on offer. */
+  readonly undoable?: readonly { leadKey: string; leadId: string }[];
 }
 
 function headerSummary(count: number, filters: CandidateFilters, originLabel: string): string {
@@ -91,6 +95,8 @@ export function CandidateList({
 }: CandidateListProps): ReactElement {
   const data = useCandidates(filters);
   const bulk = useBulkCreateLeads();
+  const undoCreated = useUndoCreatedLeads();
+  const [undoing, setUndoing] = useState(false);
   const navigate = useNavigate();
   const noteId = useId();
   const [hideLeads, setHideLeads] = useState(false);
@@ -164,12 +170,24 @@ export function CandidateList({
     setConfirming(false);
     setSelection(outcome.failed);
     setResult({
+      ...(outcome.created.length > 0 ? { undoable: outcome.created.map((c) => c.result) } : {}),
       message: bulkSummary(
         outcome.created.length,
         knownLeads + outcome.already.length,
         outcome.failed.length,
       ),
     });
+  };
+
+  const undo = async (): Promise<void> => {
+    const leads = result?.undoable;
+    if (leads === undefined || undoing) return;
+    setUndoing(true);
+    try {
+      setResult({ message: undoSummary(await undoCreated(leads)) });
+    } finally {
+      setUndoing(false);
+    }
   };
 
   const widenTo =
@@ -413,7 +431,14 @@ export function CandidateList({
           message={result.message}
           onClose={closeResult}
           actions={
-            <SnackbarAction onClick={() => void navigate("/leads")}>Open Leads</SnackbarAction>
+            <>
+              {result.undoable === undefined ? null : (
+                <SnackbarAction onClick={() => void undo()}>
+                  {undoing ? "Undoing…" : "Undo"}
+                </SnackbarAction>
+              )}
+              <SnackbarAction onClick={() => void navigate("/leads")}>Open Leads</SnackbarAction>
+            </>
           }
         />
       )}

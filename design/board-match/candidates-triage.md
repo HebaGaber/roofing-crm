@@ -15,7 +15,7 @@ How the live side was captured: the components are not mounted in the map yet (t
 | CrmCandidates390 | same | Matched, data differs | CrmCandidates390.png | Checkbox, Address, Roof, Conf., open and why icons. |
 | CrmCandidatesConfirm1440 | 3 selected, 2 already leads | Matched, data differs | CrmCandidatesConfirm1440.png | Title "Create n leads?", signals, "Already a lead · {status} · skipped", footnote, Cancel / Create. Count uses the leads the caller owns (see API gap 3). |
 | CrmCandidatesConfirm390 | same | Matched, data differs | CrmCandidatesConfirm390.png | Bottom sheet with handle. |
-| CrmCandidatesCreated390 | after confirm | Deviation: no Undo | CrmCandidatesCreated390.png | "{n} leads created · {m} already leads" + Open Leads match; Undo omitted, no delete API (Deviations 2). |
+| CrmCandidatesCreated390 | after confirm | Matched, data differs | CrmCandidatesCreated390.png | "{n} leads created · {m} already leads" + Undo + Open Leads. Undo calls `leads.undoCreate` for exactly the leads this create made and reports any the server kept, with the reason (Deviations 2). |
 | CrmCandidatesEmpty390 | 0 in 0.5 mi | Matched, data differs | CrmCandidatesEmpty390.png | Widen is +1 mi like the map's own rule (1.5, board 1). |
 | CrmCandidatesError390 | index down | Matched | CrmCandidatesError390.png | Retry refetches all three queries. |
 | CrmCandidatesLoading390 | loading | Matched | CrmCandidatesLoading390.png | Skeleton rows + "Loading candidates from the lead index…". |
@@ -38,10 +38,10 @@ How the live side was captured: the components are not mounted in the map yet (t
 ## Deviations (reasons)
 
 1. **Close n tab** (Matches/Close): needs a close-matches query (properties missing exactly one condition); no such API. Tab omitted, header shows Matches n only.
-2. **No Undo for created leads** (list snackbar, triage): `leads` router has create, updateStatus, addNote, get, list; no delete. Skip Undo works (local). Proposed API in the report.
-3. **Lead marks cover the caller's own leads** (`leads.list` scope, first 100). A lead owned by a teammate shows no mark; creating it is refused (ALREADY_EXISTS) and counted as "already a lead", so no duplicates ever.
+2. **Undo of created leads** (resolved 2026-10-25, no longer a deviation): `leads.undoCreate({ leadKey, leadId? })` returns `{ deleted: true }` or `{ deleted: false, reason }` (`NOT_FOUND`, `NOT_OWNER`, `CHANGED`, `TOO_OLD`, `NOT_UNDOABLE`). The server deletes only when the caller created the lead, it is still New with no later events and it is under 15 minutes old, in one conditional DynamoDB transaction. The list snackbar Undo and the triage Undo send only the leads that action created (with their `leadId`) and show the server's reason in plain words when a lead is kept (`undoCopy.ts`); Skip Undo stays local. The shape differs from the first proposal only by the optional `leadId` guard and the typed `reason`.
+3. **Lead marks cover every assignee** (resolved 2026-10-25): marks come from `leads.presence({ requestIdentifiers, fips? })` (BatchGetItem on the lead keys, 100 per call, at most 10 calls per ring), which returns only requestIdentifier, leadKey, leadId and status, so a teammate's lead is marked without exposing its owner or notes. If a ring has more than 1,000 properties, or a presence call fails, the rows still show without those marks (`useCandidates` reports `leadsUnavailable`; no screen shows a notice for it yet); duplicates are still refused server-side.
 4. Triage create origin is "map" (handoff: origin Map); list bulk create uses "list".
 
 ## Rules kept
 
-Atlas tokens only, no hex; every value from search.properties, search.permits, leads.list, property.get; missing data shows its reason; bulk create is sequential with at most 2 in flight (`runBulkCreate`, cap enforced in code and tested); no server or e2e files touched.
+Atlas tokens only, no hex; every value from search.properties, search.permits, leads.presence, property.get; missing data shows its reason; bulk create goes through `leads.createMany` (25 per call, one call at a time from the browser; the server runs 3 at once through the same `LeadService.create`); lead marks come from `leads.presence`; no server or e2e files touched.

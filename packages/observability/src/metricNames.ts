@@ -17,6 +17,7 @@ export const METRIC_NAMES = {
   LeadsNoteAdded: "LeadsNoteAdded",
   LeadsRead: "LeadsRead",
   LeadsListed: "LeadsListed",
+  LeadsUndone: "LeadsUndone",
   LeadsErrors: "LeadsErrors",
   // B-09 T046 (US2, contracts/observability.md agent-metrics table): the full agent metric set,
   // namespace `RoofingCrm`, emitted from apps/api/src/routers/agent.ts and

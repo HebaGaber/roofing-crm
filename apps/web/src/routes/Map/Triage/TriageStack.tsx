@@ -3,8 +3,9 @@
 // map's current results, in the current sort, into a stack of cards: swipe right (or Create lead)
 // creates a lead with `leads.create`, swipe left (or Skip) skips, Open details opens the property
 // drawer. The queue is fixed when triage starts, so creating a lead never reshuffles the cards.
-// Skip has Undo. Create has NO Undo: the API has no lead delete (reported gap). Offline: Skip
-// still works and Create returns the card with "You're offline. The lead was not saved."
+// Skip has Undo (local). Create has Undo too: `leads.undoCreate` deletes only the lead this tap
+// created, while it is untouched and under 15 minutes old; when the server keeps it, the snackbar
+// says why and the card stays done. Offline: Skip still works and Create returns the card with "You're offline. The lead was not saved."
 import { MAX_RADIUS_MI } from "@crm/domain";
 import { Icon } from "@crm/ui";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
@@ -15,6 +16,7 @@ import {
   isAlreadyExists,
   useCandidates,
   useCreateCandidateLead,
+  useUndoCreateLead,
   usePropertyDetail,
 } from "../Candidates/candidatesApi.js";
 import {
@@ -26,6 +28,7 @@ import {
   type CandidateSort,
 } from "../Candidates/candidates.js";
 import { Snackbar, SnackbarAction } from "../Candidates/Snackbar.js";
+import { undoOneText } from "../Candidates/undoCopy.js";
 import { TriageCard, type TriageBbb } from "./TriageCard.js";
 import styles from "./Triage.module.css";
 
@@ -38,6 +41,15 @@ interface LogEntry {
   readonly cid: string;
   readonly action: Action;
   readonly leadKey?: string;
+  readonly leadId?: string;
+}
+
+interface Toast {
+  readonly message: string;
+  /** Which Undo the snackbar offers: a local skip, or the server-side removal of a created lead. */
+  readonly undo?: "skip" | "create";
+  readonly leadKey?: string;
+  readonly leadId?: string;
 }
 
 export interface TriageStackProps {
@@ -105,9 +117,8 @@ export function TriageStack({
   const [log, setLog] = useState<readonly LogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [toast, setToast] = useState<{ message: string; undo: boolean; leadKey?: string } | null>(
-    null,
-  );
+  const undoCreate = useUndoCreateLead();
+  const [toast, setToast] = useState<Toast | null>(null);
   const pendingRef = useRef(false);
 
   const effectiveSort = sort ?? defaultSort(filters);
@@ -156,10 +167,15 @@ export function TriageStack({
 
   const closeToast = useCallback(() => setToast(null), []);
 
-  const advance = (entry: LogEntry, message: string, undo: boolean): void => {
+  const advance = (entry: LogEntry, message: string, undo?: "skip" | "create"): void => {
     setLog((l) => [...l, entry]);
     setError(null);
-    setToast({ message, undo, ...(entry.leadKey === undefined ? {} : { leadKey: entry.leadKey }) });
+    setToast({
+      message,
+      ...(undo === undefined ? {} : { undo }),
+      ...(entry.leadKey === undefined ? {} : { leadKey: entry.leadKey }),
+      ...(entry.leadId === undefined ? {} : { leadId: entry.leadId }),
+    });
   };
 
   const skip = (): void => {
@@ -167,7 +183,7 @@ export function TriageStack({
     advance(
       { cid: current.property.propertyCid, action: "skipped" },
       `Skipped ${candidateTitle(current.property)}`,
-      true,
+      "skip",
     );
   };
 
@@ -188,16 +204,20 @@ export function TriageStack({
     try {
       const lead = await create.mutateAsync(input);
       advance(
-        { cid: current.property.propertyCid, action: "created", leadKey: lead.leadKey },
+        {
+          cid: current.property.propertyCid,
+          action: "created",
+          leadKey: lead.leadKey,
+          leadId: lead.leadId,
+        },
         `Lead created · ${lead.leadId}`,
-        false,
+        "create",
       );
     } catch (e) {
       if (isAlreadyExists(e)) {
         advance(
           { cid: current.property.propertyCid, action: "already" },
           "Already a lead · skipped",
-          false,
         );
       } else {
         setError(online ? FAILED_ERROR : OFFLINE_ERROR);
@@ -212,6 +232,29 @@ export function TriageStack({
     setLog((l) => (l[l.length - 1]?.action === "skipped" ? l.slice(0, -1) : l));
     setToast(null);
     setError(null);
+  };
+
+  /** Removes the lead the last Create made. Only a `deleted: true` answer brings the card back;
+   *  a refusal keeps the lead and the stack where it is, and the snackbar says why. */
+  const undoCreatedLead = async (): Promise<void> => {
+    if (toast?.leadKey === undefined || toast.leadId === undefined || pendingRef.current) return;
+    const { leadKey, leadId } = toast;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      const answer = await undoCreate.mutateAsync({ leadKey, leadId });
+      if (answer.deleted) {
+        setLog((l) => (l[l.length - 1]?.leadKey === leadKey ? l.slice(0, -1) : l));
+        setToast({ message: undoOneText(answer) });
+      } else {
+        setToast({ message: undoOneText(answer), leadKey });
+      }
+    } catch {
+      setToast({ message: undoOneText("failed"), undo: "create", leadKey, leadId });
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
   };
 
   const created = log.filter((e) => e.action === "created").length;
@@ -402,11 +445,16 @@ export function TriageStack({
       {toast === null ? null : (
         <Snackbar
           message={toast.message}
-          icon={toast.undo ? "undo" : "check_circle"}
+          icon={toast.undo === "skip" ? "undo" : "check_circle"}
           onClose={closeToast}
           actions={
             <>
-              {toast.undo ? <SnackbarAction onClick={undoSkip}>Undo</SnackbarAction> : null}
+              {toast.undo === "skip" ? (
+                <SnackbarAction onClick={undoSkip}>Undo</SnackbarAction>
+              ) : null}
+              {toast.undo === "create" ? (
+                <SnackbarAction onClick={() => void undoCreatedLead()}>Undo</SnackbarAction>
+              ) : null}
               {toast.leadKey === undefined ? null : (
                 <Link
                   className={styles.snackLink}

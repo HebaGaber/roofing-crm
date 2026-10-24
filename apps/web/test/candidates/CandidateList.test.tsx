@@ -9,10 +9,12 @@ import { candidates, FILTERS, must, permit, property } from "./fixtures";
 
 let result: CandidatesResult;
 const run = vi.fn();
+const undoCreated = vi.fn();
 vi.mock("../../src/routes/Map/Candidates/candidatesApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../src/routes/Map/Candidates/candidatesApi")>()),
   useCandidates: () => result,
   useBulkCreateLeads: () => ({ run, state: { running: false, done: 0, total: 0 } }),
+  useUndoCreatedLeads: () => undoCreated,
 }));
 
 import { CandidateList } from "../../src/routes/Map/Candidates/CandidateList";
@@ -41,6 +43,7 @@ const mount = (props: Partial<React.ComponentProps<typeof CandidateList>> = {}) 
 beforeEach(() => {
   result = ready();
   run.mockReset();
+  undoCreated.mockReset();
 });
 afterEach(cleanup);
 
@@ -99,7 +102,7 @@ describe("CandidateList", () => {
 
   it("sends only new properties, then reports created and already-a-lead with Open Leads", async () => {
     run.mockResolvedValue({
-      created: [{ id: "x", result: {} }],
+      created: [{ id: "x", result: { leadKey: "48453:tcad:0201885122", leadId: "L-9" } }],
       already: ["y"],
       failed: [],
     });
@@ -117,7 +120,48 @@ describe("CandidateList", () => {
     // 1 created + (1 known lead + 1 refused by the server) already leads.
     expect(await screen.findByText("1 lead created · 2 already leads")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Open Leads" })).toBeTruthy();
-    // No Undo: the API has no lead delete.
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+  });
+
+  it("Undo removes only the leads that create made and reports what the server kept", async () => {
+    run.mockResolvedValue({
+      created: [
+        { id: "a", result: { leadKey: "48453:tcad:0201885122", leadId: "L-9" } },
+        { id: "b", result: { leadKey: "48453:tcad:0201885123", leadId: "L-10" } },
+      ],
+      already: [],
+      failed: [],
+    });
+    undoCreated.mockResolvedValue({ undone: 1, refused: ["CHANGED"], failed: 0 });
+    mount();
+    for (const box of screen.getAllByRole("checkbox", { name: /Select TCAD/ }))
+      fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Create 3 leads" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Create 2 leads" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+    await waitFor(() => expect(undoCreated).toHaveBeenCalledTimes(1));
+    expect(must(undoCreated.mock.calls[0])[0]).toEqual([
+      { leadKey: "48453:tcad:0201885122", leadId: "L-9" },
+      { leadKey: "48453:tcad:0201885123", leadId: "L-10" },
+    ]);
+    expect(
+      await screen.findByText("Undid 1 lead · 1 kept (it was updated after it was created)"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("offers no Undo when nothing was created", async () => {
+    run.mockResolvedValue({ created: [], already: ["y"], failed: [] });
+    mount();
+    for (const box of screen.getAllByRole("checkbox", { name: /Select TCAD/ }))
+      fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Create 3 leads" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Create 2 leads" }),
+    );
+    await screen.findByText(/0 leads created/);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 

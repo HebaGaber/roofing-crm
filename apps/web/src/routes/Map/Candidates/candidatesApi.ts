@@ -1,14 +1,15 @@
 // The only place the Candidate list and Field triage touch the tRPC client. They read the SAME
 // `search.properties` / `search.permits` queries the map makes (identical inputs, so React Query
 // shares one cache entry and switching Map ↔ List ↔ Triage costs no extra call), plus the
-// caller's own leads for the "Lead · {status}" mark (E-52). Components call these hooks; tests
+// lead presence (`leads.presence`, every assignee) for the "Lead · {status}" mark (E-52). Components call these hooks; tests
 // mock this module.
 import type { ApiInputs, ApiOutputs } from "@crm/api-client";
 import { useTRPC, useTRPCClient } from "@crm/api-client/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
-import { isAlreadyExists, toCreateInput } from "../../Leads/LeadCreateAction.js";
-import { runBulkCreate, type BulkOutcome } from "./bulkCreate.js";
+import { isAlreadyExists, toCreateInput, TRAVIS_FIPS } from "../../Leads/LeadCreateAction.js";
+import { runBulkCreateMany, type BulkOutcome } from "./bulkCreate.js";
+import { runUndoMany, type UndoAnswer, type UndoTally } from "./undoCopy.js";
 import {
   buildCandidates,
   leadsByRequestIdentifier,
@@ -21,8 +22,10 @@ export type LeadCreateInput = ApiInputs["leads"]["create"];
 export type CreatedFrom = LeadCreateInput["createdFrom"];
 export type PropertyDetailOutput = ApiOutputs["property"]["get"];
 
-/** `leads.list` page size cap (the router's LIST_MAX_LIMIT). */
+/** `leads.presence` identifier cap per call (the router's PRESENCE_MAX). */
 export const LEAD_PRESENCE_LIMIT = 100;
+/** Calls per ring; a bigger ring leaves the rest unmarked and says so (`leadsUnavailable`). */
+export const LEAD_PRESENCE_MAX_CALLS = 10;
 
 export type CandidatesStatus = "idle" | "loading" | "error" | "ready";
 
@@ -34,13 +37,14 @@ export interface CandidatesResult {
   readonly totalInRing: number;
   /** search.permits failed: rows still show, without permit signals (partial). */
   readonly permitsUnavailable: boolean;
-  /** leads.list failed: no lead marks; create still refuses duplicates server-side. */
+  /** leads.presence failed or the ring was too large to mark in full: marks may be missing; create still refuses duplicates server-side. */
   readonly leadsUnavailable: boolean;
   readonly refetch: () => void;
 }
 
 export function useCandidates(filters: CandidateFilters): CandidatesResult {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const { center, radiusMi, roofAgeMinYears } = filters;
   // Exactly the map's input shape (Map.tsx `searchInput`), so the cache entry is shared.
   const properties = useQuery({
@@ -59,24 +63,51 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     }),
     enabled: center !== null,
   });
-  const leads = useQuery(trpc.leads.list.queryOptions({ limit: LEAD_PRESENCE_LIMIT }));
+  // Lead marks for every property in the ring, whoever owns the lead: chunks of 100 identifiers.
+  const ids = useMemo(
+    () => [...new Set((properties.data?.properties ?? []).map((p) => p.requestIdentifier))],
+    [properties.data],
+  );
+  const chunks = useMemo(() => {
+    const out: string[][] = [];
+    for (
+      let at = 0;
+      at < ids.length && out.length < LEAD_PRESENCE_MAX_CALLS;
+      at += LEAD_PRESENCE_LIMIT
+    )
+      out.push(ids.slice(at, at + LEAD_PRESENCE_LIMIT));
+    return out;
+  }, [ids]);
+  const presence = useQueries({
+    queries: chunks.map((requestIdentifiers) =>
+      trpc.leads.presence.queryOptions({ requestIdentifiers, fips: TRAVIS_FIPS }),
+    ),
+    // `combine` results are structurally shared, so `rows` keeps its identity between renders.
+    combine: (results) => ({
+      rows: results.flatMap((q) => q.data ?? []),
+      failed: results.some((q) => q.isError),
+    }),
+  });
+  const presenceRows = presence.rows;
+  const presenceError =
+    presence.failed || ids.length > LEAD_PRESENCE_LIMIT * LEAD_PRESENCE_MAX_CALLS;
 
   const candidates = useMemo(() => {
     if (properties.data === undefined) return [];
-    const presence = leadsByRequestIdentifier(leads.data?.leads ?? []);
+    const presence = leadsByRequestIdentifier(presenceRows);
     return buildCandidates(
       properties.data.properties,
       permits.data?.permits ?? [],
       presence,
       filters,
     );
-  }, [properties.data, permits.data, leads.data, filters]);
+  }, [properties.data, permits.data, presenceRows, filters]);
 
   const refetch = useCallback(() => {
     void properties.refetch();
     void permits.refetch();
-    void leads.refetch();
-  }, [properties, permits, leads]);
+    void queryClient.refetchQueries({ queryKey: trpc.leads.presence.queryKey() });
+  }, [properties, permits, queryClient, trpc]);
 
   let status: CandidatesStatus = "ready";
   if (center === null) status = "idle";
@@ -89,7 +120,7 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     candidates,
     totalInRing: properties.data?.properties.length ?? 0,
     permitsUnavailable: permits.isError,
-    leadsUnavailable: leads.isError,
+    leadsUnavailable: presenceError,
     refetch,
   };
 }
@@ -120,14 +151,58 @@ export function candidateCreateInput(
 
 export { isAlreadyExists };
 
+/** Refreshes everything that shows lead presence: the marks here and the Leads list. */
+function useRefreshLeadPresence(): () => Promise<void> {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  return useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: trpc.leads.presence.queryKey() }),
+      queryClient.invalidateQueries({ queryKey: trpc.leads.list.queryKey() }),
+    ]);
+  }, [queryClient, trpc]);
+}
+
 /** One-tap create (triage). Refreshes lead presence once it settles. */
 export function useCreateCandidateLead() {
   const trpc = useTRPC();
-  const queryClient = useQueryClient();
+  const refresh = useRefreshLeadPresence();
   return useMutation({
     ...trpc.leads.create.mutationOptions(),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: trpc.leads.list.queryKey() }),
+    onSettled: refresh,
   });
+}
+
+export type UndoCreateOutput = ApiOutputs["leads"]["undoCreate"];
+
+/** Undo of ONE lead this person just created (`leads.undoCreate`). Refreshes presence when it
+ *  settles, so a removed lead's mark disappears. */
+export function useUndoCreateLead() {
+  const trpc = useTRPC();
+  const refresh = useRefreshLeadPresence();
+  return useMutation({
+    ...trpc.leads.undoCreate.mutationOptions(),
+    onSettled: refresh,
+  });
+}
+
+/** Undo of the leads one bulk create made (and only those): at most 2 calls in flight. */
+export function useUndoCreatedLeads() {
+  const client = useTRPCClient();
+  const refresh = useRefreshLeadPresence();
+  return useCallback(
+    async (leads: readonly { leadKey: string; leadId: string }[]): Promise<UndoTally> => {
+      try {
+        return await runUndoMany(
+          leads,
+          (lead): Promise<UndoAnswer> => client.leads.undoCreate.mutate(lead),
+        );
+      } finally {
+        await refresh();
+      }
+    },
+    [client, refresh],
+  );
 }
 
 export interface BulkState {
@@ -136,32 +211,29 @@ export interface BulkState {
   readonly total: number;
 }
 
-/** Bulk create with bounded concurrency; lead presence is refreshed once, at the end. */
+/** Bulk create through `leads.createMany` (25 per call); presence is refreshed once, at the end. */
 export function useBulkCreateLeads() {
-  const trpc = useTRPC();
   const client = useTRPCClient();
-  const queryClient = useQueryClient();
+  const refresh = useRefreshLeadPresence();
   const [state, setState] = useState<BulkState>({ running: false, done: 0, total: 0 });
 
   const run = useCallback(
     async (
       items: readonly { id: string; input: LeadCreateInput }[],
-    ): Promise<BulkOutcome<CreatedLead>> => {
+    ): Promise<BulkOutcome<{ leadKey: string; leadId: string }>> => {
       setState({ running: true, done: 0, total: items.length });
       try {
-        return await runBulkCreate(
+        return await runBulkCreateMany(
           items,
-          (input) => client.leads.create.mutate(input),
-          isAlreadyExists,
-          undefined,
+          (inputs) => client.leads.createMany.mutate({ items: inputs }),
           (done, total) => setState({ running: true, done, total }),
         );
       } finally {
         setState((s) => ({ ...s, running: false }));
-        await queryClient.invalidateQueries({ queryKey: trpc.leads.list.queryKey() });
+        await refresh();
       }
     },
-    [client, queryClient, trpc],
+    [client, refresh],
   );
   return { run, state };
 }
