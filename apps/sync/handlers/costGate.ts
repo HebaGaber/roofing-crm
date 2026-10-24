@@ -31,7 +31,12 @@ export type CostGateResult =
 export function estimateCostFromManifest(
   manifest: Pick<RunManifestV1, "artifacts" | "coverage">,
 ): CostEstimate {
-  const predictedBytes = manifest.artifacts.reduce((sum, artifact) => sum + artifact.size, 0);
+  // B-09: only `kind: "table"` artifacts are ever fetched (Plan's PART_KIND). Full-county manifests
+  // also list ~2.3 GB of CAR/directory containers the sync never downloads; counting those held
+  // every full-county run on the 2 GB byte gate for bytes it would not spend.
+  const predictedBytes = manifest.artifacts
+    .filter((artifact) => artifact.kind === "table")
+    .reduce((sum, artifact) => sum + artifact.size, 0);
   const predictedDocCount = Object.values(manifest.coverage).reduce(
     (sum, coverage) => sum + coverage.count,
     0,

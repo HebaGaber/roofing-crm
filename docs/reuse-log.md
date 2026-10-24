@@ -95,3 +95,4 @@ T001 e2e-helpers correction (after the row above): on inspection, `tests/e2e/res
 | 2026-10-23T18:25Z | `packages/shared/src/labels.ts` | `packages/oracle-contract/src/labels.ts` | 660f73c | feature/oracle-pipeline |
 | 2026-10-23T18:26Z | `tests/e2e/lib/evidence.ts` | `tests/e2e/lib/evidence.ts` | a1fd50a | feature/oracle-pipeline |
 | 2026-10-23T18:26Z | `tests/e2e/lib/fixtures.ts` | `tests/e2e/lib/fixtures.ts` | 071eb1b | feature/oracle-pipeline |
+| 2026-10-24T19:00Z | `packages/query-core` | `packages/oracle-views` (re-vendor: bind-manifest.ts, views.fixture.test.ts, test/helpers/fixture-export.ts, new test/bind-manifest-batches.test.ts; `@countylens/*` renamed to `@crm/*`, Prettier; copied via `git archive 1ef8bff` because the Oracle working tree had uncommitted query-core changes; sha256 = that archive tar) | 1ef8bff | 011-publish-and-runs | 33f9e153d11bb2c7658139809e2631d830af6f7bb6c2bccad37f537f3175f651 |

@@ -105,8 +105,12 @@ export interface PlanResult {
   /** This run's start timestamp — Promote (T022) reads this back to compute SyncDurationMs. */
   startedAt: string;
   /** The manifest's own `coverage.parcels_published.count` — Validate (T019) reconciles
-   *  BuildIndex's row count against this, never a live recount of Task A's data. */
-  coverageParcelsPublished: number;
+   *  BuildIndex's row count against this, never a live recount of Task A's data. Null when Task A
+   *  does not publish it (full-county manifests) — never defaulted to 0. */
+  coverageParcelsPublished: number | null;
+  /** The manifest's own `coverage.permits_emitted.count` (B-09): Validate reconciles crm_permit
+   *  against it, exactly Task A's own publish gate. Null when absent. */
+  coveragePermitsEmitted: number | null;
   /** The manifest's own `finishedAt` — carried through to Validate/Promote's `IndexMeta` rather
    *  than generated fresh at each later step. */
   finishedAt: string;
@@ -375,13 +379,15 @@ async function planCore(
   const rulesProfile = manifest.profiles.find((p) => p.name === PROFILE.name);
   const placesProfile = manifest.profiles.find((p) => p.name === PLACES_PROFILE_NAME);
 
+  // Mirrors vendored query-core's bindManifest (1ef8bff): a run that never captured places carries
+  // no travis-places profile and binds with an empty ZCTA table; a *present* places profile whose
+  // digest disagrees with the in-repo gazetteer is still a mismatch.
   const digestMismatch =
     input.__testForceDigestMismatch === true ||
     rulesProfile === undefined ||
     rulesProfile.sha256 !== PROFILE.sha256 ||
     rulesProfile.version !== PROFILE.version ||
-    placesProfile === undefined ||
-    placesProfile.sha256 !== gazetteer.GAZETTEER.sha256;
+    (placesProfile !== undefined && placesProfile.sha256 !== gazetteer.GAZETTEER.sha256);
 
   if (digestMismatch) {
     obs.logger.warn("Plan: held, profile digest mismatch against the vendored copy", {
@@ -436,7 +442,8 @@ async function planCore(
     })),
     costEstimate: { predictedSpendUsd, predictedDocCount, predictedBytes },
     startedAt: new Date().toISOString(),
-    coverageParcelsPublished: manifest.coverage.parcels_published?.count ?? 0,
+    coverageParcelsPublished: manifest.coverage.parcels_published?.count ?? null,
+    coveragePermitsEmitted: manifest.coverage.permits_emitted?.count ?? null,
     finishedAt: manifest.finishedAt,
   };
 }

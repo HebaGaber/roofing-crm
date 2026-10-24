@@ -30,8 +30,12 @@ export interface ValidateInput {
   properties: CrmProperty[];
   permits: CrmPermit[];
   /** The manifest's own `coverage.parcels_published.count` (never a live recount of Task A's
-   *  data — this story reads it from the manifest it already fetched in Plan/BuildIndex). */
-  coverageParcelsPublished: number;
+   *  data — this story reads it from the manifest it already fetched in Plan/BuildIndex). Null
+   *  when Task A does not publish it (B-09: full-county manifests). */
+  coverageParcelsPublished: number | null;
+  /** B-09: the manifest's own `coverage.permits_emitted.count` — Task A's publish gate is exactly
+   *  `v_roofing_permit = permits_emitted`. Null/absent when not published. */
+  coveragePermitsEmitted?: number | null;
   /** The previously *promoted* run's property count, or null on a first run (no prior run to
    *  compare against — spec.md's Assumptions: "first_run" is itself one of Task A's own missing
    *  reasons, not invented here). */
@@ -43,28 +47,43 @@ export interface ValidateInput {
   finishedAt: string;
 }
 
-function heldResult(
-  input: ValidateInput,
-  heldReason: IndexMetaHeldReason,
-  reconcileDiff: number | null = null,
-): IndexMeta {
-  return IndexMeta.parse({
-    manifestCid: input.manifestCid,
-    status: "Held",
-    propertyCount: input.properties.length,
-    permitCount: input.permits.length,
-    reconcileDiff,
-    heldReason,
-    finishedAt: input.finishedAt,
-  });
-}
-
 /** The pure reconciliation core (no AWS I/O) — directly testable with a fixture ValidateInput. */
 export function validateCore(input: ValidateInput): IndexMeta {
+  const propertyCount = input.properties.length;
+  const permitCount = input.permits.length;
+
+  // B-09: each count check either ran against a number Task A published, or is recorded as not
+  // published — never against a defaulted 0.
+  const parcelsPublished = input.coverageParcelsPublished;
+  const permitsEmitted = input.coveragePermitsEmitted ?? null;
+  const reconcileDiff =
+    parcelsPublished === null ? null : Math.abs(propertyCount - parcelsPublished);
+  const permitReconcileDiff = permitsEmitted === null ? null : permitCount - permitsEmitted;
+  const checks = {
+    propertyCountCheck: parcelsPublished === null ? "not_published_by_task_a" : "reconciled",
+    permitCountCheck: permitsEmitted === null ? "not_published_by_task_a" : "reconciled",
+    permitReconcileDiff,
+  } as const;
+
+  const result = (
+    status: "Validated" | "Held",
+    heldReason: IndexMetaHeldReason | null,
+  ): IndexMeta =>
+    IndexMeta.parse({
+      manifestCid: input.manifestCid,
+      status,
+      propertyCount,
+      permitCount,
+      reconcileDiff,
+      heldReason,
+      finishedAt: input.finishedAt,
+      ...checks,
+    });
+
   // T020a: checked first, before any row-count evaluation at all — a run is never promoted with
   // an unverified part regardless of how the counts otherwise reconcile.
   if (input.anyPartUnverified) {
-    return heldResult(input, "unverified_part");
+    return result("Held", "unverified_part");
   }
 
   // 0 rows without sourceManifestCid (FR-001/constitution P0-3) — defensive: BuildIndex's own
@@ -80,43 +99,26 @@ export function validateCore(input: ValidateInput): IndexMeta {
     );
   }
 
-  const propertyCount = input.properties.length;
-
   if (
     input.previousPromotedPropertyCount !== null &&
     propertyCount < input.previousPromotedPropertyCount * (1 - DROP_HOLD_FRACTION)
   ) {
-    return heldResult(input, "drop_over_5_percent");
+    return result("Held", "drop_over_5_percent");
   }
 
-  const reconcileDiff = Math.abs(propertyCount - input.coverageParcelsPublished);
-  if (reconcileDiff === 0) {
-    return IndexMeta.parse({
-      manifestCid: input.manifestCid,
-      status: "Validated",
-      propertyCount,
-      permitCount: input.permits.length,
-      reconcileDiff: 0,
-      heldReason: null,
-      finishedAt: input.finishedAt,
-    });
+  if (parcelsPublished !== null && reconcileDiff !== null && reconcileDiff > 0) {
+    const diffFraction = parcelsPublished > 0 ? reconcileDiff / parcelsPublished : 1;
+    if (diffFraction > RECONCILE_TOLERANCE_FRACTION) {
+      return result("Held", "reconcile_diff_exceeds_tolerance");
+    }
   }
 
-  const diffFraction =
-    input.coverageParcelsPublished > 0 ? reconcileDiff / input.coverageParcelsPublished : 1;
-  if (diffFraction <= RECONCILE_TOLERANCE_FRACTION) {
-    return IndexMeta.parse({
-      manifestCid: input.manifestCid,
-      status: "Validated",
-      propertyCount,
-      permitCount: input.permits.length,
-      reconcileDiff,
-      heldReason: null,
-      finishedAt: input.finishedAt,
-    });
+  // Exactly Task A's own publish gate: no tolerance.
+  if (permitReconcileDiff !== null && permitReconcileDiff !== 0) {
+    return result("Held", "permit_reconcile_mismatch");
   }
 
-  return heldResult(input, "reconcile_diff_exceeds_tolerance", reconcileDiff);
+  return result("Validated", null);
 }
 
 /** BuildIndex's actual output, plus the pass-through fields it echoed from Plan/the Map
@@ -126,7 +128,8 @@ export interface ValidateEvent {
   bucket: string;
   propertyKey: string;
   permitKey: string;
-  coverageParcelsPublished: number;
+  coverageParcelsPublished: number | null;
+  coveragePermitsEmitted?: number | null;
   finishedAt: string;
   anyPartUnverified: boolean;
 }
@@ -216,6 +219,7 @@ async function validateCoreFromEvent(
         properties: propertyCids.map((cid) => ({ sourceManifestCid: cid }) as CrmProperty),
         permits: permitCids.map((cid) => ({ sourceManifestCid: cid }) as CrmPermit),
         coverageParcelsPublished: event.coverageParcelsPublished,
+        coveragePermitsEmitted: event.coveragePermitsEmitted ?? null,
         previousPromotedPropertyCount,
         anyPartUnverified: event.anyPartUnverified,
         finishedAt: event.finishedAt,

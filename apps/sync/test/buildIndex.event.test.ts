@@ -211,6 +211,15 @@ function uploadedBody(key: string): Buffer {
   return call.args[0].input.Body as Buffer;
 }
 
+const STREAM_EVENT_BASE = {
+  bucket: "crm-index-test",
+  manifestCid: MANIFEST_CID,
+  manifestKey: `manifests/${MANIFEST_CID}.json`,
+  coverageParcelsPublished: 1,
+  finishedAt: "2026-10-21T10:40:04.525Z",
+  startedAt: "2026-10-21T10:30:00.000Z",
+};
+
 const STREAM_EVENT = {
   bucket: "crm-index-test",
   manifestCid: MANIFEST_CID,
@@ -220,6 +229,68 @@ const STREAM_EVENT = {
   finishedAt: "2026-10-21T10:40:04.525Z",
   startedAt: "2026-10-21T10:30:00.000Z",
 };
+
+describe("BuildIndex: binds full-county batched parts by explicit local path (B-09, query-core 1ef8bff)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(GetObjectCommand).callsFake(() => manifestGetResponse());
+    s3Mock.on(PutObjectCommand).resolves({});
+  });
+
+  afterEach(() => {
+    s3Mock.restore();
+  });
+
+  it("maps every batched part (tables/bNN/<table>/part) to its own downloaded file, never a shared <group>/<table> path, and binds only the two views it reads", async () => {
+    const oracleViews = await import("@crm/oracle-views");
+    const bind = vi.mocked(oracleViews.bindManifest);
+    bind.mockClear();
+    // Two batches carrying the same table and part file name: under bindManifest's default
+    // `<tablesDir>/<group>/<table>/<part>` layout both would resolve to one path and collide.
+    const parts = [
+      { path: "run/county-batched/tables/b01/address/part-00000.parquet" },
+      { path: "run/county-batched/tables/b03/address/part-00000.parquet" },
+    ];
+    const { contentAddressedKey } = await import("../handlers/fetchPart.js");
+
+    await buildIndexHandler({ ...STREAM_EVENT_BASE, parts } as never);
+
+    expect(bind).toHaveBeenCalledTimes(1);
+    const options = bind.mock.calls[0]?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string; views?: readonly string[] }
+      | undefined;
+    expect(options?.views).toEqual(["v_property", "v_roofing_permit"]);
+    const urls = parts.map((p) => options?.partUrl?.({ name: p.path, cid: "" }));
+    expect(new Set(urls).size).toBe(2);
+    urls.forEach((url, i) => {
+      expect(url).toMatch(
+        new RegExp(`${contentAddressedKey(MANIFEST_CID, parts[i]?.path ?? "")}\\.parquet$`),
+      );
+    });
+    // ...and each of those exact paths is where that part's S3 object was downloaded to.
+    const gets = s3Mock.commandCalls(GetObjectCommand).map((c) => c.args[0].input.Key);
+    for (const p of parts) expect(gets).toContain(contentAddressedKey(MANIFEST_CID, p.path));
+  });
+
+  it("names local part files by content hash, so a hostile part path never shapes a filesystem path", async () => {
+    await expect(
+      buildIndexHandler({
+        ...STREAM_EVENT_BASE,
+        parts: [{ path: "../../etc/tables/b01/address/part-00000.parquet" }],
+      } as never),
+    ).resolves.toBeDefined();
+    const oracleViews = await import("@crm/oracle-views");
+    const options = vi.mocked(oracleViews.bindManifest).mock.calls.at(-1)?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string }
+      | undefined;
+    const url = options?.partUrl?.({
+      name: "../../etc/tables/b01/address/part-00000.parquet",
+      cid: "",
+    });
+    expect(url).not.toContain("..");
+    expect(url).toMatch(/[0-9a-f]{64}\.parquet$/);
+  });
+});
 
 describe("BuildIndex: streams rows to Parquet in chunks (full-county sizing, B-09)", () => {
   beforeEach(() => {
