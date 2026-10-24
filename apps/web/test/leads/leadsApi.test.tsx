@@ -4,7 +4,16 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  expectTypeOf,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 const LIST_KEY = ["leads", "list"] as const;
 const GET_KEY = ["leads", "get"] as const;
@@ -46,6 +55,8 @@ import {
   useLead,
   useLeadsList,
   useUpdateLeadStatus,
+  type LeadDetailData,
+  type LeadListItem,
 } from "../../src/routes/Leads/leadsApi";
 
 let queryClient: QueryClient;
@@ -137,5 +148,17 @@ describe("leads mutations", () => {
     });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(invalidate).not.toHaveBeenCalled();
+  });
+});
+
+// Type level (checked by `tsc`, the web type-check): the screen types are the router's own
+// inferred types, so the "no stored snapshot" case the old structural cast hid stays visible.
+describe("leadsApi types", () => {
+  it("LeadDetailData.signals may be undefined, as the leads.get router returns it", () => {
+    expectTypeOf<undefined>().toExtend<LeadDetailData["signals"]>();
+    expectTypeOf<NonNullable<LeadDetailData["signals"]>>()
+      .toHaveProperty("capturedAt")
+      .toBeString();
+    expectTypeOf<LeadListItem>().toHaveProperty("notInCurrentRun").toEqualTypeOf<boolean>();
   });
 });

@@ -11,10 +11,9 @@ import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import { mockClient } from "aws-sdk-client-mock";
 import { Readable } from "node:stream";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { planHandler } from "../handlers/plan.js";
-
-const SAMPLE_MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
+import { SAMPLE_MANIFEST_CID, serveSampleManifest } from "./fixtures/sampleManifest.js";
 // Any well-formed-looking but different CIDv1 string: never fetched in the SSM/runs-index cases
 // below, since the authoritative source must be resolved and used before any network fetch.
 const DISAGREEING_HINT_CID = "bafkreicccccccccccccccccccccccccccccccccccccccccccccccccc";
@@ -28,10 +27,13 @@ describe("Plan: authoritative manifestCid resolution (Phase 6 convergence T049)"
     ssmMock.reset();
     s3Mock.on(PutObjectCommand).resolves({});
     process.env.CRM_INDEX_BUCKET_NAME = "crm-index-test";
+    // TD-6: the manifest's exact published bytes come from the committed fixture, not a gateway.
+    serveSampleManifest();
   });
 
   afterEach(() => {
     delete process.env.CRM_INDEX_BUCKET_NAME;
+    vi.unstubAllGlobals();
     // Literal key (not the handler's own env-var-name constant) so this stays a statically
     // analyzable property delete, per the repo's `@typescript-eslint/no-dynamic-delete` rule.
     delete process.env.MANIFEST_CID_SSM_PARAM_NAME;
@@ -47,7 +49,7 @@ describe("Plan: authoritative manifestCid resolution (Phase 6 convergence T049)"
 
     expect(result).toHaveProperty("manifestCid", SAMPLE_MANIFEST_CID);
     expect(ssmMock.commandCalls(GetParameterCommand)).toHaveLength(1);
-  }, 30_000);
+  });
 
   it("resolves the authoritative manifestCid from a verified runs/index.json hint when no SSM parameter is configured", async () => {
     delete process.env.MANIFEST_CID_SSM_PARAM_NAME;
@@ -71,7 +73,7 @@ describe("Plan: authoritative manifestCid resolution (Phase 6 convergence T049)"
     const result = await planHandler({ manifestCidHint: DISAGREEING_HINT_CID } as never);
 
     expect(result).toHaveProperty("manifestCid", SAMPLE_MANIFEST_CID);
-  }, 30_000);
+  });
 
   it("falls back to the input manifestCidHint when neither an SSM parameter nor a runs/index.json hint is available", async () => {
     delete process.env.MANIFEST_CID_SSM_PARAM_NAME;
@@ -80,5 +82,5 @@ describe("Plan: authoritative manifestCid resolution (Phase 6 convergence T049)"
     const result = await planHandler({ manifestCidHint: SAMPLE_MANIFEST_CID });
 
     expect(result).toHaveProperty("manifestCid", SAMPLE_MANIFEST_CID);
-  }, 30_000);
+  });
 });

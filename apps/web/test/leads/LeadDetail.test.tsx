@@ -126,6 +126,22 @@ describe("LeadDetail", () => {
     expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(true);
   });
 
+  // Found removing the leadsApi double cast: the router's `leads.get` returns `signals` as
+  // `LeadSignals | undefined` (no SIGNALS item stored), which the hand-written type hid, so this
+  // case crashed the page. It now says why the snapshot is missing, with the manifest provenance.
+  it("says why when an in-run lead has no stored signals snapshot, instead of crashing", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...base, signals: undefined },
+      refetch: vi.fn(),
+    });
+    renderDetail();
+    const section = screen.getByRole("region", { name: "Current signals" });
+    expect(within(section).getByText("No signals snapshot stored for this lead")).toBeTruthy();
+    expect(screen.queryByText(/23 yrs/)).toBeNull();
+    expect(screen.getByText("Called owner")).toBeTruthy();
+  });
+
   it("shows an error banner when the lead cannot be loaded", () => {
     useLead.mockReturnValue({ status: "error", error: new Error("x"), refetch: vi.fn() });
     renderDetail();

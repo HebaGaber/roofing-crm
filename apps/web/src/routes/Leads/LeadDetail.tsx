@@ -65,6 +65,23 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
     );
   }
   const s = lead.signals;
+  if (s === undefined) {
+    // The router returns no snapshot when the lead's SIGNALS item was never stored.
+    return (
+      <section className={styles.section} aria-label="Current signals">
+        <h3 className={styles.sectionTitle}>Signals</h3>
+        <StatusPill
+          status="unavailable"
+          text="No signals snapshot stored for this lead"
+          data={{ field: "signals", reason: "snapshot_missing" }}
+        />
+        <Provenance>
+          {"Lead captured from manifest "}
+          <CidDisplay cid={lead.sourceManifestCid} />
+        </Provenance>
+      </section>
+    );
+  }
   return (
     <section className={styles.section} aria-label="Current signals">
       <h3 className={styles.sectionTitle}>Signals</h3>

@@ -39,6 +39,13 @@ const METERS_PER_MILE = 1609.344;
  *  CR-B-03). Falls back to the light-mode hex only if the token is somehow unset. */
 const FALLBACK_PRIMARY_COLOR = "#0B57D0";
 
+declare global {
+  interface Window {
+    /** Test-only: the live MapLibre map, set while a CrmMap is mounted (read by tests/e2e only). */
+    __crmMap?: MapLibreMap;
+  }
+}
+
 function resolvePrimaryColor(): string {
   if (typeof document === "undefined") return FALLBACK_PRIMARY_COLOR;
   const value = getComputedStyle(document.documentElement)
@@ -190,7 +197,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     // instance so Playwright can assert the county-bbox minZoom guarantee directly, instead of
     // only unit-testing the pure bounds math (bounds.test.ts) with no live-map assertion at all.
     // Never read by application code — only by tests/e2e/*.spec.ts.
-    (window as unknown as { __crmMap?: MapLibreMap }).__crmMap = map;
+    window.__crmMap = map;
 
     const applyMinZoom = (): void => {
       const minZoom = computeMinZoom(map);
@@ -233,7 +240,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
-      delete (window as unknown as { __crmMap?: MapLibreMap }).__crmMap;
+      delete window.__crmMap;
     };
   }, [styleUrl, retryToken]);
 

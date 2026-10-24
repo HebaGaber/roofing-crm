@@ -6,7 +6,8 @@
 // TC-010 work on it, TC-007 creates P_AGE48, TC-011 adds P_5_89. A lead cannot be created twice
 // (that is what AC-2 tests), so `beforeAll` first deletes the four test leads from `crm-leads`
 // (tests/e2e/lib/leads-cleanup.ts, GAP-3) and `afterAll` does it again only when CRM_E2E_CLEANUP=1.
-// That helper needs AWS credentials in the default chain; nothing here prints or stores them.
+// That helper needs AWS credentials in the default chain and AWS_REGION set to the table's region
+// (CI: vars.AWS_REGION; locally export it alongside the profile); nothing here prints or stores them.
 //
 // Request identifiers are read from the live index (`property.get`), never typed by hand. The
 // tRPC calls made directly (property.get, leads.list, leads.create) use the app's own call shape
