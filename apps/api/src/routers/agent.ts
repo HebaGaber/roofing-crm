@@ -235,10 +235,13 @@ interface AskContext {
 async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<AgentAnswer> {
   const userId = requireUserId(ctx);
   const guard = guardOrFail(ctx.requestId);
+  // Resolved before the spend reservation: a misconfigured provider/model id throws here, with
+  // nothing reserved, so the day's spend never holds a reservation no `finally` would reconcile.
+  // Still fail closed (no model call), and the guard check above still runs first.
+  const baseModel = ctx.model ?? getModel();
   const budget = await checkBudget(guard, userId, input.question, ctx.requestId); // step 1
   if ("blocked" in budget) return budget.blocked;
 
-  const baseModel = ctx.model ?? getModel();
   const meter = typeof baseModel === "string" ? undefined : meterModel(baseModel);
   try {
     const leadIndex: LeadIndex = requireLeadIndex(ctx);

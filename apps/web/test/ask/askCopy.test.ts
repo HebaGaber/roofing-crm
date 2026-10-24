@@ -1,7 +1,7 @@
-// B-09 review (CR-B-09 #16/#20): the Ask screen's wording is derived from the answer itself —
+// B-09 review (CR-B-09 findings 16 and 20): the Ask screen's wording is derived from the answer itself —
 // `plan`, `counts`, `missing[]`, `retryAfterSec`, `resetsAt`, `candidates` — never hard-coded
 // place names, limits or reset times. These are the pure helpers behind that copy.
-import type { AgentAnswer } from "@crm/shared";
+import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { describe, expect, it } from "vitest";
 import {
   AGENT_TURN_LIMIT_SEC,
@@ -68,7 +68,7 @@ function answer(overrides: Partial<AgentAnswer> = {}): AgentAnswer {
   };
 }
 
-describe("hasModelPlan (CR #16: 'How I read this' only when a model plan exists)", () => {
+describe("hasModelPlan (CR finding 16: 'How I read this' only when a model plan exists)", () => {
   it.each([
     "answered",
     "empty_in_scope",
@@ -118,7 +118,7 @@ describe("planSummary", () => {
   });
 });
 
-describe("emptyExplanation (CR #16: empty copy says why)", () => {
+describe("emptyExplanation (CR finding 16: empty copy says why)", () => {
   it("states the subject, filters and area actually searched", () => {
     expect(emptyExplanation(answer())).toBe(
       "No open roofing permits, open 5+ years, within 5 mi of Pflugerville.",
@@ -246,6 +246,11 @@ describe("pausedText (reset time from resetsAt, local + UTC)", () => {
 describe("timedOutText", () => {
   it("takes the limit from the shared constant, not a literal", () => {
     expect(timedOutText()).toContain(`${AGENT_TURN_LIMIT_SEC} s limit`);
+  });
+
+  it("derives the seconds from @crm/shared's AGENT_TURN_LIMIT_MS (the server's abort timer)", () => {
+    expect(AGENT_TURN_LIMIT_SEC).toBe(AGENT_TURN_LIMIT_MS / 1000);
+    expect(timedOutText()).toContain(`${AGENT_TURN_LIMIT_MS / 1000} s limit`);
   });
 });
 

@@ -21,7 +21,9 @@ import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
 
-/** ADR-06 §6.1 nested timeouts: 23 s server abort < 28 s Lambda < 30 s HTTP API. */
+/** ADR-06 §6.1 nested timeouts: 23 s server abort < 28 s Lambda < 30 s HTTP API. The 23 s is
+ *  `@crm/shared`'s `AGENT_TURN_LIMIT_MS`; infra/test/crm-api-stack.agent.test.ts asserts this
+ *  value nests around it (limit + margin <= Lambda <= HTTP API). */
 export const TRPC_LAMBDA_TIMEOUT_SECONDS = 28;
 
 /** Destination regions a system-defined *geographic* Bedrock cross-region inference profile

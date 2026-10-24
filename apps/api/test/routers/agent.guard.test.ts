@@ -17,6 +17,7 @@ import type {
   SearchPropertiesQuery,
 } from "../../src/adapters/duckDbParquet.js";
 import type { LeadRepo } from "../../src/adapters/leadRepo.js";
+import { MissingAgentModelIdError } from "../../src/agent/getModel.js";
 import { estimateCents } from "../../src/agent/modelPricing.js";
 import { RUN_AGENT_MAX_MODEL_CALLS } from "../../src/agent/runAgent.js";
 import { resetUsageGuardForTest, setUsageGuardForTest } from "../../src/agent/usageGuard.js";
@@ -209,6 +210,39 @@ describe("agent.ask — spend reservation is reconciled to metered cost (finding
       (((1000 + 3000) * p.inputUsdPerMTok + (100 + 300) * p.outputUsdPerMTok) / 1_000_000) * 100,
     );
     expect(actual).toBeLessThan(estimate);
+  });
+});
+
+describe("agent.ask — a model that can't be resolved never holds a spend reservation", () => {
+  it("leaves the day's spend unchanged (net 0 for the turn) when getModel() throws", async () => {
+    const { guard, reserve, reconcile } = fakeUsageGuard();
+    setUsageGuardForTest(guard);
+    vi.stubEnv("AGENT_MODEL_ID", "");
+    try {
+      const noModelCaller = createCallerFactory(router({ agent: agentRouter }))({
+        requestId: "req-guard-nomodel",
+        userId: "rep-1",
+        leadIndex: new FakeLeadIndex(),
+        leadRepo: noLeadsRepo,
+      });
+
+      const error = await noModelCaller.agent
+        .ask({ question: "near Pflugerville", threadId: "t1" })
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(TRPCError);
+      expect((error as TRPCError).cause).toBeInstanceOf(MissingAgentModelIdError);
+      // The day's spend moves only by what is reserved and then given back on reconcile.
+      const reserved = reserve.mock.calls.reduce((sum, [, cents]) => sum + cents, 0);
+      const refunded = reconcile.mock.calls.reduce(
+        (sum, [reservation, actual]) => sum + (reservation.reservedCents - actual),
+        0,
+      );
+      expect(reserved - refunded).toBe(0);
+      expect(reserve).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

@@ -6,7 +6,8 @@ import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import { MAX_OUTPUT_TOKENS_PER_CALL } from "../../src/agent/modelPricing.js";
-import { generateOnce } from "../../src/agent/runAgent.js";
+import { AGENT_TURN_LIMIT_MS } from "@crm/shared";
+import { generateOnce, RUN_AGENT_TIMEOUT_MS } from "../../src/agent/runAgent.js";
 
 function ok(text: string) {
   return {
@@ -62,5 +63,11 @@ describe("generateOnce", () => {
       generateOnce({ model, system: "s", prompt: "p" }, new AbortController().signal),
     ).rejects.toThrow();
     expect(calls).toBe(1);
+  });
+});
+
+describe("RUN_AGENT_TIMEOUT_MS", () => {
+  it("is @crm/shared's AGENT_TURN_LIMIT_MS, the one limit the Ask screen's copy also reads", () => {
+    expect(RUN_AGENT_TIMEOUT_MS).toBe(AGENT_TURN_LIMIT_MS);
   });
 });

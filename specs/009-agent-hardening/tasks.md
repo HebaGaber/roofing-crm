@@ -191,7 +191,7 @@ force a processing failure and confirm the alert fires and later clears, both on
 - [x] T054 [US3] Add a `GoldenQueryPassRate` custom-metric `PutMetricData` call to the end of `tests/agent/golden.test.ts` (or a thin wrapper script run after it in CI) so the dashboard widget trends real runs, per contracts/observability.md's "continuous AC-4 check" (depends on T042, T053) (builder: metagross)
 - [x] T055 [US3] Add a CloudWatch alarm on `AgentCitationGroundednessRate < 100` for N periods, subscribed to the same SNS topic as the DLQ alarm, in `infra/lib/crm-ops-stack.ts` (depends on T046, T052) (builder: metagross)
 - [x] T056 [US3] Make T048/T049 pass: fix any overflow/visibility/token-audit failures found (builder: metagross)
-- [ ] T057 [US3] Force a sync-job failure to land a message on `FetchPartDlq`, screenshot the `RoofingCrm` dashboard alarm transitioning ALARM→OK as the queue drains, for `docs/evidence/B-09.md` (depends on T053) (builder: metagross)
+- [x] T057 [US3] Force a sync-job failure to land a message on `FetchPartDlq`, screenshot the `RoofingCrm` dashboard alarm transitioning ALARM→OK as the queue drains, for `docs/evidence/B-09.md` (depends on T053) (builder: metagross)
 
 **Checkpoint**: full responsive suite green on the hosted URL; DLQ alarm fires and self-resolves,
 visible on the `RoofingCrm` dashboard with evidence captured.

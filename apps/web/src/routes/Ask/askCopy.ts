@@ -1,11 +1,11 @@
-// B-09 review (CR-B-09 #16/#20): every sentence the Ask screen shows about an answer, derived
+// B-09 review (CR-B-09 findings 16 and 20): every sentence the Ask screen shows about an answer, derived
 // from the answer itself — `plan` (place, radius, filters), `counts`, `missing[]`,
 // `retryAfterSec`, `resetsAt`, `candidates` — never a hard-coded place, limit or reset time.
 // Wording follows the Ask boards: design/prototype/CrmAskNoResults390, CrmAskOutside390,
 // CrmAskNotFound390, CrmAskLowConf390, CrmAskThrottled390, CrmAskPaused390 / CrmAgentPaused390,
 // CrmAskSlow390 / CrmAgentSlow390/1440, CrmAskCreateFailed390 (all `dc-import` the shared
 // Explore1440 board with a `crmask*` / `ai*` preset).
-import type { AgentAnswer } from "@crm/shared";
+import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
 
@@ -13,10 +13,11 @@ type Plan = AgentAnswer["plan"];
 type Outcome = AgentAnswer["outcome"];
 type Missing = AgentAnswer["missing"][number];
 
-/** The agent turn's hard stop in whole seconds. The wire does not carry it: this mirrors the
- *  server's `RUN_AGENT_TIMEOUT_MS` (apps/api/src/agent/runAgent.ts, 23 000 ms;
- *  contracts/agent-api.md step 9). The only place the web app states the limit. */
-export const AGENT_TURN_LIMIT_SEC = 23;
+/** The agent turn's hard stop in whole seconds. The wire does not carry it: it is derived from
+ *  `@crm/shared`'s `AGENT_TURN_LIMIT_MS`, the same constant the server's abort timer
+ *  (`RUN_AGENT_TIMEOUT_MS`, apps/api/src/agent/runAgent.ts; contracts/agent-api.md step 9)
+ *  uses. The only place the web app states the limit. */
+export const AGENT_TURN_LIMIT_SEC = AGENT_TURN_LIMIT_MS / 1000;
 
 /** Outcomes whose `plan` came from the model's plan step (and survived the scope gate).
  *  `rate_limited` / `paused` / `timed_out` carry a server placeholder plan (no model call, or an

@@ -12,6 +12,7 @@
 // `mapIndexNotReady` in apps/api/src/routers/search.ts; and (2) `generateOnce`, a single
 // no-tools `generateText` call with the Bedrock prompt-caching wiring, used for both the plan
 // call and the compose call (and the plan's one repair call).
+import { AGENT_TURN_LIMIT_MS } from "@crm/shared";
 import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
 import { MAX_OUTPUT_TOKENS_PER_CALL } from "./modelPricing.js";
 
@@ -46,8 +47,9 @@ export function isBedrockModel(model: LanguageModel): boolean {
 /** ADR-06 §6.1 / contracts/agent-api.md step 9: the server aborts at 23s, inside the Lambda's own
  *  28s timeout and the HTTP API's 29-30s limit (nested on purpose, Task A AD-27-style layering).
  *  This now wraps the whole `runAsk` turn (plan + repair + dispatch + compose), not just one
- *  `generateText` call. */
-export const RUN_AGENT_TIMEOUT_MS = 23_000;
+ *  `generateText` call. The value is `@crm/shared`'s `AGENT_TURN_LIMIT_MS`, the same constant
+ *  the Ask screen's timed-out copy reads, so the two can't drift. */
+export const RUN_AGENT_TIMEOUT_MS = AGENT_TURN_LIMIT_MS;
 
 /** ADR-06 §6.1: "At most 3 model calls" this turn. Unlike the old tool-loop (`stopWhen:
  *  stepCountIs(3)`, a model-driven stop condition), this budget is now enforced structurally by

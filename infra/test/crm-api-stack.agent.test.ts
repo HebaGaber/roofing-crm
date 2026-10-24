@@ -10,7 +10,10 @@
 import { App, Stack } from "aws-cdk-lib";
 import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
-import { CrmApiStack } from "../lib/crm-api-stack.js";
+// The shared turn limit is a dependency-free constant file; importing it by path keeps the CDK
+// workspace free of an app-package dependency (the stack itself never imports app code).
+import { AGENT_TURN_LIMIT_MS } from "../../packages/shared/src/agent/limits.js";
+import { CrmApiStack, TRPC_LAMBDA_TIMEOUT_SECONDS } from "../lib/crm-api-stack.js";
 import { CrmOpsStack } from "../lib/crm-ops-stack.js";
 
 const ENV = { region: "eu-north-1", account: "515618610572" };
@@ -64,6 +67,16 @@ describe("CrmApi tRPC Lambda — agent runtime limits (CR finding 1)", () => {
       (r) => r.Properties.FunctionName === "crm-api-trpc",
     );
     expect(fn?.Properties.MemorySize).toBeGreaterThanOrEqual(1024);
+  });
+
+  it("nests the shared 23 s agent turn limit inside the Lambda timeout, itself inside the 30 s HTTP API", () => {
+    // At least 3 s between the server abort and the Lambda timeout: room to reconcile spend,
+    // record the thread turn and return the typed `timed_out` answer before the Lambda is killed.
+    const MIN_MARGIN_MS = 3_000;
+    const HTTP_API_LIMIT_MS = 30_000;
+    const lambdaMs = TRPC_LAMBDA_TIMEOUT_SECONDS * 1000;
+    expect(AGENT_TURN_LIMIT_MS + MIN_MARGIN_MS).toBeLessThanOrEqual(lambdaMs);
+    expect(lambdaMs).toBeLessThanOrEqual(HTTP_API_LIMIT_MS);
   });
 });
 
