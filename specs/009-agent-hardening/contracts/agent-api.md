@@ -80,6 +80,6 @@ Per ADR-06 §6.2, unchanged this round except data source (AC-7):
 | `getCoverage` | `{}` | `index_meta`: run, `as_of`, limitations, counts | no |
 | `proposeLeads` | `{tcadIds[] (≤25)}` | which are already leads | **no — never writes** |
 
-`oracleCoverage` (MCP-backed, A-14-gated) is **not built this round** (AC-7 deviation) — the config
-flag stays off; `getCoverage` reads the same index-metadata fields from the direct-CID manifest
-instead.
+`oracleCoverage` (MCP-backed, A-14-gated) is **not built this round** — the config
+flag stays off; `getCoverage` reads the same index-metadata fields from Task A's published manifest,
+read directly by CID.

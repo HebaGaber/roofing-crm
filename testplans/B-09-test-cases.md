@@ -51,7 +51,7 @@ production-ready, not just demo-ready.
 | Acceptance criterion | B-09-AC-4 (7 golden queries, p95 < 20s, 100% groundedness) | TC-009…TC-015, TC-NF-01 |
 | Acceptance criterion | B-09-AC-5 (full responsive suite, 390/768/1440, every screen) | TC-016, TC-017, TC-NF-02 |
 | Acceptance criterion | B-09-AC-6 (DLQ alarm fires and self-resolves, visible on dashboard) | TC-018, TC-019 |
-| Acceptance criterion | B-09-AC-7 (data read by Run 1 manifest CID directly, documented deviation) | TC-020, TC-021 |
+| Acceptance criterion | B-09-AC-7 (data read directly from Task A's published Run 1 manifest by CID) | TC-020, TC-021 |
 | Acceptance criterion | B-09-AC-8 (prototype re-diff, fix or deferred-with-reason) | TC-022, TC-023 |
 | Edge case | model call exceeds 23s server-side abort | TC-024 |
 | Edge case | place-resolution confidence 0.80–0.92 or margin<0.05 → clarify, not a guess | TC-025b |
@@ -107,8 +107,8 @@ production-ready, not just demo-ready.
   alarm firing and self-clearing, visible on the `RoofingCrm` dashboard; the data-source switch to
   the Run 1 manifest CID; the prototype re-diff of every screen.
 - **Out of scope:** vector/semantic search (ARD-08, not in v1); PagerDuty paging (SNS email
-  substitute, already accepted); any new lead-store behavior beyond B-07; waiting for Atlas
-  registration before switching data (the direct-CID read is the point of AC-7); a ground-up
+  substitute, already accepted); any new lead-store behavior beyond B-07; Atlas registration or an MCP
+  name lookup (the CRM reads Task A's published data directly by CID, constitution B1); a ground-up
   prototype rebuild (B-03 already did this; this round is a targeted re-diff of drift since).
 
 ## 5. Test data
@@ -176,7 +176,7 @@ production-ready, not just demo-ready.
 | B-09-TC-019 | Alarm self-resolves once the queue drains | P1 | `@ops` | Infra | AC-6, FR-006 | same backing as TC-018; the live OK transition is manual, no automated test — CloudWatch screenshot |
 | B-09-TC-019b | Alarm stays active if the failure never recovers | P2 | `@ops @negative` | Infra | AC-6, edge case | no automated test — relies on the self-resolving alarm's own `treatMissingData: NOT_BREACHING` config (`infra/lib/crm-sync-stack.ts`); manual, forced non-recovering failure + CloudWatch screenshot |
 | B-09-TC-020 | CRM/agent data traces to the Run 1 manifest CID | P1 | `@smoke` | API | AC-7, FR-007 | `apps/api/test/leadIndex.manifestCid.test.ts` |
-| B-09-TC-021 | Deviation + swap-back condition documented | P2 | `@docs` | Docs | AC-7, FR-007 | no automated test — documentation review of `docs/architecture-constitution.md`, signed off by the QC Lead |
+| B-09-TC-021 | Direct read from Task A's published data documented | P2 | `@docs` | Docs | AC-7, FR-007 | no automated test — documentation review of `docs/architecture-constitution.md`, signed off by the QC Lead |
 | B-09-TC-022 | Every listed screen re-diffed against current prototype | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
 | B-09-TC-023 | Every found mismatch fixed or logged with a reason | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
 | B-09-TC-023b | A drift fix that would reopen approved architecture is deferred, not forced | P2 | `@design @negative` | Docs | AC-8, edge case | no automated test — review of `design/design-review-log.md`'s deferral reasons, signed off by the QC Lead |
@@ -400,17 +400,15 @@ production-ready, not just demo-ready.
      properties in scope (not the earlier 35-row sample's count).
 - **Expected result:** both the API and the UI trace to the real Run 1 publication.
 
-### B-09-TC-021: Deviation and swap-back condition documented
+### B-09-TC-021: Direct read from Task A's published data documented
 
 - **Priority / tags:** P2 · `@docs`
 - **Maps to:** AC-7, FR-007
 - **Steps:**
-  1. **Open** `docs/architecture-constitution.md`.
-  2. **Verify** it records the direct-CID-read deviation (instead of the Elephant MCP/
-     `listPublishedCounties` lookup) and a named swap-back condition: "once the user confirms Atlas
-     registration for Travis County is complete."
-- **Expected result:** the deviation and its reversal condition are both explicitly written down,
-  not implied.
+  1. **Open** `.specify/memory/constitution.md` (B1) and `docs/architecture-constitution.md` (§7).
+  2. **Verify** both say the CRM reads Task A's published data directly: the manifest named by
+     `DATA_MANIFEST_CID` and its parts, by CID, with the MCP as an optional cross-check only.
+- **Expected result:** the data path is written down explicitly and matches the built sync job.
 
 ### B-09-TC-022: Every listed screen re-diffed against current prototype
 

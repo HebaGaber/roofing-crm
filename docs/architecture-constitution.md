@@ -35,7 +35,7 @@ approved_by: [HebaGaber]
 flowchart LR
   REP["Sales rep / evaluator\n(shared test login)"]
   CRM["Roofing CRM\ncrm.aldarraj.com"]
-  TASKA["Task A: CountyLens\npublished CIDs + MCP\n(public, read-only)"]
+  TASKA["Task A: CountyLens\npublished manifest + parts by CID\n(public, read-only; MCP optional)"]
   BEDROCK["Amazon Bedrock\n(via Vercel AI SDK)"]
   COG["Amazon Cognito\n(shared test user)"]
 
@@ -46,7 +46,7 @@ flowchart LR
   CRM -.->|"optional: cross-check, coverage"| TASKA
 ```
 
-The CRM is the only system a rep touches. It never reaches Task A's internal stores (Query DB, buckets, SSM), only Task A's published, CID-verified bytes and (optionally, never on the request path) its MCP.
+The CRM is the only system a rep touches. It reads Task A's published data directly: the run manifest and its parts, fetched by CID and verified byte for byte. It never reaches Task A's internal stores (Query DB, buckets, SSM). Task A's MCP is optional, for cross-checks only, and never on the request path.
 
 ### 2.2 Container (C4-2)
 
@@ -188,7 +188,7 @@ Each row traces to the read-only consults in `docs/decisions/0000-agent-architec
 
 ## 7. Data access rules
 
-- Property and permit data comes **only** from Task A's published, CID-verified artifacts (CloudFront copy, then Filebase, then Pinata — ADR-02) or Task A's MCP (cross-check only, never on the request path). No `s3:GetObject` on Task A's buckets, no reading `/countylens/*` SSM parameters, no CloudFormation imports from Task A stacks, no calls to Task A's tRPC API, no Query DB access. Both tasks share one AWS account; the CRM's IAM roles carry an explicit **Deny** on Task A's resource ARNs as a second line of defense (espeon P0-1), in addition to never calling those APIs in code.
+- The CRM reads property and permit data **directly from Task A's published data**. `DATA_MANIFEST_CID` (`packages/config`) names the run manifest; the sync fetches that manifest and every part it lists by CID (CloudFront copy, then Filebase, then Pinata — ADR-02), verifies each byte, and builds the CRM index from it. Pointing the CRM at a newer run is a change to that one setting. No catalog lookup (Atlas registration, MCP `listPublishedCounties`) is needed to find the data. Task A's MCP is optional, for cross-checks only, never on the request path. No `s3:GetObject` on Task A's buckets, no reading `/countylens/*` SSM parameters, no CloudFormation imports from Task A stacks, no calls to Task A's tRPC API, no Query DB access. Both tasks share one AWS account; the CRM's IAM roles carry an explicit **Deny** on Task A's resource ARNs as a second line of defense (espeon P0-1), in addition to never calling those APIs in code.
 - Leads are the CRM's own data, stored in DynamoDB, owned and written only by the CRM (constitution B2). The sync job never edits or deletes a lead; a property absent from a new run puts the lead's "Now" view into a stale/"not in Run n" state, computed at read time.
 - Every row, index document, and agent claim carries provenance (`cid`, `source_url` or its missing reason, `captured_at`, `table_cid`, `run_id`, `manifest_cid`, `as_of`). A null field always carries its `missing` reason from Task A's closed list; the CRM never geocodes, guesses, or invents a value.
 
@@ -258,7 +258,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 
 ## 12. Blocking violations (P0)
 
-1. **Access boundary.** Data comes only from Task A's published CIDs (CloudFront copy or gateway, CID-verified — ADR-02) or its MCP (cross-check only). No IAM access to Task A's resources (enforced by both never calling those APIs and an explicit IAM Deny on Task A's ARNs), no scraping, no ingestion, no Query DB access.
+1. **Access boundary.** Data is read directly from Task A's published data: the configured run manifest and its parts, by CID (CloudFront copy or gateway, CID-verified — ADR-02). Task A's MCP is for cross-checks only. No IAM access to Task A's resources (enforced by both never calling those APIs and an explicit IAM Deny on Task A's ARNs), no scraping, no ingestion, no Query DB access.
 2. **CID integrity.** Every fetched byte is checked against its CID before use. A mismatch fails the part; a run with a failed part is never promoted.
 3. **One run per index; atomic promotion.** Every index row and every API response carries the `manifestCid` it came from. The pointer flips only after `Validate` passes. No partial promotion.
 4. **Data honesty.** Nothing invented, synthetic, or sample-shaped appears in a deployed index or UI. `contract/v1/sample.parquet` and `pilot-manifest.json` are for tests only. BBB is shown as a rating only when `bbb_status = rated`. A null `improvement_status` permit is "stalled", never "open". Missing data always says why.
@@ -288,7 +288,6 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 | Agent ingress is the CRM web UI (tRPC `agent.ask`), not an Asana task | `build-ai-agents`' Asana/Chat SDK ingress pattern | This agent's user is the rep in the CRM, not an Asana workflow | Everything else in `build-ai-agents` (tool loop, telemetry, memory) still applies | Recorded by `alakazam`; accepted as inherent to this product, not a PO decision point |
 | LangSmith tracing is conditional on a key, not required | `build-ai-agents` tracing default | No LangSmith key is provisioned for this assessment | X-Ray/OTel via the `TraceSink` facade is always on; LangSmith attaches only if `LANGSMITH_API_KEY` exists in Secrets Manager | Recorded by `alakazam`; accepted as inherent, not a PO decision point |
 | B-07's `status`/`assignee` are stored on the `LEAD` item, written only inside the same `TransactWriteItems` call that appends the triggering `EVT#{sequence}` event, rather than always recomputed by replaying the full event log on every read | ADR-04's literal wording, "status/assignee are a projection replayed from events" | `metagross`'s design consult (`specs/007-leads/agent-design.md`) fixes GSI1 (pk=`assignee`) and GSI2 (pk=`status`) for the lead list's "my leads"/status-board queries. DynamoDB cannot build a GSI over a value a reader derives by replaying an item collection — the GSI key must be a stored attribute. Pure read-time replay is correct for a single-key `leads.get` but cannot serve the GSI-backed `leads.list` queries | Writing `status`/`assignee` only inside the event-append transaction (never independently, never via a separate mutable `version` attribute) keeps ADR-04's actual concern — no out-of-band write that can race or go stale against the event log — fully satisfied: both fields are written atomically with their triggering event every time, so they can never diverge from it. Re-entry trigger: if a future story needs GSI-free lookups only, pure replay could replace this without changing the public `leads.get`/`leads.list` contract | PO, 2026-10-24 |
-| B-09 (AC-7): the CRM and agent read property/permit data by Task A's Run 1 full-county manifest CID directly (`bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, 441,961 properties / 17,387 permits), not through the Elephant MCP/`listPublishedCounties` name lookup | B1 addendum ("Property and permit data comes only from Task A's published artifacts (by CID) or its MCP") — this is the by-CID half of that rule, not a violation of it | Atlas registration (the catalog step that makes a run discoverable by county name through the MCP) hasn't happened for this run yet, but the manifest itself is pinned and real. `DATA_MANIFEST_CID` (`packages/config/src/index.ts`) is already the one place this value is read from — never hard-coded — so switching it is a one-env-var change, not a code change, exactly as that module's own comment states ("the later full-county data switch... is a one-setting change, not a code change") | **Swap-back condition:** once the user confirms Atlas registration for Travis County is complete, point the same `DATA_MANIFEST_CID` at the MCP-discoverable path instead (no architecture change expected — `LeadIndex` is already a port with one adapter; this becomes a second adapter). PO, 2026-10-24 |
 
 ---
 

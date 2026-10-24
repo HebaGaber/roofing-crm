@@ -123,7 +123,7 @@ flowchart LR
 | CON-02 | Budget | Zero idle cost by default; $10 budget alert; $120 credit, access stops when it runs out | Rules out services with a high minimum charge for the index (Q-03) |
 | CON-03 | Timeline | Deadline Thursday 2026-10-22; 5 build days in the playbook; speed is scored up to the last commit | The plan does not fit before the deadline unless Task A finishes fast (RISK-02) |
 | CON-04 | Resourcing | One person | Gates are self-approved with AI pre-checks |
-| CON-05 | Access | Data only from Task A's CIDs or MCP; BBB blocked; Travis County only | B-02 is a sync from CIDs; BBB shows "not available" |
+| CON-05 | Access | Data read directly from Task A's published manifest and parts by CID; BBB blocked; Travis County only | B-02 is a sync from CIDs; BBB shows "not available" |
 
 ## 8. Implementation phases
 

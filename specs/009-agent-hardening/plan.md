@@ -11,7 +11,7 @@ roofing-opportunity questions with cited, real records from the existing B-02/B-
 index, through fixed Zod tools, a server-side citation verifier, and ADR-06's confidence bands for
 place resolution. Leads are only ever created through the existing B-07 `leads.create` path, via a
 separate `agent.confirmLead` mutation the model cannot reach. This round also: switches the data
-source to Task A's Run 1 manifest CID directly (AC-7, documented reversible deviation), proves the
+source to Task A's published Run 1 manifest, read directly by CID (AC-7, constitution B1), proves the
 whole app (old screens + new Ask screens) responsive at 390/768/1440 (AC-5) and re-diffed against
 the current prototype (AC-8), and adds a `RoofingCrm` CloudWatch dashboard plus confirms the
 existing DLQ alarm is wired to the user's email (AC-6). The technical design for the agent itself
@@ -24,7 +24,7 @@ nothing under which is implemented yet; this story builds it.
 
 **Primary Dependencies**: `ai` (Vercel AI SDK) + `@ai-sdk/amazon-bedrock` (new deps, not yet in `apps/api/package.json`), `@aws-lambda-powertools/{logger,tracer,metrics}` (existing), `@trpc/server` + Zod (existing), DuckDB-over-Parquet via the existing `LeadIndex` port (existing)
 
-**Storage**: DynamoDB — existing `crm-leads` table (B-07, read via `leads.create`/`leadService`); new `crm-agent-usage` table (rate limit + spend cap, this story); conversation memory + review records as prefixed items, same adapter pattern (`ConversationEventStore`, `INTERP#`/`ALIAS#`/`FEEDBACK#`, ADR-06 §6.1/§7). Property/permit data: existing S3 Parquet index behind `LeadIndex`, pointed at manifest CID `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu` directly (AC-7 deviation, not through the Elephant MCP).
+**Storage**: DynamoDB — existing `crm-leads` table (B-07, read via `leads.create`/`leadService`); new `crm-agent-usage` table (rate limit + spend cap, this story); conversation memory + review records as prefixed items, same adapter pattern (`ConversationEventStore`, `INTERP#`/`ALIAS#`/`FEEDBACK#`, ADR-06 §6.1/§7). Property/permit data: existing S3 Parquet index behind `LeadIndex`, built from Task A's published manifest `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, read directly by CID (AC-7, constitution B1).
 
 **Testing**: Vitest (unit, `MockLanguageModelV2` for the agent loop; `tests/agent/golden.test.ts` for G1–G7 against the deployed endpoint per checks.md §7.2), Playwright against `RUNTIME_URL` only (`tests/e2e/responsive/ask.spec.ts` + existing responsive specs)
 
@@ -75,7 +75,7 @@ Copied from `stories/B-09-agent-hardening.md` front matter and `specs/009-agent-
 | XIII–XV | Owner agents | Kit Agent Ownership table above filled from the story front matter; `agent-design.md` exists with both compiled synthesis and verbatim consult answers (constitution XIV); builder patterns listed with file paths | ✅ |
 | XVI | Owner review | `alakazam`, `ash`, `metagross`, `audino`, `porygon` each score the branch in `docs/reviews/CR-B-09.md`, ≥75 before G7 | planned |
 | XVIII–XXIII | Delivery | G4 passed (Ready, 2026-10-24); G5/G6 run after `/speckit-tasks`/test-case drafting; tests-first per `tasks.md` (Phase 2); branch `009-agent-hardening`; any hosted-test failure gets `docs/defects/ERR-{n}.md` | planned |
-| Addendum | Task B B1–B3 | B1: data read only by CID (`bafkreiddef7…h6gu`) or Elephant MCP — this story uses the CID path only, no scraping/ingestion. B2: every lead from the agent still records `sourceManifestCid` via `leads.create`. B3: citation verifier enforces "agent answers cite records that exist in the index; never invents properties." | ✅ |
+| Addendum | Task B B1–B3 | B1: data read directly from Task A's published manifest by CID (`bafkreiddef7…h6gu`), no scraping/ingestion. B2: every lead from the agent still records `sourceManifestCid` via `leads.create`. B3: citation verifier enforces "agent answers cite records that exist in the index; never invents properties." | ✅ |
 
 ## Project Structure
 

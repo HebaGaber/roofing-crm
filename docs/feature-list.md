@@ -105,7 +105,7 @@ Some features copy code that Task A builds, then adapt it (PO decision, 2026-10-
 - a `reuses:` field in its front matter naming the Task A story and the copied paths;
 - an acceptance criterion: *the Task A test cases for the copied part run in this repo, against this app's hosted URL, and pass; any test changed for the CRM is listed with the reason.*
 
-Only code is copied, never linked: each repo is deployed and scored alone. Data still comes only from Task A's published CIDs or MCP (constitution B1). Copy with `../assessment-guide/scripts/copy-from-oracle.sh {path}`, which records the source commit in `docs/reuse-log.md`; the owning agent still reviews the copy. Mapping per the playbook (Part 3, "Reuse from Task A").
+Only code is copied, never linked: each repo is deployed and scored alone. Data is read directly from Task A's published data, the manifest and its parts by CID (constitution B1). Copy with `../assessment-guide/scripts/copy-from-oracle.sh {path}`, which records the source commit in `docs/reuse-log.md`; the owning agent still reviews the copy. Mapping per the playbook (Part 3, "Reuse from Task A").
 
 | FEAT | Reused from (Task A) | What is copied | New in the CRM | Task A tests to rerun here |
 | --- | --- | --- | --- | --- |
@@ -141,7 +141,7 @@ Not copied: Task A's MCP server; the CRM **uses** it (`donphan` in B-02). FEAT-B
 | NFR-03 | Observability | Every Lambda uses Powertools Logger, Tracer and Metrics with X-Ray; one self-resolving alarm per DLQ (constitution VII–VIII) | FEAT-B02, B09, B11 |
 | NFR-04 | Security | Cognito login on every page and API route; no secrets or test password in Git, logs or PR bodies (constitution XII) | ALL |
 | NFR-05 | Data honesty | Every property, permit and agent answer cites its record and source manifest CID; missing data says why (constitution XI, B3) | FEAT-B02, B04…B09 |
-| NFR-06 | Access boundary | The app reads only Task A's published CIDs and MCP; zero calls to source systems or Task A's internal stores (constitution B1) | FEAT-B02, B09 |
+| NFR-06 | Access boundary | The app reads Task A's published data directly (manifest and parts by CID; MCP only as a cross-check); zero calls to source systems or Task A's internal stores (constitution B1) | FEAT-B02, B09 |
 | NFR-07 | Responsive | Every `ui: true` screen passes the `smeargle` suite at mobile, tablet and desktop breakpoints, using only Atlas tokens | FEAT-B01, B03…B10 |
 | NFR-08 | Quality | CI runs Vitest, Playwright against the hosted URL, ESLint, Prettier and `tsc`; a story is done only when CI is green (constitution X) | ALL |
 
@@ -156,7 +156,7 @@ Not copied: Task A's MCP server; the CRM **uses** it (`donphan` in B-02). FEAT-B
 | A-5 | Assumption | The Task A code and test cases listed in § 4.6 exist and pass in Task A when Task A is complete | ⬜ Unconfirmed (only A-01 and A-02 test plans exist on 2026-10-21) |
 | C-1 | Constraint | AWS, CDK only, TypeScript only, region from config (demo `eu-north-1`), Turborepo monorepo | ✅ Agreed (constitution II–IV) |
 | C-2 | Constraint | Every LLM call goes through the Vercel AI SDK with `AI_PROVIDER`; Bedrock works as of 2026-10-21 | ✅ Agreed (constitution VI) |
-| C-3 | Constraint | Data only from Task A's published CIDs or MCP; no scraping, ingestion or internal stores | ✅ Agreed (constitution B1) |
+| C-3 | Constraint | Data read directly from Task A's published data (manifest and parts by CID); no scraping, ingestion or internal stores | ✅ Agreed (constitution B1) |
 | C-4 | Constraint | Deadline Thursday 2026-10-22; each build phase starts when the Task A story it copies from is done (interleaved; see `docs/plan.md`) | ✅ Agreed (PO, 2026-10-21) |
 | C-5 | Constraint | UI uses only Atlas design-system tokens and components | ✅ Agreed (CLAUDE.md) |
 | C-6 | Constraint | AWS free plan, $120 credit until 2027-04-16; access stops when it runs out | ✅ Agreed |

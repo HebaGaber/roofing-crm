@@ -87,5 +87,5 @@ it's instantiated with `eng.heba.gaber@gmail.com`) plus a new `cloudwatch.Dashbo
 
 No new storage entity — a constant,
 `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, read by the existing `LeadIndex`
-port, documented as an accepted deviation with its swap-back condition in
-`docs/architecture-constitution.md` (ADR addendum, this story's task list).
+port and set through `DATA_MANIFEST_CID` (`packages/config`), as described in constitution B1 and
+`docs/architecture-constitution.md` §7.

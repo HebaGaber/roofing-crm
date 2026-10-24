@@ -50,7 +50,7 @@ Model sees ≤25 compact rows/call; UI gets full rows via `resultSetId`. Owner n
 
 **Golden harness:** `tests/agent/golden.json` + `tests/agent/golden.test.ts` (Vitest), calling `agent.ask` over `RUNTIME_URL` (never localhost) as a Cognito eval user. Per-query assertions: groundedness (every cited CID resolves + `manifestCid` matches the pinned Run-1 CID), correctness (re-run `search.*` with the answer's stated center/thresholds, results ⊆ that set, recall ≥80%), honesty (center/thresholds stated in text; "BBB not available" shown correctly), G6 empty-scope, G7 lead-creation round-trip. Latency: p95 < 20s, max < 23.5s. `GOLDEN_REPEATS=3` (21 asks total), paced 13s apart to stay under 5/min. Unit tests use `MockLanguageModelV2`, including one asserting a planted fake CID gets stripped.
 
-**Risks → proof:** fabricated CID → citation gate + `AgentCitationsStripped` metric at 0. Latency (442k-row DuckDB cold load + 2–3 model calls) → warm index, Haiku planner, ≤25 rows, prompt caching; proven by golden p95 table + dashboard widget. Rate/spend cap exhaustion during eval → 3 repeats/pacing, harness log shows no `paused`/`rate_limited`. Gazetteer exact-match-only → fuzzy layer + `partial_in_travis` caveat. BBB always `not_checked` in v1 → text must say "not available," never a rating. Prompt injection via record fields → rows sent as delimited JSON data, tool set closed. Data-switch drift (AC-7) → harness pins the manifest CID constant; swap-back is a one-constant change + rerun. Agent writes a lead directly → unit test asserts `proposeLeads` has no write port injected; live proof is the G7 lead showing `createdFrom:"agent"`.
+**Risks → proof:** fabricated CID → citation gate + `AgentCitationsStripped` metric at 0. Latency (442k-row DuckDB cold load + 2–3 model calls) → warm index, Haiku planner, ≤25 rows, prompt caching; proven by golden p95 table + dashboard widget. Rate/spend cap exhaustion during eval → 3 repeats/pacing, harness log shows no `paused`/`rate_limited`. Gazetteer exact-match-only → fuzzy layer + `partial_in_travis` caveat. BBB always `not_checked` in v1 → text must say "not available," never a rating. Prompt injection via record fields → rows sent as delimited JSON data, tool set closed. Data-switch drift (AC-7) → harness pins the manifest CID constant; moving to a newer run is a one-constant change + rerun. Agent writes a lead directly → unit test asserts `proposeLeads` has no write port injected; live proof is the G7 lead showing `createdFrom:"agent"`.
 
 ## 2. ash — agent runtime design
 
@@ -66,7 +66,7 @@ No `ai`/`@ai-sdk/amazon-bedrock` deps installed yet in `apps/api/package.json` �
 
 **Confirmation flow:** two turns, never a single model-authorized write. (1) Model calls `proposeLeads` (pure, no side effects) → router returns `{kind:"proposal", leads}`, nothing persisted. (2) Rep confirms via a **separate, non-model-invoked** mutation `agent.confirmLead`. (3) That mutation calls `requireLeadService(ctx).create(input, requireUserId(ctx))` — the exact same B-07 call path, `createdFrom:"agent"`. The model's tool set never includes anything that reaches `LeadService.create`; this is literally FR-002/AC-2/constitution P0's enforcement mechanism.
 
-**Risks → proof:** fabricated CID → server-side citation check (ties to alakazam's gate). Abort racing a tool call → staging-only delay flag, confirm UI shows "took too long." Rate/spend-cap race → concurrent-request script against the hosted endpoint, expect exactly 5 successes. Confirm-flow bypass → grep `agent/tools.ts` for any `LeadService`/`requireLeadService` import (must appear only in the confirm mutation). AC-7 regression → before/after golden-query diff across the Atlas swap-back.
+**Risks → proof:** fabricated CID → server-side citation check (ties to alakazam's gate). Abort racing a tool call → staging-only delay flag, confirm UI shows "took too long." Rate/spend-cap race → concurrent-request script against the hosted endpoint, expect exactly 5 successes. Confirm-flow bypass → grep `agent/tools.ts` for any `LeadService`/`requireLeadService` import (must appear only in the confirm mutation). AC-7 regression → before/after golden-query diff across the data switch.
 
 ## 3. smeargle — responsive design (AC-5) + audino's AC-8 sibling piece
 
@@ -174,7 +174,7 @@ Assertions per query:
 5. **The gazetteer only does exact matches** → the fuzzy layer, plus a `partial_in_travis` caveat in `assumptions`.
 6. **BBB is always `not_checked` in v1** → the text must say "not available" and must never show a rating. Proof: G2/G5 text assertions.
 7. **Prompt injection through record fields** → rows go to the model as delimited JSON data, and the tool set is closed.
-8. **Data-switch drift** (AC-7) → the harness pins the manifest CID. On swap-back, update one constant and rerun the harness.
+8. **Data-switch drift** (AC-7) → the harness pins the manifest CID. When pointing at a newer run, update one constant and rerun the harness.
 9. **The agent writes a lead** → `proposeLeads` has no write port injected (a unit test asserts this). Proof: the G7 lead shows `createdFrom: "agent"` and was created through `leads.create`.
 ```
 
@@ -260,7 +260,7 @@ Two-turn mechanic, never a single model-authorized write:
 - **23s abort races a tool call mid-flight** → prove by a golden query against a throttled/slow Bedrock profile or by injecting an artificial delay in a staging-only flag; confirm the UI shows "took too long," not a spinner or 500, on the hosted URL.
 - **Rate limit/spend cap race under concurrent asks** → prove with a small concurrent-request script against the hosted `agent.ask` endpoint; DynamoDB conditional write should produce exactly 5 successes and N throttles, never 6+.
 - **Confirm-flow bypass (model infers a direct write)** → prove by code inspection: grep the `agent/tools.ts` file for any import of `LeadService`/`requireLeadService` — it must appear only in `agentRouter`'s `confirmLead` handler, never inside a tool executed by `generateText`.
-- **AC-7 data-switch regression** — direct-CID read must still work after Atlas registration flips; prove with the same golden queries before/after the swap-back, diffed for identical results.
+- **AC-7 data-switch regression** — prove the switch from the 35-row sample to the Run 1 manifest with the same golden queries before/after, and record the differences.
 ```
 
 ### smeargle (verbatim)

@@ -81,8 +81,8 @@ and are tested. No story's user-facing behavior exists yet.
 
 ## Phase 3: User Story 4 — See the real county dataset, not a small sample (Priority: P1, sequenced first — see Organization note)
 
-**Goal**: CRM and agent read property/permit data from Task A's Run 1 full-county manifest CID
-directly, documented as an accepted, reversible deviation (AC-7, FR-007).
+**Goal**: CRM and agent read property/permit data directly from Task A's published Run 1
+full-county manifest, by CID (AC-7, FR-007, constitution B1).
 
 **Independent Test**: confirm the data shown in the CRM and returned by the agent traces to
 manifest `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, not the earlier 35-row sample.
@@ -94,7 +94,7 @@ manifest `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, not the 
 ### Implementation for User Story 4
 
 - [ ] T021 [US4] Point the sync job / promoted-run pointer (wherever `apps/api/src/leadIndex.ts`'s `tryLeadIndex()` reads its bucket/run pointer, and the sync job's promotion record) at the Run 1 manifest CID; make T020 pass (builder: ash)
-- [ ] T022 [US4] Record the accepted deviation in `docs/architecture-constitution.md` (ADR addendum): direct-CID read instead of Elephant MCP/`listPublishedCounties`, with the swap-back condition ("once the user confirms Atlas registration for Travis County is complete") — per AC-7/FR-007 (builder: alakazam)
+- [ ] T022 [US4] Confirm constitution B1 and `docs/architecture-constitution.md` §7 describe the data path as built: the CRM reads Task A's published manifest and parts directly by CID, manifest set by `DATA_MANIFEST_CID` — per AC-7/FR-007 (builder: alakazam)
 - [ ] T023 [US4] Confirm `apps/web`'s existing map/leads screens show the manifest CID in their provenance UI (constitution XI) without code changes if already wired from B-03/B-07, or add the display if missing, in `apps/web/src/routes/Map`/`apps/web/src/routes/Leads` (builder: metagross)
 
 **Checkpoint**: the whole app, including every story below, now reads the real 441,961-property /

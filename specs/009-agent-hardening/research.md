@@ -23,7 +23,7 @@ would duplicate and partially contradict already-accepted work and waste the pri
 consult's calibration work (gazetteer, confidence bands, golden-query grading table already
 written to §9 of the ADR).
 
-## Decision: data source is the Run 1 manifest CID directly, not the Elephant MCP
+## Decision: data source is Task A's published Run 1 manifest, read directly by CID
 
 **Decision**: every tool that reads property/permit data (`resolvePlace` via gazetteer,
 `searchProperties`, `searchPermits`, `getProperty`) resolves against
@@ -33,15 +33,14 @@ written to §9 of the ADR).
 use. The ADR's `oracleCoverage` tool (gated on A-14) and any MCP-backed `getCoverage` path are
 **not built this round**; they stay a documented future addition.
 
-**Rationale**: this is the run-log's accepted deviation #2. The manifest is pinned and real; Atlas
-registration (the catalog step the MCP needs) isn't done. Reading by CID through the existing
+**Rationale**: constitution B1 — the CRM reads Task A's published data directly. The manifest is
+pinned and real, and reading it by CID through the existing
 index port requires no new data-access code — `leadIndex` already reads by manifest, and B-02's
 sync job already promotes a run by CID.
 
-**Swap-back condition** (recorded in `docs/architecture-constitution.md` as an accepted deviation,
-per AC-7): once the user confirms Atlas registration for Travis County, point the same tools at
-`listPublishedCounties`/the MCP instead — no architecture change, since `LeadIndex` is already a
-port with one adapter; this becomes a second adapter, not a redesign.
+**Newer runs:** pointing the CRM at a later Task A run is a change to `DATA_MANIFEST_CID` plus a
+re-sync, no code change (`docs/architecture-constitution.md` §7). The MCP stays an optional
+cross-check, never the data path.
 
 ## Decision: builder split follows the story front matter exactly
 

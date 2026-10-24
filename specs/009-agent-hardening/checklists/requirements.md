@@ -31,4 +31,4 @@
 
 ## Notes
 
-All items pass. FR-001..FR-008 map 1:1 to the story's AC-1..AC-8. No [NEEDS CLARIFICATION] markers were needed — the two load-bearing unknowns (A-13/A-14 reuse unavailable; Atlas registration pending) were already resolved with the user as documented deviations before this spec was written, and are captured in Assumptions rather than left open.
+All items pass. FR-001..FR-008 map 1:1 to the story's AC-1..AC-8. No [NEEDS CLARIFICATION] markers were needed — the two load-bearing unknowns (A-13/A-14 reuse unavailable; the data path, now read directly from Task A's published manifest by CID) were already resolved with the user before this spec was written, and are captured in Assumptions rather than left open.

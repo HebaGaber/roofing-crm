@@ -26,7 +26,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 - Gate pre-checks are the `developmentsupport-*` skills. They report gaps only; the user approves.
 - Use only the kit-bundled Elephant skills (`soofi-xyz-team-kit/skills/`). Never use `../skills` (deprecated upstream copy).
 - UI uses only Atlas tokens and components. Every data display shows provenance, and missing data says why.
-- Access boundary: read only the Oracle task's published CIDs, `contract/v1` and its MCP. No scraping, no ingestion, no access to Oracle's internal stores.
+- Access boundary: the CRM reads Task A's published data directly: the run manifest named by `DATA_MANIFEST_CID` and its parts, by CID, plus `contract/v1`. No Atlas registration or MCP lookup is needed; Task A's MCP is an optional cross-check. No scraping, no ingestion, no access to Oracle's internal stores.
 - Never: secrets in git or logs, invented or synthetic data presented as real, Python outside PySpark/Glue, non-CDK IaC, direct LLM provider SDKs (use the Vercel AI SDK; provider set by `AI_PROVIDER`), merging the PR.
 
 ## The story loop (summary of the playbook's Part 2)
