@@ -143,7 +143,7 @@ async function listLeadKeys(page: Page): Promise<string[]> {
 
 /** Opens the Map drawer for a property through the `sel` deep link (no pin-drop needed). */
 async function openDrawer(page: Page, cid: string): Promise<Locator> {
-  await page.goto(`/map?sel=${cid}`);
+  await page.goto(`/?sel=${cid}`); // the Map is the app's index route, not /map
   const drawer = page.locator(`aside[role="dialog"][data-property-cid="${cid}"]`);
   await expect(drawer).toBeVisible();
   return drawer;
@@ -333,17 +333,38 @@ test.describe("B-07 leads", () => {
     const f = factsOf(P_AGE48);
     await page.goto("/leads");
     const headers = await authHeaders(page);
-    const responses: APIResponse[] = await Promise.all(
-      Array.from({ length: 20 }, () =>
-        page.request.post("/api/trpc/leads.create", { headers, data: createInput(f) }),
-      ),
-    );
+    // This AWS account allows 10 concurrent Lambda executions, so some of 20 simultaneous calls are
+    // throttled (HTTP 503). A real client retries a throttle; so does this test, and it counts them.
+    let throttled = 0;
+    const post = async (): Promise<APIResponse> => {
+      for (let attempt = 1; ; attempt++) {
+        const res = await page.request.post("/api/trpc/leads.create", {
+          headers,
+          data: createInput(f),
+        });
+        if (res.status() !== 503 || attempt >= 8) return res;
+        throttled += 1;
+        await page.waitForTimeout(150 * attempt + Math.floor(Math.random() * 150));
+      }
+    };
+    const responses: APIResponse[] = await Promise.all(Array.from({ length: 20 }, post));
     const bodies = await Promise.all(responses.map((r) => r.text()));
     const created = responses.filter((r) => r.status() === 200).length;
     const refused = responses.filter(
       (r, i) => r.status() === 409 && (bodies[i] ?? "").includes("Already a lead"),
     ).length;
-    expect({ created, refused }).toEqual({ created: 1, refused: 19 });
+    // The tally (status -> count, plus each distinct error message) is the TC-007 evidence.
+    const tally: Record<string, number> = {};
+    responses.forEach((r, i) => {
+      const message = /"message":"([^"]*)"/.exec(bodies[i] ?? "")?.[1] ?? "";
+      const key = `${r.status()} ${message}`.trim();
+      tally[key] = (tally[key] ?? 0) + 1;
+    });
+    await test.info().attach("TC-007-tally.json", {
+      body: JSON.stringify({ final: tally, throttledAndRetried: throttled }, null, 2),
+      contentType: "application/json",
+    });
+    expect({ created, refused, tally }).toEqual({ created: 1, refused: 19, tally });
 
     await page.reload();
     await expect(leadLink(page, f)).toHaveCount(1);

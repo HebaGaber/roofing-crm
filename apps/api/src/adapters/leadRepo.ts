@@ -67,7 +67,12 @@ export interface LeadRepo {
 export interface LeadRepoDeps {
   readonly tableName: string;
   readonly client: DynamoDBDocumentClient;
+  /** Backoff between conflict retries; injectable so tests do not wait. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
+
+/** Attempts (first try included) before a persistent TransactionConflict is surfaced. */
+export const MAX_CONFLICT_ATTEMPTS = 6;
 
 /** Hard cap on items one list call will page through (demo-scale table; bounds Lambda memory). */
 export const MAX_LISTED_LEADS = 1000;
@@ -89,6 +94,18 @@ function failedConditionIndex(error: unknown): number {
   return reasons?.findIndex((r) => r.Code === "ConditionalCheckFailed") ?? -1;
 }
 
+/** True when DynamoDB cancelled the transaction because another in-flight transaction touches
+ *  the same item (reason TransactionConflict). No condition was evaluated, so the right response
+ *  is to try again and learn the real outcome, not to report a failure. */
+function isTransactionConflict(error: unknown): boolean {
+  if (!(error instanceof Error) || error.name !== "TransactionCanceledException") return false;
+  const reasons = (error as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
+  return (
+    reasons?.some((r) => r.Code === "TransactionConflict") === true &&
+    !reasons.some((r) => r.Code === "ConditionalCheckFailed")
+  );
+}
+
 /** DynamoDB rejects undefined attribute values; optional signals are simply omitted. */
 function definedOnly<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -96,6 +113,21 @@ function definedOnly<T extends object>(o: T): Partial<T> {
 
 export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
   const { tableName, client } = deps;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
+  /** Re-runs a whole write (each attempt re-reads and re-checks its own conditions, so a retry is
+   *  safe) while DynamoDB keeps cancelling it with TransactionConflict. Jittered backoff keeps
+   *  20 simultaneous callers from colliding again in lockstep. */
+  async function withConflictRetry<T>(run: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await run();
+      } catch (error) {
+        if (!isTransactionConflict(error) || attempt >= MAX_CONFLICT_ATTEMPTS) throw error;
+        await sleep(20 * attempt + Math.floor(Math.random() * 40));
+      }
+    }
+  }
 
   async function getLeadItem(leadKey: string): Promise<Record<string, unknown> | undefined> {
     const res = await client.send(
@@ -190,80 +222,88 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     return { ...current, eventSequence: next, status: nextStatus ?? current.status };
   }
 
+  async function createOnce(r: Parameters<LeadRepo["create"]>[0]): Promise<StoredLead> {
+    const lead = {
+      pk: r.leadKey,
+      sk: "LEAD",
+      leadId: r.leadId,
+      address: r.address,
+      lat: r.lat,
+      lon: r.lon,
+      status: "new" as const,
+      assignee: r.assignee,
+      createdFrom: r.createdFrom,
+      sourceManifestCid: r.sourceManifestCid,
+      createdAt: r.createdAt,
+      eventSequence: 0,
+    };
+    try {
+      await client.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: tableName,
+                Item: lead,
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+            {
+              Put: {
+                TableName: tableName,
+                Item: {
+                  pk: r.leadKey,
+                  sk: "SIGNALS",
+                  ...definedOnly(r.signals),
+                  capturedAt: r.createdAt,
+                },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+            {
+              Put: {
+                TableName: tableName,
+                Item: {
+                  pk: r.leadKey,
+                  sk: evtSortKey(0),
+                  sequence: 0,
+                  at: r.createdAt,
+                  by: r.assignee,
+                  change: "created",
+                  kind: "create",
+                },
+                ConditionExpression: "attribute_not_exists(pk)",
+              },
+            },
+          ],
+        }),
+      );
+    } catch (error) {
+      if (failedConditionIndex(error) >= 0) throw new LeadAlreadyExistsError(r.leadKey);
+      throw error;
+    }
+    return toStoredLead(lead);
+  }
+
   return {
-    async create(r) {
-      const lead = {
-        pk: r.leadKey,
-        sk: "LEAD",
-        leadId: r.leadId,
-        address: r.address,
-        lat: r.lat,
-        lon: r.lon,
-        status: "new" as const,
-        assignee: r.assignee,
-        createdFrom: r.createdFrom,
-        sourceManifestCid: r.sourceManifestCid,
-        createdAt: r.createdAt,
-        eventSequence: 0,
-      };
-      try {
-        await client.send(
-          new TransactWriteCommand({
-            TransactItems: [
-              {
-                Put: {
-                  TableName: tableName,
-                  Item: lead,
-                  ConditionExpression: "attribute_not_exists(pk)",
-                },
-              },
-              {
-                Put: {
-                  TableName: tableName,
-                  Item: {
-                    pk: r.leadKey,
-                    sk: "SIGNALS",
-                    ...definedOnly(r.signals),
-                    capturedAt: r.createdAt,
-                  },
-                  ConditionExpression: "attribute_not_exists(pk)",
-                },
-              },
-              {
-                Put: {
-                  TableName: tableName,
-                  Item: {
-                    pk: r.leadKey,
-                    sk: evtSortKey(0),
-                    sequence: 0,
-                    at: r.createdAt,
-                    by: r.assignee,
-                    change: "created",
-                    kind: "create",
-                  },
-                  ConditionExpression: "attribute_not_exists(pk)",
-                },
-              },
-            ],
-          }),
-        );
-      } catch (error) {
-        if (failedConditionIndex(error) >= 0) throw new LeadAlreadyExistsError(r.leadKey);
-        throw error;
-      }
-      return toStoredLead(lead);
+    create(r) {
+      return withConflictRetry(() => createOnce(r));
     },
 
     updateStatus(input) {
-      return append(
-        input,
-        { kind: "statusChange", change: (cur) => `status: ${cur.status} -> ${input.status}` },
-        input.status,
+      return withConflictRetry(() =>
+        append(
+          input,
+          { kind: "statusChange", change: (cur) => `status: ${cur.status} -> ${input.status}` },
+          input.status,
+        ),
       );
     },
 
     addNote(input) {
-      return append(input, { kind: "note", change: () => `note: ${JSON.stringify(input.text)}` });
+      return withConflictRetry(() =>
+        append(input, { kind: "note", change: () => `note: ${JSON.stringify(input.text)}` }),
+      );
     },
 
     async get(leadKey) {
