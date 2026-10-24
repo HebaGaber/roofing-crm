@@ -20,6 +20,7 @@ export function fakeUsageGuard(options: FakeUsageGuardOptions = {}) {
   const proposed = new Map<string, Set<string>>(
     Object.entries(options.proposed ?? {}).map(([k, v]) => [k, new Set(v)]),
   );
+  const plans = new Map<string, QueryPlan>();
   const check = vi.fn(async (userId: string, _scope?: "ask" | "confirm") => {
     if (options.rateLimited !== undefined) {
       throw new RateLimitedError(userId, options.rateLimited.retryAfterSec);
@@ -39,6 +40,7 @@ export function fakeUsageGuard(options: FakeUsageGuardOptions = {}) {
       turn: { plan: QueryPlan; proposedTcadIds: readonly string[] },
     ) => {
       const key = `${threadId}|${actorId}`;
+      plans.set(key, turn.plan);
       const set = proposed.get(key) ?? new Set<string>();
       for (const id of turn.proposedTcadIds) set.add(id);
       proposed.set(key, set);
@@ -48,11 +50,14 @@ export function fakeUsageGuard(options: FakeUsageGuardOptions = {}) {
     async (threadId: string, actorId: string, tcadId: string) =>
       proposed.get(`${threadId}|${actorId}`)?.has(tcadId) ?? false,
   );
+  const lastPlan = vi.fn(async (threadId: string, actorId: string) =>
+    plans.get(`${threadId}|${actorId}`),
+  );
   const guard: UsageGuard = {
     rateLimiter: { check },
     spendCap: { reserve, reconcile },
-    threadStore: { recordTurn, wasProposed },
+    threadStore: { recordTurn, wasProposed, lastPlan },
     price: priceForModel("eu.anthropic.claude-sonnet-4-6"),
   };
-  return { guard, check, reserve, reconcile, recordTurn, wasProposed };
+  return { guard, check, reserve, reconcile, recordTurn, wasProposed, lastPlan };
 }

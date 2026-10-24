@@ -101,4 +101,26 @@ describe("threadStore", () => {
     ddbMock.on(GetCommand).resolves({});
     expect(await makeStore().wasProposed("nope", "rep-1", "0208011301")).toBe(false);
   });
+
+  // Finding 8 remainder (ash saved the plan; nothing read it): the plan step reads it back.
+  it("lastPlan returns the thread's saved QueryPlan to its owner only, Zod-validated", async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { actorId: "rep-1", lastPlan: PLAN } });
+    const store = makeStore();
+    expect(await store.lastPlan("thread-1", "rep-1")).toEqual(PLAN);
+    expect(await store.lastPlan("thread-1", "rep-2")).toBeUndefined();
+    const get = ddbMock.commandCalls(GetCommand)[0]?.args[0]?.input;
+    expect(get?.Key?.pk).toBe("THREAD#thread-1");
+  });
+
+  it("lastPlan is undefined for a new thread or a stored plan that no longer parses", async () => {
+    ddbMock
+      .on(GetCommand)
+      .resolvesOnce({})
+      .resolvesOnce({
+        Item: { actorId: "rep-1", lastPlan: { intent: "nope" } },
+      });
+    const store = makeStore();
+    expect(await store.lastPlan("thread-new", "rep-1")).toBeUndefined();
+    expect(await store.lastPlan("thread-1", "rep-1")).toBeUndefined();
+  });
 });

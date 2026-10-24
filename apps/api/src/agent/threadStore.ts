@@ -1,8 +1,8 @@
 // CR finding 6b: per-thread agent state, so `agent.confirmLead` only confirms a tcadId the agent
 // actually proposed in that `threadId`, to the rep who owns the thread. Also keeps the thread's
 // last `QueryPlan` (small: one Zod-validated object) for follow-up inheritance (contracts/
-// agent-api.md step 2, ADR-06 §6.3) — written here; reading it back into the plan call is the
-// plan/compose orchestration's job (agent/composeAnswer.ts), not done yet.
+// agent-api.md step 2, ADR-06 §6.3) — written by `recordTurn`, read back by `lastPlan` before the
+// next turn's plan call (agent/composeAnswer.ts applies the inheritance).
 //
 // Storage: one prefixed item `pk = THREAD#{threadId}` in the existing `crm-agent-usage` table.
 // data-model.md's ConversationEventStore layout (`PK=THREAD#…`, `SK=EVT#{ordinal}`) needs a sort
@@ -12,7 +12,7 @@
 // write — a later write from another user fails the condition, so a guessed threadId can't be
 // used to plant or read someone else's proposals.
 import { GetCommand, UpdateCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { QueryPlan } from "@crm/shared";
+import { QueryPlan as QueryPlanSchema, type QueryPlan } from "@crm/shared";
 import { isConditionalCheckFailed } from "../agentErrors.js";
 
 /** 7 days — data-model.md "conversation memory" TTL. */
@@ -34,6 +34,9 @@ export interface ThreadTurn {
 export interface ThreadStore {
   recordTurn(threadId: string, actorId: string, turn: ThreadTurn): Promise<void>;
   wasProposed(threadId: string, actorId: string, tcadId: string): Promise<boolean>;
+  /** The thread's last recorded plan, for its owner only; undefined for a new thread, another
+   *  user's thread, or a stored plan that no longer parses as the current `QueryPlan`. */
+  lastPlan(threadId: string, actorId: string): Promise<QueryPlan | undefined>;
 }
 
 export interface ThreadStoreDeps {
@@ -96,6 +99,20 @@ export function createThreadStore(deps: ThreadStoreDeps): ThreadStore {
       if (Item === undefined || Item.actorId !== actorId) return false;
       const proposed: unknown = Item.proposedTcadIds;
       return proposed instanceof Set && proposed.has(tcadId);
+    },
+
+    async lastPlan(threadId, actorId) {
+      const { Item } = await client.send(
+        new GetCommand({
+          TableName: tableName,
+          Key: { pk: threadKey(threadId) },
+          ConsistentRead: true,
+          ProjectionExpression: "actorId, lastPlan",
+        }),
+      );
+      if (Item === undefined || Item.actorId !== actorId) return undefined;
+      const parsed = QueryPlanSchema.safeParse(Item.lastPlan);
+      return parsed.success ? parsed.data : undefined;
     },
   };
 }

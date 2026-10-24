@@ -115,3 +115,42 @@ describe("rankCandidates: the pure scoring/ranking step behind the margin<0.05 c
     expect(classifyPlaceConfidence(at(ranked, 0).score, margin)).toBe("auto");
   });
 });
+
+// B-09 review finding 7 (CR-B-09 row 16, alakazam): candidate quality for the clarify buttons and
+// the ADR-06 §5 bands.
+describe("placeResolver: candidates are distinct places, and short/foreign names don't over-score", () => {
+  it("an exact hit never lists the same place again as a fuzzy runner-up ('Manor' vs 'Manor city')", async () => {
+    const resolution = await createPlaceResolver().resolve("Manor");
+    const [top, ...rest] = resolution.candidates;
+    expect(top).toMatchObject({ match: "exact", score: 1 });
+    for (const other of rest) {
+      expect(other.lat !== top?.lat || other.lon !== top?.lon).toBe(true);
+    }
+  });
+
+  it("a fuzzy result lists each place once", async () => {
+    const resolution = await createPlaceResolver().resolve("Pflugervile");
+    const points = resolution.candidates.map((c) => `${c.lat},${c.lon}`);
+    expect(new Set(points).size).toBe(points.length);
+  });
+
+  it("a non-Travis name that only shares a prefix ('San Marcos' vs 'San Leanna') stays below the clarify floor", async () => {
+    // Winkler's prefix boost applies only when the Jaro score is already >= 0.7 (Winkler 1990's
+    // boost threshold); without it 'San ' alone lifted San Leanna to exactly 0.80 (clarify).
+    const resolution = await createPlaceResolver().resolve("San Marcos");
+    expect(resolution.candidates[0]?.score ?? 0).toBeLessThan(0.8);
+  });
+
+  it.each([
+    ["Kyle", "not_found"],
+    ["Hutto", "not_found"],
+    ["Elgn", "auto"],
+    ["Lakewy", "auto"],
+  ])("'%s' bands as %s", async (query, band) => {
+    const resolution = await createPlaceResolver().resolve(query);
+    const [top, second] = resolution.candidates;
+    const margin = (top?.score ?? 0) - (second?.score ?? 0);
+    const got = classifyPlaceConfidence(top?.score ?? 0, margin);
+    expect(got).toBe(band === "not_found" ? "refuse" : band);
+  });
+});

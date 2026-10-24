@@ -156,6 +156,8 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
     }
     return {
       manifestCid: result.manifestCid,
+      // B-09 review (CR finding 10): the full matching count, before the compact-row cap.
+      matched: permits.length,
       permits: permits.slice(0, MAX_COMPACT_ROWS),
     };
   }

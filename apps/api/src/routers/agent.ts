@@ -10,7 +10,7 @@ import { z } from "zod";
 import { gazetteer } from "@crm/oracle-views";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import type { AgentAnswer } from "@crm/shared";
+import type { AgentAnswer, QueryPlan } from "@crm/shared";
 import {
   causeWithCode,
   mapIndexNotReady,
@@ -181,6 +181,25 @@ async function recordThreadTurn(
   }
 }
 
+/** contracts/agent-api.md step 2: the thread's last plan, for follow-up inheritance (ADR-06
+ *  §6.3). A read failure only loses the inheritance — the question is still answered on its own. */
+async function readLastPlan(
+  guard: UsageGuard,
+  threadId: string,
+  userId: string,
+  requestId: string,
+): Promise<QueryPlan | undefined> {
+  try {
+    return await guard.threadStore.lastPlan(threadId, userId);
+  } catch (error) {
+    obs.logger.warn("agent thread read failed; answering without the previous plan", {
+      requestId,
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    return undefined;
+  }
+}
+
 /** `apps/api/src/services/agent/tools.ts`'s `proposeLeads` only ever reads (a `LeadRepo.get` dup
  *  check) — this stub is used only when a request's context hasn't wired a real `LeadRepo` (a
  *  test exercising `agent.ask` without ever calling `proposeLeads`), and itself still never
@@ -224,6 +243,7 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
   try {
     const leadIndex: LeadIndex = requireLeadIndex(ctx);
     const leadRepo = ctx.leadRepo ?? unavailableLeadRepo();
+    const previousPlan = await readLastPlan(guard, input.threadId, userId, ctx.requestId);
     let answer: AgentAnswer;
     try {
       answer = await runAsk({
@@ -234,6 +254,7 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
         question: input.question,
         traceId: ctx.requestId,
         obs,
+        previousPlan,
       });
     } catch (error) {
       // `leadIndex.indexInfo()` (called inside `runAsk`'s dispatch step) keeps its own typed-error

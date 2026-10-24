@@ -60,11 +60,16 @@ function jaroSimilarity(a: string, b: string): number {
 
 const WINKLER_PREFIX_SCALE = 0.1;
 const WINKLER_MAX_PREFIX = 4;
+/** Winkler's boost threshold: the prefix bonus applies only when the Jaro score is already at
+ *  least this. Without it a shared "San " lifted "San Marcos" (Hays County) to exactly 0.80
+ *  against "San Leanna" — the clarify band — on the prefix alone (B-09 review, CR finding 7). */
+const WINKLER_BOOST_THRESHOLD = 0.7;
 
 /** Jaro-Winkler: boosts the Jaro score for a shared leading prefix (the standard typo-tolerance
  *  refinement over plain Jaro, named explicitly by ADR-06 §5/§10 pattern #3). */
 function jaroWinkler(a: string, b: string): number {
   const jaro = jaroSimilarity(a, b);
+  if (jaro < WINKLER_BOOST_THRESHOLD) return jaro;
   const max = Math.min(WINKLER_MAX_PREFIX, a.length, b.length);
   let prefix = 0;
   while (prefix < max && a[prefix] === b[prefix]) prefix++;
@@ -94,6 +99,22 @@ function placeCandidate(
   const found = gazetteer.lookup(name);
   if (found.status !== "found") return undefined;
   return { name: found.name, lat: found.point.lat, lon: found.point.lon, match, score };
+}
+
+/** Keeps the first (best) candidate per place point, dropping any at `exclude`'s point. */
+function distinctPlaces(
+  candidates: readonly PlaceCandidate[],
+  exclude?: PlaceCandidate,
+): PlaceCandidate[] {
+  const seen = new Set<string>(exclude === undefined ? [] : [`${exclude.lat},${exclude.lon}`]);
+  const out: PlaceCandidate[] = [];
+  for (const c of candidates) {
+    const key = `${c.lat},${c.lon}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(c);
+  }
+  return out;
 }
 
 const ZIP_SHAPED = /^(?:zip\s*)?\d{5}$/i;
@@ -127,11 +148,15 @@ export function createPlaceResolver(): PlaceResolver {
           match: "exact",
           score: 1,
         };
-        const runnersUp = rankCandidates(text, gazetteer.listPlaceNames())
-          .filter((c) => normalise(c.name) !== normalise(found.name))
-          .slice(0, TOP_N - 1)
-          .map((c) => placeCandidate(c.name, c.score, "fuzzy"))
-          .filter((c): c is PlaceCandidate => c !== undefined);
+        // Runners-up are other *places*: the ranked list holds bare names ("Manor") while
+        // `found.name` is the LSAD form ("Manor city"), so the same place is filtered by point,
+        // not by name string (B-09 review, CR finding 7).
+        const runnersUp = distinctPlaces(
+          rankCandidates(text, gazetteer.listPlaceNames())
+            .map((c) => placeCandidate(c.name, c.score, "fuzzy"))
+            .filter((c): c is PlaceCandidate => c !== undefined),
+          primary,
+        ).slice(0, TOP_N - 1);
         return {
           status: "resolved",
           candidates: [primary, ...runnersUp],
@@ -146,10 +171,11 @@ export function createPlaceResolver(): PlaceResolver {
       }
 
       // Free text with no exact/alias/ZIP hit: rank every known Travis place name by fuzzy score.
-      const ranked = rankCandidates(text, gazetteer.listPlaceNames()).slice(0, TOP_N);
-      const candidates = ranked
-        .map((r) => placeCandidate(r.name, r.score, "fuzzy"))
-        .filter((c): c is PlaceCandidate => c !== undefined);
+      const candidates = distinctPlaces(
+        rankCandidates(text, gazetteer.listPlaceNames())
+          .map((r) => placeCandidate(r.name, r.score, "fuzzy"))
+          .filter((c): c is PlaceCandidate => c !== undefined),
+      ).slice(0, TOP_N);
       return { status: "resolved", candidates, source: GAZETTEER_SOURCE };
     },
   };

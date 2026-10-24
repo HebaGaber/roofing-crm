@@ -136,3 +136,33 @@ describe("search.properties", () => {
     ).rejects.toThrow(TRPCError);
   });
 });
+
+// CR-B-09 finding 10: the agent's `counts.excludedNoRoofDate` comes from the search service, not a
+// hard-coded 0. A row in the radius with no roof date can never satisfy a roof-age filter.
+describe("search.properties counts.excludedNoRoofDate", () => {
+  const withUndated = createCaller({
+    requestId: "test-request-undated",
+    leadIndex: new FakeLeadIndex([
+      property({}),
+      property({
+        propertyCid: "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        requestIdentifier: "R-0002",
+        roofAgeYears: null,
+      }),
+    ]),
+  });
+
+  it("counts in-radius rows with no roof date when a roof-age filter is applied", async () => {
+    const result = await withUndated.search.properties({
+      center: PFLUGERVILLE,
+      radiusMi: 10,
+      roofAgeMinYears: 15,
+    });
+    expect(result.counts).toMatchObject({ afterRadius: 2, afterRoofAge: 1, excludedNoRoofDate: 1 });
+  });
+
+  it("is 0 when no roof-age filter excluded anything", async () => {
+    const result = await withUndated.search.properties({ center: PFLUGERVILLE, radiusMi: 10 });
+    expect(result.counts.excludedNoRoofDate).toBe(0);
+  });
+});

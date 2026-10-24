@@ -31,7 +31,10 @@ export interface SearchPropertiesInput {
 
 export interface SearchPropertiesResult {
   properties: PropertyResult[];
-  counts: { afterRadius: number; afterRoofAge: number };
+  /** `excludedNoRoofDate` (B-09 review, CR finding 10): rows in the radius that a roof-age
+   *  filter excluded only because they carry no roof date (`roofAgeYears` null) — 0 when no
+   *  roof-age filter was applied. */
+  counts: { afterRadius: number; afterRoofAge: number; excludedNoRoofDate: number };
   manifestCid: string;
 }
 
@@ -74,6 +77,10 @@ export async function searchProperties(
     counts: {
       afterRadius: afterRadius.length,
       afterRoofAge: afterRoofAge.length,
+      excludedNoRoofDate:
+        input.roofAgeMinYears === undefined
+          ? 0
+          : afterRadius.filter((p) => p.roofAgeYears === null).length,
     },
     manifestCid,
   };

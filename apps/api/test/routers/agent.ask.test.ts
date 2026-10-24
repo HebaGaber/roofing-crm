@@ -34,8 +34,6 @@ import { fakeUsageGuard } from "../support/fakeUsageGuard.js";
 beforeEach(() => setUsageGuardForTest(fakeUsageGuard().guard));
 afterEach(() => resetUsageGuardForTest());
 
-const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
-
 const REAL_PROPERTY_CID = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 // Planted in the mocked compose output only — never returned by any dispatch call this turn, so
 // the server-side citation verifier must strip any claim that cites it (the test's core
@@ -143,7 +141,7 @@ function buildMockModel(): MockLanguageModelV4 {
             type: "text",
             text: JSON.stringify({
               claims: [
-                { text: `Found a roofing opportunity near ${PFLUGERVILLE.lat}.`, citationIds: [1] },
+                { text: "R-0001 has a roof over 15 years old.", citationIds: [1] },
                 {
                   text: "A fabricated extra property the model invented.",
                   citationIds: [2],
@@ -236,16 +234,15 @@ describe("agent.ask (T026) — plan + compose, code-driven dispatch in between",
       expect(emfLine).toBeDefined();
       const emf = JSON.parse(emfLine as string);
 
-      // The fake planted citation never makes it into `rawCitations` at all (it isn't in this
-      // turn's dispatch-result properties map), so this representative call has exactly one
-      // citation, which does verify — total=verified=1, rate=100.
+      // CR-B-09 finding 17: the planted citation is one the model produced, so it counts in the
+      // total; only the real one verifies — total=2, verified=1, rate=50.
       expect(emf.AgentAsksTotal).toBe(1);
       expect(typeof emf.AgentAnswerLatencyMs).toBe("number");
       expect(emf.AgentAnswerLatencyMs).toBeGreaterThanOrEqual(0);
       expect(emf.AgentModelCallsTotal).toBe(answer.trace.modelCalls);
-      expect(emf.AgentCitationsTotal).toBe(1);
+      expect(emf.AgentCitationsTotal).toBe(2);
       expect(emf.AgentCitationsVerified).toBe(1);
-      expect(emf.AgentCitationGroundednessRate).toBe(100);
+      expect(emf.AgentCitationGroundednessRate).toBe(50);
       expect(emf.AgentLeadsProposed).toBe(0);
       expect(emf.outcome).toBe(answer.outcome);
     } finally {
@@ -253,3 +250,60 @@ describe("agent.ask (T026) — plan + compose, code-driven dispatch in between",
     }
   });
 });
+
+// Finding 8 remainder (CR-B-09): the thread's saved plan is read back for the next turn, so a
+// follow-up ("near that area") inherits the area per ADR-06 §6.3 / G2.
+describe("agent.ask — follow-up inherits the thread's last plan", () => {
+  it("passes the saved plan to the plan step and applies the inherited area", async () => {
+    const fake = fakeUsageGuard();
+    setUsageGuardForTest(fake.guard);
+    const leadIndex = new FakeLeadIndex([property()]);
+    const model = new MockLanguageModelV4({
+      doGenerate: [
+        textResponse({
+          intent: "find_properties",
+          area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+          filters: { roofAgeMinYears: 15 },
+          slotSources: { roofAgeMinYears: "stated" },
+          unsupported: [],
+        }),
+        textResponse({ claims: [{ text: "R-0001 qualifies.", citationIds: [1] }], citations: [] }),
+        textResponse({
+          intent: "find_properties",
+          area: { kind: "place", query: "", radiusMi: 5 },
+          filters: { roofAgeMinYears: 20 },
+          slotSources: { area: "inherited", roofAgeMinYears: "stated" },
+          unsupported: [],
+        }),
+        textResponse({ claims: [{ text: "R-0001 qualifies.", citationIds: [1] }], citations: [] }),
+      ],
+    });
+    const c = createCallerFactory(router({ agent: agentRouter }))({
+      requestId: "req-follow-up",
+      userId: "rep-1",
+      leadIndex,
+      model,
+    });
+
+    await c.agent.ask({ question: "roofs over 15 near Pflugerville", threadId: "thread-f" });
+    const second = await c.agent.ask({ question: "only older than 20", threadId: "thread-f" });
+
+    expect(fake.lastPlan).toHaveBeenCalledWith("thread-f", "rep-1");
+    expect(second.plan.area.query).toBe("Pflugerville");
+    expect(second.plan.slotSources.area).toBe("inherited");
+    expect(second.plan.filters.roofAgeMinYears).toBe(20);
+    expect(second.outcome).toBe("answered");
+  });
+});
+
+function textResponse(json: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(json) }],
+    finishReason: { unified: "stop" as const, raw: "end_turn" },
+    usage: {
+      inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 5, text: 5, reasoning: undefined },
+    },
+    warnings: [],
+  };
+}

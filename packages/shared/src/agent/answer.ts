@@ -49,7 +49,29 @@ export const AgentAnswer = z.object({
     excludedNoRoofDate: z.number(),
     truncated: z.boolean(),
   }),
-  missing: z.array(z.object({ field: z.string(), reason: z.string() })),
+  // `reason` is one of the contract's closed lists: `@crm/oracle-contract`'s MISSING_REASONS for a
+  // row's own missing field, or `QueryPlan.unsupported[].reason` for a constraint the question
+  // asked for. B-09 review (CR finding 10): `count` (optional, additive) is how many evidence rows
+  // this turn carried that reason for that field; absent for a plan-level `unsupported` entry.
+  missing: z.array(
+    z.object({
+      field: z.string(),
+      reason: z.string(),
+      count: z.number().int().nonnegative().optional(),
+    }),
+  ),
+  // B-09 review (CR finding 7): set only on `needs_clarification` — the resolver's top places
+  // (best first, at most 3) so the Ask screen can offer them as choices. `match` is the
+  // `QueryPlan.area.resolved.match` kind. Optional and additive.
+  candidates: z
+    .array(
+      z.object({
+        name: z.string(),
+        score: z.number().min(0).max(1),
+        match: z.enum(["exact", "alias", "fuzzy", "zip", "user_point"]),
+      }),
+    )
+    .optional(),
   // B-09 review (CR finding 3): budget outcomes are typed answers the Ask screen keys on, with the
   // hint it needs. Optional and additive: set only on `rate_limited` (whole seconds until the
   // next per-minute window) and `paused` (ISO time the daily cap resets, next 00:00 UTC).

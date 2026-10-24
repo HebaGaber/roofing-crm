@@ -179,3 +179,125 @@ describe("verifyCitations", () => {
     expect(result.claims).toHaveLength(1);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// B-09 review findings 6 + 11 (CR-B-09 rows 8/11/17): permit citations are verified against the
+// live index like property citations, and claim *text* is checked against the cited rows.
+// ---------------------------------------------------------------------------------------------
+
+const PERMIT_CID_P = "bafkreipppppppppppppppppppppppppppppppppppppppppppppppppppppppppp";
+
+/** A LeadIndex whose `getProperty` returns the property with the given permits attached. */
+function fakeIndexWithPermits(
+  propertyManifest: string,
+  permits: Array<{ permitCid: string; sourceManifestCid: string }>,
+): LeadIndex {
+  const base = fakeLeadIndex({});
+  return {
+    ...base,
+    async getProperty(propertyCid: string) {
+      if (propertyCid !== PROPERTY_CID_A) return null;
+      return {
+        propertyCid,
+        sourceManifestCid: propertyManifest,
+        permits,
+      } as unknown as Awaited<ReturnType<LeadIndex["getProperty"]>>;
+    },
+  };
+}
+
+function permitCitation(overrides: Partial<Citation> = {}): Citation {
+  return citation({ id: 5, kind: "permit", permitCid: PERMIT_CID_P, ...overrides });
+}
+
+describe("verifyCitations: permit citations are checked against the index (finding 6)", () => {
+  it("keeps a permit citation whose permit is in the promoted run under the same manifest", async () => {
+    const leadIndex = fakeIndexWithPermits(MANIFEST_CID, [
+      { permitCid: PERMIT_CID_P, sourceManifestCid: MANIFEST_CID },
+    ]);
+    const result = await verifyCitations({
+      claims: [{ text: "One open permit.", citationIds: [5] }],
+      citations: [permitCitation()],
+      toolResultCitationIds: new Set([5]),
+      leadIndex,
+      manifestCid: MANIFEST_CID,
+      counts: COUNTS,
+    });
+    expect(result.droppedCount).toBe(0);
+    expect(result.verifiedCitationIds).toEqual(new Set([5]));
+  });
+
+  it("drops a permit citation whose permit is not (or no longer) on that property in the index", async () => {
+    const leadIndex = fakeIndexWithPermits(MANIFEST_CID, []);
+    const result = await verifyCitations({
+      claims: [{ text: "One open permit.", citationIds: [5] }],
+      citations: [permitCitation()],
+      toolResultCitationIds: new Set([5]),
+      leadIndex,
+      manifestCid: MANIFEST_CID,
+      counts: COUNTS,
+    });
+    expect(result.droppedCount).toBe(1);
+    expect(result.verifiedCitationIds.size).toBe(0);
+  });
+
+  it("drops a permit citation from a different manifest", async () => {
+    const leadIndex = fakeIndexWithPermits(MANIFEST_CID, [
+      { permitCid: PERMIT_CID_P, sourceManifestCid: OTHER_MANIFEST_CID },
+    ]);
+    const result = await verifyCitations({
+      claims: [{ text: "One open permit.", citationIds: [5] }],
+      citations: [permitCitation()],
+      toolResultCitationIds: new Set([5]),
+      leadIndex,
+      manifestCid: MANIFEST_CID,
+      counts: COUNTS,
+    });
+    expect(result.droppedCount).toBe(1);
+  });
+
+  it("drops a run citation that names a different manifest than this turn's", async () => {
+    const result = await verifyCitations({
+      claims: [{ text: "This run covers Travis County.", citationIds: [2] }],
+      citations: [
+        {
+          ...citation({ id: 2, manifestCid: OTHER_MANIFEST_CID }),
+          kind: "run",
+          propertyCid: undefined,
+        },
+      ],
+      toolResultCitationIds: new Set([2]),
+      leadIndex: fakeLeadIndex({}),
+      manifestCid: MANIFEST_CID,
+      counts: COUNTS,
+    });
+    expect(result.droppedCount).toBe(1);
+  });
+});
+
+describe("verifyCitations: claim text is checked against the cited rows (finding 11)", () => {
+  it("drops a claim citing a real row but stating a wrong roof age, and counts its citation unverified", async () => {
+    const leadIndex = fakeLeadIndex({ [PROPERTY_CID_A]: MANIFEST_CID });
+    const result = await verifyCitations({
+      claims: [
+        { text: "R-0001 has a 32-year-old roof.", citationIds: [1] },
+        { text: "R-0001 has a 45-year-old roof.", citationIds: [2] },
+      ],
+      citations: [citation({ id: 1 }), citation({ id: 2 })],
+      toolResultCitationIds: new Set([1, 2]),
+      leadIndex,
+      manifestCid: MANIFEST_CID,
+      counts: COUNTS,
+      textFacts: {
+        allowedNumbers: [COUNTS.matched],
+        turnIdentifiers: ["R-0001", PROPERTY_CID_A],
+        forCitation: () => ({ numbers: [32], identifiers: ["R-0001", PROPERTY_CID_A] }),
+      },
+    });
+    expect(result.claims.map((c) => c.text)).toEqual(["R-0001 has a 32-year-old roof."]);
+    expect(result.droppedCount).toBe(1);
+    expect(result.droppedForText).toBe(1);
+    // id 2 resolved in the index, but its only claim failed the text check: not verified.
+    expect(result.verifiedCitationIds).toEqual(new Set([1]));
+  });
+});
