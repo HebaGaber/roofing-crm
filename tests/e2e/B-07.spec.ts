@@ -25,6 +25,10 @@ import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
 import { createLeadsCleanup, type LeadsCleanup } from "./lib/leads-cleanup.js";
 
+/** A saved note shows once the page's refetch lands. React Query retries a throttled refetch
+ *  after 1 s, 2 s and 4 s (about 7 s), so wait that long, not the 5 s default. */
+const NOTE_VISIBLE_MS = 15_000;
+
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
 const CLEANUP_AFTER = process.env.CRM_E2E_CLEANUP === "1";
@@ -301,7 +305,10 @@ test.describe("B-07 leads", () => {
     const button = drawer.getByRole("button", {
       name: `Create lead from permit ${permit.permitNumber}`,
     });
-    const card = drawer.locator("article[data-permit-cid]").filter({ has: button });
+    // Found by its permit number, not by "contains the button": the click replaces the button.
+    const card = drawer
+      .locator("article[data-permit-cid]")
+      .filter({ hasText: permit.permitNumber });
     await button.click();
     // The key is per property, so TC-001's lead already exists: the permit row just says so.
     await expect(card.getByRole("status")).toContainText(/Lead created|Already a lead/);
@@ -470,12 +477,14 @@ test.describe("B-07 leads", () => {
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
     const notes = page.getByRole("region", { name: "Notes" });
-    await expect(notes).toContainText(note);
+    await expect(notes).toContainText(note, { timeout: NOTE_VISIBLE_MS });
     await shot(page, "008", "saved");
 
     await page.reload();
     await expect(page.getByRole("combobox", { name: "Status" })).toHaveValue("contacted");
-    await expect(page.getByRole("region", { name: "Notes" })).toContainText(note);
+    await expect(page.getByRole("region", { name: "Notes" })).toContainText(note, {
+      timeout: NOTE_VISIBLE_MS,
+    });
     // History records both the status change and the note (plus the creation event).
     const history = page.getByRole("region", { name: "History" }).locator("li");
     expect(await history.count()).toBeGreaterThanOrEqual(2);
@@ -492,12 +501,14 @@ test.describe("B-07 leads", () => {
     // Wait for THIS note (TC-008's note carries the same run tag, so the tag alone is not enough).
     await expect(page.getByRole("region", { name: "Notes" })).toContainText(
       `${RUN_TAG} "quoted" & 'single'`,
+      { timeout: NOTE_VISIBLE_MS },
     );
 
     await page.reload();
     // The notes load after the page does; wait for this note before reading the whole text.
     await expect(page.getByRole("region", { name: "Notes" })).toContainText(
       `${RUN_TAG} "quoted" & 'single'`,
+      { timeout: NOTE_VISIBLE_MS },
     );
     const text = await page.getByRole("region", { name: "Notes" }).textContent();
     // textContent keeps the line break and every character, so a plain includes() is exact.
