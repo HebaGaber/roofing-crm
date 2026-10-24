@@ -22,14 +22,16 @@
     "@aws-sdk/client-dynamodb": "3.709.0",
     "@aws-sdk/client-s3": "3.709.0",
     "@aws-sdk/lib-dynamodb": "3.709.0",
+    "@ai-sdk/amazon-bedrock": "5.0.123",
     "@duckdb/node-api": "1.5.6-r.2",
+    "ai": "7.0.152",
     "@crm/domain": "workspace:*",
     "@crm/index-schema": "workspace:*",
     "@crm/observability": "workspace:*",
     "@crm/oracle-contract": "workspace:*",
     "@crm/shared": "workspace:*",
     "@trpc/server": "11.19.0",
-    "zod": "3.24.1"
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.147",
