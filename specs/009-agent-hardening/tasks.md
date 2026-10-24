@@ -54,23 +54,25 @@ called out again in Dependencies & Execution Order.
 
 **Purpose**: the shared contracts and ports every story's tests and implementation import. Per
 constitution XXI, every test task below must be written and confirmed failing before its paired
-implementation task runs.
+implementation task runs. (The confirm-flow import-guard test originally planned here moved to
+Phase 4/US1 — see T029 — since it asserts a shape of `services/agent/tools.ts`, a file that
+doesn't exist until that phase; a test on a nonexistent file fails on import, not on its intended
+assertion, which isn't "failing for the right reason.")
 
 - [ ] T006 [P] Write failing unit test for `QueryPlan` Zod shape (area 0.5–25mi radius inclusive bound, `slotSources` enum `stated|default|inherited`, `unsupported[]` reason enum `not_in_export|no_lexicon_carrier|out_of_scope|no_free_text`) in `packages/shared/test/agent/queryPlan.test.ts` (builder: alakazam)
-- [ ] T007 [US-shared] Implement `QueryPlan` Zod schema per ADR-06 §4 / data-model.md in `packages/shared/src/agent/queryPlan.ts`; make T006 pass (builder: alakazam)
+- [ ] T007 Implement `QueryPlan` Zod schema per ADR-06 §4 / data-model.md in `packages/shared/src/agent/queryPlan.ts`; make T006 pass (builder: alakazam)
 - [ ] T008 [P] Write failing unit test for `AgentAnswer` Zod shape (outcome enum `answered|empty_in_scope|out_of_scope|not_found|needs_clarification|field_not_published|timed_out|rate_limited|paused`; every `claims[].citationIds` entry non-empty) in `packages/shared/test/agent/answer.test.ts` (builder: alakazam)
 - [ ] T009 Implement `AgentAnswer` Zod schema per ADR-06 §4 / data-model.md in `packages/shared/src/agent/answer.ts`; make T008 pass (depends on T007) (builder: alakazam)
 - [ ] T010 [P] Write failing unit test for the confidence-band function (auto ≥0.92; clarify 0.80–0.92 or margin<0.05 between top-2; refuse/`not_found` <0.80 — ADR-06 §5, the corrected story edge case) in `packages/shared/test/agent/thresholds.test.ts` (builder: alakazam)
 - [ ] T011 Implement versioned confidence bands in `packages/shared/src/agent/thresholds.ts`; make T010 pass (builder: alakazam)
-- [ ] T012 [P] Write failing unit test asserting `services/agent/tools.ts` (once it exists) imports neither `LeadService` nor `requireLeadService` — the confirm-flow-bypass guard from `agent-design.md` ash §5 — in `apps/api/test/services/agent/toolsImportGuard.test.ts` (builder: ash)
-- [ ] T013 [P] Extract the existing `search.properties`/`search.permits` logic (currently inline in `apps/api/src/routers/search.ts`) into `apps/api/src/services/search.ts`, with `routers/search.ts` calling the new service; all existing `apps/api/test/routers/search.test.ts`/`apps/api/test/search.*.test.ts` must still pass unchanged (builder: alakazam)
-- [ ] T014 [P] Extract the existing `property.get` logic (currently inline in `apps/api/src/routers/property.ts`) into `apps/api/src/services/propertyDetail.ts`, with `routers/property.ts` calling the new service; all existing `apps/api/test/property.get.test.ts` must still pass unchanged (builder: alakazam)
-- [ ] T015 [P] Define the `PlaceResolver`, `ConversationEventStore`, `ReviewStore`, `TraceSink` port interfaces (ADR-06 §10 pattern #1, no adapters yet) in `packages/shared/src/rag/ports.ts` (builder: alakazam)
-- [ ] T016 [P] Write failing unit test for the `crm-agent-usage` rate-limit conditional write (5 asks/min/user: 6th concurrent call in the same window must fail the condition) in `apps/api/test/agent/rateLimiter.test.ts` (builder: ash)
-- [ ] T017 [P] Write failing unit test for the `crm-agent-usage` spend-cap conditional write ($3/day = 300 cents; a call estimated to exceed the remaining cents must fail the condition, checked before any model call) in `apps/api/test/agent/spendCap.test.ts` (builder: ash)
-- [ ] T018 Add the `crm-agent-usage` DynamoDB table (PK `USER#{sub}#MIN#{windowMinute}` and `USER#{sub}#DAY#{yyyy-mm-dd}` item shapes, data-model.md) to `infra/lib/crm-data-stack.ts`, granted read/write to the API Lambda in `infra/lib/crm-api-stack.ts` (builder: ash)
-- [ ] T019 Implement `apps/api/src/agent/rateLimiter.ts` and `apps/api/src/agent/spendCap.ts` against the table from T018 using the same atomic conditional `UpdateItem` pattern as `leadService`'s `expectedSequence` (`apps/api/src/services/leads.ts`); make T016/T017 pass (depends on T018) (builder: ash)
-- [ ] T020 Implement `apps/api/src/agentErrors.ts` (typed errors mirroring `apps/api/src/leadErrors.ts`: `RateLimitedError`, `OverBudgetError`, `IndexNotReadyError` re-export) (builder: ash)
+- [ ] T012 [P] Extract the existing `search.properties`/`search.permits` logic (currently inline in `apps/api/src/routers/search.ts`) into `apps/api/src/services/search.ts`, with `routers/search.ts` calling the new service; all existing `apps/api/test/routers/search.test.ts`/`apps/api/test/search.*.test.ts` must still pass unchanged (builder: alakazam)
+- [ ] T013 [P] Extract the existing `property.get` logic (currently inline in `apps/api/src/routers/property.ts`) into `apps/api/src/services/propertyDetail.ts`, with `routers/property.ts` calling the new service; all existing `apps/api/test/property.get.test.ts` must still pass unchanged (builder: alakazam)
+- [ ] T014 [P] Define the `PlaceResolver`, `ConversationEventStore`, `ReviewStore`, `TraceSink` port interfaces (ADR-06 §10 pattern #1, no adapters yet) in `packages/shared/src/rag/ports.ts` (builder: alakazam)
+- [ ] T015 [P] Write failing unit test for the `crm-agent-usage` rate-limit conditional write (5 asks/min/user: 6th concurrent call in the same window must fail the condition) in `apps/api/test/agent/rateLimiter.test.ts` (builder: ash)
+- [ ] T016 [P] Write failing unit test for the `crm-agent-usage` spend-cap conditional write ($3/day = 300 cents; a call estimated to exceed the remaining cents must fail the condition, checked before any model call) in `apps/api/test/agent/spendCap.test.ts` (builder: ash)
+- [ ] T017 Add the `crm-agent-usage` DynamoDB table (PK `USER#{sub}#MIN#{windowMinute}` and `USER#{sub}#DAY#{yyyy-mm-dd}` item shapes, data-model.md) to `infra/lib/crm-data-stack.ts`, granted read/write to the API Lambda in `infra/lib/crm-api-stack.ts` (builder: ash)
+- [ ] T018 Implement `apps/api/src/agent/rateLimiter.ts` and `apps/api/src/agent/spendCap.ts` against the table from T017 using the same atomic conditional `UpdateItem` pattern as `leadService`'s `expectedSequence` (`apps/api/src/services/leads.ts`); make T015/T016 pass (depends on T017) (builder: ash)
+- [ ] T019 Implement `apps/api/src/agentErrors.ts` (typed errors mirroring `apps/api/src/leadErrors.ts`: `RateLimitedError`, `OverBudgetError`, `IndexNotReadyError` re-export) (builder: ash)
 
 **Checkpoint**: shared schemas, ports, thin-router services, and the usage-guard table/logic exist
 and are tested. No story's user-facing behavior exists yet.
@@ -87,13 +89,13 @@ manifest `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, not the 
 
 ### Tests for User Story 4 (write first)
 
-- [ ] T021 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
+- [ ] T020 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
 
 ### Implementation for User Story 4
 
-- [ ] T022 [US4] Point the sync job / promoted-run pointer (wherever `apps/api/src/leadIndex.ts`'s `tryLeadIndex()` reads its bucket/run pointer, and the sync job's promotion record) at the Run 1 manifest CID; make T021 pass (builder: ash)
-- [ ] T023 [US4] Record the accepted deviation in `docs/architecture-constitution.md` (ADR addendum): direct-CID read instead of Elephant MCP/`listPublishedCounties`, with the swap-back condition ("once the user confirms Atlas registration for Travis County is complete") — per AC-7/FR-007 (builder: alakazam)
-- [ ] T024 [US4] Confirm `apps/web`'s existing map/leads screens show the manifest CID in their provenance UI (constitution XI) without code changes if already wired from B-03/B-07, or add the display if missing, in `apps/web/src/routes/Map`/`apps/web/src/routes/Leads` (builder: metagross)
+- [ ] T021 [US4] Point the sync job / promoted-run pointer (wherever `apps/api/src/leadIndex.ts`'s `tryLeadIndex()` reads its bucket/run pointer, and the sync job's promotion record) at the Run 1 manifest CID; make T020 pass (builder: ash)
+- [ ] T022 [US4] Record the accepted deviation in `docs/architecture-constitution.md` (ADR addendum): direct-CID read instead of Elephant MCP/`listPublishedCounties`, with the swap-back condition ("once the user confirms Atlas registration for Travis County is complete") — per AC-7/FR-007 (builder: alakazam)
+- [ ] T023 [US4] Confirm `apps/web`'s existing map/leads screens show the manifest CID in their provenance UI (constitution XI) without code changes if already wired from B-03/B-07, or add the display if missing, in `apps/web/src/routes/Map`/`apps/web/src/routes/Leads` (builder: metagross)
 
 **Checkpoint**: the whole app, including every story below, now reads the real 441,961-property /
 17,387-permit dataset.
@@ -114,21 +116,22 @@ in the lead list.
 
 ### Tests for User Story 1 (write first)
 
-- [ ] T025 [P] [US1] Write a failing unit test for `resolvePlace`/place-confidence scoring (exact match = 1.0; a misspelling like "Pflugervile" scores in the fuzzy range; two close candidates trigger the margin<0.05 clarify band) in `apps/api/test/services/agent/placeResolver.test.ts` (builder: alakazam)
-- [ ] T026 [P] [US1] Write a failing unit test for the server-side citation verifier: a `citationIds` entry not present in this turn's tool results is stripped, and when no claims remain a deterministic template answer is returned instead (ADR-06 §5) in `apps/api/test/services/agent/verifyCitations.test.ts` (builder: alakazam)
-- [ ] T027 [P] [US1] Write a failing unit test using `MockLanguageModelV2` for the full `agent.ask` tool loop: plan → `resolvePlace` → `searchProperties` → compose → verify, asserting `modelCalls <= 3` and that a planted fake `property_cid` in the mocked compose output never reaches the returned `AgentAnswer.claims` in `apps/api/test/routers/agent.ask.test.ts` (builder: ash)
-- [ ] T028 [P] [US1] Write a failing unit test for `agent.ask` on an out-of-scope ZIP (99999): asserts `outcome === "out_of_scope"`, zero `results`/`claims`, no model compose call made, in `apps/api/test/routers/agent.outOfScope.test.ts` (builder: ash)
-- [ ] T029 [P] [US1] Write a failing unit test for `agent.confirmLead`: asserts it calls `requireLeadService(ctx).create(...)` with `createdFrom: "agent"` and `sourceManifestCid` set to the pinned CID, and that `apps/api/src/services/agent/tools.ts` has no code path reaching the same call (ties to T012) in `apps/api/test/routers/agent.confirmLead.test.ts` (builder: ash)
+- [ ] T024 [P] [US1] Write a failing unit test for `resolvePlace`/place-confidence scoring (exact match = 1.0; a misspelling like "Pflugervile" scores in the fuzzy range; two close candidates trigger the margin<0.05 clarify band) in `apps/api/test/services/agent/placeResolver.test.ts` (builder: alakazam)
+- [ ] T025 [P] [US1] Write a failing unit test for the server-side citation verifier: a `citationIds` entry not present in this turn's tool results is stripped, and when no claims remain a deterministic template answer is returned instead (ADR-06 §5) in `apps/api/test/services/agent/verifyCitations.test.ts` (builder: alakazam)
+- [ ] T026 [P] [US1] Write a failing unit test using `MockLanguageModelV2` for the full `agent.ask` tool loop: plan → `resolvePlace` → `searchProperties` → compose → verify, asserting `modelCalls <= 3` and that a planted fake `property_cid` in the mocked compose output never reaches the returned `AgentAnswer.claims` in `apps/api/test/routers/agent.ask.test.ts` (builder: ash)
+- [ ] T027 [P] [US1] Write a failing unit test for `agent.ask` on an out-of-scope ZIP (99999): asserts `outcome === "out_of_scope"`, zero `results`/`claims`, no model compose call made, in `apps/api/test/routers/agent.outOfScope.test.ts` (builder: ash)
+- [ ] T028 [P] [US1] Write a failing unit test for `agent.confirmLead`: asserts it calls `requireLeadService(ctx).create(...)` with `createdFrom: "agent"` and `sourceManifestCid` set to the pinned CID, and that `apps/api/src/services/agent/tools.ts` has no code path reaching the same call (ties to T029) in `apps/api/test/routers/agent.confirmLead.test.ts` (builder: ash)
+- [ ] T029 [P] [US1] Write a failing unit test asserting `apps/api/src/services/agent/tools.ts` imports neither `LeadService` nor `requireLeadService` — the confirm-flow-bypass guard from `agent-design.md` ash §5 — in `apps/api/test/services/agent/toolsImportGuard.test.ts`. (Sequenced here, not in Phase 2, because it tests a file — `tools.ts` — that this phase creates; a guard test on a file that doesn't exist yet would fail on import, not on its intended assertion.) (builder: ash)
 
 ### Implementation for User Story 1
 
-- [ ] T030 [US1] Implement `apps/api/src/services/agent/placeResolver.ts`: normalise → exact/alias (score 1.0) → Jaro-Winkler fuzzy over `packages/oracle-views/gazetteer/travis-places@1.0.0` (−0.05 margin penalty when top-2 candidates are within 0.05) → confidence bands from T011; make T025 pass (depends on T011, T015) (builder: alakazam)
-- [ ] T031 [US1] Implement `apps/api/src/services/agent/verifyCitations.ts`: every `claims[].citationIds` entry must resolve against this turn's own tool-result set and against a batch `leadIndex.getProperty` call for the current `manifestCid`; strip failing claims; fall back to a deterministic counts-based template when none remain; make T026 pass (depends on T009) (builder: alakazam)
-- [ ] T032 [US1] Implement `apps/api/src/services/agent/tools.ts`: `resolvePlace`, `searchProperties`, `searchPermits`, `getProperty`, `getCoverage`, `proposeLeads` Zod tool defs per `contracts/agent-api.md`'s tool table, calling T013/T014's services and T030's resolver — `proposeLeads` reads only (`getProperty` + dup-check against `crm-leads`), writes nothing; make T012 pass (depends on T013, T014, T030) (builder: alakazam)
+- [ ] T030 [US1] Implement `apps/api/src/services/agent/placeResolver.ts`: normalise → exact/alias (score 1.0) → Jaro-Winkler fuzzy over `packages/oracle-views/gazetteer/travis-places@1.0.0` (−0.05 margin penalty when top-2 candidates are within 0.05) → confidence bands from T011; make T024 pass (depends on T011, T014) (builder: alakazam)
+- [ ] T031 [US1] Implement `apps/api/src/services/agent/verifyCitations.ts`: every `claims[].citationIds` entry must resolve against this turn's own tool-result set and against a batch `leadIndex.getProperty` call for the current `manifestCid`; strip failing claims; fall back to a deterministic counts-based template when none remain; make T025 pass (depends on T009) (builder: alakazam)
+- [ ] T032 [US1] Implement `apps/api/src/services/agent/tools.ts`: `resolvePlace`, `searchProperties`, `searchPermits`, `getProperty`, `getCoverage`, `proposeLeads` Zod tool defs per `contracts/agent-api.md`'s tool table, calling T012/T013's services and T030's resolver — `proposeLeads` reads only (`getProperty` + dup-check against `crm-leads`), writes nothing; make T029 pass (depends on T012, T013, T030) (builder: alakazam)
 - [ ] T033 [US1] Implement `apps/api/src/agent/getModel.ts`: `AI_PROVIDER` switch returning the Bedrock `eu.` inference-profile model (`bedrock`) or the Vercel AI Gateway model id (`gateway`); throws on any other value; model ids read from config, never hard-coded beyond the switch per constitution VI (builder: ash)
-- [ ] T034 [US1] Implement `apps/api/src/agent/runAgent.ts`: the tool loop via the AI SDK's `generateText({model, tools, maxSteps: 3, abortSignal})`, a 23s `AbortController`/`setTimeout`, catch mapping `AbortError` → `{outcome: "timed_out"}` (never rethrown as a 500, same pattern as `mapIndexNotReady` in `apps/api/src/routers/search.ts`); make T027 pass (depends on T032, T033) (builder: ash)
-- [ ] T035 [US1] Implement `apps/api/src/routers/agent.ts`'s `agent.ask` procedure per `contracts/agent-api.md`: `AskInput` Zod (`question` 1–500 chars trimmed, `threadId`), budget check (T019) before any model call, scope/confidence short-circuit to `out_of_scope`/`not_found`/`needs_clarification` with no compose call, then T034's loop, then T031's verifier; make T028 pass (depends on T019, T030, T031, T034) (builder: ash)
-- [ ] T036 [US1] Implement `agent.confirmLead` in `apps/api/src/routers/agent.ts`: calls `requireLeadService(ctx).create(input, requireUserId(ctx))` exactly as `leads.ts` does, `createdFrom: "agent"`, `sourceManifestCid` the pinned CID; make T029 pass (depends on T035) (builder: ash)
+- [ ] T034 [US1] Implement `apps/api/src/agent/runAgent.ts`: the tool loop via the AI SDK's `generateText({model, tools, maxSteps: 3, abortSignal})`, a 23s `AbortController`/`setTimeout`, catch mapping `AbortError` → `{outcome: "timed_out"}` (never rethrown as a 500, same pattern as `mapIndexNotReady` in `apps/api/src/routers/search.ts`); make T026 pass (depends on T032, T033) (builder: ash)
+- [ ] T035 [US1] Implement `apps/api/src/routers/agent.ts`'s `agent.ask` procedure per `contracts/agent-api.md`: `AskInput` Zod (`question` 1–500 chars trimmed, `threadId`), budget check (T018) before any model call, scope/confidence short-circuit to `out_of_scope`/`not_found`/`needs_clarification` with no compose call, then T034's loop, then T031's verifier; make T027 pass (depends on T018, T030, T031, T034) (builder: ash)
+- [ ] T036 [US1] Implement `agent.confirmLead` in `apps/api/src/routers/agent.ts`: calls `requireLeadService(ctx).create(input, requireUserId(ctx))` exactly as `leads.ts` does, `createdFrom: "agent"`, `sourceManifestCid` the pinned CID; make T028 pass (depends on T035) (builder: ash)
 - [ ] T037 [US1] Wire `agent: agentRouter` into `apps/api/src/routers/index.ts`'s `appRouter` (builder: ash)
 - [ ] T038 [US1] Add `agent.ask`/`agent.confirmLead` types to `packages/api-client` (the one existing tRPC client, constitution IV — no second client) (builder: ash)
 - [ ] T039 [P] [US1] Build the `apps/web/src/routes/Ask/Ask.tsx` screen and `Ask.module.css` (following the existing 600px rail-breakpoint CSS-module convention from `AppShell.module.css`/`Map.module.css`, per `agent-design.md` smeargle §1): question input, "Working…" state, answer-with-citations rendering, open-on-map action, create-lead confirmation card calling `agent.confirmLead` (depends on T038) (builder: metagross)
@@ -260,9 +263,9 @@ is fixed or logged with an explicit reason.
 ### Parallel Opportunities
 
 - All Phase 1 tasks (T001–T005) run in parallel.
-- Within Phase 2: T006/T008/T010/T012/T016/T017 (tests) run in parallel; T013/T014/T015 (service
+- Within Phase 2: T006/T008/T010/T015/T016 (tests) run in parallel; T012/T013/T014 (service
   extractions + ports) run in parallel once their paired tests exist.
-- Within Phase 4: T025–T029 (tests) run in parallel; T039 (Ask UI) can start in parallel with
+- Within Phase 4: T024–T029 (tests) run in parallel; T039 (Ask UI) can start in parallel with
   T030–T038 (API side) since it only needs the `packages/api-client` types (stub them from
   `contracts/agent-api.md` first if T038 isn't done yet).
 - US3 (Phase 6) and US2 (Phase 5) can run in parallel once US1 (Phase 4) is done — US3 doesn't
