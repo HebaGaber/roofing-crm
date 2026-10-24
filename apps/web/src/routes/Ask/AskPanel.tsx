@@ -1,5 +1,5 @@
 // B-09 T039/T040 + review fixes (CR-B-09 finding 16/finding 20) + Ask in the map: the Ask panel, the map's AI mode
-// (CRM-HANDOFF 4.7; a pane at 840 px and up, the results sheet below), also the old Ask screen (contracts/agent-api.md;
+// (CRM-HANDOFF 4.7; a pane at 1280 px and up, the results sheet below), also the old Ask screen (contracts/agent-api.md;
 // agent-design.md smeargle §1/§4). A rep types a plain-language question; `agent.ask` returns a
 // grounded, cited `AgentAnswer` (packages/shared/src/agent/answer.ts) rendered claim-by-claim with
 // its own citations — never a result the API didn't actually return. Creating a lead from a
@@ -1016,7 +1016,7 @@ export interface AskPanelProps {
   readonly onAnswer: (answer: AgentAnswer | null) => void;
   /** Fit the map to the cited pins. */
   readonly onShowOnMap: () => void;
-  /** A pane at 840 px and up, the results sheet below. */
+  /** A pane at 1280 px and up, the results sheet below. */
   readonly layout: "pane" | "sheet";
 }
 

@@ -13,16 +13,17 @@
 }
 
 /* Compact: the page header (title, count, actions) and the chips stay pinned while the list
-   scrolls under them (CrmLeadsPaged390). The main region is the scroll container and pads 16 px,
-   so the pinned block pulls up into that padding and carries its own. */
+   scrolls under them (CrmLeadsPaged390). The main region is the scroll container and pads 16 px;
+   the block sticks at the scrollport's top edge (top 0), which is inside that padding, so no
+   negative offset or margin is needed. */
 .sticky {
   position: sticky;
-  top: calc(-1 * var(--space-4));
+  top: 0;
   z-index: 5;
   display: grid;
   gap: var(--space-3);
-  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) 0;
-  padding: var(--space-4) var(--space-4) var(--space-2);
+  margin: 0;
+  padding: 0 0 var(--space-2);
   background: var(--md-sys-color-surface-container-low);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
@@ -101,7 +102,7 @@
 }
 
 .summaryChip:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -146,7 +147,7 @@
 .clear:focus-visible,
 .input:focus-visible,
 .select:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -171,7 +172,9 @@
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
+  /* The scrim token at 40 % through opacity: a blend written into the colour is not a token. */
+  background: var(--md-sys-color-scrim);
+  opacity: 0.4;
 }
 
 .panel {

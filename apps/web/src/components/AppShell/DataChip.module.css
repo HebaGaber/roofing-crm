@@ -39,15 +39,11 @@
 }
 
 .chip:hover::before {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
-    transparent
-  );
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .chip:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: -2px;
   border-radius: var(--md-sys-shape-corner-small);
 }

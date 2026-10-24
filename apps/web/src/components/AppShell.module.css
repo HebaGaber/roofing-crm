@@ -100,19 +100,11 @@
 }
 
 .item:hover .pill {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
-    transparent
-  );
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .item:active .pill {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-pressed-opacity) * 100%),
-    transparent
-  );
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .itemActive {
@@ -221,7 +213,7 @@
 
 .skip:focus-visible {
   transform: none;
-  outline: 2px solid var(--md-sys-color-on-primary);
+  outline: 3px solid var(--md-sys-color-on-primary);
   outline-offset: -4px;
 }
 

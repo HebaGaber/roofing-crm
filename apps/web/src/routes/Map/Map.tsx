@@ -13,8 +13,8 @@
 // states). No backend call shape changed; only what renders around them.
 //
 // UI fix (2026-10-25, side-by-side audit vs CrmMap390/768/1440, CrmProperty*): breakpoint layout
-// (Map.module.css). ≥ 840 px: three panes — Filters left (320 px), map centre, results right
-// (360 px), the property drawer a 440 px side sheet over the right edge. < 840 px: the map fills
+// (Map.module.css). ≥ 1280 px: three panes — Filters left (320 px), map centre, results right
+// (360 px), the property drawer a 440 px side sheet over the right edge. < 1280 px: the map fills
 // the screen under a one-row toolbar (Use my location, Filters sheet), results in a peeking,
 // draggable bottom sheet over the map (ResultsSheet), the drawer a full-height sheet. One DOM at
 // every width, so every data-state / data-testid / data-route hook is unchanged. Plus the
@@ -79,7 +79,7 @@ const OVERVIEW_STALE_MS = 5 * 60_000;
 const DAYS_PER_YEAR = 365.25;
 /** From this width the map has a pointer to aim with (the board's 1440/768 pin mode); under it, a
  *  fixed crosshair and "Place pin here" (the 390 board). Same break as Map.module.css's panes. */
-const WIDE_QUERY = "(min-width: 840px)";
+const WIDE_QUERY = "(min-width: 1280px)";
 
 function useWide(): boolean {
   return useSyncExternalStore(
@@ -407,6 +407,7 @@ export function Component(): ReactElement {
           matchCount={searchInput === null ? undefined : query.data?.properties.length}
           open={mode === "filters"}
           onOpenChange={(open) => setMode(open ? "filters" : "map")}
+          inline={wide}
         />
         {wide ? null : <ViewToggle view={view} onChange={setView} />}
         {wide ? null : <ModeChips mode={mode} onChange={setMode} />}

@@ -1,11 +1,11 @@
 /* Map screen layout (CRM-HANDOFF §4.2; prototype Explore1440 `Lo`: CrmMap390/768/1440).
    Atlas tokens only (constitution P0-14); Material window classes: compact < 600, medium
-   600–839, expanded ≥ 840 (the app's rail switches at 600).
+   600–1279, expanded ≥ 1280 (the app's rail switches at 600).
 
-   < 840 px: top bar, a one-row toolbar (Use my location, Filters sheet), then the map filling the
+   < 1280 px: top bar, a one-row toolbar (Use my location, Filters sheet), then the map filling the
    rest. Results are a bottom sheet over the map (ResultsSheet; absolute to .page). The drawer is
    a full-height sheet over everything.
-   ≥ 840 px: three panes — Filters 320 px | map | results 360 px — with the top bar over map and
+   ≥ 1280 px: three panes — Filters 320 px | map | results 360 px — with the top bar over map and
    results; the drawer is a 440 px side sheet on the right edge (prototype drawer 1000→1440). */
 
 .page {
@@ -67,6 +67,18 @@
   pointer-events: auto;
 }
 
+/* The row and the legend's slot are layout boxes: only the Layers button and the legend card
+   inside them take clicks, so the map stays droppable around them. */
+.layersRow,
+.legendSlot {
+  pointer-events: none;
+}
+
+.layersRow > *,
+.legendSlot > * {
+  pointer-events: auto;
+}
+
 /* The map's status stack: GPS, pin-mode and pin-outside cards portal in here (boards CrmGpsStates,
    CrmMapPinMode*, CrmMapPinOutside390). No card, no box: it collapses when empty. */
 .statusStack {
@@ -96,6 +108,9 @@
   align-items: center;
   gap: var(--space-2);
   margin: 0;
+  /* The note wraps instead of stretching across the map: a wide strip would sit over the points
+     a rep taps to drop a pin on. */
+  max-width: calc(var(--space-9) * 5);
   padding: 0 var(--space-1) 0 var(--space-3);
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-surface);
@@ -119,7 +134,7 @@
 
 .chipAction:focus-visible,
 .widen:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -156,13 +171,13 @@
   font-weight: var(--md-sys-typescale-title-small-weight);
 }
 
-/* Below 840 px the slot is not a grid cell: ResultsSheet positions itself over the map. With
+/* Below 1280 px the slot is not a grid cell: ResultsSheet positions itself over the map. With
    nothing to show (no centre, no state), the sheet is hidden and the map is fully visible. */
 .resultsSlot {
   display: contents;
 }
 
-/* The toolbar's view toggle, from 840 px (below it the toggle sits in .controls). */
+/* The toolbar's view toggle, from 1280 px (below it the toggle sits in .controls). */
 .viewBar {
   grid-area: bar;
   display: flex;
@@ -170,7 +185,7 @@
   padding: var(--space-2) var(--space-4);
 }
 
-/* The Candidate list (board CrmCandidates390): under the toolbar, in the map's place. From 840 px
+/* The Candidate list (board CrmCandidates390): under the toolbar, in the map's place. From 1280 px
    it takes the centre and results panes (rule below). */
 .listPane {
   grid-area: map;
@@ -185,7 +200,7 @@
   min-height: 0;
 }
 
-/* Field triage (board CrmTriage390): replaces the results sheet below 840 px, docked at the
+/* Field triage (board CrmTriage390): replaces the results sheet below 1280 px, docked at the
    bottom over the map's lower part so a strip of the map stays visible above it. */
 .triageDock {
   position: absolute;
@@ -205,7 +220,7 @@
   display: none;
 }
 
-/* The property drawer: a full-height sheet over the whole screen below 840 px. */
+/* The property drawer: a full-height sheet over the whole screen below 1280 px. */
 .drawerSlot {
   position: absolute;
   inset: 0;
@@ -260,7 +275,7 @@
 }
 
 /* Expanded: three panes. */
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .page {
     grid-template-columns: 320px minmax(0, 1fr) 360px;
     grid-template-rows: auto auto minmax(0, 1fr);
@@ -309,7 +324,7 @@
   .overlay {
     inset: var(--space-4);
     display: grid;
-    grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     grid-template-areas:
       "layers ."
@@ -337,6 +352,7 @@
   .legendSlot {
     grid-area: legend;
     align-self: end;
+    justify-self: start;
   }
 
   .chip {

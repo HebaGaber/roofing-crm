@@ -4,7 +4,8 @@
 // the whole county from `search.countyOverview` (design-review-log row 10), with what it leaves
 // out and why and the run it read; while it loads or if it fails, says so (and, on failure, that
 // the hexagons cover only the properties loaded around a pin). A collapsible <details>: open by
-// default from 600 px, collapsed on compact screens.
+// default from 1280 px (where the legend has its own corner of the map), collapsed below it: open
+// it covers a large part of the map and sits over the points a pin is dropped on.
 import { useState, type ReactElement } from "react";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
@@ -110,7 +111,7 @@ const SWATCH_CLASS: Readonly<Record<string, string>> = {
 
 function startsOpen(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
-  return window.matchMedia("(min-width: 600px)").matches;
+  return window.matchMedia("(min-width: 1280px)").matches;
 }
 
 function Scale({

@@ -10,7 +10,7 @@
 // UI fix (2026-10-25, side-by-side audit vs CrmProperty1440/390): the property's Create lead is
 // full width right under the header (CRM-HANDOFF §4.3 "address and lead status on top; then
 // Create lead"), with View lineage beside it; every value goes through src/format (dates as
-// calendar days, enum codes and field names as plain labels). Placement (side sheet ≥ 840 px,
+// calendar days, enum codes and field names as plain labels). Placement (side sheet ≥ 1280 px,
 // full-height sheet below) is Map.module.css's `.drawerSlot`.
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";

@@ -281,8 +281,10 @@
 body { margin: 0; background: var(--md-sys-color-surface-container-low); color: var(--md-sys-color-on-surface);
   font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size)/var(--md-sys-typescale-body-medium-line-height) var(--md-ref-typeface-plain); }
 h1, h2, h3 { font-family: var(--md-ref-typeface-brand); font-weight: 400; }
+/* Form controls take the page's type and colour, not the browser's own (Arial, 13 px, near-black). */
+button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
 code, .mono, .cid { font-family: var(--md-ref-typeface-mono); }
 td.num, .num { font-variant-numeric: tabular-nums; text-align: right; }
-:focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+:focus-visible { outline: 3px solid var(--md-sys-color-primary); outline-offset: 2px; }
 .material-symbols-rounded { font-family: 'Material Symbols Rounded'; font-size: 24px; line-height: 1; font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; } }

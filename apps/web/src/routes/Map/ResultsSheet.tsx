@@ -1,6 +1,6 @@
 // The results container (CRM-HANDOFF §4.2; prototype Explore1440 `cards` + `sheet-handle`).
-// Below 840 px: a bottom sheet over the map that peeks (header and first card) and expands to
-// nearly full height — tap the handle, drag it, or use the arrow keys on it. From 840 px the
+// Below 1280 px: a bottom sheet over the map that peeks (header and first card) and expands to
+// nearly full height — tap the handle, drag it, or use the arrow keys on it. From 1280 px the
 // same element is the right-hand results pane and the handle is hidden (CSS only; one DOM, so
 // every data-state/test id inside keeps working at every width). Render-only.
 import {

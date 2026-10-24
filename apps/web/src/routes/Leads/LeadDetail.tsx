@@ -358,22 +358,24 @@ function LeadBody({
 
   return (
     <article className={styles.detail} aria-labelledby="lead-title">
-      <header className={styles.head}>
-        <h2 id="lead-title" className={styles.title}>
-          {lead.address}
-        </h2>
-        <StatusPill
-          status={LEAD_STATUS_KIND[lead.status]}
-          text={STATUS_LABEL[lead.status]}
-          icon={LEAD_STATUS_ICON[lead.status]}
-        />
-      </header>
-      <p className={styles.leadSub}>
-        {isFallbackTitle(lead.address)
-          ? `Address not published · ${coordinateText(lead.lat, lead.lon)}`
-          : null}
-        <span>{`Created from ${originLabel(lead.createdFrom)} · ${leadTime(lead.createdAt)}`}</span>
-      </p>
+      <div className={styles.titleBlock}>
+        <header className={styles.head}>
+          <h2 id="lead-title" className={styles.title}>
+            {lead.address}
+          </h2>
+          <StatusPill
+            status={LEAD_STATUS_KIND[lead.status]}
+            text={STATUS_LABEL[lead.status]}
+            icon={LEAD_STATUS_ICON[lead.status]}
+          />
+        </header>
+        <p className={styles.leadSub}>
+          {isFallbackTitle(lead.address)
+            ? `Address not published · ${coordinateText(lead.lat, lead.lon)}`
+            : null}
+          <span>{`Created from ${originLabel(lead.createdFrom)} · ${leadTime(lead.createdAt)}`}</span>
+        </p>
+      </div>
 
       <div className={styles.actionRow}>
         <label className={styles.statusMenu}>
@@ -413,10 +415,12 @@ function LeadBody({
             Saved
           </span>
         ) : null}
-        <Link className={styles.tonalLink} to={`/map?${mapParams.toString()}`}>
-          <Icon name="map" size="medium" />
-          Show on map
-        </Link>
+        <div className={styles.actionEnd}>
+          <Link className={styles.tonalLink} to={`/map?${mapParams.toString()}`}>
+            <Icon name="map" size="medium" />
+            Show on map
+          </Link>
+        </div>
       </div>
 
       {lead.notInCurrentRun ? (

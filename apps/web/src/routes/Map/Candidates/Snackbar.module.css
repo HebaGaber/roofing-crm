@@ -79,11 +79,11 @@
 
 .action:focus-visible,
 .close:focus-visible {
-  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline: 3px solid var(--md-sys-color-inverse-primary);
   outline-offset: 2px;
 }
 
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .snackbar {
     right: auto;
     bottom: var(--space-6);

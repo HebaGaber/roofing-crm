@@ -75,7 +75,7 @@
 .close:focus-visible,
 .question:focus-visible,
 .gotIt:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 

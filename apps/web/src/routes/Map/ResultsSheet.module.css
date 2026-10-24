@@ -1,6 +1,6 @@
 /* Results sheet / pane (CRM-HANDOFF §4.2; prototype `cards`, `sheet-handle`). Atlas tokens only.
-   Compact and medium (< 840 px): a bottom sheet over the map — peek shows the header and the
-   first card, full leaves the map's top strip visible. Expanded (≥ 840 px): the static right
+   Compact and medium (< 1280 px): a bottom sheet over the map — peek shows the header and the
+   first card, full leaves the map's top strip visible. Expanded (≥ 1280 px): the static right
    pane of the three-pane layout (Map.module.css places it), no handle. */
 .sheet {
   position: absolute;
@@ -21,8 +21,8 @@
   max-height: calc(100% - var(--space-10));
 }
 
-/* 600–839 px (prototype 768: the cards take about half the height). */
-@media (min-width: 600px) and (max-width: 839.98px) {
+/* 600–1279 px (prototype 768: the cards take about half the height). */
+@media (min-width: 600px) and (max-width: 1279.98px) {
   .sheet[data-sheet="peek"] {
     max-height: 50%;
   }
@@ -57,7 +57,7 @@
 }
 
 .handle:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: -2px;
 }
 
@@ -67,7 +67,7 @@
   overscroll-behavior: contain;
 }
 
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .sheet,
   .sheet[data-sheet="full"] {
     position: static;

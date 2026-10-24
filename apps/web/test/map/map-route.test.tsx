@@ -457,7 +457,7 @@ describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode
 
 function stubWide(wide: boolean): void {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide && query.includes("840"),
+    matches: wide && query.includes("1280"),
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
@@ -548,7 +548,7 @@ describe("Map route list view, triage and toolbar (committed Candidates and Tria
     await screen.findByTestId("triage-stack");
   });
 
-  it("from 840 px the toggle sits in the map toolbar and the sheet has no Triage button", async () => {
+  it("from 1280 px the toggle sits in the map toolbar and the sheet has no Triage button", async () => {
     stubWide(true);
     const page = renderAt(PIN_URL);
     await screen.findByTestId("search-results");

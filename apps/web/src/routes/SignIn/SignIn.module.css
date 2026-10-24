@@ -116,7 +116,7 @@
 .input:focus-visible,
 .toggle:focus-visible,
 .submit:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -181,8 +181,11 @@
 }
 
 .submit:disabled {
-  opacity: var(--md-sys-state-disabled-opacity);
-  cursor: default;
+  /* While signing in the button keeps a readable label (at least 4.5:1): the disabled look is
+     the quiet container, not a faded label. */
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  cursor: progress;
 }
 
 .submit {
@@ -215,9 +218,13 @@
 }
 
 /* Present but empty until sign-in starts (a live region must exist before its text changes);
-   it takes no room of its own, cancelling the form's gap above it. */
+   it takes no room of its own: out of flow, so the form's gap does not apply to it. */
 .progress:empty {
-  margin-top: calc(-1 * var(--space-4));
+  position: absolute;
+  width: var(--space-1);
+  height: var(--space-1);
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 
 @media (min-width: 600px) {

@@ -57,11 +57,11 @@
 }
 
 .retry:focus-visible {
-  outline: 2px solid currentcolor;
+  outline: 3px solid currentcolor;
   outline-offset: 2px;
 }
 
-/* Pin mode: a crosshair cursor over the map; at touch widths (under 840 px, where there is no
+/* Pin mode: a crosshair cursor over the map; at touch widths (under 1280 px, where there is no
    hover to aim with) a fixed crosshair at the map's centre, which "Place pin here" drops the pin
    under (board CrmMapPinMode390). */
 .map[data-pin-mode="true"] canvas {
@@ -86,7 +86,7 @@
       no-repeat;
 }
 
-@media (max-width: 839px) {
+@media (max-width: 1279px) {
   .crosshair {
     display: block;
   }

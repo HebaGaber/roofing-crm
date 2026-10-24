@@ -9,10 +9,19 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: color-mix(in srgb, var(--md-sys-color-scrim) 32%, transparent);
+}
+
+/* The scrim token at 32 % through a pseudo-element: the sheet inside must stay opaque. */
+.scrim::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--md-sys-color-scrim);
+  opacity: 0.32;
 }
 
 .sheet {
+  position: relative;
   box-sizing: border-box;
   display: grid;
   gap: var(--space-3);
@@ -161,7 +170,7 @@
 
 .text:focus-visible,
 .filled:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 

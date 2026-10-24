@@ -1,8 +1,8 @@
 /* Explore filter sheet (A-13 T025, FR-018), rebuilt for B-03's structural rebuild fix: Atlas § 7
-   outlined text fields and filter chips, 48 px targets. Compact (< 840 px): a "Filters" button
+   outlined text fields and filter chips, 48 px targets. Compact (< 1280 px): a "Filters" button
    opens the controls as a real dismissible overlay — a backdrop behind a bottom sheet, closed by
    its X, a backdrop click, or Escape — so the map underneath is always reachable again. Expanded
-   (≥ 840 px): the controls sit beside the results as an always-visible anchored panel (no
+   (≥ 1280 px): the controls sit beside the results as an always-visible anchored panel (no
    backdrop, no toggle, no X — there's nothing blocking the map to dismiss). Atlas tokens. */
 
 .sheet {
@@ -32,21 +32,23 @@
 .chip:focus-visible,
 .input:focus-visible,
 .option:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
-/* Below 840px, a full-viewport scrim behind the open sheet (constitution § 10: dialogs close on
+/* Below 1280px, a full-viewport scrim behind the open sheet (constitution § 10: dialogs close on
    Escape or outside click) — clicking it calls the same close handler as the X. Hidden from
-   840px, where the panel is an anchored rail beside the results, not an overlay. */
+   1280px, where the panel is an anchored rail beside the results, not an overlay. */
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 25;
-  background: color-mix(in srgb, var(--md-sys-color-scrim) 40%, transparent);
+  /* The scrim token at 40 % through opacity: a blend written into the colour is not a token. */
+  background: var(--md-sys-color-scrim);
+  opacity: 0.4;
 }
 
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .backdrop {
     display: none;
   }
@@ -62,7 +64,7 @@
   background: var(--md-sys-color-surface-container-low);
 }
 
-/* The dismissible bottom sheet, below 840px: fixed to the viewport so it is always on top of
+/* The dismissible bottom sheet, below 1280px: fixed to the viewport so it is always on top of
    (and closeable away from) the map, never pushing it off-screen by sitting in normal flow. */
 .open {
   position: fixed;
@@ -88,9 +90,9 @@
   font-weight: var(--md-sys-typescale-title-small-weight);
 }
 
-/* Only the overlay (< 840px) needs its own close affordance — from 840px the panel is an
+/* Only the overlay (< 1280px) needs its own close affordance — from 1280px the panel is an
    always-visible rail with nothing to dismiss. */
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .header {
     display: none;
   }
@@ -197,7 +199,7 @@
   font-size: var(--md-sys-typescale-body-large-size);
 }
 
-@media (min-width: 840px) {
+@media (min-width: 1280px) {
   .toggle {
     display: none;
   }

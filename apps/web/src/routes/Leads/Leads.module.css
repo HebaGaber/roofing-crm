@@ -116,6 +116,7 @@
 /* A lead: a card below 768 px (title and status on the first line, the facts under it), a table
    row from 768 px with the column heading above (CrmLeads390 / CrmLeads768 / CrmLeads1440). */
 .row {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -300,7 +301,7 @@
 
 .primary:focus-visible,
 .tonal:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -315,11 +316,19 @@
   text-decoration: none;
 }
 
+/* The link stretches over the whole card, so the card is the target (at least 48 px high). */
+.cardLink::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
 .cardLink:focus-visible,
 .pageBtn:focus-visible,
 .clear:focus-visible,
 .action:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -373,10 +382,11 @@
   color: var(--md-sys-color-on-primary);
 }
 
-/* Atlas disabled button: 12% on-surface container, 38% on-surface label (no solid blue). */
+/* Atlas disabled button: a quiet container and the outline colour for the label (no solid blue).
+   Both are Atlas tokens: a blend at 12 % or 38 % is not one. */
 .action:disabled {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
-  color: color-mix(in srgb, var(--md-sys-color-on-surface) 38%, transparent);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-outline);
   cursor: not-allowed;
 }
 
@@ -525,7 +535,7 @@
 }
 
 .select:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -570,7 +580,7 @@
 .tonalLink:focus-visible,
 .paneRow:focus-visible,
 .statusSelect:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -583,11 +593,17 @@
 .leadSub {
   display: grid;
   gap: var(--space-1);
-  margin: calc(-1 * var(--space-2)) 0 0;
+  margin: 0;
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-body-medium-font);
   font-size: var(--md-sys-typescale-body-medium-size);
   line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.actionEnd {
+  display: flex;
+  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 .actionRow {
@@ -638,7 +654,6 @@
 }
 
 .tonalLink {
-  margin-left: auto;
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
@@ -691,7 +706,7 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-full);
   background: transparent;
-  color: color-mix(in srgb, var(--md-sys-color-primary) 38%, transparent);
+  color: var(--md-sys-color-outline);
   cursor: not-allowed;
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
@@ -855,7 +870,7 @@
 }
 
 .snackbarAction:focus-visible {
-  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline: 3px solid var(--md-sys-color-inverse-primary);
   outline-offset: 2px;
 }
 
@@ -909,7 +924,7 @@
 }
 
 .snackbarClose:focus-visible {
-  outline: 2px solid var(--md-sys-color-inverse-primary);
+  outline: 3px solid var(--md-sys-color-inverse-primary);
   outline-offset: 2px;
 }
 
@@ -945,8 +960,7 @@
   box-sizing: border-box;
   width: var(--space-9);
   height: var(--space-9);
-  /* 48 px hit area, but only a text line tall in the sentence it sits in (negative margin). */
-  margin: calc(-1 * var(--space-3)) 0;
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: var(--md-sys-shape-corner-full);
@@ -956,7 +970,7 @@
 }
 
 .cidCopy:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: -2px;
 }
 

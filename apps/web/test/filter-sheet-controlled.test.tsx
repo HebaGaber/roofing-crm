@@ -110,3 +110,16 @@ describe("committedRoofAge", () => {
     expect(committedRoofAge("abc")).toBeUndefined();
   });
 });
+
+describe("FilterSheet role", () => {
+  it("is a dialog as a sheet, and a region when it is a permanent pane beside the map", () => {
+    renderSheet();
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    expect(screen.getByRole("dialog", { name: "Filters" })).not.toBeNull();
+    cleanup();
+    renderSheet({ inline: true });
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    expect(screen.getByRole("region", { name: "Filters" })).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Filters" })).toBeNull();
+  });
+});

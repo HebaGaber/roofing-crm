@@ -1,5 +1,5 @@
 /* Field triage panel (CrmTriage390 and states): the sheet that replaces the results sheet below
-   840 px. Header "Triage · k of n" + Back to map, a linear progress bar, then one outlined
+   1280 px. Header "Triage · k of n" + Back to map, a linear progress bar, then one outlined
    elevated card, the Skip / Create lead / Open details row and the swipe hint. Atlas tokens only. */
 
 .panel {
@@ -123,7 +123,7 @@
 }
 
 .card:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -397,7 +397,7 @@
 .backBtn:focus-visible,
 .errorAction:focus-visible,
 .snackLink:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 

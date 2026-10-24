@@ -30,7 +30,7 @@
 }
 
 .triage:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -57,6 +57,7 @@
   justify-content: center;
   width: 48px;
   height: 48px;
+  padding: 0;
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
   background: transparent;
@@ -65,7 +66,7 @@
 }
 
 .info:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 

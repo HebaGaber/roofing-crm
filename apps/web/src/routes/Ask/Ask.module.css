@@ -152,7 +152,7 @@
 }
 
 .suggestion:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -176,7 +176,7 @@
 }
 
 .action:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -249,40 +249,36 @@
 }
 
 .citeRef {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  /* A link inside a sentence: inline, so it is sized by its line of text (WCAG 2.5.8 inline
+     exception) and the line height does not grow. The pill is the number plus side padding. */
+  position: relative;
+  display: inline;
   box-sizing: border-box;
-  min-width: var(--space-5);
-  height: var(--space-5);
   margin-left: var(--space-1);
+  padding: 0 var(--space-2);
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   font-family: var(--md-sys-typescale-label-medium-font);
   font-size: var(--md-sys-typescale-label-medium-size);
+  line-height: var(--space-5);
   text-decoration: none;
-  vertical-align: middle;
 }
 
-/* The 20 px circle stays; its hit area is 48 px (Atlas touch target) through a centred pseudo-
+/* The pill stays small; its hit area is 48 px (Atlas touch target) through a centred pseudo-
    element, so neighbouring numbers overlap only in transparent space. */
-.citeRef {
-  position: relative;
-}
-
 .citeRef::after {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: var(--space-9);
+  width: max(100%, var(--space-9));
   height: var(--space-9);
   content: "";
   transform: translate(-50%, -50%);
 }
 
 .citeRef:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -367,7 +363,7 @@
 }
 
 .textButton:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -390,7 +386,7 @@
 }
 
 .tonalButton:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -440,7 +436,7 @@
 }
 
 .resultHeading:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -620,7 +616,7 @@
 }
 
 .chip:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -661,7 +657,7 @@
 }
 
 .tab:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: -2px;
 }
 
@@ -687,7 +683,7 @@
 }
 
 .outlineButton:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
@@ -709,16 +705,16 @@
 .source[data-focused="true"] {
   border-radius: var(--md-sys-shape-corner-small);
   background: var(--md-sys-color-secondary-container);
-  outline: 2px solid var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
 .citeRef[data-focused="true"] {
-  outline: 2px solid var(--md-sys-color-on-surface);
+  outline: 3px solid var(--md-sys-color-on-surface);
   outline-offset: 2px;
 }
 
-/* One column in both layouts: the pane (840 px and up) is a narrow side column, the sheet fills the
+/* One column in both layouts: the pane (1280 px and up) is a narrow side column, the sheet fills the
    width below it. The panel never lays itself out in two columns. */
 .page[data-layout="sheet"] {
   padding: var(--space-3) var(--space-4) var(--space-4);

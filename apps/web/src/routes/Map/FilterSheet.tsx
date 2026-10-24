@@ -10,9 +10,9 @@
 // status filter of its own, contracts/search-api.md). There is no separate "show permits"
 // toggle in the CRM-HANDOFF filter set — the old A-13 "Show open permits" checkbox was left
 // behind by the structural rebuild and has been removed as a duplicate of "Permit status".
-// Below 840 px the controls collapse into a real dismissible sheet behind a "Filters" button
+// Below 1280 px the controls collapse into a real dismissible sheet behind a "Filters" button
 // (aria-expanded; Escape and backdrop-click close it, matching `@crm/ui`'s `Popover`); from
-// 840 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
+// 1280 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
 // file this replaces). Atlas outlined text fields and chips, 48 px targets. Render-only.
 import { Icon, IconButton } from "@crm/ui";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
@@ -46,6 +46,8 @@ export interface FilterSheetProps {
    *  keeps its own state, as before. */
   readonly open?: boolean | undefined;
   readonly onOpenChange?: ((open: boolean) => void) | undefined;
+  /** True where the panel is a permanent pane beside the map (a region, not a dialog). */
+  readonly inline?: boolean | undefined;
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -68,6 +70,7 @@ export function FilterSheet({
   matchCount,
   open: controlledOpen,
   onOpenChange,
+  inline = false,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [ownOpen, setOwnOpen] = useState(false);
@@ -83,8 +86,8 @@ export function FilterSheet({
   const panelRef = useRef<HTMLDivElement>(null);
   const close = (): void => setOpen(false);
 
-  // Below 840px the panel is a dismissible overlay: Escape closes it (same contract as
-  // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 840px
+  // Below 1280px the panel is a dismissible overlay: Escape closes it (same contract as
+  // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 1280px
   // the panel is always visible beside the results (CSS below), so neither listener fires
   // anything a person can see.
   useEffect(() => {
@@ -119,9 +122,9 @@ export function FilterSheet({
       <div
         ref={panelRef}
         id={`${id}-panel`}
-        role="dialog"
+        role={inline ? "region" : "dialog"}
         aria-label="Filters"
-        aria-modal={open || undefined}
+        aria-modal={!inline && open ? true : undefined}
         className={`${styles.panel} ${open ? styles.open : ""}`}
       >
         <div className={styles.header}>

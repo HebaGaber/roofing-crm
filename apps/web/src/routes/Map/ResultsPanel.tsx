@@ -1,7 +1,7 @@
 // B-03 results sheet (CRM-HANDOFF §4.2/§9.1, board CrmMapPin390): the "Matches N" header with the
 // coverage-note info icon, wrapping the result card list. Replaces the bare `<ul>` the fixer pass
 // left in place. Render-only — Map.tsx still owns the query and the list of rows. The sheet
-// behaviour (peek/full, handle, pane from 840 px) is ResultsSheet's; this is only its content.
+// behaviour (peek/full, handle, pane from 1280 px) is ResultsSheet's; this is only its content.
 import { Icon, Popover } from "@crm/ui";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
 import styles from "./ResultsPanel.module.css";
@@ -10,7 +10,7 @@ export interface ResultsPanelProps {
   readonly count: number;
   readonly children: ReactNode;
   /** Shows the filled "Triage n" action after the coverage info (the phone sheet, board
-   *  CrmMapPin390); absent from 840 px, where the board has none. */
+   *  CrmMapPin390); absent from 1280 px, where the board has none. */
   readonly onTriage?: () => void;
 }
 
