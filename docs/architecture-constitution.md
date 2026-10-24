@@ -304,7 +304,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 
 These were raised by one consult and not settled by the others (`docs/decisions/0000-agent-architecture.md` § "D8"). They do not change any decision above; they are follow-ups:
 
-1. **Does an incremental Task A run (A-11 Run 2/3) publish a full snapshot, or only changed rows?** If delta-only, a full rebuild from one manifest could silently drop older permits. Mitigation already in place regardless: the sync blocks promotion on an unexplained row-count drop > 5%. Ask Task A to state this explicitly in the A-11 spec.
+1. **Incremental Task A runs are delta-only per data group** (answered by Task A's A-11 `research.md`: an unchanged group is omitted from the new manifest; a consumer follows `previousManifestCid` back to its last CID). The sync reads one manifest, so a delta-only run is held by the > 5% row-drop check and the CRM stays on the last good run — never silently wrong. **Deferred (PO, 2026-10-24):** chain-following in the sync, to ship after Tasks A and B are complete as an update alongside the "coming soon" sections; it cannot be tested before Task A publishes a real incremental run.
 2. **The published manifest carries no explicit contract version field.** The CRM detects contract compatibility by schema fingerprint instead (§ 6). Ask Task A to add a `contract` field to the manifest or to `profiles[]` when FU-A-01 ships.
 3. **Account-wide Lambda concurrency may be as low as 10**, shared with Task A's own functions. Check `aws lambda get-account-settings` at B-01; no design change until it is measured.
 

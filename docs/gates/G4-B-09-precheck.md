@@ -12,7 +12,7 @@ verdict: PASS
 | C-01 | Front matter | PASS | id/parent FEAT/eval_point/priority/moscow/branch/status filled. `agents.*` and `skills` match AGENT-MAP.md §5 row for B-09 exactly (design: alakazam, ash, smeargle, porygon; builders: alakazam, ash, metagross; reviewers: alakazam, ash, metagross, audino, porygon). `depends_on` trimmed to only B-07 (actually done); A-13/A-14 moved to `depends_on_deferred` with named deviations — see C-10. |
 | C-02 | User story form | PASS | "As a sales rep... so that" + evaluator clause present; independent test stated. |
 | C-03 | GWT | PASS | AC-1..AC-8 all Given/When/Then. |
-| C-04 | Observable + real | PASS | AC-1..6, AC-8 observable on hosted runtime with real Travis County data (Run 1 manifest, 441,961 properties/17,387 permits). AC-7 observable via the index's `manifestCid` on the hosted API/UI, read directly from Task A's published manifest (constitution B1, ARD-B §7). |
+| C-04 | Observable + real | PASS | AC-1..6, AC-8 observable on hosted runtime with real Travis County data (Run 2 manifest, 441,961 properties/15,025 permits). AC-7 observable via the index's `manifestCid` on the hosted API/UI, read directly from Task A's published manifest (constitution B1, ARD-B §7). |
 | C-05 | Scale + honesty | PASS | AC-4 (scale, p95/golden queries) + AC-3 (missing-data honesty, ZIP 99999). |
 | C-06 | Testable | PASS | Each AC has an unambiguous observable outcome. AC-8's "fixed or explicitly deferred with a reason" is bounded by the audit log file, not left open-ended. |
 | C-07 | Edge cases | PASS | 23s abort state; low place-resolution confidence. |

@@ -35,7 +35,7 @@ RUNTIME_URL=https://009-agent-hardening.<amplify-app-id>.amplifyapp.com \
 
 Runs `tests/agent/golden.json`'s G1–G7 (checks.md §7.1) against the hosted endpoint, 3 repeats
 paced 13s apart (stays under 5 asks/min). **Expected**: groundedness 100% (every cited
-`property_cid` resolves against `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`),
+`property_cid` resolves against `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`),
 p95 < 20s, max < 23.5s, G6 returns zero fabricated results for ZIP 99999, G7's lead appears in
 `leads.list` with `createdFrom: "agent"`. Record results in `docs/evidence/B-09.md`.
 

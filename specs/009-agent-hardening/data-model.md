@@ -86,6 +86,6 @@ it's instantiated with `eng.heba.gaber@gmail.com`) plus a new `cloudwatch.Dashbo
 ## New this round: data-publication reference (AC-7, spec.md "Key Entities")
 
 No new storage entity — a constant,
-`bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, read by the existing `LeadIndex`
+`bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`, read by the existing `LeadIndex`
 port and set through `DATA_MANIFEST_CID` (`packages/config`), as described in constitution B1 and
 `docs/architecture-constitution.md` §7.

@@ -48,7 +48,7 @@ Model sees ≤25 compact rows/call; UI gets full rows via `resultSetId`. Owner n
 
 **Budget:** plan (Haiku-class) → tools → ≤1 repair → compose = ≤3 model calls (hard-fail counter), `AbortSignal.timeout(23_000)` on every call.
 
-**Golden harness:** `tests/agent/golden.json` + `tests/agent/golden.test.ts` (Vitest), calling `agent.ask` over `RUNTIME_URL` (never localhost) as a Cognito eval user. Per-query assertions: groundedness (every cited CID resolves + `manifestCid` matches the pinned Run-1 CID), correctness (re-run `search.*` with the answer's stated center/thresholds, results ⊆ that set, recall ≥80%), honesty (center/thresholds stated in text; "BBB not available" shown correctly), G6 empty-scope, G7 lead-creation round-trip. Latency: p95 < 20s, max < 23.5s. `GOLDEN_REPEATS=3` (21 asks total), paced 13s apart to stay under 5/min. Unit tests use `MockLanguageModelV2`, including one asserting a planted fake CID gets stripped.
+**Golden harness:** `tests/agent/golden.json` + `tests/agent/golden.test.ts` (Vitest), calling `agent.ask` over `RUNTIME_URL` (never localhost) as a Cognito eval user. Per-query assertions: groundedness (every cited CID resolves + `manifestCid` matches the pinned Run-2 CID), correctness (re-run `search.*` with the answer's stated center/thresholds, results ⊆ that set, recall ≥80%), honesty (center/thresholds stated in text; "BBB not available" shown correctly), G6 empty-scope, G7 lead-creation round-trip. Latency: p95 < 20s, max < 23.5s. `GOLDEN_REPEATS=3` (21 asks total), paced 13s apart to stay under 5/min. Unit tests use `MockLanguageModelV2`, including one asserting a planted fake CID gets stripped.
 
 **Risks → proof:** fabricated CID → citation gate + `AgentCitationsStripped` metric at 0. Latency (442k-row DuckDB cold load + 2–3 model calls) → warm index, Haiku planner, ≤25 rows, prompt caching; proven by golden p95 table + dashboard widget. Rate/spend cap exhaustion during eval → 3 repeats/pacing, harness log shows no `paused`/`rate_limited`. Gazetteer exact-match-only → fuzzy layer + `partial_in_travis` caveat. BBB always `not_checked` in v1 → text must say "not available," never a rating. Prompt injection via record fields → rows sent as delimited JSON data, tool set closed. Data-switch drift (AC-7) → harness pins the manifest CID constant; moving to a newer run is a one-constant change + rerun. Agent writes a lead directly → unit test asserts `proposeLeads` has no write port injected; live proof is the G7 lead showing `createdFrom:"agent"`.
 
@@ -157,7 +157,7 @@ Neither refusal path makes a compose call; the answer is a fixed template.
 - It calls `agent.ask` through `packages/api-client` on `RUNTIME_URL` (localhost is refused) with a Cognito eval user. G2 and G7 run in G1's `threadId`.
 
 Assertions per query:
-- **Groundedness (100%):** every `results[].propertyCid` returns non-null from `property.get`, and `answer.manifestCid === bafkreiddef7…h6gu`.
+- **Groundedness (100%):** every `results[].propertyCid` returns non-null from `property.get`, and `answer.manifestCid === bafkreihidj4…kbcy`.
 - **Correctness:** re-run `search.properties` or `search.permits` with the center and thresholds the answer states. The returned rows must be a subset of that result, with recall ≥ 80% of the top N.
 - **Honesty:** the text contains the center coordinates and thresholds. "BBB not available" appears when `bbbStatus === "not_checked"`.
 - **G6:** `outcome === "invalid_scope"` and `results.length === 0`.
@@ -260,7 +260,7 @@ Two-turn mechanic, never a single model-authorized write:
 - **23s abort races a tool call mid-flight** → prove by a golden query against a throttled/slow Bedrock profile or by injecting an artificial delay in a staging-only flag; confirm the UI shows "took too long," not a spinner or 500, on the hosted URL.
 - **Rate limit/spend cap race under concurrent asks** → prove with a small concurrent-request script against the hosted `agent.ask` endpoint; DynamoDB conditional write should produce exactly 5 successes and N throttles, never 6+.
 - **Confirm-flow bypass (model infers a direct write)** → prove by code inspection: grep the `agent/tools.ts` file for any import of `LeadService`/`requireLeadService` — it must appear only in `agentRouter`'s `confirmLead` handler, never inside a tool executed by `generateText`.
-- **AC-7 data-switch regression** — prove the switch from the 35-row sample to the Run 1 manifest with the same golden queries before/after, and record the differences.
+- **AC-7 data-switch regression** — prove the switch from the 35-row sample to the Run 2 manifest with the same golden queries before/after, and record the differences.
 ```
 
 ### smeargle (verbatim)

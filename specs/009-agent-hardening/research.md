@@ -23,11 +23,11 @@ would duplicate and partially contradict already-accepted work and waste the pri
 consult's calibration work (gazetteer, confidence bands, golden-query grading table already
 written to §9 of the ADR).
 
-## Decision: data source is Task A's published Run 1 manifest, read directly by CID
+## Decision: data source is Task A's published Run 2 manifest, read directly by CID
 
 **Decision**: every tool that reads property/permit data (`resolvePlace` via gazetteer,
 `searchProperties`, `searchPermits`, `getProperty`) resolves against
-`bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu` through the existing
+`bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy` through the existing
 `LeadIndex`/`DuckDbParquetLeadIndex` port (`apps/api/src/leadIndex.ts`,
 `apps/api/src/adapters/duckDbParquet.ts`) — the same index the B-03 map/B-07 lead flows already
 use. The ADR's `oracleCoverage` tool (gated on A-14) and any MCP-backed `getCoverage` path are

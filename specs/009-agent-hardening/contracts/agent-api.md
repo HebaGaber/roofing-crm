@@ -56,7 +56,7 @@ this contract only adds the tRPC-boundary shapes and behavior, per `agent-design
 "Create" on the confirmation card (ADR §6.2 G7). Calls
 `requireLeadService(ctx).create(input, requireUserId(ctx))` — the exact same application-layer
 call `leads.create` already uses, with `createdFrom: "agent"` and `sourceManifestCid` set to the
-pinned Run-1 CID. This is the whole mechanism behind FR-002/AC-2/constitution P0: the model's tool
+pinned Run-2 CID. This is the whole mechanism behind FR-002/AC-2/constitution P0: the model's tool
 set (`proposeLeads`) never includes anything that reaches `LeadService.create` — only this
 separate, rep-triggered mutation does. A grep of `apps/api/src/services/agent/tools.ts` for any
 `LeadService`/`requireLeadService` import must come back empty; it is only ever imported by this

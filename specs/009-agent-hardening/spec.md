@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Story B-09 (merged B-09 Agent + B-11 Responsive/observable), expanded this round with AC-7 (data switch to Task A's published Run 1 manifest, read directly by CID) and AC-8 (targeted prototype re-audit and fix of drift since B-03's last clean review)."
+**Input**: User description: "Story B-09 (merged B-09 Agent + B-11 Responsive/observable), expanded this round with AC-7 (data switch to Task A's published Run 2 manifest, read directly by CID) and AC-8 (targeted prototype re-audit and fix of drift since B-03's last clean review)."
 
 **Story**: `stories/B-09-agent-hardening.md` | **Evaluation point**: B5 (primary, agent) · B6 (secondary, responsive/observability) | **Demo line(s)**: D-7
 
@@ -67,11 +67,11 @@ A rep or evaluator browsing the CRM sees property and permit data drawn from the
 
 **Why this priority**: The user explicitly asked that the portal show real, at-scale data this round; without it, the golden queries and the demo both understate what the product does.
 
-**Independent Test**: Confirm the data shown in the CRM and returned by the agent traces to Task A's Run 1 full-county publication (by its published content identifier), not the earlier 35-row sample.
+**Independent Test**: Confirm the data shown in the CRM and returned by the agent traces to Task A's Run 2 full-county publication (by its published content identifier), not the earlier 35-row sample.
 
 **Acceptance Scenarios**:
 
-1. **Given** Task A has published its Run 1 full-county data, **When** the CRM is pointed at that publication's identifier and the CRM and agent read property/permit data, **Then** they read it directly from Task A's published data, and every result traces back to that identifier.
+1. **Given** Task A has published its Run 2 full-county data, **When** the CRM is pointed at that publication's identifier and the CRM and agent read property/permit data, **Then** they read it directly from Task A's published data, and every result traces back to that identifier.
 
 ---
 
@@ -104,14 +104,14 @@ An evaluator or the product owner compares every screen — old and new — agai
 - **FR-004**: System MUST answer all seven standard golden queries with a 95th-percentile "first useful answer" time under 20 seconds and 100% of cited records verifiably real (AC-4).
 - **FR-005**: System MUST pass the full responsive test suite at phone, tablet, and desktop widths on every screen in the app (AC-5).
 - **FR-006**: System MUST alert when the retry/failure queue is non-empty and automatically clear that alert once the queue drains, with both states visible on a dashboard (AC-6).
-- **FR-007**: System MUST read property/permit data directly from Task A's Run 1 full-county publication, by its published content identifier (AC-7).
+- **FR-007**: System MUST read property/permit data directly from Task A's Run 2 full-county publication, by its published content identifier (AC-7).
 - **FR-008**: System MUST be re-compared, screen by screen, against the current approved prototype, with every newly found mismatch fixed or explicitly deferred with a reason (AC-8).
 
 ### Key Entities
 
 - **Agent answer**: A grounded response to a plain-language question; includes the resolved search scope (place/radius/age/permit-age filters), cited records, and a confidence level that governs whether the system answers, asks a clarifying question, or declines.
 - **Lead**: A CRM record created from a property or permit match, always created through the existing lead-creation path, whether initiated from the map or from the agent.
-- **Data publication reference**: The identifier that tells the CRM which published county dataset to read (Task A's Run 1 manifest, read directly by its identifier; set in one configuration value).
+- **Data publication reference**: The identifier that tells the CRM which published county dataset to read (Task A's Run 2 manifest, read directly by its identifier; set in one configuration value).
 - **Health signal**: An operational indicator (queue depth, alert state) shown on a dashboard, independent of what any end user is doing.
 
 ## Success Criteria *(mandatory)*
@@ -128,7 +128,7 @@ An evaluator or the product owner compares every screen — old and new — agai
 ## Assumptions
 
 - Task A's A-13 (Explorer UI) and A-14 (Agent + MCP) stories are not yet done upstream (still Draft/Ready); this feature builds its own agent runtime and responsive configuration natively this round rather than reusing theirs, as a documented, reversible deviation — reconciled once those stories merge.
-- Task A's Run 1 full-county manifest is pinned and real. The CRM reads Task A's published data directly by its identifier, so no catalog (Atlas) listing is needed.
+- Task A's Run 2 full-county manifest is pinned and real. The CRM reads Task A's published data directly by its identifier, so no catalog (Atlas) listing is needed.
 - No vector/semantic search is added (per the project's existing architecture decision that the published data contract has no free text to embed); grounding comes from structured, cited record lookups only.
 - The on-call paging mechanism for the health alert is email-based rather than a dedicated paging service, per an existing accepted project deviation.
 - "Full re-audit" of the prototype means targeted re-diffing of screens likely to have drifted since the last clean review, plus every newly added screen — not a ground-up re-review of every pixel on every screen already verified clean.

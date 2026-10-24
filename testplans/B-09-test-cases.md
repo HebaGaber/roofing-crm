@@ -51,7 +51,7 @@ production-ready, not just demo-ready.
 | Acceptance criterion | B-09-AC-4 (7 golden queries, p95 < 20s, 100% groundedness) | TC-009…TC-015, TC-NF-01 |
 | Acceptance criterion | B-09-AC-5 (full responsive suite, 390/768/1440, every screen) | TC-016, TC-017, TC-NF-02 |
 | Acceptance criterion | B-09-AC-6 (DLQ alarm fires and self-resolves, visible on dashboard) | TC-018, TC-019 |
-| Acceptance criterion | B-09-AC-7 (data read directly from Task A's published Run 1 manifest by CID) | TC-020, TC-021 |
+| Acceptance criterion | B-09-AC-7 (data read directly from Task A's published Run 2 manifest by CID) | TC-020, TC-021 |
 | Acceptance criterion | B-09-AC-8 (prototype re-diff, fix or deferred-with-reason) | TC-022, TC-023 |
 | Edge case | model call exceeds 23s server-side abort | TC-024 |
 | Edge case | place-resolution confidence 0.80–0.92 or margin<0.05 → clarify, not a guess | TC-025b |
@@ -71,8 +71,8 @@ production-ready, not just demo-ready.
 ## 3. Assumptions
 
 - **Data source.** Per AC-7, this story's deployed build reads property/permit data directly by
-  Task A's Run 1 full-county manifest CID `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`
-  (441,961 properties / 17,387 permits). Test data below (`{P_...}` tokens) must be filled in from
+  Task A's Run 2 full-county manifest CID `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`
+  (441,961 properties / 15,025 permits). Test data below (`{P_...}` tokens) must be filled in from
   this manifest once it is live — they are placeholders, not fabricated values, consistent with
   this template's convention. **Do not** substitute B-03/B-07's earlier 35-row-sample fixtures;
   SC-005 explicitly requires the real publication.
@@ -91,7 +91,7 @@ production-ready, not just demo-ready.
   file.
 - **Confidence bands are ADR-06's**, not a single 0.80 threshold: auto ≥0.92, clarify 0.80–0.92 or
   margin<0.05 between the top two candidates, refuse (`not_found`) <0.80.
-- **Golden queries G1–G7** are `checks.md` §7.1's exact prompts, run against the pinned Run 1
+- **Golden queries G1–G7** are `checks.md` §7.1's exact prompts, run against the pinned Run 2
   manifest, not the earlier sample — thresholds in §7.1/§7.2 apply as written.
 - **Copy.** Exact assistant-facing strings are read from `design/prototype/CrmAsk*.dc.html` at test
   time; where the story/spec state a required phrase ("not in Run {n}"-style honesty), that exact
@@ -105,7 +105,7 @@ production-ready, not just demo-ready.
   question's honest empty/invalid-scope response; the 7 golden queries at scale (latency +
   groundedness); the full responsive suite across every screen (old and new) at 3 widths; the DLQ
   alarm firing and self-clearing, visible on the `RoofingCrm` dashboard; the data-source switch to
-  the Run 1 manifest CID; the prototype re-diff of every screen.
+  the Run 2 manifest CID; the prototype re-diff of every screen.
 - **Out of scope:** vector/semantic search (ARD-08, not in v1); PagerDuty paging (SNS email
   substitute, already accepted); any new lead-store behavior beyond B-07; Atlas registration or an MCP
   name lookup (the CRM reads Task A's published data directly by CID, constitution B1); a ground-up
@@ -125,12 +125,12 @@ production-ready, not just demo-ready.
 - **Place E (refuse, not clarify):** a clearly non-Travis, non-existent place name, e.g. "Zzyzxville" —
   expected score <0.80 → `not_found`.
 - **Out-of-scope ZIP (AC-3, G6):** `99999` (not a Travis County ZIP).
-- **Real permit number (G5):** `{PM_REAL}` — read from the Run 1 manifest at test setup time (a
+- **Real permit number (G5):** `{PM_REAL}` — read from the Run 2 manifest at test setup time (a
   real open permit number), not invented.
 - **Lakeway combined-filter case (G4):** "Lakeway", tenure ≥10 years, owner mailing address outside
   the area — exact property set read from the live index at test time.
-- **Data snapshot:** manifest CID `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`
-  (441,961 properties / 17,387 permits). Every agent-created lead must store this CID in
+- **Data snapshot:** manifest CID `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`
+  (441,961 properties / 15,025 permits). Every agent-created lead must store this CID in
   `sourceManifestCid`.
 - **Run-scoped values:** every lead created by this suite is created with a note/tag prefixed
   `B09-{yyyymmddHHMMss}-` so one run can be told apart from another.
@@ -144,7 +144,7 @@ production-ready, not just demo-ready.
 - `RUNTIME_URL={RUNTIME_URL}` · test user `{TEST_USER}` (environment variable).
 - B-07 merged (leads live, for the agent's `createLead`/confirm path) — confirmed (`8b13240`).
 - The data-switch (AC-7) must be deployed before TC-001–TC-015, TC-020, TC-021 are meaningful —
-  running them against the 35-row sample instead of the Run 1 manifest would pass for the wrong
+  running them against the 35-row sample instead of the Run 2 manifest would pass for the wrong
   reason. Confirm `leadIndex.indexInfo().manifestCid` before running this suite.
 - **Known gaps** that become expected-to-fail or blocked cases are listed in § 10 and linked from
   the rows they affect. None recorded yet — this is the first draft, before implementation.
@@ -175,7 +175,7 @@ production-ready, not just demo-ready.
 | B-09-TC-018 | Forced DLQ failure fires the alarm, visible on dashboard | P1 | `@ops @smoke` | Infra | AC-6, FR-006 | `infra/test/crm-sync-stack.alarmEmail.test.ts` + `infra/test/crm-ops-stack.dashboard.test.ts` (construct exists) backs the wiring; the live ALARM transition itself has no automated test — manual, forced failure + CloudWatch screenshot |
 | B-09-TC-019 | Alarm self-resolves once the queue drains | P1 | `@ops` | Infra | AC-6, FR-006 | same backing as TC-018; the live OK transition is manual, no automated test — CloudWatch screenshot |
 | B-09-TC-019b | Alarm stays active if the failure never recovers | P2 | `@ops @negative` | Infra | AC-6, edge case | no automated test — relies on the self-resolving alarm's own `treatMissingData: NOT_BREACHING` config (`infra/lib/crm-sync-stack.ts`); manual, forced non-recovering failure + CloudWatch screenshot |
-| B-09-TC-020 | CRM/agent data traces to the Run 1 manifest CID | P1 | `@smoke` | API | AC-7, FR-007 | `apps/api/test/leadIndex.manifestCid.test.ts` |
+| B-09-TC-020 | CRM/agent data traces to the Run 2 manifest CID | P1 | `@smoke` | API | AC-7, FR-007 | `apps/api/test/leadIndex.manifestCid.test.ts` |
 | B-09-TC-021 | Direct read from Task A's published data documented | P2 | `@docs` | Docs | AC-7, FR-007 | no automated test — documentation review of `docs/architecture-constitution.md`, signed off by the QC Lead |
 | B-09-TC-022 | Every listed screen re-diffed against current prototype | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
 | B-09-TC-023 | Every found mismatch fixed or logged with a reason | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
@@ -192,7 +192,7 @@ production-ready, not just demo-ready.
 
 - **Priority / tags:** P1 · `@smoke @demo`
 - **Maps to:** AC-1, FR-001 · demo line D-7
-- **Preconditions:** logged in; the Run 1 manifest is the live index (TC-020 passed).
+- **Preconditions:** logged in; the Run 2 manifest is the live index (TC-020 passed).
 - **Test data:** question "Which properties in Travis County within five miles of Pflugerville
   have roofs older than 15 years?" (G1, checks.md §7.1).
 - **Steps:**
@@ -247,7 +247,7 @@ production-ready, not just demo-ready.
   4. **Verify** the lead appears, with status `new`, within 2s (same latency bar as B-07's AC-1).
   5. **Navigate** to `{RUNTIME_URL}/leads`. → the new lead is visible at the top of the list.
 - **Expected result:** the lead exists, `createdFrom: "agent"`, `sourceManifestCid` = the pinned
-  Run 1 CID, and it is the same property the agent cited (same `property_cid`/`tcadId`).
+  Run 2 CID, and it is the same property the agent cited (same `property_cid`/`tcadId`).
 
 ### B-09-TC-005: Agent never calls a direct write path (security/regression)
 
@@ -306,7 +306,7 @@ production-ready, not just demo-ready.
 - **Steps (automated, per query, via `tests/agent/golden.test.ts`):**
   1. **Call** `agent.ask` with the query's exact prompt from `tests/agent/golden.json`.
   2. **Verify** groundedness: every returned `property_cid` resolves via `property.get` against
-     the live index, and the answer's `manifestCid` equals the pinned Run 1 CID.
+     the live index, and the answer's `manifestCid` equals the pinned Run 2 CID.
   3. **Verify** correctness: re-run the equivalent `search.properties`/`search.permits` call with
      the answer's stated center/thresholds; returned rows must be a subset, recall ≥80% of top-N.
   4. **Verify** honesty: the answer text states its assumptions (center, thresholds) and flags any
@@ -389,16 +389,16 @@ production-ready, not just demo-ready.
   3. **Verify** the alarm remains `ALARM`, never silently clearing while depth stays > 0.
 - **Expected result:** the alarm never clears while the underlying failure is unresolved.
 
-### B-09-TC-020: CRM/agent data traces to the Run 1 manifest CID
+### B-09-TC-020: CRM/agent data traces to the Run 2 manifest CID
 
 - **Priority / tags:** P1 · `@smoke`
 - **Maps to:** AC-7, FR-007
 - **Steps:**
   1. **Call** the deployed API's index-info endpoint (or equivalent) and read `manifestCid`.
-  2. **Verify** it equals `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`.
+  2. **Verify** it equals `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`.
   3. **Open** `{RUNTIME_URL}/map` and verify the property count shown is consistent with 441,961
      properties in scope (not the earlier 35-row sample's count).
-- **Expected result:** both the API and the UI trace to the real Run 1 publication.
+- **Expected result:** both the API and the UI trace to the real Run 2 publication.
 
 ### B-09-TC-021: Direct read from Task A's published data documented
 

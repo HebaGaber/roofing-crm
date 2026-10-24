@@ -23,7 +23,7 @@ format requires.
 
 **Organization**: one phase per user story from spec.md, in spec.md's priority order, except
 **US4 (the data switch) is sequenced before US1/US2** despite spec.md listing it fourth — US1's and
-US2's golden-query tests need to read the Run-1 manifest CID to produce real, checkable answers,
+US2's golden-query tests need to read the Run-2 manifest CID to produce real, checkable answers,
 so the data switch is a hard dependency on them, not an independent P1 story in practice. This is
 called out again in Dependencies & Execution Order.
 
@@ -81,24 +81,26 @@ and are tested. No story's user-facing behavior exists yet.
 
 ## Phase 3: User Story 4 — See the real county dataset, not a small sample (Priority: P1, sequenced first — see Organization note)
 
-**Goal**: CRM and agent read property/permit data directly from Task A's published Run 1
+**Goal**: CRM and agent read property/permit data directly from Task A's published Run 2
 full-county manifest, by CID (AC-7, FR-007, constitution B1).
 
 **Independent Test**: confirm the data shown in the CRM and returned by the agent traces to
-manifest `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, not the earlier 35-row sample.
+manifest `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`, not the earlier 35-row sample.
 
 ### Tests for User Story 4 (write first)
 
-- [ ] T020 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
+- [ ] T020 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
 
 ### Implementation for User Story 4
 
-- [ ] T021 [US4] Point the sync job / promoted-run pointer (wherever `apps/api/src/leadIndex.ts`'s `tryLeadIndex()` reads its bucket/run pointer, and the sync job's promotion record) at the Run 1 manifest CID; make T020 pass (builder: ash)
+- [ ] T021 [US4] Make `DATA_MANIFEST_CID` the authoritative manifest for the sync and start one sync automatically on a deploy that changes it (auto-sync, PO decision); size the sync Lambdas (memory, `/tmp`, timeout) for the full county (~556 MB of parts); replace the hard-coded manifest CID in `apps/api/src/routers/agent.ts` with the promoted run's; then deploy with the Run 2 CID so T020 passes (builder: metagross)
+
+**Deferred (PO):** following Task A's incremental-run chain (`previousManifestCid`, Run 3+) — see the story's Out of scope. Not built in this story.
 - [ ] T022 [US4] Confirm constitution B1 and `docs/architecture-constitution.md` §7 describe the data path as built: the CRM reads Task A's published manifest and parts directly by CID, manifest set by `DATA_MANIFEST_CID` — per AC-7/FR-007 (builder: alakazam)
 - [ ] T023 [US4] Confirm `apps/web`'s existing map/leads screens show the manifest CID in their provenance UI (constitution XI) without code changes if already wired from B-03/B-07, or add the display if missing, in `apps/web/src/routes/Map`/`apps/web/src/routes/Leads` (builder: metagross)
 
 **Checkpoint**: the whole app, including every story below, now reads the real 441,961-property /
-17,387-permit dataset.
+15,025-permit dataset.
 
 ---
 
