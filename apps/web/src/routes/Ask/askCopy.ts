@@ -8,6 +8,7 @@
 import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
+import { fieldLabel } from "../../format/index.js";
 
 type Plan = AgentAnswer["plan"];
 type Outcome = AgentAnswer["outcome"];
@@ -138,10 +139,11 @@ function reasonLabel(field: string, reason: string): string {
   }
 }
 
-/** One `missing[]` entry: field, the reason's label, and how many evidence rows carried it. */
+/** One `missing[]` entry: the field's plain name (never the raw column), the reason's label, and
+ *  how many evidence rows carried it. */
 export function missingText(missing: Missing): string {
   const count = missing.count === undefined ? "" : ` (${plural(missing.count, "row", "rows")})`;
-  return `${missing.field}: ${reasonLabel(missing.field, missing.reason)}${count}`;
+  return `${fieldLabel(missing.field)}: ${reasonLabel(missing.field, missing.reason)}${count}`;
 }
 
 const UNPUBLISHED_REASONS: ReadonlySet<string> = new Set([
@@ -169,14 +171,31 @@ export function fieldNotPublishedText(answer: AgentAnswer): string {
   );
 }
 
-/** rate_limited: the live countdown from `retryAfterSec`. */
-export function throttleText(secondsLeft: number | undefined): string {
+/** rate_limited: the live countdown from `retryAfterSec`. "Your last answer" is named only when the
+ *  screen still shows one under the banner (CrmAskThrottled390: "The answer above … keep working"). */
+export function throttleText(secondsLeft: number | undefined, keptAnswer = false): string {
   if (secondsLeft === undefined) {
     return "Wait a moment, then ask again. This answer didn't include the wait time.";
   }
   if (secondsLeft <= 0) return "You can ask again now.";
-  return `Ask again in ${secondsLeft} s. Your last answer, the map and your leads keep working.`;
+  const kept = keptAnswer ? "Your last answer, the map" : "The map";
+  return `Ask again in ${secondsLeft} s. ${kept} and your leads keep working.`;
 }
+
+/** The composer's provenance line (CrmAsk1440 "Signed in · answers cite CountyLens Run 3"): the
+ *  run comes from the same promoted-run pointer as the top bar's data chip, never a constant. */
+export function composerNote(runId: string | null | undefined): string {
+  return runId === null || runId === undefined || runId === ""
+    ? "Signed in · answers cite the published CountyLens run"
+    : `Signed in · answers cite CountyLens run ${runId}`;
+}
+
+/** The composer's suggestions (CrmAsk1440 "Suggestions"): example questions only — choosing one
+ *  fills the box, it never asks by itself. The first is the README's own example. */
+export const SUGGESTIONS: readonly string[] = [
+  "Show me open roofing permits older than five years within five miles of Pflugerville",
+  "Which properties within three miles of Manor have roofs older than 20 years?",
+];
 
 export interface TimeFormat {
   readonly locale?: string;

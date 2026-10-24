@@ -16,6 +16,8 @@ import {
   planSummary,
   throttleText,
   timedOutText,
+  composerNote,
+  SUGGESTIONS,
 } from "../../src/routes/Ask/askCopy";
 
 type Plan = AgentAnswer["plan"];
@@ -165,19 +167,19 @@ describe("exclusionNotes", () => {
 describe("missingText", () => {
   it("uses the contract label and the evidence-row count", () => {
     expect(missingText({ field: "coordinates", reason: "no_coordinates", count: 4 })).toBe(
-      "coordinates: No coordinates for this parcel (4 rows)",
+      "Coordinates: No coordinates for this parcel (4 rows)",
     );
   });
 
   it("labels the plan-level no_free_text reason (not in the row-reason list)", () => {
     expect(missingText({ field: "permit description", reason: "no_free_text" })).toBe(
-      "permit description: Free text is not published",
+      "Permit description: Free text is not published",
     );
   });
 
   it("singular row count", () => {
     expect(missingText({ field: "roof date", reason: "no_roof_date", count: 1 })).toBe(
-      "roof date: No roof date found (1 row)",
+      "Roof date: No roof date found (1 row)",
     );
   });
 });
@@ -212,7 +214,10 @@ describe("fieldNotPublishedText", () => {
 
 describe("throttleText (countdown from retryAfterSec)", () => {
   it("counts down in seconds", () => {
-    expect(throttleText(40)).toBe(
+    expect(throttleText(40)).toBe("Ask again in 40 s. The map and your leads keep working.");
+  });
+  it("names the last answer only when it is still on screen", () => {
+    expect(throttleText(40, true)).toBe(
       "Ask again in 40 s. Your last answer, the map and your leads keep working.",
     );
   });
@@ -309,5 +314,22 @@ describe("confirmErrorCopy (typed confirmLead errors)", () => {
     const copy = confirmErrorCopy(new Error("boom"));
     expect(copy.text).toBe("Couldn't create the lead. Nothing was saved. Try again.");
     expect(copy.retryable).toBe(true);
+  });
+});
+
+describe("composerNote (the run the answers cite)", () => {
+  it("names the promoted run from the data pointer", () => {
+    expect(composerNote("3")).toBe("Signed in · answers cite CountyLens run 3");
+  });
+  it("does not invent a run number when the pointer is not known", () => {
+    expect(composerNote(null)).toBe("Signed in · answers cite the published CountyLens run");
+    expect(composerNote(undefined)).not.toMatch(/run \d/);
+  });
+});
+
+describe("SUGGESTIONS", () => {
+  it("is example questions only, the first being the README's own", () => {
+    expect(SUGGESTIONS[0]).toMatch(/^Show me open roofing permits older than five years/);
+    expect(SUGGESTIONS.every((q) => q.length <= 500)).toBe(true);
   });
 });

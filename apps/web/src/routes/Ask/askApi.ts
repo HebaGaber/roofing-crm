@@ -5,11 +5,18 @@
 // model-invoked") — the Ask screen calls it only from an explicit rep click, never automatically
 // on receiving a proposal.
 //
-// CR-B-09 #19: typed by the real `AppRouter` through `useTRPC()` (the `agent` router is mounted
+// CR-B-09 finding 19: typed by the real `AppRouter` through `useTRPC()` (the `agent` router is mounted
 // in apps/api/src/routers/index.ts) — no structural double cast, so a contract change on
 // the server is a type error here.
 import { useTRPC } from "@crm/api-client/react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+
+/** The promoted run the answers cite (the composer's "answers cite CountyLens run {n}" line). The
+ *  same `shell.indexInfo` query the top bar's data chip reads, so it shares that cache entry. */
+export function useRunInfo() {
+  const trpc = useTRPC();
+  return useQuery({ ...trpc.shell.indexInfo.queryOptions(), staleTime: 5 * 60_000 });
+}
 
 export function useAskAgent() {
   const trpc = useTRPC();

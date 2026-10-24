@@ -1,4 +1,4 @@
-// B-09 T039/T040 + review fixes (CR-B-09 #16/#20): the Ask screen (contracts/agent-api.md;
+// B-09 T039/T040 + review fixes (CR-B-09 finding 16/finding 20): the Ask screen (contracts/agent-api.md;
 // agent-design.md smeargle §1/§4). A rep types a plain-language question; `agent.ask` returns a
 // grounded, cited `AgentAnswer` (packages/shared/src/agent/answer.ts) rendered claim-by-claim with
 // its own citations — never a result the API didn't actually return. Creating a lead from a
@@ -36,14 +36,17 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type KeyboardEvent,
   type ReactElement,
   type ReactNode,
 } from "react";
-import { Link } from "react-router";
-import { useAskAgent, useConfirmLead } from "./askApi.js";
+import { Link, useSearchParams } from "react-router";
+import { ASK_QUESTION_PARAM } from "../../components/Onboarding/firstVisit.js";
+import { useAskAgent, useConfirmLead, useRunInfo } from "./askApi.js";
 import {
   AGENT_TURN_LIMIT_SEC,
   clarifyQuestion,
+  composerNote,
   confirmErrorCopy,
   emptyExplanation,
   exclusionNotes,
@@ -53,6 +56,7 @@ import {
   pausedText,
   placeOf,
   planSummary,
+  SUGGESTIONS,
   throttleText,
   timedOutText,
 } from "./askCopy.js";
@@ -112,6 +116,16 @@ function headingOf(answer: AgentAnswer): string {
 
 const ERROR_HEADING = "The agent could not answer";
 
+/** The longest question the box (and `agent.ask`'s input) accepts. */
+const MAX_QUESTION_LENGTH = 500;
+
+/** The `?q=` text the first-visit card's example links carry: trimmed, and ignored when empty or
+ *  longer than the box allows (never silently cut into a different question). */
+export function prefillFrom(param: string | null): string {
+  const text = (param ?? "").trim();
+  return text === "" || text.length > MAX_QUESTION_LENGTH ? "" : text;
+}
+
 function newThreadId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -151,6 +165,7 @@ function useCountdown(from: number | undefined, key: unknown): number | undefine
 
 type Citation = AgentAnswer["citations"][number];
 type Claim = AgentAnswer["claims"][number];
+type Proposal = NonNullable<AgentAnswer["proposals"]>[number];
 
 /** Claims carry no id on the wire: key by their citations plus text, plus the position only to
  *  break an exact duplicate — stable for a given answer, unlike a bare array index. */
@@ -164,78 +179,48 @@ function claimIds(claims: readonly Claim[]): string[] {
   });
 }
 
-function CitationLine({ citation }: { readonly citation: Citation }): ReactElement {
-  const cid = citation.propertyCid ?? citation.permitCid;
-  const kindLabel =
-    citation.kind === "property"
-      ? "Property"
-      : citation.kind === "permit"
-        ? "Permit"
-        : citation.kind === "place"
-          ? "Place"
-          : "Run";
-  return (
-    <li className={styles.citation} data-citation-kind={citation.kind}>
-      <span className={styles.citationLabel}>
-        {kindLabel}
-        {cid === undefined ? null : <CidDisplay cid={cid} />}
-      </span>
-      <Provenance>
-        {citation.sourceUrl === null ? (
-          <MissingReason field="source_url" reason="not_in_export" />
-        ) : (
-          <a
-            href={citation.sourceUrl}
-            className={styles.link}
-            rel="noopener noreferrer"
-            target="_blank"
-          >
-            {citation.sourceUrl}
-          </a>
-        )}
-        {` · collected ${formatUtc(citation.capturedAt)} UTC · table `}
-        <CidDisplay cid={citation.tableCid} />
-        {" · manifest "}
-        <CidDisplay cid={citation.manifestCid} />
-      </Provenance>
-      {citation.kind === "property" && citation.propertyCid !== undefined ? (
-        <Link className={styles.openMap} to={`/?sel=${encodeURIComponent(citation.propertyCid)}`}>
-          Open on map
-        </Link>
-      ) : null}
-    </li>
-  );
+/** The citations the claims actually use, numbered 1..n in first-cited order (CrmAsk390/768/1440:
+ *  "[1–3]" in the text ↔ the numbered rows below). Uncited citations are not listed. */
+function numberSources(
+  claims: readonly Claim[],
+  citations: readonly Citation[],
+): { readonly sources: readonly Citation[]; readonly numberOf: ReadonlyMap<number, number> } {
+  const byId = new Map(citations.map((c) => [c.id, c]));
+  const numberOf = new Map<number, number>();
+  const sources: Citation[] = [];
+  for (const claim of claims) {
+    for (const id of claim.citationIds) {
+      const citation = byId.get(id);
+      if (citation === undefined || numberOf.has(id)) continue;
+      numberOf.set(id, sources.length + 1);
+      sources.push(citation);
+    }
+  }
+  return { sources, numberOf };
 }
 
-function ClaimItem({
-  id,
-  claim,
-  byId,
-}: {
-  readonly id: string;
-  readonly claim: Claim;
-  readonly byId: ReadonlyMap<number, Citation>;
-}): ReactElement {
-  const cited = claim.citationIds
-    .map((citationId) => byId.get(citationId))
-    .filter((c): c is Citation => c !== undefined);
-  return (
-    <li className={styles.claim} data-claim-id={id}>
-      <p className={styles.claimText}>{claim.text}</p>
-      <ul className={styles.citations} aria-label="Citations">
-        {cited.map((citation) => (
-          <CitationLine key={citation.id} citation={citation} />
-        ))}
-      </ul>
-    </li>
-  );
+function kindLabel(kind: Citation["kind"]): string {
+  return kind === "property"
+    ? "Property"
+    : kind === "permit"
+      ? "Permit"
+      : kind === "place"
+        ? "Place"
+        : "Run";
 }
 
-type Proposal = NonNullable<AgentAnswer["proposals"]>[number];
+/** A source row's title: the TCAD account id when the citation carries one (the contract publishes
+ *  no street address — CRM-HANDOFF § 9 "the property title is the TCAD account id"), else its kind. */
+function sourceTitle(citation: Citation): string {
+  if (citation.tcadId === undefined) return kindLabel(citation.kind);
+  return citation.kind === "property"
+    ? `TCAD ${citation.tcadId}`
+    : `${kindLabel(citation.kind)} · TCAD ${citation.tcadId}`;
+}
 
 /** Creating a lead from a proposal is a separate, explicit click — never automatic on receiving
  *  the proposal (ADR §6.2 G7). Typed failures get their own message (CrmAskCreateFailed390). */
-function ProposalCard({
+function ProposalAction({
   proposal,
   threadId,
 }: {
@@ -245,42 +230,142 @@ function ProposalCard({
   const confirmLead = useConfirmLead();
 
   if (proposal.alreadyLead) {
-    return (
-      <li className={styles.proposal} data-tcad-id={proposal.tcadId}>
-        <StatusPill status="info" text={`TCAD ${proposal.tcadId} is already a lead`} />
-      </li>
-    );
+    return <StatusPill status="info" icon="contact_page" text="Already a lead" />;
   }
 
   const failure = confirmLead.isError ? confirmErrorCopy(confirmLead.error) : undefined;
   const done = confirmLead.isSuccess || failure?.status === "info";
   return (
-    <li className={styles.proposal} data-tcad-id={proposal.tcadId}>
-      <span className={styles.proposalLabel}>{`TCAD ${proposal.tcadId}`}</span>
-      <button
-        type="button"
-        className={styles.confirmButton}
-        disabled={confirmLead.isPending || done || (failure !== undefined && !failure.retryable)}
-        onClick={() => confirmLead.mutate({ threadId, tcadId: proposal.tcadId })}
-      >
-        {confirmLead.isPending ? "Creating…" : "Create lead"}
-      </button>
-      {confirmLead.isSuccess ? (
-        <>
-          <StatusPill status="verified" text="Lead created" />
-          <Link className={styles.openMap} to="/leads">
-            Open Leads
-          </Link>
-        </>
-      ) : null}
-      {failure === undefined ? null : (
-        <span
-          className={styles.proposalNote}
-          role={failure.status === "info" ? undefined : "alert"}
+    <div className={styles.proposalAction}>
+      <div className={styles.actionRow}>
+        {confirmLead.isSuccess ? (
+          <>
+            <StatusPill status="verified" text="Lead created" />
+            <Link className={styles.textButton} to="/leads">
+              Open Leads
+            </Link>
+          </>
+        ) : (
+          <button
+            type="button"
+            className={styles.tonalButton}
+            disabled={
+              confirmLead.isPending || done || (failure !== undefined && !failure.retryable)
+            }
+            onClick={() => confirmLead.mutate({ threadId, tcadId: proposal.tcadId })}
+          >
+            <Icon name="person_add" size="medium" />
+            {confirmLead.isPending ? "Creating…" : "Create lead"}
+          </button>
+        )}
+      </div>
+      {failure === undefined ? null : failure.status === "info" ? (
+        <StatusPill status="info" text={failure.text} />
+      ) : (
+        <div
+          role="alert"
+          className={`${styles.banner} ${failure.status === "error" ? styles.danger : styles.warning}`}
         >
-          <StatusPill status={failure.status} text={failure.text} />
-        </span>
+          <Icon name={failure.status === "error" ? "error" : "warning"} size="medium" />
+          <p className={styles.bannerBody}>{failure.text}</p>
+        </div>
       )}
+    </div>
+  );
+}
+
+function SourceRow({
+  number,
+  citation,
+  proposal,
+  threadId,
+}: {
+  readonly number: number;
+  readonly citation: Citation;
+  readonly proposal: Proposal | undefined;
+  readonly threadId: string;
+}): ReactElement {
+  const cid = citation.propertyCid ?? citation.permitCid;
+  return (
+    <li
+      id={`ask-source-${number}`}
+      className={styles.source}
+      data-citation-kind={citation.kind}
+      {...(citation.tcadId === undefined ? {} : { "data-tcad-id": citation.tcadId })}
+    >
+      <span className={styles.sourceNumber} aria-hidden="true">
+        {number}
+      </span>
+      <div className={styles.sourceBody}>
+        <span className={styles.sourceTitle}>
+          <span className={styles.srOnly}>{`Source ${number}: `}</span>
+          {sourceTitle(citation)}
+        </span>
+        {cid === undefined ? null : (
+          <span className={styles.sourceCid}>
+            {`${kindLabel(citation.kind)} record `}
+            <CidDisplay cid={cid} />
+          </span>
+        )}
+        <Provenance>
+          {citation.sourceUrl === null ? (
+            <MissingReason field="source_url" reason="not_in_export" />
+          ) : (
+            <a
+              href={citation.sourceUrl}
+              className={styles.link}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {citation.sourceUrl}
+            </a>
+          )}
+          {` · collected ${formatUtc(citation.capturedAt)} UTC · table `}
+          <CidDisplay cid={citation.tableCid} />
+          {" · manifest "}
+          <CidDisplay cid={citation.manifestCid} />
+        </Provenance>
+        <div className={styles.actionRow}>
+          {citation.kind === "property" && citation.propertyCid !== undefined ? (
+            <Link
+              className={styles.textButton}
+              to={`/?sel=${encodeURIComponent(citation.propertyCid)}`}
+            >
+              <Icon name="location_on" size="medium" />
+              Open on map
+            </Link>
+          ) : null}
+        </div>
+        {proposal === undefined ? null : <ProposalAction proposal={proposal} threadId={threadId} />}
+      </div>
+    </li>
+  );
+}
+
+function ClaimItem({
+  id,
+  claim,
+  numberOf,
+}: {
+  readonly id: string;
+  readonly claim: Claim;
+  readonly numberOf: ReadonlyMap<number, number>;
+}): ReactElement {
+  const numbers = [
+    ...new Set(
+      claim.citationIds
+        .map((citationId) => numberOf.get(citationId))
+        .filter((n): n is number => n !== undefined),
+    ),
+  ];
+  return (
+    <li className={styles.claim} data-claim-id={id}>
+      {claim.text}
+      {numbers.map((n) => (
+        <a key={n} className={styles.citeRef} href={`#ask-source-${n}`} aria-label={`Source ${n}`}>
+          {n}
+        </a>
+      ))}
     </li>
   );
 }
@@ -328,8 +413,19 @@ function AnsweredBody({
   readonly answer: AgentAnswer;
   readonly threadId: string;
 }): ReactElement {
-  const byId = new Map(answer.citations.map((c) => [c.id, c]));
   const ids = claimIds(answer.claims);
+  const { sources, numberOf } = numberSources(answer.claims, answer.citations);
+  const proposals = answer.proposals ?? [];
+  const byTcad = new Map(proposals.map((p) => [p.tcadId, p]));
+  // A proposal shows its Create lead on the source row it was cited in (CrmAsk1440 rows; E-59);
+  // a proposal no claim cites still gets its own row below. Never a Create lead on a cited row
+  // the answer did not propose (design-review-log row 54).
+  const onRow = new Set(
+    sources
+      .filter((c) => c.kind === "property" && c.tcadId !== undefined && byTcad.has(c.tcadId))
+      .map((c) => c.tcadId),
+  );
+  const unplaced = proposals.filter((p) => !onRow.has(p.tcadId));
   return (
     <div className={styles.answer}>
       {answer.claims.length === 0 ? (
@@ -340,16 +436,41 @@ function AnsweredBody({
       ) : (
         <ul className={styles.claims} aria-label="Answer">
           {answer.claims.map((claim, index) => (
-            <ClaimItem key={ids[index]} id={ids[index] ?? ""} claim={claim} byId={byId} />
+            <ClaimItem key={ids[index]} id={ids[index] ?? ""} claim={claim} numberOf={numberOf} />
           ))}
         </ul>
       )}
       <Notes notes={exclusionNotes(answer)} />
       <MissingList missing={answer.missing} />
-      {answer.proposals === undefined || answer.proposals.length === 0 ? null : (
-        <ul className={styles.proposals} aria-label="Create lead">
-          {answer.proposals.map((proposal) => (
-            <ProposalCard key={proposal.tcadId} proposal={proposal} threadId={threadId} />
+      {sources.length === 0 ? null : (
+        <ol className={styles.sources} aria-label="Sources">
+          {sources.map((citation, index) => (
+            <SourceRow
+              key={citation.id}
+              number={index + 1}
+              citation={citation}
+              proposal={
+                citation.kind === "property" && citation.tcadId !== undefined
+                  ? byTcad.get(citation.tcadId)
+                  : undefined
+              }
+              threadId={threadId}
+            />
+          ))}
+        </ol>
+      )}
+      {unplaced.length === 0 ? null : (
+        <ul className={styles.sources} aria-label="Create lead">
+          {unplaced.map((proposal) => (
+            <li key={proposal.tcadId} className={styles.source} data-tcad-id={proposal.tcadId}>
+              <span className={styles.sourceNumber} aria-hidden="true">
+                <Icon name="person_add" size="small" />
+              </span>
+              <div className={styles.sourceBody}>
+                <span className={styles.sourceTitle}>{`TCAD ${proposal.tcadId}`}</span>
+                <ProposalAction proposal={proposal} threadId={threadId} />
+              </div>
+            </li>
           ))}
         </ul>
       )}
@@ -360,14 +481,17 @@ function AnsweredBody({
 function Banner({
   tone,
   icon,
+  alert = true,
   children,
 }: {
   readonly tone: "warning" | "info";
   readonly icon: string;
+  /** Budget limits interrupt (`role="alert"`); scope outcomes are the result itself. */
+  readonly alert?: boolean;
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <div role="alert" className={`${styles.banner} ${styles[tone]}`}>
+    <div {...(alert ? { role: "alert" } : {})} className={`${styles.banner} ${styles[tone]}`}>
       <Icon name={icon} size="medium" />
       <p className={styles.bannerBody}>{children}</p>
     </div>
@@ -378,6 +502,7 @@ interface BodyProps {
   readonly answer: AgentAnswer;
   readonly threadId: string;
   readonly secondsLeft: number | undefined;
+  readonly keptAnswer: boolean;
   readonly onPickPlace: (name: string) => void;
   readonly onRetry: () => void;
 }
@@ -386,6 +511,7 @@ function AnswerBody({
   answer,
   threadId,
   secondsLeft,
+  keptAnswer,
   onPickPlace,
   onRetry,
 }: BodyProps): ReactElement {
@@ -395,7 +521,7 @@ function AnswerBody({
     case "empty_in_scope":
       return (
         <div className={styles.answer}>
-          <p className={styles.notice}>{emptyExplanation(answer)}</p>
+          <p className={styles.lead}>{emptyExplanation(answer)}</p>
           <Notes notes={exclusionNotes(answer)} />
           <MissingList missing={answer.missing} />
         </div>
@@ -403,7 +529,7 @@ function AnswerBody({
     case "field_not_published":
       return (
         <div className={styles.answer}>
-          <p className={styles.notice}>{fieldNotPublishedText(answer)}</p>
+          <p className={styles.lead}>{fieldNotPublishedText(answer)}</p>
           <MissingList missing={answer.missing} />
         </div>
       );
@@ -411,14 +537,14 @@ function AnswerBody({
       const candidates = answer.candidates;
       if (candidates === undefined) {
         return (
-          <p className={styles.notice}>
+          <p className={styles.lead}>
             I couldn&apos;t read that question. Try rephrasing it with a place and what to look for.
           </p>
         );
       }
       if (candidates.length === 0) {
         return (
-          <p className={styles.notice}>
+          <p className={styles.lead}>
             The question didn&apos;t name a place I could match. Add a town, ZIP or &quot;lat,
             lon&quot;.
           </p>
@@ -426,9 +552,9 @@ function AnswerBody({
       }
       return (
         <div className={styles.answer}>
-          <p className={styles.notice}>
+          <Banner tone="warning" icon="help" alert={false}>
             {`I'm not sure which place “${answer.plan.area.query}” means. Pick one and I'll ask again with it.`}
-          </p>
+          </Banner>
           <div className={styles.chips} role="group" aria-label="Places I know">
             {candidates.map((candidate) => (
               <button
@@ -439,7 +565,7 @@ function AnswerBody({
                 aria-label={`Use ${candidate.name} (${Math.round(candidate.score * 100)}% match)`}
                 onClick={() => onPickPlace(candidate.name)}
               >
-                <Icon name="location_on" size="small" />
+                <Icon name="location_on" size="medium" />
                 {`Use ${candidate.name}`}
               </button>
             ))}
@@ -449,20 +575,20 @@ function AnswerBody({
     }
     case "out_of_scope":
       return (
-        <p className={styles.notice}>
+        <Banner tone="warning" icon="wrong_location" alert={false}>
           {`“${answer.plan.area.query}” is outside the area this CRM covers, so I didn't search. Try a place inside it.`}
-        </p>
+        </Banner>
       );
     case "not_found":
       return (
-        <p className={styles.notice}>
+        <Banner tone="warning" icon="location_off" alert={false}>
           {`I couldn't find “${placeOf(answer.plan)}” among the places I know. Check the spelling, or name a nearby town.`}
-        </p>
+        </Banner>
       );
     case "rate_limited":
       return (
         <Banner tone="warning" icon="hourglass_top">
-          {throttleText(secondsLeft)}
+          {throttleText(secondsLeft, keptAnswer)}
         </Banner>
       );
     case "paused":
@@ -477,9 +603,11 @@ function AnswerBody({
           <Banner tone="warning" icon="timer_off">
             <b>Took too long.</b> {timedOutText()}
           </Banner>
-          <button type="button" className={styles.action} onClick={onRetry}>
-            Try again
-          </button>
+          <div className={styles.actionRow}>
+            <button type="button" className={styles.action} onClick={onRetry}>
+              Try again
+            </button>
+          </div>
         </div>
       );
   }
@@ -517,12 +645,72 @@ function WorkingPanel({ seconds }: { readonly seconds: number }): ReactElement {
   );
 }
 
+/** The question the answer is for, with the agent glyph (CrmAsk390: robot icon + the question). */
+function AskedLine({ text }: { readonly text: string }): ReactElement {
+  return (
+    <p className={styles.asked}>
+      <Icon name="smart_toy" size="medium" />
+      <span>{text}</span>
+    </p>
+  );
+}
+
+/** "How I read this" plus the step count (CrmAsk390 "4 steps done") — both only for a real model
+ *  plan; the steps line only when the server ran tools (`trace.toolSteps`). */
+function PlanBlock({ answer }: { readonly answer: AgentAnswer }): ReactElement | null {
+  if (!hasModelPlan(answer)) return null;
+  const steps = answer.trace.toolSteps;
+  return (
+    <>
+      {answer.plan.slotSources["area"] === "inherited" ? (
+        <StatusPill status="info" icon="forum" text="Follow-up · area from your last question" />
+      ) : null}
+      <p className={styles.plan}>
+        <b>How I read this:</b> {planSummary(answer.plan)}
+      </p>
+      {steps > 0 ? (
+        <p className={styles.steps}>
+          <Icon name="check_circle" size="medium" />
+          {`${steps} step${steps === 1 ? "" : "s"} done`}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** Budget outcomes keep the last real answer on screen under their banner (CrmAskThrottled390:
+ *  "The answer above, the map, Filters and your leads keep working"). */
+const KEEPS_LAST: ReadonlySet<AgentAnswer["outcome"]> = new Set<AgentAnswer["outcome"]>([
+  "rate_limited",
+  "paused",
+]);
+
+interface Kept {
+  readonly answer: AgentAnswer;
+  readonly asked: string;
+}
+
 export function Component(): ReactElement {
   const [threadId] = useState(newThreadId);
-  const [question, setQuestion] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Prefill only: asking costs model money, so the rep presses Ask (or Enter) themselves.
+  const [question, setQuestion] = useState(() => prefillFrom(searchParams.get(ASK_QUESTION_PARAM)));
   const [asked, setAsked] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [kept, setKept] = useState<Kept | undefined>(undefined);
   const ask = useAskAgent();
+  const runInfo = useRunInfo();
   const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // On arrival with `?q=`: focus the box, then drop the param (replace, so Back does not return to
+  // it and a reload does not prefill again).
+  useEffect(() => {
+    if (!searchParams.has(ASK_QUESTION_PARAM)) return;
+    if (prefillFrom(searchParams.get(ASK_QUESTION_PARAM)) !== "") inputRef.current?.focus();
+    const next = new URLSearchParams(searchParams);
+    next.delete(ASK_QUESTION_PARAM);
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const data = ask.data;
   const state: AskState = ask.isPending
@@ -560,13 +748,28 @@ export function Component(): ReactElement {
     const trimmed = text.trim();
     if (trimmed === "") return;
     setAsked(trimmed);
-    ask.mutate({ question: trimmed, threadId });
+    ask.mutate(
+      { question: trimmed, threadId },
+      {
+        // A budget outcome keeps the last real answer on screen, so remember each real one.
+        onSuccess: (answer) => {
+          if (!KEEPS_LAST.has(answer.outcome)) setKept({ answer, asked: trimmed });
+        },
+      },
+    );
   };
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     if (ask.isPending || blocked) return;
     send(question);
+  };
+
+  /** Enter asks (as the single-line box did); Shift+Enter keeps a new line. */
+  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.currentTarget.form?.requestSubmit();
   };
 
   const pickPlace = (name: string): void => {
@@ -579,79 +782,130 @@ export function Component(): ReactElement {
   const retry = (): void => send(asked !== "" ? asked : question);
 
   const announcement = ask.isPending ? "Working on your question…" : (heading ?? "");
+  const showKept = !ask.isPending && data !== undefined && KEEPS_LAST.has(data.outcome);
+  const keptAnswer = showKept && kept !== undefined;
 
   return (
     <section aria-label="Ask" data-route="ask" data-state={state} className={styles.page}>
-      <h2 className={styles.title}>Ask about a roofing opportunity</h2>
-      <form className={styles.form} onSubmit={submit}>
-        <label htmlFor="ask-question" className={styles.label}>
-          Question
-        </label>
-        <input
-          id="ask-question"
-          className={styles.input}
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. open roofing permits older than five years within five miles of Pflugerville"
-          maxLength={500}
-          readOnly={ask.isPending}
-          aria-busy={ask.isPending}
-        />
-        <button
-          type="submit"
-          className={styles.action}
-          disabled={ask.isPending || blocked || question.trim() === ""}
-        >
-          Ask
-        </button>
-      </form>
+      <div className={styles.composerPane}>
+        <h2 className={styles.title}>
+          <Icon name="auto_awesome" size="large" />
+          Ask the agent
+        </h2>
+        <form className={styles.form} onSubmit={submit}>
+          <label htmlFor="ask-question" className={styles.label}>
+            Ask your question in plain English
+          </label>
+          <div className={styles.composer}>
+            <textarea
+              id="ask-question"
+              ref={inputRef}
+              className={styles.input}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="e.g. open roofing permits older than five years within five miles of Pflugerville"
+              maxLength={500}
+              rows={3}
+              readOnly={ask.isPending}
+              aria-busy={ask.isPending}
+            />
+            <div className={styles.composerFooter}>
+              <span className={styles.composerNote}>{composerNote(runInfo.data?.runId)}</span>
+              <button
+                type="submit"
+                className={styles.action}
+                disabled={ask.isPending || blocked || question.trim() === ""}
+              >
+                <Icon name="auto_awesome" size="medium" />
+                Ask
+              </button>
+            </div>
+          </div>
+        </form>
+        <div className={styles.suggestions}>
+          <span className={styles.label} id="ask-suggestions">
+            Suggestions
+          </span>
+          <ul className={styles.suggestionList} aria-labelledby="ask-suggestions">
+            {SUGGESTIONS.map((text) => (
+              <li key={text}>
+                <button
+                  type="button"
+                  className={styles.suggestion}
+                  disabled={ask.isPending}
+                  onClick={() => setQuestion(text)}
+                >
+                  <Icon name="lightbulb" size="medium" />
+                  <span className={styles.suggestionText}>{text}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
 
-      <p role="status" aria-live="polite" className={styles.srOnly}>
-        {announcement}
-      </p>
+      <div className={styles.resultPane}>
+        <p role="status" aria-live="polite" className={styles.srOnly}>
+          {announcement}
+        </p>
 
-      {ask.isPending ? <WorkingPanel seconds={seconds} /> : null}
+        {ask.isPending ? (
+          <div className={styles.result}>
+            {asked === "" ? null : <AskedLine text={asked} />}
+            <WorkingPanel seconds={seconds} />
+          </div>
+        ) : null}
 
-      {heading === undefined ? null : (
-        <article className={styles.result} aria-labelledby="ask-result-heading">
-          <h3
-            id="ask-result-heading"
-            ref={headingRef}
-            tabIndex={-1}
-            className={styles.resultHeading}
-          >
-            {heading}
-          </h3>
-          {asked === "" ? null : <p className={styles.asked}>{asked}</p>}
-          {data === undefined ? (
-            <p role="alert" className={styles.notice}>
-              The agent could not answer. Nothing was created. Try again.
-            </p>
-          ) : (
-            <>
-              {data.plan.slotSources["area"] === "inherited" && hasModelPlan(data) ? (
-                <StatusPill
-                  status="info"
-                  icon="forum"
-                  text="Follow-up · area from your last question"
-                />
-              ) : null}
-              {hasModelPlan(data) ? (
-                <p className={styles.plan}>
-                  <b>How I read this:</b> {planSummary(data.plan)}
+        {heading === undefined ? null : (
+          <article className={styles.result} aria-labelledby="ask-result-heading">
+            <h3
+              id="ask-result-heading"
+              ref={headingRef}
+              tabIndex={-1}
+              className={styles.resultHeading}
+            >
+              {heading}
+            </h3>
+            {data === undefined ? (
+              <>
+                {asked === "" ? null : <AskedLine text={asked} />}
+                <p role="alert" className={styles.notice}>
+                  The agent could not answer. Nothing was created. Try again.
                 </p>
-              ) : null}
-              <AnswerBody
-                answer={data}
-                threadId={threadId}
-                secondsLeft={secondsLeft}
-                onPickPlace={pickPlace}
-                onRetry={retry}
-              />
-            </>
-          )}
-        </article>
-      )}
+              </>
+            ) : (
+              <>
+                {showKept ? null : asked === "" ? null : <AskedLine text={asked} />}
+                <PlanBlock answer={data} />
+                <AnswerBody
+                  answer={data}
+                  threadId={threadId}
+                  secondsLeft={secondsLeft}
+                  keptAnswer={keptAnswer}
+                  onPickPlace={pickPlace}
+                  onRetry={retry}
+                />
+              </>
+            )}
+          </article>
+        )}
+
+        {showKept && kept !== undefined ? (
+          <section className={styles.result} aria-label="Your last answer">
+            <AskedLine text={kept.asked} />
+            <PlanBlock answer={kept.answer} />
+            <AnswerBody
+              answer={kept.answer}
+              threadId={threadId}
+              secondsLeft={undefined}
+              keptAnswer={false}
+              onPickPlace={pickPlace}
+              onRetry={retry}
+            />
+          </section>
+        ) : null}
+      </div>
     </section>
   );
 }

@@ -1,10 +1,11 @@
-// B-09 T039/T040 + review fixes (CR-B-09 #16/#20): the Ask screen. `askApi`'s hooks are mocked
+// B-09 T039/T040 + review fixes (CR-B-09 finding 16/finding 20): the Ask screen. `askApi`'s hooks are mocked
 // (same pattern as test/leads/LeadDetail.test.tsx mocking leadsApi) so these tests exercise only
 // this screen's own rendering and the confirm-lead click guard (never an automatic write), not
 // the tRPC wiring itself (that's askApi.test.tsx, mirroring test/leads/leadsApi.test.tsx).
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { AgentAnswer } from "@crm/shared";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const askMutate = vi.fn();
@@ -13,6 +14,8 @@ let askState: { isPending: boolean; isError: boolean; data: AgentAnswer | undefi
   isError: false,
   data: undefined,
 };
+
+let runInfo: { runId: string | null } | undefined = { runId: "3" };
 
 const confirmMutate = vi.fn();
 let confirmState: {
@@ -25,6 +28,7 @@ let confirmState: {
 vi.mock("../../src/routes/Ask/askApi", () => ({
   useAskAgent: () => ({ mutate: askMutate, ...askState }),
   useConfirmLead: () => ({ mutate: confirmMutate, ...confirmState }),
+  useRunInfo: () => ({ data: runInfo }),
 }));
 
 import { Component as Ask } from "../../src/routes/Ask/Ask";
@@ -98,10 +102,18 @@ function blockedFixture(overrides: Partial<AgentAnswer>): AgentAnswer {
   });
 }
 
-function renderAsk(): ReturnType<typeof render> {
+const QUESTION_LABEL = /^Ask your question in plain English$/;
+
+function Where(): ReactElement {
+  const { pathname, search } = useLocation();
+  return <span data-testid="where">{`${pathname}${search}`}</span>;
+}
+
+function renderAsk(url = "/ask"): ReturnType<typeof render> {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[url]}>
       <Ask />
+      <Where />
     </MemoryRouter>,
   );
 }
@@ -117,12 +129,13 @@ afterEach(() => {
   confirmMutate.mockReset();
   askState = { isPending: false, isError: false, data: undefined };
   confirmState = { isPending: false, isSuccess: false, isError: false, error: null };
+  runInfo = { runId: "3" };
 });
 
 describe("Ask screen", () => {
   it("renders the question input and submits a trimmed question", () => {
     renderAsk();
-    const input = screen.getByLabelText("Question");
+    const input = screen.getByLabelText(QUESTION_LABEL);
     fireEvent.change(input, { target: { value: "  roofs near Pflugerville  " } });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     expect(askMutate).toHaveBeenCalledTimes(1);
@@ -143,7 +156,7 @@ describe("Ask screen", () => {
     expect(askRoot().getAttribute("data-state")).toBe("idle");
   });
 
-  describe("working state (CR #20, CrmAskWorking390 / CrmAgentWorking390/1440)", () => {
+  describe("working state (CR finding 20, CrmAskWorking390 / CrmAgentWorking390/1440)", () => {
     it('shows a progress bar, "Working…" and an elapsed timer; data-state="working"', () => {
       vi.useFakeTimers();
       askState = { ...askState, isPending: true };
@@ -162,7 +175,7 @@ describe("Ask screen", () => {
     it("keeps the question readable (read-only, not disabled) while working", () => {
       askState = { ...askState, isPending: true };
       renderAsk();
-      const input = screen.getByLabelText("Question") as HTMLInputElement;
+      const input = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
       expect(input.readOnly).toBe(true);
       expect(input.disabled).toBe(false);
       expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
@@ -224,7 +237,7 @@ describe("Ask screen", () => {
     );
   });
 
-  describe('"How I read this" (CR #16)', () => {
+  describe('"How I read this" (CR finding 16)', () => {
     it("shows the plan for an answered outcome", () => {
       askState = { ...askState, data: answeredFixture() };
       renderAsk();
@@ -258,7 +271,7 @@ describe("Ask screen", () => {
     });
   });
 
-  describe("confirm lead (CR #16 item 4)", () => {
+  describe("confirm lead (CR finding 16 item 4)", () => {
     it("shows Create lead only for proposed rows, and calls confirmLead only on a click", () => {
       askState = { ...askState, data: answeredFixture() };
       renderAsk();
@@ -310,7 +323,7 @@ describe("Ask screen", () => {
     });
   });
 
-  describe("empty results say why (CR #16 item 2)", () => {
+  describe("empty results say why (CR finding 16 item 2)", () => {
     it("empty_in_scope names the subject, filters and area from the plan, plus exclusions", () => {
       askState = {
         ...askState,
@@ -339,7 +352,7 @@ describe("Ask screen", () => {
         screen.getByText("No open roofing permits, open 10+ years, within 1 mi of Manor."),
       ).toBeTruthy();
       expect(screen.getByText(/2 properties in the area have no roof date/)).toBeTruthy();
-      expect(screen.getByText("coordinates: No coordinates for this parcel (3 rows)")).toBeTruthy();
+      expect(screen.getByText("Coordinates: No coordinates for this parcel (3 rows)")).toBeTruthy();
       expect(screen.queryByText(/Travis County/)).toBeNull();
     });
 
@@ -357,7 +370,7 @@ describe("Ask screen", () => {
     });
   });
 
-  describe("needs_clarification candidates (CR #16 item 3)", () => {
+  describe("needs_clarification candidates (CR finding 16 item 3)", () => {
     const candidates = [
       { name: "Pflugerville", score: 0.88, match: "fuzzy" as const },
       { name: "Manor", score: 0.84, match: "fuzzy" as const },
@@ -389,7 +402,7 @@ describe("Ask screen", () => {
         }),
       };
       renderAsk();
-      fireEvent.change(screen.getByLabelText("Question"), {
+      fireEvent.change(screen.getByLabelText(QUESTION_LABEL), {
         target: { value: "old roofs near pville" },
       });
       fireEvent.click(screen.getByRole("button", { name: "Ask" }));
@@ -408,9 +421,8 @@ describe("Ask screen", () => {
         /couldn't read that question/i,
       );
       expect(screen.queryByText(/How I read this/)).toBeNull();
-      expect(screen.queryAllByRole("button").filter((b) => b.textContent !== "Ask")).toHaveLength(
-        0,
-      );
+      expect(screen.queryByRole("group", { name: "Places I know" })).toBeNull();
+      expect(screen.queryAllByRole("button", { name: /^Use / })).toHaveLength(0);
     });
   });
 
@@ -452,7 +464,7 @@ describe("Ask screen", () => {
       renderAsk();
       expect(askRoot().getAttribute("data-state")).toBe("throttled");
       expect(screen.getByRole("alert").textContent).toMatch(/Ask again in 3 s/);
-      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "again" } });
+      fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: "again" } });
       expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
       act(() => {
         vi.advanceTimersByTime(1000);
@@ -482,10 +494,156 @@ describe("Ask screen", () => {
       expect(askRoot().getAttribute("data-state")).toBe("timed_out");
       expect(screen.getByRole("alert").textContent).toMatch(/Took too long/);
       expect(screen.queryByText(/25 s/)).toBeNull();
-      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "slow one" } });
+      fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: "slow one" } });
       fireEvent.click(screen.getByRole("button", { name: "Try again" }));
       const [arg] = askMutate.mock.calls[0] as [{ question: string }];
       expect(arg.question).toBe("slow one");
+    });
+  });
+
+  describe("composer (CrmAsk1440)", () => {
+    it("names the promoted run it cites, never an invented one", () => {
+      renderAsk();
+      expect(screen.getByText("Signed in · answers cite CountyLens run 3")).toBeTruthy();
+      cleanup();
+      runInfo = undefined;
+      renderAsk();
+      expect(screen.queryByText(/run 3/)).toBeNull();
+      expect(screen.getByText(/answers cite the published CountyLens run/)).toBeTruthy();
+    });
+
+    it("a suggestion fills the box and asks nothing by itself", () => {
+      renderAsk();
+      const first = screen.getByRole("list", { name: "Suggestions" }).querySelector("button");
+      fireEvent.click(first as HTMLButtonElement);
+      const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
+      expect(box.value).toMatch(/^Show me open roofing permits/);
+      expect(askMutate).not.toHaveBeenCalled();
+    });
+
+    it("Enter asks, Shift+Enter keeps a new line", () => {
+      renderAsk();
+      const box = screen.getByLabelText(QUESTION_LABEL);
+      fireEvent.change(box, { target: { value: "roofs near Manor" } });
+      fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+      expect(askMutate).not.toHaveBeenCalled();
+      fireEvent.keyDown(box, { key: "Enter" });
+      expect(askMutate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("numbered sources (CrmAsk390/768/1440)", () => {
+    it("each claim carries the numbers of the sources it cites, and each number has a row", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      const ref = screen.getByRole("link", { name: "Source 1" });
+      expect(ref.getAttribute("href")).toBe("#ask-source-1");
+      const sources = screen.getByRole("list", { name: "Sources" });
+      expect(sources.querySelector("#ask-source-1")?.textContent).toMatch(/TCAD 0201885122/);
+    });
+
+    it("puts Create lead on the source row of the proposed property", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      const row = document.querySelector("#ask-source-1") as HTMLElement;
+      expect(within(row).getByRole("button", { name: "Create lead" })).toBeTruthy();
+    });
+
+    it("a proposal no claim cites still gets its own Create lead row", () => {
+      askState = {
+        ...askState,
+        data: answeredFixture({ proposals: [{ tcadId: "7777777777", alreadyLead: false }] }),
+      };
+      renderAsk();
+      const list = screen.getByRole("list", { name: "Create lead" });
+      expect(within(list).getByText("TCAD 7777777777")).toBeTruthy();
+    });
+  });
+
+  describe("budget outcomes keep the last real answer (CrmAskThrottled390)", () => {
+    it("shows the last answer under the throttle banner and says so", () => {
+      const first = answeredFixture();
+      askMutate.mockImplementation((_vars, options?: { onSuccess?: (a: AgentAnswer) => void }) =>
+        options?.onSuccess?.(first),
+      );
+      askState = { ...askState, data: first };
+      const view = renderAsk();
+      fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: "first" } });
+      fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+      askState = {
+        ...askState,
+        data: blockedFixture({ outcome: "rate_limited", retryAfterSec: 40 }),
+      };
+      view.rerender(
+        <MemoryRouter>
+          <Ask />
+        </MemoryRouter>,
+      );
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /Ask again in 40 s\. Your last answer, the map and your leads keep working/,
+      );
+      const last = screen.getByRole("region", { name: "Your last answer" });
+      expect(
+        within(last).getByText(/3 properties near Pflugerville have roofs over 20 years old/),
+      ).toBeTruthy();
+    });
+
+    it("with no earlier answer there is nothing to keep and the copy does not claim one", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({ outcome: "rate_limited", retryAfterSec: 40 }),
+      };
+      renderAsk();
+      expect(screen.queryByRole("region", { name: "Your last answer" })).toBeNull();
+      expect(screen.getByRole("alert").textContent).toMatch(/^Ask again in 40 s\. The map and/);
+    });
+  });
+
+  describe("?q= prefill from the first-visit card", () => {
+    const Q = "Show me open roofing permits older than five years within five miles of Manor";
+
+    it("prefills the question box and focuses it", () => {
+      renderAsk(`/ask?q=${encodeURIComponent(Q)}`);
+      const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
+      expect(box.value).toBe(Q);
+      expect(document.activeElement).toBe(box);
+    });
+
+    it("never asks by itself", () => {
+      renderAsk(`/ask?q=${encodeURIComponent(Q)}`);
+      expect(askMutate).not.toHaveBeenCalled();
+      expect(askRoot().getAttribute("data-state")).toBe("idle");
+    });
+
+    it("removes the param from the URL, keeping the path and other params", () => {
+      renderAsk(`/ask?q=${encodeURIComponent(Q)}&first=1`);
+      expect(screen.getByTestId("where").textContent).toBe("/ask?first=1");
+      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(Q);
+    });
+
+    it("trims the text", () => {
+      renderAsk(`/ask?q=${encodeURIComponent("  roofs near Manor  ")}`);
+      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(
+        "roofs near Manor",
+      );
+    });
+
+    it.each([
+      ["empty", ""],
+      ["blank", "%20%20"],
+      ["oversize", "x".repeat(501)],
+    ])("ignores an %s question but still clears the param", (_name, value) => {
+      renderAsk(`/ask?q=${value}`);
+      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe("");
+      expect(screen.getByTestId("where").textContent).toBe("/ask");
+      expect(askMutate).not.toHaveBeenCalled();
+    });
+
+    it("accepts exactly 500 characters", () => {
+      renderAsk(`/ask?q=${"y".repeat(500)}`);
+      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toHaveLength(
+        500,
+      );
     });
   });
 });
