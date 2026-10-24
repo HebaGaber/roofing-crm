@@ -14,9 +14,13 @@
 2. **Data source: Task A's Run 1 manifest by direct CID, not the Elephant MCP.** CID
    `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu` (441,961 properties / 17,387 permits) is pinned
    and real, but Atlas registration (the catalog step that makes it discoverable by county name through the
-   MCP) hasn't happened yet. Read property/permit data directly by this CID. **Swap-back condition:** when the
-   user confirms Atlas registration for Travis County is complete, switch the data-access pointer back to the
-   MCP/`listPublishedCounties` path (AC-7, no architecture change expected).
+   MCP) hasn't happened yet. Read property/permit data directly by this CID. **2026-10-24, user decision: not
+   waiting on Atlas registration, and not pursuing the MCP swap-back for this assessment round.** Confirmed
+   with the user this doesn't cost assessment points — constitution B1 explicitly allows "by CID) or its MCP"
+   as two sanctioned access methods, this is already recorded as an accepted, justified, reversible deviation
+   (`docs/architecture-constitution.md` §13), and what's scored is the real data being present (SC-005), not
+   which lookup path reached it. The swap-back condition stays documented in §13 for the record, but is not an
+   open action item — direct-CID read is the final data path for this round, not an interim one.
 3. **Two added ACs beyond the original walkthrough:** AC-7 (the data-switch deviation above, now in
    `stories/B-09-agent-hardening.md` and `spec.md`) and AC-8 (targeted prototype re-audit — `audino` + `smeargle`
    re-diff every screen against `design/screens/` for drift since B-03's last clean review, fix or defer each
