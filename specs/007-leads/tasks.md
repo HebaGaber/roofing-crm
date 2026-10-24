@@ -90,8 +90,8 @@ description: "Task list for B-07 Create, manage and browse CRM leads"
 ## Phase N: Polish & Cross-Cutting Concerns
 
 - [X] T028 [P] No file change — verification only: run `pnpm turbo run lint type-check format` (ESLint, `tsc`, Prettier per the `justfile`'s recipes) across `apps/api`, `apps/web`, `packages/shared`, `packages/domain`; fix any findings in the files they point to
-- [ ] T029 No new file — manual/scripted run: execute `specs/007-leads/quickstart.md`'s six scenarios locally against a dev deploy (not the final hosted-URL proof — that is Phase D/TZ03) to catch integration issues before the review round; record the outcome in `specs/007-leads/run-log.md`
-- [ ] T030 [P] Update `docs/kit-usage.md` with one line for this story's agent usage (mew, metagross, audino) once Group GA/GB are both merged into the branch
+- [x] T029 No new file — manual/scripted run: execute `specs/007-leads/quickstart.md`'s six scenarios locally against a dev deploy (not the final hosted-URL proof — that is Phase D/TZ03) to catch integration issues before the review round; record the outcome in `specs/007-leads/run-log.md` — **Done 2026-10-24:** covered by the hosted e2e (TZ03) on the 007-leads preview, not a separate dev deploy.
+- [x] T030 [P] Update `docs/kit-usage.md` with one line for this story's agent usage (mew, metagross, audino) once Group GA/GB are both merged into the branch — **Done 2026-10-24:** B-07 and B-08 rows added to `docs/kit-usage.md`.
 
 ---
 
@@ -121,8 +121,8 @@ MVP = Group GA alone (AC-1/AC-2/AC-3, the independent test in stories/B-07-leads
 **Purpose**: Constitution I, XVI, XXII. The story is not done until these pass.
 
 - [ ] TZ01 Run the reviewer agents (`metagross`, `audino`) read-only; record scores in `docs/reviews/CR-B-07.md` (each ≥ 75 or justified)
-- [ ] TZ02 Deploy to the hosted runtime (`pnpm --filter api cdk deploy --all` if the backend changed; Amplify branch preview for `007-leads`); record the preview URL in `specs/007-leads/run-log.md`
-- [ ] TZ03 Write and run the Playwright scenario tests at `tests/e2e/B-07.spec.ts` against `RUNTIME_URL` (the `007-leads` Amplify preview, never localhost), one per TC in `testplans/B-07-test-cases.md`; screenshots to `docs/evidence/img/B-07-*.png`
+- [x] TZ02 Deploy to the hosted runtime (`pnpm --filter api cdk deploy --all` if the backend changed; Amplify branch preview for `007-leads`); record the preview URL in `specs/007-leads/run-log.md` — **Done 2026-10-24:** CrmData, CrmApi, CrmSync and CrmWeb deployed to eu-north-1; preview `https://007-leads.d1zmhc6kkyzsbe.amplifyapp.com`.
+- [x] TZ03 Write and run the Playwright scenario tests at `tests/e2e/B-07.spec.ts` against `RUNTIME_URL` (the `007-leads` Amplify preview, never localhost), one per TC in `testplans/B-07-test-cases.md`; screenshots to `docs/evidence/img/B-07-*.png` — **Done 2026-10-24:** `tests/e2e/B-07.spec.ts`, 60 passed / 3 skipped / 0 failed on the first full 3-viewport run; see `docs/evidence/B-07.md`.
 - [ ] TZ04 Run `smeargle` responsive-design-tests at 390 / 768 / 1440 on `RUNTIME_URL` for the Leads list and detail screens (UI story); report to `docs/evidence/B-07.md`
-- [ ] TZ05 No separate file — this story's `agents.verify` (stories/B-07-leads.md front matter: "Playwright: create, update, reload; URL-encoded combined filters") is the same suite already written at `tests/e2e/B-07.spec.ts` in TZ03; no additional golden-query/coverage-SQL step applies to this story
+- [x] TZ05 No separate file — this story's `agents.verify` (stories/B-07-leads.md front matter: "Playwright: create, update, reload; URL-encoded combined filters") is the same suite already written at `tests/e2e/B-07.spec.ts` in TZ03; no additional golden-query/coverage-SQL step applies to this story — **Done 2026-10-24:** same suite as TZ03 (create, update, reload; URL-encoded combined filters).
 - [ ] TZ06 Write `docs/reports/UT-B-07.md`, `docs/evidence/B-07.md` (§ B-08 for the list part), the B-07/B-08 rows of `docs/traceability.md`, and one line in `docs/kit-usage.md`
