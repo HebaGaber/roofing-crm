@@ -123,4 +123,24 @@ describe("threadStore", () => {
     expect(await store.lastPlan("thread-new", "rep-1")).toBeUndefined();
     expect(await store.lastPlan("thread-1", "rep-1")).toBeUndefined();
   });
+
+  it("proposedAmong: one consistent read, returns only ids proposed in this thread to this actor", async () => {
+    ddbMock.on(GetCommand).resolves({
+      Item: { pk: "THREAD#thread-1", actorId: "rep-1", proposedTcadIds: new Set(["a", "b"]) },
+    });
+    const store = makeStore();
+
+    expect([...(await store.proposedAmong("thread-1", "rep-1", ["a", "c", "b"]))].sort()).toEqual([
+      "a",
+      "b",
+    ]);
+    expect((await store.proposedAmong("thread-1", "rep-2", ["a"])).size).toBe(0);
+    expect(ddbMock.commandCalls(GetCommand)).toHaveLength(2);
+    expect(ddbMock.commandCalls(GetCommand)[0]?.args[0]?.input.ConsistentRead).toBe(true);
+  });
+
+  it("proposedAmong: empty for an unknown thread", async () => {
+    ddbMock.on(GetCommand).resolves({});
+    expect((await makeStore().proposedAmong("nope", "rep-1", ["a"])).size).toBe(0);
+  });
 });

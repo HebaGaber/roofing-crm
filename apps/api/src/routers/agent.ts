@@ -31,6 +31,9 @@ import type { SpendReservation } from "../agent/spendCap.js";
 import { requireUsageGuard, type UsageGuard } from "../agent/usageGuard.js";
 import { meterModel, meteredCostCents, type UsageMeter } from "../agent/usageMeter.js";
 import { OverBudgetError, RateLimitedError } from "../agentErrors.js";
+import { IndexNotReadyError, type PropertyResult } from "../adapters/duckDbParquet.js";
+import { LeadAlreadyExistsError } from "../leadErrors.js";
+import type { CreateLeadInput } from "../services/leads.js";
 import { emptyAnswer, emptyPlan, runAsk } from "../agent/composeAnswer.js";
 
 const obs = createObservability("crm-api");
@@ -39,6 +42,23 @@ const AskInput = z.object({
   question: z.string().trim().min(1).max(500),
   threadId: z.string().min(1),
 });
+
+/** Bound on one `agent.confirmLeads` batch, matching `leads.createMany`. */
+const CONFIRM_LEADS_MAX = 25;
+/** Concurrent lead writes inside one batch. */
+const CONFIRM_LEADS_CONCURRENCY = 3;
+
+const ConfirmLeadsInput = z.object({
+  threadId: z.string().min(1),
+  tcadIds: z.array(z.string().min(1)).min(1).max(CONFIRM_LEADS_MAX),
+});
+
+type ConfirmFailureCode =
+  | "NOT_PROPOSED"
+  | "NOT_FOUND"
+  | "NO_COORDINATES"
+  | "INDEX_NOT_READY"
+  | "CREATE_FAILED";
 
 const ConfirmLeadInput = z.object({
   threadId: z.string().min(1),
@@ -200,6 +220,79 @@ async function readLastPlan(
   }
 }
 
+function confirmError(code: "FORBIDDEN" | "CONFLICT", appCode: string, message: string): TRPCError {
+  return new TRPCError({ code, message, cause: causeWithCode(appCode, message) });
+}
+
+function noCoordinatesError(): TRPCError {
+  // CR finding 6a: never invent coordinates. The lead schema requires lat/lon and the map path's
+  // `leads.create` offers no create at all for a property without them, so the agent path refuses.
+  const message = "This property has no published coordinates, so it can't be made a lead.";
+  return new TRPCError({
+    code: "PRECONDITION_FAILED",
+    message,
+    cause: causeWithCode("NO_COORDINATES", message),
+  });
+}
+
+/** CR finding 6c: the per-user confirm rate limit (one call per `confirmLead` / `confirmLeads`). */
+async function checkConfirmRateLimit(guard: UsageGuard, userId: string): Promise<void> {
+  try {
+    await guard.rateLimiter.check(userId, "confirm");
+  } catch (error) {
+    if (error instanceof RateLimitedError) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: error.message,
+        cause: causeWithCode("RATE_LIMITED", error.message),
+      });
+    }
+    throw error;
+  }
+}
+
+/** The lead for a proposed property, built only from the index row (never from client input), or
+ *  undefined when the row has no coordinates. */
+function leadInputFromProperty(
+  tcadId: string,
+  property: PropertyResult,
+): CreateLeadInput | undefined {
+  if (property.latitude === null || property.longitude === null) return undefined;
+  return {
+    fips: gazetteer.TRAVIS_FIPS,
+    requestIdentifier: tcadId,
+    address: `TCAD ${tcadId}`,
+    lat: property.latitude,
+    lon: property.longitude,
+    signals: {
+      ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
+      roofAgeBasis: property.roofAgeBasis,
+    },
+    // Constitution B2 / AC-7: the lead records the manifest this property row actually came from,
+    // exactly as `leads.create` on the map path does. Never a pinned constant.
+    sourceManifestCid: property.sourceManifestCid,
+    createdFrom: "agent",
+  };
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight; results keep input order. */
+async function mapBounded<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
 /** `apps/api/src/services/agent/tools.ts`'s `proposeLeads` only ever reads (a `LeadRepo.get` dup
  *  check) — this stub is used only when a request's context hasn't wired a real `LeadRepo` (a
  *  test exercising `agent.ask` without ever calling `proposeLeads`), and itself still never
@@ -327,29 +420,15 @@ export const agentRouter = router({
   confirmLead: publicProcedure.input(ConfirmLeadInput).mutation(async ({ input, ctx }) => {
     const userId = requireUserId(ctx);
     const guard = guardOrFail(ctx.requestId);
-
-    // CR finding 6c: same per-user rate limit as `agent.ask` (its own window).
-    try {
-      await guard.rateLimiter.check(userId, "confirm");
-    } catch (error) {
-      if (error instanceof RateLimitedError) {
-        throw new TRPCError({
-          code: "TOO_MANY_REQUESTS",
-          message: error.message,
-          cause: causeWithCode("RATE_LIMITED", error.message),
-        });
-      }
-      throw error;
-    }
+    await checkConfirmRateLimit(guard, userId);
 
     // CR finding 6b: only a tcadId the agent actually proposed in this thread, to this rep.
     if (!(await guard.threadStore.wasProposed(input.threadId, userId, input.tcadId))) {
-      const message = "That property wasn't proposed in this conversation.";
-      throw new TRPCError({
-        code: "FORBIDDEN",
-        message,
-        cause: causeWithCode("NOT_PROPOSED", message),
-      });
+      throw confirmError(
+        "FORBIDDEN",
+        "NOT_PROPOSED",
+        "That property wasn't proposed in this conversation.",
+      );
     }
 
     const leadIndex = requireLeadIndex(ctx);
@@ -357,37 +436,88 @@ export const agentRouter = router({
     if (property === undefined) {
       throw new TRPCError({ code: "NOT_FOUND", message: `No property for tcadId ${input.tcadId}` });
     }
-    // CR finding 6a: never invent coordinates. The lead schema requires lat/lon and the map
-    // path's `leads.create` (apps/web LeadCreateAction's `toCreateInput`) offers no create at all
-    // for a property without them — so this path refuses, typed, instead of writing (0,0).
-    if (property.latitude === null || property.longitude === null) {
-      const message = "This property has no published coordinates, so it can't be made a lead.";
-      throw new TRPCError({
-        code: "PRECONDITION_FAILED",
-        message,
-        cause: causeWithCode("NO_COORDINATES", message),
-      });
+    const lead = leadInputFromProperty(input.tcadId, property);
+    if (lead === undefined) throw noCoordinatesError();
+    try {
+      return await requireLeadService(ctx).create(lead, userId);
+    } catch (error) {
+      // A duplicate is a valid outcome (contracts/agent-api.md), mapped exactly as `leads.create`
+      // maps it, not a 500.
+      if (error instanceof LeadAlreadyExistsError) {
+        throw confirmError("CONFLICT", "ALREADY_EXISTS", "Already a lead");
+      }
+      throw error;
     }
-    return requireLeadService(ctx).create(
-      {
-        fips: gazetteer.TRAVIS_FIPS,
-        requestIdentifier: input.tcadId,
-        address: `TCAD ${input.tcadId}`,
-        lat: property.latitude,
-        lon: property.longitude,
-        signals: {
-          ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
-          roofAgeBasis: property.roofAgeBasis,
-        },
-        // Constitution B2 / AC-7: the lead records the manifest this property row actually came
-        // from — the row's own provenance, exactly as `leads.create` on the map path does
-        // (apps/web LeadCreateAction sends `property.sourceManifestCid`). Never a pinned constant:
-        // switching Task A runs is a `DATA_MANIFEST_CID` config change + deploy, not a code edit.
-        sourceManifestCid: property.sourceManifestCid,
-        createdFrom: "agent",
+  }),
+
+  /** Ask-in-map: confirm several proposals from one thread (contracts/agent-confirm-leads.md).
+   *  Every check of `confirmLead` applies; the rate limit is one `confirm` call per batch. */
+  confirmLeads: publicProcedure.input(ConfirmLeadsInput).mutation(async ({ input, ctx }) => {
+    const userId = requireUserId(ctx);
+    const guard = guardOrFail(ctx.requestId);
+    await checkConfirmRateLimit(guard, userId);
+
+    const tcadIds = [...new Set(input.tcadIds)];
+    const proposed = await guard.threadStore.proposedAmong(input.threadId, userId, tcadIds);
+    const leadIndex = requireLeadIndex(ctx);
+    const leadService = requireLeadService(ctx);
+
+    type Outcome =
+      | {
+          readonly kind: "created";
+          readonly tcadId: string;
+          readonly leadKey: string;
+          readonly leadId: string;
+        }
+      | { readonly kind: "already"; readonly tcadId: string }
+      | { readonly kind: "failed"; readonly tcadId: string; readonly code: ConfirmFailureCode };
+    const fail = (tcadId: string, code: ConfirmFailureCode): Outcome => ({
+      kind: "failed",
+      tcadId,
+      code,
+    });
+
+    const outcomes = await mapBounded(
+      tcadIds,
+      CONFIRM_LEADS_CONCURRENCY,
+      async (tcadId): Promise<Outcome> => {
+        if (!proposed.has(tcadId)) return fail(tcadId, "NOT_PROPOSED");
+        try {
+          const property = await propertyByTcadId(leadIndex, tcadId);
+          if (property === undefined) return fail(tcadId, "NOT_FOUND");
+          const lead = leadInputFromProperty(tcadId, property);
+          if (lead === undefined) return fail(tcadId, "NO_COORDINATES");
+          const created = await leadService.create(lead, userId);
+          return { kind: "created", tcadId, leadKey: created.leadKey, leadId: created.leadId };
+        } catch (error) {
+          if (error instanceof LeadAlreadyExistsError) return { kind: "already", tcadId };
+          const code = error instanceof IndexNotReadyError ? "INDEX_NOT_READY" : "CREATE_FAILED";
+          obs.logger.error("agent.confirmLeads item failed", {
+            requestId: ctx.requestId,
+            code,
+            reason: error instanceof Error ? error.name : "unknown",
+          });
+          return fail(tcadId, code);
+        }
       },
-      userId,
     );
+
+    const result = {
+      created: outcomes.flatMap((o) =>
+        o.kind === "created" ? [{ tcadId: o.tcadId, leadKey: o.leadKey, leadId: o.leadId }] : [],
+      ),
+      alreadyLeads: outcomes.flatMap((o) => (o.kind === "already" ? [o.tcadId] : [])),
+      failed: outcomes.flatMap((o) =>
+        o.kind === "failed" ? [{ tcadId: o.tcadId, code: o.code }] : [],
+      ),
+    };
+    obs.logger.info("agent.confirmLeads done", {
+      requestId: ctx.requestId,
+      created: result.created.length,
+      alreadyLeads: result.alreadyLeads.length,
+      failed: result.failed.length,
+    });
+    return result;
   }),
 });
 

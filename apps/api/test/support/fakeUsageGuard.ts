@@ -53,11 +53,17 @@ export function fakeUsageGuard(options: FakeUsageGuardOptions = {}) {
   const lastPlan = vi.fn(async (threadId: string, actorId: string) =>
     plans.get(`${threadId}|${actorId}`),
   );
+  const proposedAmong = vi.fn(
+    async (threadId: string, actorId: string, tcadIds: readonly string[]) => {
+      const set = proposed.get(`${threadId}|${actorId}`);
+      return new Set(tcadIds.filter((id) => set?.has(id) ?? false));
+    },
+  );
   const guard: UsageGuard = {
     rateLimiter: { check },
     spendCap: { reserve, reconcile },
-    threadStore: { recordTurn, wasProposed, lastPlan },
+    threadStore: { recordTurn, wasProposed, proposedAmong, lastPlan },
     price: priceForModel("eu.anthropic.claude-sonnet-4-6"),
   };
-  return { guard, check, reserve, reconcile, recordTurn, wasProposed, lastPlan };
+  return { guard, check, reserve, reconcile, recordTurn, wasProposed, proposedAmong, lastPlan };
 }

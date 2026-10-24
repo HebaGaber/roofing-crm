@@ -34,6 +34,13 @@ export interface ThreadTurn {
 export interface ThreadStore {
   recordTurn(threadId: string, actorId: string, turn: ThreadTurn): Promise<void>;
   wasProposed(threadId: string, actorId: string, tcadId: string): Promise<boolean>;
+  /** The subset of `tcadIds` proposed in this thread to this actor, from one consistent read
+   *  (`agent.confirmLeads` checks a whole batch against a single item). */
+  proposedAmong(
+    threadId: string,
+    actorId: string,
+    tcadIds: readonly string[],
+  ): Promise<ReadonlySet<string>>;
   /** The thread's last recorded plan, for its owner only; undefined for a new thread, another
    *  user's thread, or a stored plan that no longer parses as the current `QueryPlan`. */
   lastPlan(threadId: string, actorId: string): Promise<QueryPlan | undefined>;
@@ -87,7 +94,7 @@ export function createThreadStore(deps: ThreadStoreDeps): ThreadStore {
       }
     },
 
-    async wasProposed(threadId, actorId, tcadId) {
+    async proposedAmong(threadId, actorId, tcadIds) {
       const { Item } = await client.send(
         new GetCommand({
           TableName: tableName,
@@ -96,9 +103,14 @@ export function createThreadStore(deps: ThreadStoreDeps): ThreadStore {
           ProjectionExpression: "actorId, proposedTcadIds",
         }),
       );
-      if (Item === undefined || Item.actorId !== actorId) return false;
+      if (Item === undefined || Item.actorId !== actorId) return new Set<string>();
       const proposed: unknown = Item.proposedTcadIds;
-      return proposed instanceof Set && proposed.has(tcadId);
+      if (!(proposed instanceof Set)) return new Set<string>();
+      return new Set(tcadIds.filter((id) => proposed.has(id)));
+    },
+
+    async wasProposed(threadId, actorId, tcadId) {
+      return (await this.proposedAmong(threadId, actorId, [tcadId])).has(tcadId);
     },
 
     async lastPlan(threadId, actorId) {
