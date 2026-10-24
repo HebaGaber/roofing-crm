@@ -1,8 +1,8 @@
-// B-09 T039/T040: the Ask screen. `askApi`'s hooks are mocked (same pattern as
-// test/leads/LeadDetail.test.tsx mocking leadsApi) so these tests exercise only this screen's own
-// rendering and the confirm-lead click guard (never an automatic write), not the tRPC wiring
-// itself (that's askApi.test.tsx, mirroring test/leads/leadsApi.test.tsx).
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+// B-09 T039/T040 + review fixes (CR-B-09 #16/#20): the Ask screen. `askApi`'s hooks are mocked
+// (same pattern as test/leads/LeadDetail.test.tsx mocking leadsApi) so these tests exercise only
+// this screen's own rendering and the confirm-lead click guard (never an automatic write), not
+// the tRPC wiring itself (that's askApi.test.tsx, mirroring test/leads/leadsApi.test.tsx).
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { AgentAnswer } from "@crm/shared";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,11 +15,12 @@ let askState: { isPending: boolean; isError: boolean; data: AgentAnswer | undefi
 };
 
 const confirmMutate = vi.fn();
-let confirmState: { isPending: boolean; isSuccess: boolean; isError: boolean } = {
-  isPending: false,
-  isSuccess: false,
-  isError: false,
-};
+let confirmState: {
+  isPending: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  error: unknown;
+} = { isPending: false, isSuccess: false, isError: false, error: null };
 
 vi.mock("../../src/routes/Ask/askApi", () => ({
   useAskAgent: () => ({ mutate: askMutate, ...askState }),
@@ -48,6 +49,7 @@ function answeredFixture(overrides: Partial<AgentAnswer> = {}): AgentAnswer {
       {
         id: 1,
         kind: "property",
+        tcadId: "0201885122",
         propertyCid: "bafyproperty0000000000000000000000000000000000000000000001",
         sourceUrl: null,
         capturedAt: "2026-10-20T00:00:00Z",
@@ -79,20 +81,42 @@ function answeredFixture(overrides: Partial<AgentAnswer> = {}): AgentAnswer {
   };
 }
 
-function renderAsk(): void {
-  render(
+/** A non-answer outcome: no claims, citations or proposals. */
+function blockedFixture(overrides: Partial<AgentAnswer>): AgentAnswer {
+  return answeredFixture({
+    claims: [],
+    citations: [],
+    proposals: undefined,
+    counts: {
+      matched: 0,
+      shown: 0,
+      excludedNoCoordinates: 0,
+      excludedNoRoofDate: 0,
+      truncated: false,
+    },
+    ...overrides,
+  });
+}
+
+function renderAsk(): ReturnType<typeof render> {
+  return render(
     <MemoryRouter>
       <Ask />
     </MemoryRouter>,
   );
 }
 
+function askRoot(): HTMLElement {
+  return screen.getByLabelText("Ask");
+}
+
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   askMutate.mockReset();
   confirmMutate.mockReset();
   askState = { isPending: false, isError: false, data: undefined };
-  confirmState = { isPending: false, isSuccess: false, isError: false };
+  confirmState = { isPending: false, isSuccess: false, isError: false, error: null };
 });
 
 describe("Ask screen", () => {
@@ -114,96 +138,354 @@ describe("Ask screen", () => {
     expect(askMutate).not.toHaveBeenCalled();
   });
 
-  it('shows the "Working…" state while the mutation is pending, data-state="working"', () => {
-    askState = { ...askState, isPending: true };
-    renderAsk();
-    expect(screen.getByText("Working…")).toBeTruthy();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("working");
-  });
-
   it("starts idle before anything is asked", () => {
     renderAsk();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("idle");
+    expect(askRoot().getAttribute("data-state")).toBe("idle");
+  });
+
+  describe("working state (CR #20, CrmAskWorking390 / CrmAgentWorking390/1440)", () => {
+    it('shows a progress bar, "Working…" and an elapsed timer; data-state="working"', () => {
+      vi.useFakeTimers();
+      askState = { ...askState, isPending: true };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("working");
+      expect(screen.getByRole("progressbar", { name: "Working" })).toBeTruthy();
+      expect(screen.getByText("Working…")).toBeTruthy();
+      const timer = screen.getByRole("timer");
+      expect(timer.textContent).toBe("0 s");
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+      expect(screen.getByRole("timer").textContent).toBe("3 s");
+    });
+
+    it("keeps the question readable (read-only, not disabled) while working", () => {
+      askState = { ...askState, isPending: true };
+      renderAsk();
+      const input = screen.getByLabelText("Question") as HTMLInputElement;
+      expect(input.readOnly).toBe(true);
+      expect(input.disabled).toBe(false);
+      expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
+    });
+
+    it("announces progress through the one polite live region", () => {
+      askState = { ...askState, isPending: true };
+      renderAsk();
+      const live = screen.getByRole("status");
+      expect(live.getAttribute("aria-live")).toBe("polite");
+      expect(live.textContent).toMatch(/Working on your question/);
+    });
+  });
+
+  describe("result heading", () => {
+    it("moves focus to the result heading and announces it in the live region", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      const heading = screen.getByRole("heading", { level: 3 });
+      expect(document.activeElement).toBe(heading);
+      expect(screen.getByRole("status").textContent).toBe(heading.textContent);
+    });
   });
 
   it('renders an answered response\'s claims and citations, data-state="answer"', () => {
     askState = { ...askState, data: answeredFixture() };
     renderAsk();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("answer");
+    expect(askRoot().getAttribute("data-state")).toBe("answer");
     expect(
       screen.getByText("3 properties near Pflugerville have roofs over 20 years old."),
     ).toBeTruthy();
-    // the citation shows the property's CID (truncated text, full value in data-cid)
     expect(
       screen.getByText(
         (_, el) => el?.getAttribute("data-cid") === answeredFixture().citations[0]?.propertyCid,
       ),
     ).toBeTruthy();
-    // "open on map" links to the map route selecting that property
     const link = screen.getByRole("link", { name: "Open on map" });
     expect(link.getAttribute("href")).toContain(
       encodeURIComponent(answeredFixture().citations[0]?.propertyCid ?? ""),
     );
   });
 
-  it('shows "How I read this" from the returned plan (T059, AC-8 re-diff fix)', () => {
-    askState = { ...askState, data: answeredFixture() };
-    renderAsk();
-    expect(screen.getByText(/How I read this:/)).toBeTruthy();
-    expect(screen.getByText(/within 5 mi of Pflugerville/)).toBeTruthy();
-  });
-
-  it("shows the confirm-lead card and calls confirmLead only on an explicit click", () => {
-    askState = { ...askState, data: answeredFixture() };
-    renderAsk();
-    expect(screen.getByText("TCAD 0201885122")).toBeTruthy();
-    // never called automatically just by rendering the proposal
-    expect(confirmMutate).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
-    expect(confirmMutate).toHaveBeenCalledTimes(1);
-    const [callArg] = confirmMutate.mock.calls[0] as [{ threadId: string; tcadId: string }];
-    expect(callArg.tcadId).toBe("0201885122");
-    expect(typeof callArg.threadId).toBe("string");
-  });
-
-  it("shows an already-a-lead pill instead of a Create button when alreadyLead is true", () => {
+  it("keys claims by a stable id, so two claims with the same text are both rendered", () => {
     askState = {
       ...askState,
-      data: answeredFixture({ proposals: [{ tcadId: "9999999999", alreadyLead: true }] }),
+      data: answeredFixture({
+        claims: [
+          { text: "Same text.", citationIds: [1] },
+          { text: "Other text.", citationIds: [1] },
+        ],
+      }),
     };
     renderAsk();
-    expect(screen.getByText(/already a lead/i)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Create lead" })).toBeNull();
+    const claims = screen.getByRole("list", { name: "Answer" });
+    const items = claims.querySelectorAll("[data-claim-id]");
+    expect(items).toHaveLength(2);
+    expect(items[0]?.getAttribute("data-claim-id")).not.toBe(
+      items[1]?.getAttribute("data-claim-id"),
+    );
   });
 
-  it('maps empty_in_scope to data-state="no_results" with an honest empty message', () => {
-    askState = {
-      ...askState,
-      data: answeredFixture({ outcome: "empty_in_scope", claims: [], proposals: undefined }),
-    };
-    renderAsk();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("no_results");
-    expect(screen.getByText(/found no properties that match/i)).toBeTruthy();
+  describe('"How I read this" (CR #16)', () => {
+    it("shows the plan for an answered outcome", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      expect(screen.getByText(/How I read this:/)).toBeTruthy();
+      expect(screen.getByText(/within 5 mi of Pflugerville/)).toBeTruthy();
+    });
+
+    it.each(["rate_limited", "paused", "timed_out"] as const)(
+      "is not shown for %s (no model plan)",
+      (outcome) => {
+        askState = { ...askState, data: blockedFixture({ outcome }) };
+        renderAsk();
+        expect(screen.queryByText(/How I read this/)).toBeNull();
+      },
+    );
+
+    it("is not shown when the agent call itself failed", () => {
+      askState = { ...askState, isError: true };
+      renderAsk();
+      expect(screen.queryByText(/How I read this/)).toBeNull();
+      expect(screen.getByRole("alert").textContent).toMatch(/could not answer/);
+    });
+
+    it('marks a follow-up whose area was inherited ("area from your last question")', () => {
+      askState = {
+        ...askState,
+        data: answeredFixture({ plan: { ...PLAN, slotSources: { area: "inherited" } } }),
+      };
+      renderAsk();
+      expect(screen.getByText(/area from your last question/i)).toBeTruthy();
+    });
   });
 
-  it('maps needs_clarification to data-state="low_confidence" without inventing candidate buttons', () => {
-    askState = {
-      ...askState,
-      data: answeredFixture({ outcome: "needs_clarification", claims: [], proposals: undefined }),
-    };
-    renderAsk();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("low_confidence");
-    expect(screen.getByText(/not sure which place you meant/i)).toBeTruthy();
-    expect(screen.queryAllByRole("button").filter((b) => b.textContent !== "Ask")).toHaveLength(0);
+  describe("confirm lead (CR #16 item 4)", () => {
+    it("shows Create lead only for proposed rows, and calls confirmLead only on a click", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      expect(screen.getByText("TCAD 0201885122")).toBeTruthy();
+      expect(confirmMutate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
+      expect(confirmMutate).toHaveBeenCalledTimes(1);
+      const [callArg] = confirmMutate.mock.calls[0] as [{ threadId: string; tcadId: string }];
+      expect(callArg.tcadId).toBe("0201885122");
+      expect(typeof callArg.threadId).toBe("string");
+    });
+
+    it("offers no Create lead for cited rows the answer did not propose", () => {
+      askState = { ...askState, data: answeredFixture({ proposals: undefined }) };
+      renderAsk();
+      expect(screen.queryByRole("button", { name: "Create lead" })).toBeNull();
+    });
+
+    it("shows an already-a-lead pill instead of a Create button when alreadyLead is true", () => {
+      askState = {
+        ...askState,
+        data: answeredFixture({ proposals: [{ tcadId: "9999999999", alreadyLead: true }] }),
+      };
+      renderAsk();
+      expect(screen.getByText(/already a lead/i)).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Create lead" })).toBeNull();
+    });
+
+    it.each([
+      ["NOT_PROPOSED", /wasn't proposed in this conversation/, true],
+      ["NO_COORDINATES", /no published coordinates/, true],
+      ["RATE_LIMITED", /Too many lead requests/, false],
+    ] as const)("maps %s to a specific message", (appCode, text, disables) => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isError: true, error: { data: { appCode } } };
+      renderAsk();
+      expect(screen.getByText(text)).toBeTruthy();
+      expect(screen.queryByText(/Could not create lead\. Try again\./)).toBeNull();
+      const button = screen.getByRole("button", { name: "Create lead" });
+      expect(button.hasAttribute("disabled")).toBe(disables);
+    });
+
+    it("shows Lead created with a link to Leads on success", () => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isSuccess: true };
+      renderAsk();
+      expect(screen.getByText("Lead created")).toBeTruthy();
+      expect(screen.getByRole("link", { name: "Open Leads" }).getAttribute("href")).toBe("/leads");
+    });
   });
 
-  it('maps rate_limited to data-state="throttled" rendered as an alert', () => {
-    askState = {
-      ...askState,
-      data: answeredFixture({ outcome: "rate_limited", claims: [], proposals: undefined }),
-    };
-    renderAsk();
-    expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("throttled");
-    expect(screen.getByRole("alert")).toBeTruthy();
+  describe("empty results say why (CR #16 item 2)", () => {
+    it("empty_in_scope names the subject, filters and area from the plan, plus exclusions", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "empty_in_scope",
+          plan: {
+            intent: "find_permits",
+            area: { kind: "place", query: "Manor", radiusMi: 1 },
+            filters: { statusClass: ["open"], openYearsMin: 10 },
+            slotSources: {},
+            unsupported: [],
+          },
+          counts: {
+            matched: 0,
+            shown: 0,
+            excludedNoCoordinates: 0,
+            excludedNoRoofDate: 2,
+            truncated: false,
+          },
+          missing: [{ field: "coordinates", reason: "no_coordinates", count: 3 }],
+        }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("no_results");
+      expect(
+        screen.getByText("No open roofing permits, open 10+ years, within 1 mi of Manor."),
+      ).toBeTruthy();
+      expect(screen.getByText(/2 properties in the area have no roof date/)).toBeTruthy();
+      expect(screen.getByText("coordinates: No coordinates for this parcel (3 rows)")).toBeTruthy();
+      expect(screen.queryByText(/Travis County/)).toBeNull();
+    });
+
+    it("field_not_published names the field(s) Task A does not publish", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "field_not_published",
+          missing: [{ field: "roof material", reason: "not_in_export" }],
+        }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("no_results");
+      expect(screen.getByText(/doesn't include roof material/)).toBeTruthy();
+    });
+  });
+
+  describe("needs_clarification candidates (CR #16 item 3)", () => {
+    const candidates = [
+      { name: "Pflugerville", score: 0.88, match: "fuzzy" as const },
+      { name: "Manor", score: 0.84, match: "fuzzy" as const },
+    ];
+
+    it('renders candidates as buttons, best first; data-state="low_confidence"', () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "needs_clarification",
+          plan: { ...PLAN, area: { kind: "place", query: "pville", radiusMi: 5 } },
+          candidates,
+        }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("low_confidence");
+      const group = screen.getByRole("group", { name: "Places I know" });
+      const buttons = within(group).getAllByRole("button");
+      expect(buttons.map((b) => b.getAttribute("data-place"))).toEqual(["Pflugerville", "Manor"]);
+    });
+
+    it("choosing one re-asks in the same thread with the place made explicit", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "needs_clarification",
+          plan: { ...PLAN, area: { kind: "place", query: "pville", radiusMi: 5 } },
+          candidates,
+        }),
+      };
+      renderAsk();
+      fireEvent.change(screen.getByLabelText("Question"), {
+        target: { value: "old roofs near pville" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+      const [first] = askMutate.mock.calls[0] as [{ threadId: string }];
+      fireEvent.click(screen.getByRole("button", { name: /Use Pflugerville/ }));
+      expect(askMutate).toHaveBeenCalledTimes(2);
+      const [second] = askMutate.mock.calls[1] as [{ question: string; threadId: string }];
+      expect(second.question).toBe("old roofs near Pflugerville");
+      expect(second.threadId).toBe(first.threadId);
+    });
+
+    it("without candidates, asks to rephrase and invents no buttons", () => {
+      askState = { ...askState, data: blockedFixture({ outcome: "needs_clarification" }) };
+      renderAsk();
+      expect(screen.getByRole("heading", { level: 3 }).textContent).toMatch(
+        /couldn't read that question/i,
+      );
+      expect(screen.queryByText(/How I read this/)).toBeNull();
+      expect(screen.queryAllByRole("button").filter((b) => b.textContent !== "Ask")).toHaveLength(
+        0,
+      );
+    });
+  });
+
+  describe("scope outcomes take the place from the plan", () => {
+    it("out_of_scope", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "out_of_scope",
+          plan: { ...PLAN, area: { kind: "place", query: "Round Rock", radiusMi: 5 } },
+        }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("out_of_scope");
+      expect(screen.getByText(/“Round Rock” is outside the area this CRM covers/)).toBeTruthy();
+    });
+
+    it("not_found", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "not_found",
+          plan: { ...PLAN, area: { kind: "place", query: "Lakeview Heights", radiusMi: 5 } },
+        }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("not_found");
+      expect(screen.getByText(/couldn't find “Lakeview Heights”/)).toBeTruthy();
+    });
+  });
+
+  describe("system limits", () => {
+    it('rate_limited: data-state="throttled", alert, live countdown from retryAfterSec', () => {
+      vi.useFakeTimers();
+      askState = {
+        ...askState,
+        data: blockedFixture({ outcome: "rate_limited", retryAfterSec: 3 }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("throttled");
+      expect(screen.getByRole("alert").textContent).toMatch(/Ask again in 3 s/);
+      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "again" } });
+      expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(true);
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.getByRole("alert").textContent).toMatch(/Ask again in 2 s/);
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(screen.getByRole("alert").textContent).toMatch(/You can ask again now/);
+      expect(screen.getByRole("button", { name: "Ask" }).hasAttribute("disabled")).toBe(false);
+    });
+
+    it("paused: reset time comes from resetsAt, in local time and UTC", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({ outcome: "paused", resetsAt: "2026-10-25T00:00:00.000Z" }),
+      };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("paused");
+      expect(screen.getByRole("alert").textContent).toMatch(/2026-10-25 00:00 UTC/);
+      expect(screen.queryByText(/00:00 UTC\. *$/)).toBeNull();
+    });
+
+    it("timed_out: states the shared limit and offers Try again with the same question", () => {
+      askState = { ...askState, data: blockedFixture({ outcome: "timed_out" }) };
+      renderAsk();
+      expect(askRoot().getAttribute("data-state")).toBe("timed_out");
+      expect(screen.getByRole("alert").textContent).toMatch(/Took too long/);
+      expect(screen.queryByText(/25 s/)).toBeNull();
+      fireEvent.change(screen.getByLabelText("Question"), { target: { value: "slow one" } });
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+      const [arg] = askMutate.mock.calls[0] as [{ question: string }];
+      expect(arg.question).toBe("slow one");
+    });
   });
 });

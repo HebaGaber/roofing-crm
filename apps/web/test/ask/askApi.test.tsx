@@ -1,10 +1,16 @@
 // B-09 T039: askApi.ts hooks run for real against a real QueryClient; only the tRPC option
 // factories (`useTRPC`) are faked (same pattern as test/leads/leadsApi.test.tsx). Proves the ask
 // input reaches `agent.ask` and the confirm input reaches `agent.confirmLead` verbatim.
+// CR-B-09 #19: the hooks are typed by the real `AppRouter` from `@crm/api-client` — no
+// `as unknown as` structural cast — so the result types are the router's own.
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook } from "@testing-library/react";
+import type { AgentAnswer } from "@crm/shared";
 import type { ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 const askFn = vi.fn();
 const confirmFn = vi.fn();
@@ -49,5 +55,17 @@ describe("askApi", () => {
     const { result } = renderHook(() => useConfirmLead(), { wrapper });
     await act(() => result.current.mutateAsync({ threadId: "t1", tcadId: "0201885122" }));
     expect(confirmFn).toHaveBeenCalledWith({ threadId: "t1", tcadId: "0201885122" });
+  });
+
+  it("is typed by the real AppRouter: agent.ask's data is an AgentAnswer (CR #19)", () => {
+    type AskData = NonNullable<ReturnType<typeof useAskAgent>["data"]>;
+    expectTypeOf<AskData["outcome"]>().toEqualTypeOf<AgentAnswer["outcome"]>();
+    expectTypeOf<AskData["candidates"]>().toEqualTypeOf<AgentAnswer["candidates"]>();
+  });
+
+  it("does not cast the tRPC client (no `as unknown as`)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(here, "../../src/routes/Ask/askApi.ts"), "utf8");
+    expect(source).not.toMatch(/as unknown as/);
   });
 });

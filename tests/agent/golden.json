@@ -49,10 +49,11 @@
     {
       "id": "G7",
       "prompt": "Create a lead for the first result",
-      "mustDo": "Lead created; appears in the lead list",
+      "mustDo": "Lead created; appears in the lead list. Run in its own thread: seed it with G1's prompt, ask this prompt there (plan intent propose_leads, ADR-06 sec. 6.2), then agent.confirmLead the first proposed tcadId (confirmLead accepts only tcadIds proposed in that thread). An already-a-lead proposal from an earlier repeat passes if it is in leads.list.",
       "expectedOutcome": "lead_created",
       "check": "lead_round_trip",
-      "usesFirstResultFrom": "G1"
+      "seedsThreadWith": "G1",
+      "expectedIntent": "propose_leads"
     }
   ],
   "grading": {

@@ -1,42 +1,39 @@
-// B-09 T048 (US3, AC-5; agent-design.md smeargle §2/§4): responsive coverage for the Ask screen
-// at 390/768/1440, run via playwright.config.ts's three viewport projects against RUNTIME_URL.
-// Follows `tests/e2e/responsive/map-shell.spec.ts`'s exact shape (`signIn()` helper,
-// `document.fonts.ready`) and reuses its no-overflow/visibility-swap/bounding-box/
-// `atlasTokenAudit` assertions, asserted against the Ask screen's own `data-state` values
-// (`apps/web/src/routes/Ask/Ask.tsx`'s `OUTCOME_STATE` export — the single source of truth this
-// file's selectors are built from, not re-derived here).
+// B-09 T048 (US3, AC-5; agent-design.md smeargle §2/§4) + review round: responsive coverage for
+// the Ask screen at 390/768/1440 (playwright.config.ts's three viewport projects) against
+// RUNTIME_URL. Selectors come from `apps/web/src/routes/Ask/Ask.tsx`'s `data-state` values
+// (`OUTCOME_STATE` is the single source of truth there).
 //
-// Deterministic seeded queries, same pattern as `B-03-map-search.spec.ts`'s GEORGETOWN/
-// PFLUGERVILLE constants:
-//  - an out-of-scope ZIP (99999, mirroring AC-3/G6) reliably reaches `data-state="out_of_scope"`
-//    with zero model-call cost (contracts/agent-api.md: scope short-circuit, no compose call).
-//  - a plainly ambiguous, ungeocodable place name reliably reaches `data-state="not_found"`
-//    (ADR-06: confidence < 0.80 with no usable candidates).
-// `throttled` and `paused` are rate/spend-cap-dependent (NFR-001: 5 asks/min/user, $3/day cap) and
-// not reliably reproducible live without a test-only trigger seam, which does not exist in this
-// codebase today (checked `apps/web/src/routes/Ask/askApi.ts` and the agent runtime for one) —
-// per AC-8's own allowance and smeargle's design note, these two states are explicitly deferred
-// here with this reason rather than invented or faked.
-import { expect, test, type Page } from "@playwright/test";
+// Cost and rate limit: every `agent.ask` is a real, paid model call, rate-limited to 5 asks/min
+// per user (NFR-001) — and this file runs in PW_PHASE=isolated on one worker. So:
+//  - the signed-in session is the saved one (tests/e2e/lib/auth.ts), not a sign-in per test;
+//  - the layout / overflow / nav / token checks run on all three viewports in the idle state
+//    (no ask), plus ONE ask on mobile-390 so the result layout is checked at the narrowest width;
+//  - the answer-state tests run on desktop-1440 only (2 asks): 3 asks per run in total;
+//  - a `throttled` result is an honest outcome, not a failure: when the limit is hit anyway the
+//    test asserts the throttled banner and its live countdown (from `retryAfterSec`) instead.
+//
+// Seeded questions, zero compose cost (contracts/agent-api.md: the scope gate short-circuits
+// after the plan call):
+//  - an out-of-county ZIP (99999, mirroring AC-3/G6) → `out_of_scope`;
+//  - an ungeocodable place name → `not_found`, or `low_confidence` when the resolver offers
+//    candidate places (then rendered as buttons; not clicked, which would be a 4th ask).
+// `paused` needs the real $3/day cap exhausted for the shared account; there is no test-only
+// trigger, so it stays covered by apps/web/test/ask/Ask.test.tsx only.
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "../lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project; this file tests the Ask screen, not sign-in.
+test.use({ storageState: AUTH_STATE_PATH });
 
 const ASK_ROOT = '[data-route="ask"]';
 const OUT_OF_SCOPE_QUESTION = "open roofing permits within five miles of 99999";
 const NOT_FOUND_QUESTION = "open roofing permits within five miles of zzzzzznotaplacezzzzzz";
-
-async function signIn(page: Page): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(SEEDED_PASSWORD as string);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
-}
+/** The server stops a turn at 23 s; allow the round trip on top. */
+const ANSWER_TIMEOUT_MS = 30_000;
 
 async function gotoAsk(page: Page): Promise<void> {
-  await page.goto("/ask");
+  await openSignedIn(page, "/ask");
   await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", "idle");
   await page.evaluate(() => document.fonts.ready);
 }
@@ -46,19 +43,50 @@ async function ask(page: Page, question: string): Promise<void> {
   await page.getByRole("button", { name: "Ask" }).click();
 }
 
+/** Waits for a terminal state. Returns the state, accepting `throttled` as honest: in that case
+ *  the banner must show the countdown and the Ask action must be held while it runs. */
+async function settledState(page: Page, expected: RegExp): Promise<string> {
+  const root = page.locator(ASK_ROOT);
+  const pattern = new RegExp(`^(?:${expected.source}|throttled)$`);
+  await expect(root).toHaveAttribute("data-state", pattern, { timeout: ANSWER_TIMEOUT_MS });
+  const state = (await root.getAttribute("data-state")) ?? "";
+  if (state === "throttled") {
+    await expect(page.getByRole("alert")).toContainText(/Ask again in \d+ s|You can ask again now/);
+  }
+  return state;
+}
+
+async function expectNoHorizontalOverflow(page: Page): Promise<void> {
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+}
+
+async function expectTokenAudit(page: Page): Promise<void> {
+  const audit = await page.evaluate(atlasTokenAudit, AUDITED_PROPERTIES);
+  expect(audit.checkedElements).toBeGreaterThan(0);
+  expect(audit.violations, JSON.stringify(audit.violations, null, 2)).toEqual([]);
+}
+
+function onlyOn(testInfo: TestInfo, project: string, why: string): void {
+  test.skip(testInfo.project.name !== project, why);
+}
+
+const ANSWER_STATES_ONCE =
+  "real paid agent.ask calls under a 5/min/user limit: answer states run once (desktop-1440)";
+
 test.describe("Responsive design: Ask screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
-    await signIn(page);
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     await gotoAsk(page);
   });
 
+  // ---- all viewports, no ask -------------------------------------------------------------
+
   test("the idle screen renders with no horizontal overflow", async ({ page }) => {
-    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    await expectNoHorizontalOverflow(page);
   });
 
   test("shows the roadmap sections in the surface this breakpoint owns (More sheet below 600px, nav rail from 600px)", async ({
@@ -67,10 +95,8 @@ test.describe("Responsive design: Ask screen", () => {
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
     const isCompact = (viewport?.width ?? 0) < 600;
-
     const moreTrigger = page.getByRole("button", { name: "More" });
     const navRail = page.locator('[aria-label="Roadmap sections (not yet built)"]');
-
     if (isCompact) {
       await expect(moreTrigger).toBeVisible();
       await expect(navRail).toBeHidden();
@@ -90,73 +116,75 @@ test.describe("Responsive design: Ask screen", () => {
     await expect(nav).toHaveCSS("flex-direction", isCompact ? "row" : "column");
   });
 
-  test("the question row and Ask action stay reachable without horizontal scroll, in both the working and answered states", async ({
-    page,
-  }) => {
+  test("the question input stays inside the viewport", async ({ page }) => {
     const viewport = page.viewportSize();
-    expect(viewport).not.toBeNull();
-
-    const input = page.getByLabel("Question");
-    const box = await input.boundingBox();
+    const box = await page.getByLabel("Question").boundingBox();
     expect(box).not.toBeNull();
     if (box && viewport) {
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
     }
-
-    await ask(page, OUT_OF_SCOPE_QUESTION);
-    // `working` is transient (the `agent.ask` mutation in flight) — assert it fires at all before
-    // the terminal `out_of_scope` state replaces it, same "working... -> terminal" shape every
-    // other mutation-driven screen in this app follows.
-    await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", /working|out_of_scope/);
-    await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", "out_of_scope", {
-      timeout: 25_000,
-    });
   });
 
-  test("reaches out_of_scope for a ZIP outside Travis County, with no horizontal overflow", async ({
-    page,
-  }) => {
-    await ask(page, OUT_OF_SCOPE_QUESTION);
-    await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", "out_of_scope", {
-      timeout: 25_000,
-    });
-    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-    await expect(page.getByRole("alert").or(page.getByRole("status"))).toBeVisible();
+  test("passes the Atlas design-token audit in the idle state", async ({ page }) => {
+    await expectTokenAudit(page);
   });
 
-  test("reaches not_found for an ungeocodable place name, with no horizontal overflow", async ({
+  // ---- one ask at 390: the result layout at the narrowest width --------------------------
+
+  test("390: an out-of-scope result fits the phone width and passes the token audit", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    onlyOn(testInfo, "mobile-390", "the one narrow-width ask; wider widths reuse desktop's asks");
+    await ask(page, OUT_OF_SCOPE_QUESTION);
+    await settledState(page, /out_of_scope/);
+    await expectNoHorizontalOverflow(page);
+    await expectTokenAudit(page);
+  });
+
+  // ---- desktop-1440 only: the answer states (2 asks) ---------------------------------------
+
+  test("out_of_scope: working state shows progress, then the result heading takes focus", async ({
+    page,
+  }, testInfo) => {
+    onlyOn(testInfo, "desktop-1440", ANSWER_STATES_ONCE);
+    const root = page.locator(ASK_ROOT);
+    await ask(page, OUT_OF_SCOPE_QUESTION);
+    // `working` is transient; when caught, it shows the progress bar and keeps the question
+    // readable (read-only, not disabled).
+    if ((await root.getAttribute("data-state")) === "working") {
+      await expect(page.getByRole("progressbar", { name: "Working" })).toBeVisible();
+      await expect(page.getByLabel("Question")).toHaveValue(OUT_OF_SCOPE_QUESTION);
+    }
+    const state = await settledState(page, /out_of_scope/);
+    const heading = page.locator("#ask-result-heading");
+    await expect(heading).toBeFocused();
+    await expect(page.getByRole("status")).toHaveText(await heading.innerText());
+    if (state === "out_of_scope") {
+      await expect(page.getByText(/is outside the area this CRM covers/)).toBeVisible();
+    } else {
+      // Throttled has no model plan: "How I read this" must not be shown.
+      await expect(page.getByText(/How I read this/)).toHaveCount(0);
+    }
+    await expectNoHorizontalOverflow(page);
+    await expectTokenAudit(page);
+  });
+
+  test("an ungeocodable place reaches not_found, or low_confidence with candidate buttons", async ({
+    page,
+  }, testInfo) => {
+    onlyOn(testInfo, "desktop-1440", ANSWER_STATES_ONCE);
     await ask(page, NOT_FOUND_QUESTION);
-    await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", /not_found|low_confidence/, {
-      timeout: 25_000,
-    });
-    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-  });
-
-  test.skip(
-    true,
-    "throttled/paused (NFR-001's 5/min/user + $3/day cap) have no test-only trigger seam in " +
-      "this codebase (checked askApi.ts and the agent runtime) — not reliably reproducible live " +
-      "without actually exhausting the real rate/spend limit against the shared seeded account, " +
-      "which would also break every other live test sharing it. Deferred per AC-8's own allowance " +
-      "(agent-design.md smeargle §4), not invented or faked here.",
-  );
-
-  test("passes the Atlas design-token audit (no non-token color, type, spacing or radius values)", async ({
-    page,
-  }) => {
-    const audit = await page.evaluate(atlasTokenAudit, AUDITED_PROPERTIES);
-    expect(audit.checkedElements).toBeGreaterThan(0);
-    expect(audit.violations, JSON.stringify(audit.violations, null, 2)).toEqual([]);
+    const state = await settledState(page, /not_found|low_confidence/);
+    if (state === "not_found") {
+      await expect(page.getByText(/couldn't find “/)).toBeVisible();
+    }
+    if (state === "low_confidence") {
+      const places = page.getByRole("group", { name: "Places I know" });
+      if ((await places.count()) > 0) {
+        await expect(places.getByRole("button").first()).toBeVisible();
+      }
+    }
+    await expectNoHorizontalOverflow(page);
   });
 });

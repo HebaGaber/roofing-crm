@@ -62,6 +62,12 @@
   font-size: var(--md-sys-typescale-label-large-size);
 }
 
+.input:read-only {
+  /* Working: the question stays readable (full on-surface text), only editing is locked. */
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+}
+
 .action:disabled {
   cursor: not-allowed;
   opacity: 0.6;
@@ -72,8 +78,8 @@
   outline-offset: 2px;
 }
 
-/* "How I read this" (T059, AC-8 re-diff): Explore1440.dc.html line ~414's plan-summary chip
-   (surface-container background, body-small text, small corner radius). */
+/* "How I read this" (CrmAsk390/768/1440): the plan-summary block (surface-container background,
+   body-small text, small corner radius). Shown only for outcomes with a model plan. */
 .plan {
   margin: 0;
   padding: var(--space-2) var(--space-3);
@@ -231,6 +237,232 @@
 .confirmButton:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
+}
+
+/* One polite live region for the whole screen: announced, not shown (the visible heading and
+   working panel carry the same words). No negative margin: the Atlas token audit checks
+   every rendered element's margins. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Result: heading (focused on arrival), the question echo, then the body (CrmAsk390). */
+.result {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.resultHeading {
+  margin: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-medium-font);
+  font-size: var(--md-sys-typescale-title-medium-size);
+  font-weight: var(--md-sys-typescale-title-medium-weight);
+  line-height: var(--md-sys-typescale-title-medium-line-height);
+}
+
+.resultHeading:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.asked {
+  justify-self: end;
+  max-width: 85%;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  overflow-wrap: anywhere;
+}
+
+/* Working (CrmAskWorking390, CrmAgentWorking390/1440): spinner + "Working…" + elapsed timer,
+   a 4 px indeterminate linear progress (Atlas § 7 Progress), the limit hint, skeleton lines. */
+.working {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.workingRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--md-sys-color-primary);
+}
+
+.workingLabel {
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+.timer {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.workingHint {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+.spin {
+  display: inline-flex;
+  animation: spin var(--md-sys-motion-duration-extra-long) linear infinite;
+}
+
+.progress {
+  position: relative;
+  height: var(--space-1);
+  overflow: hidden;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.progress i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: inherit;
+  background: var(--md-sys-color-primary);
+  animation: indeterminate var(--md-sys-motion-duration-extra-long)
+    var(--md-sys-motion-easing-standard) infinite;
+}
+
+.skeleton {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+.skeletonLine,
+.skeletonLineShort {
+  display: block;
+  height: var(--space-3);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-highest);
+  animation: pulse var(--md-sys-motion-duration-extra-long) var(--md-sys-motion-easing-standard)
+    infinite alternate;
+}
+
+.skeletonLineShort {
+  width: 40%;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.55;
+  }
+}
+
+/* Limit banners (CrmAskThrottled390 warning, CrmAskPaused390 info, CrmAskSlow390 warning). */
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+}
+
+.warning {
+  background: var(--status-warning-container);
+  color: var(--status-warning);
+}
+
+.info {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.bannerBody {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+/* Candidate places (CrmAskLowConf390 / CrmAskOutside390 "Use {place}" chips): Atlas chip, 48 px
+   touch target. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.notes {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+.proposalNote {
+  display: inline-flex;
+  min-width: 0;
 }
 
 /* Medium and up (Atlas § 4, the same 600px rail breakpoint as AppShell.module.css): the question

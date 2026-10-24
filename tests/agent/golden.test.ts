@@ -2,7 +2,7 @@
 // 3, agent-design.md alakazam §1). Calls `agent.ask`/`agent.confirmLead` over the DEPLOYED agent
 // (RUNTIME_URL, never localhost -- constitution Article I "localhost is never evidence", the
 // same guard `playwright.config.ts` already loads from `../e2e/lib/runtime-url.js`), 3 repeats
-// paced 13s apart (21 asks total, stays under 5 asks/min).
+// paced 13s apart (8 asks per repeat incl. G7's seed, 24 total; stays under 5 asks/min).
 //
 // This test is expected to fail until Phase 4 (US1) is deployed and the Run 2 manifest is the
 // promoted run (tasks.md T047) -- it cannot run in this development session at all: there is no
@@ -36,7 +36,7 @@ import {
   type CognitoUserSession,
 } from "amazon-cognito-identity-js";
 import { createApiClient, type ApiClient, type ApiFetch } from "@crm/api-client";
-import { requestIdentifierOf } from "@crm/domain";
+import { leadKey, requestIdentifierOf } from "@crm/domain";
 import { assertHostedRuntimeUrl } from "../e2e/lib/runtime-url.js";
 import {
   publishGoldenQueryPassRate,
@@ -57,7 +57,10 @@ interface GoldenQuery {
   readonly check: string;
   readonly inheritsAreaFrom?: string;
   readonly requiresRealPermitNumber?: boolean;
-  readonly usesFirstResultFrom?: string;
+  /** G7: the query whose prompt seeds G7's own thread before G7's prompt is asked there. */
+  readonly seedsThreadWith?: string;
+  /** G7: the plan intent the server must read (ADR-06 `propose_leads`). */
+  readonly expectedIntent?: string;
 }
 
 interface GoldenFile {
@@ -161,6 +164,83 @@ async function timedAsk(client: ApiClient, question: string, threadId: string): 
   return { answer, latencyMs: Date.now() - startedAt };
 }
 
+function promptOf(id: string): string {
+  const query = golden.queries.find((q) => q.id === id);
+  if (query === undefined) throw new Error(`golden.json has no ${id}`);
+  return query.prompt;
+}
+
+const G7 = golden.queries.find((q) => q.id === "G7");
+
+function g7Prompt(): string {
+  return promptOf("G7");
+}
+
+function g1Prompt(): string {
+  return promptOf(G7?.seedsThreadWith ?? "G1");
+}
+
+/** The slice of `ApiClient` G7 uses, so the local test can drive the same function with a fake.
+ *  `ApiClient` satisfies it structurally. */
+interface G7Client {
+  readonly agent: {
+    readonly ask: {
+      mutate(input: { question: string; threadId: string }): Promise<AskResult["answer"]>;
+    };
+    readonly confirmLead: {
+      mutate(input: { threadId: string; tcadId: string }): Promise<{ createdFrom: string }>;
+    };
+  };
+  readonly leads: {
+    readonly list: {
+      query(input: Record<string, never>): Promise<{
+        leads: readonly { leadKey: string; createdFrom: string }[];
+      }>;
+    };
+  };
+}
+
+/** G7 (checks.md §7.1 "Create a lead for the first result"), the real Ask flow in one thread:
+ *  1. seed the thread with G1's question (gives the follow-up an area to inherit);
+ *  2. ask G7's prompt there — the plan must be `propose_leads`, which records its proposals
+ *     (threadStore.recordTurn) so confirmLead's NOT_PROPOSED check accepts them;
+ *  3. confirm the first proposed tcadId (a separate, rep-style mutation — never the model), or,
+ *     when an earlier repeat already made it a lead, accept the proposal's `alreadyLead`;
+ *  4. the lead must appear in leads.list. */
+async function runG7LeadRoundTrip(
+  client: G7Client,
+  threadId: string,
+  pause: () => Promise<void>,
+): Promise<{ tcadId: string; latencies: number[] }> {
+  const latencies: number[] = [];
+  const timed = async (question: string): Promise<AskResult["answer"]> => {
+    const startedAt = Date.now();
+    const answer = await client.agent.ask.mutate({ question, threadId });
+    latencies.push(Date.now() - startedAt);
+    return answer;
+  };
+
+  const seed = await timed(g1Prompt());
+  expect(seed.outcome, "G7's seed question must answer").toBe("answered");
+  await pause();
+
+  const proposal = await timed(g7Prompt());
+  expect(proposal.plan.intent).toBe(G7?.expectedIntent ?? "propose_leads");
+  const first = proposal.proposals?.[0];
+  expect(first, "G7 must propose at least one lead").toBeDefined();
+  const tcadId = (first as NonNullable<typeof first>).tcadId;
+
+  if (first?.alreadyLead !== true) {
+    const lead = await client.agent.confirmLead.mutate({ threadId, tcadId });
+    expect(lead.createdFrom).toBe("agent");
+  }
+  const list = await client.leads.list.query({});
+  const found = list.leads.find((l) => requestIdentifierOf(l.leadKey) === tcadId);
+  expect(found, "the G7 lead must appear in leads.list").toBeDefined();
+  if (first?.alreadyLead !== true) expect(found?.createdFrom).toBe("agent");
+  return { tcadId, latencies };
+}
+
 /** Groundedness (checks.md §7.2 step 2): every citation resolves against the pinned manifest and
  *  the claim it backs. Never a fabricated propertyCid/permitCid. */
 function assertGroundedness(answer: AskResult["answer"]): void {
@@ -250,7 +330,6 @@ interface RepeatTally {
 async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<RepeatTally> {
   const threadId = `golden-${Date.now()}-${repeatIndex}`;
   const latencies: number[] = [];
-  let firstResultTcadId: string | undefined;
   let passedCount = 0;
   let totalCount = 0;
   let firstFailure: unknown;
@@ -266,23 +345,13 @@ async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<Rep
 
     try {
       if (query.id === "G7") {
-        // T042 (G7 lead round-trip): confirmLead is a separate, non-model-invoked mutation
-        // (constitution P0, contracts/agent-api.md) -- the golden harness drives it the same way
-        // the real Ask UI does, never by asking the model to "create" anything itself.
-        expect(
-          firstResultTcadId,
-          "G1 must have returned a result to create a lead from",
-        ).toBeDefined();
-        const lead = await client.agent.confirmLead.mutate({
-          threadId,
-          tcadId: firstResultTcadId as string,
-        });
-        expect(lead.createdFrom).toBe("agent");
-        const list = await client.leads.list.query({});
-        const found = list.leads.find(
-          (l) => requestIdentifierOf(l.leadKey) === firstResultTcadId && l.createdFrom === "agent",
+        // G7 runs in its own thread (`-g7`): this thread's last plan is G6's out-of-scope ZIP,
+        // which "the first result" must not inherit. confirmLead stays a separate,
+        // non-model-invoked mutation (constitution P0, contracts/agent-api.md).
+        const g7 = await runG7LeadRoundTrip(client, `${threadId}-g7`, () =>
+          sleep(golden.grading.pacingSeconds * 1000),
         );
-        expect(found, "the G7 lead must appear in leads.list").toBeDefined();
+        latencies.push(...g7.latencies);
         passedCount += 1;
       } else {
         const { answer, latencyMs } = await timedAsk(client, prompt, threadId);
@@ -301,9 +370,6 @@ async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<Rep
           );
         }
 
-        if (query.id === "G1") {
-          firstResultTcadId = answer.citations.find((c) => c.tcadId !== undefined)?.tcadId;
-        }
         passedCount += 1;
       }
     } catch (error) {
@@ -378,3 +444,117 @@ describe.skipIf(canRun)(
     );
   },
 );
+
+// ---------------------------------------------------------------------------------------------
+// G7's round trip against a fake client (always runs): the flow the deployed run follows. CR
+// finding 6b: `agent.confirmLead` accepts only a tcadId the agent *proposed* in that thread, so
+// G7 seeds its own thread with G1's question, asks G7's prompt there (plan intent
+// `propose_leads`, ADR-06), and confirms the first proposed tcadId — never a tcadId lifted from
+// G1's citations, which `find_properties` never records as proposed.
+// ---------------------------------------------------------------------------------------------
+
+type FakeAnswer = AskResult["answer"];
+
+function fakeAnswer(overrides: Partial<FakeAnswer>): FakeAnswer {
+  return {
+    outcome: "answered",
+    claims: [],
+    citations: [],
+    plan: {
+      intent: "find_properties",
+      area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+      filters: {},
+      slotSources: {},
+      unsupported: [],
+    },
+    resultSetId: "rs",
+    counts: {
+      matched: 1,
+      shown: 1,
+      excludedNoCoordinates: 0,
+      excludedNoRoofDate: 0,
+      truncated: false,
+    },
+    missing: [],
+    trace: {
+      traceId: "t",
+      modelId: "m",
+      promptVersion: "p",
+      rankVersion: "r",
+      toolSteps: 1,
+      modelCalls: 2,
+    },
+    ...overrides,
+  } as FakeAnswer;
+}
+
+function fakeClient(options: {
+  alreadyLead: boolean;
+  intent?: "propose_leads" | "find_properties";
+}) {
+  const proposed = new Set<string>();
+  const leads: { leadKey: string; createdFrom: string }[] = options.alreadyLead
+    ? [{ leadKey: leadKey("48453", "0201885122"), createdFrom: "agent" }]
+    : [];
+  const asks: { question: string; threadId: string }[] = [];
+  const confirms: { threadId: string; tcadId: string }[] = [];
+  const client: G7Client = {
+    agent: {
+      ask: {
+        mutate: async (input) => {
+          asks.push(input);
+          if (asks.length === 1) return fakeAnswer({});
+          const intent = options.intent ?? "propose_leads";
+          if (intent === "propose_leads") proposed.add(`${input.threadId}|0201885122`);
+          return fakeAnswer({
+            plan: { ...fakeAnswer({}).plan, intent, slotSources: { area: "inherited" } },
+            ...(intent === "propose_leads"
+              ? {
+                  proposals: [
+                    { tcadId: "0201885122", alreadyLead: options.alreadyLead },
+                    { tcadId: "0201885123", alreadyLead: false },
+                  ],
+                }
+              : {}),
+          });
+        },
+      },
+      confirmLead: {
+        mutate: async (input) => {
+          confirms.push(input);
+          if (!proposed.has(`${input.threadId}|${input.tcadId}`)) throw new Error("NOT_PROPOSED");
+          leads.push({ leadKey: leadKey("48453", input.tcadId), createdFrom: "agent" });
+          return { createdFrom: "agent" };
+        },
+      },
+    },
+    leads: { list: { query: async () => ({ leads }) } },
+  };
+  return { client, asks, confirms };
+}
+
+describe("G7 lead round trip (local, fake client)", () => {
+  const noPause = async (): Promise<void> => {};
+
+  it("seeds one thread with G1, asks G7 there, then confirms the first proposed tcadId", async () => {
+    const { client, asks, confirms } = fakeClient({ alreadyLead: false });
+    const result = await runG7LeadRoundTrip(client, "thread-g7", noPause);
+    expect(asks.map((a) => a.question)).toEqual([g1Prompt(), g7Prompt()]);
+    expect(new Set(asks.map((a) => a.threadId))).toEqual(new Set(["thread-g7"]));
+    expect(confirms).toEqual([{ threadId: "thread-g7", tcadId: "0201885122" }]);
+    expect(result.tcadId).toBe("0201885122");
+    expect(result.latencies).toHaveLength(2);
+  });
+
+  it("an already-proposed lead is checked in leads.list, not created twice", async () => {
+    const { client, confirms } = fakeClient({ alreadyLead: true });
+    const result = await runG7LeadRoundTrip(client, "thread-g7", noPause);
+    expect(confirms).toHaveLength(0);
+    expect(result.tcadId).toBe("0201885122");
+  });
+
+  it("fails when G7's plan is not propose_leads (nothing was proposed)", async () => {
+    const { client } = fakeClient({ alreadyLead: false, intent: "find_properties" });
+    await expect(runG7LeadRoundTrip(client, "thread-g7", noPause)).rejects.toThrow();
+  });
+});
