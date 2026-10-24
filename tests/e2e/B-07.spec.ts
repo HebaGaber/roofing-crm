@@ -719,15 +719,25 @@ test.describe("B-07 leads", () => {
     const f = factsOf(P_5_89);
     const samples: number[] = [];
     for (let i = 0; i < 20; i += 1) {
-      await cleanup?.deleteLeads([f.leadKey]);
-      const drawer = await openDrawer(page, P_5_89);
-      const startedAt = Date.now();
-      await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
-      await drawer.getByRole("link", { name: "View leads" }).click();
-      await expect(page.locator("li[data-lead-id]").first()).toContainText(
-        `TCAD ${f.requestIdentifier}`,
-      );
-      samples.push(Date.now() - startedAt);
+      try {
+        await cleanup?.deleteLeads([f.leadKey]);
+        const drawer = await openDrawer(page, P_5_89);
+        const startedAt = Date.now();
+        await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
+        await drawer.getByRole("link", { name: "View leads" }).click();
+        await expect(page.locator("li[data-lead-id]").first()).toContainText(
+          `TCAD ${f.requestIdentifier}`,
+        );
+        samples.push(Date.now() - startedAt);
+      } catch (error) {
+        // Say which iteration failed and what the earlier ones measured.
+        throw new Error(
+          `NF-01 iteration ${i + 1}/20 failed after samples [${samples.join(", ")}] ms`,
+          {
+            cause: error,
+          },
+        );
+      }
     }
     const sorted = [...samples].sort((a, b) => a - b);
     const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1] ?? Number.POSITIVE_INFINITY;
