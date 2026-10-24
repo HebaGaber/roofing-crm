@@ -85,6 +85,12 @@ class FakeLeadIndex implements LeadIndex {
   async searchPermits() {
     return [];
   }
+  async presentRequestIdentifiers() {
+    return new Set<string>();
+  }
+  async currentRunId() {
+    return undefined;
+  }
   async getProperty(propertyCid: string) {
     return this.byCid.get(propertyCid) ?? null;
   }

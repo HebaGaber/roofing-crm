@@ -1,8 +1,8 @@
 // B-07 Application layer (architecture-constitution.md §4/§9): orchestrates the injected
 // `LeadRepo` and `LeadIndex` ports plus packages/domain's pure rules. `leadRepo` is a constructor
 // argument, never imported or instantiated here. No business rule beyond orchestration lives in
-// this file or in the router: the dedupe key comes from `leadKey()`, staleness from
-// `isNotInCurrentRun()`, and all duplicate/sequence enforcement is the repo's DynamoDB conditions.
+// this file or in the router: the dedupe key comes from `leadKey()`, not-in-run (AC-5) from
+// `isNotInCurrentRun()` plus an index presence check, and all duplicate/sequence enforcement is the repo's DynamoDB conditions.
 import { randomBytes } from "node:crypto";
 import { isNotInCurrentRun, leadKey } from "@crm/domain";
 import type { LeadEvent, LeadFilters, LeadSignals, LeadStatus } from "@crm/shared";
@@ -31,9 +31,11 @@ export interface ListLeadsInput {
 
 export type LeadView = StoredLead & { notInCurrentRun: boolean };
 export type LeadDetailView = LeadView & {
-  /** Manifest CID of the run now served; the index carries no run number, so this is the
-   *  provenance shown beside "not in the current run". Undefined when no run is promoted. */
+  /** Manifest CID of the run now served: the provenance shown beside "not in the current run".
+   *  Undefined when no run is promoted. */
   currentManifestCid: string | undefined;
+  /** Run identifier of the run now served; resolved only when the lead is flagged. */
+  currentRunId: string | undefined;
   signals: LeadSignals | undefined;
   notes: LeadEvent[];
   history: LeadEvent[];
@@ -92,8 +94,27 @@ export function createLeadService(
       return undefined; // no promoted run yet: staleness unknown, so never flagged
     }
   }
-  const stale = (lead: StoredLead, current: string | undefined): boolean =>
-    current !== undefined && isNotInCurrentRun(lead.sourceManifestCid, current);
+  const requestIdOf = (lead: StoredLead): string => lead.leadKey.split(":tcad:")[1] ?? "";
+
+  /** AC-5: flagged only when the manifest differs AND the lead's property is absent from the
+   *  current run. Only manifest-differing leads need the presence check, batched into one query;
+   *  if it cannot run, nothing is flagged. Returns the flagged lead keys. */
+  async function notInRunKeys(
+    leads: readonly StoredLead[],
+    current: string | undefined,
+  ): Promise<Set<string>> {
+    if (leadIndex === undefined || current === undefined) return new Set();
+    const differing = leads.filter((l) => isNotInCurrentRun(l.sourceManifestCid, current));
+    if (differing.length === 0) return new Set();
+    try {
+      const present = await leadIndex.presentRequestIdentifiers([
+        ...new Set(differing.map(requestIdOf)),
+      ]);
+      return new Set(differing.filter((l) => !present.has(requestIdOf(l))).map((l) => l.leadKey));
+    } catch {
+      return new Set(); // presence unknown, so never flagged
+    }
+  }
 
   /** Request identifiers of properties matching the roof-age/permit/radius filters, resolved by
    *  the same LeadIndex calls the map's search.properties makes (AC-4). */
@@ -163,10 +184,20 @@ export function createLeadService(
       const detail = await leadRepo.get(key);
       if (detail === null) return null;
       const current = await currentManifest();
+      const notInCurrentRun = (await notInRunKeys([detail.lead], current)).size > 0;
+      let currentRunId: string | undefined;
+      if (notInCurrentRun && leadIndex !== undefined) {
+        try {
+          currentRunId = await leadIndex.currentRunId();
+        } catch {
+          currentRunId = undefined;
+        }
+      }
       return {
         ...detail.lead,
-        notInCurrentRun: stale(detail.lead, current),
+        notInCurrentRun,
         currentManifestCid: current,
+        currentRunId,
         signals: detail.signals,
         notes: detail.events.filter((e) => e.kind === "note"),
         history: [...detail.events],
@@ -192,7 +223,7 @@ export function createLeadService(
 
       if (geo) {
         const ids = await matchingRequestIdentifiers(filters);
-        candidates = candidates.filter((l) => ids.has(l.leadKey.split(":tcad:")[1] ?? ""));
+        candidates = candidates.filter((l) => ids.has(requestIdOf(l)));
       }
 
       const current = await currentManifest();
@@ -201,8 +232,9 @@ export function createLeadService(
       const limit = input.limit ?? DEFAULT_LIMIT;
       const page = candidates.slice(start, start + limit);
       const end = start + page.length;
+      const flagged = await notInRunKeys(page, current);
       return {
-        leads: page.map((l) => ({ ...l, notInCurrentRun: stale(l, current) })),
+        leads: page.map((l) => ({ ...l, notInCurrentRun: flagged.has(l.leadKey) })),
         ...(end < candidates.length ? { nextCursor: String(end) } : {}),
         totalCount: candidates.length,
       };

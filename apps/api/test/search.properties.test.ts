@@ -62,6 +62,12 @@ class FakeLeadIndex implements LeadIndex {
   async searchPermits(): Promise<Provenanced<CrmPermit>[]> {
     return [];
   }
+  async presentRequestIdentifiers() {
+    return new Set<string>();
+  }
+  async currentRunId() {
+    return undefined;
+  }
   async getProperty() {
     return null;
   }

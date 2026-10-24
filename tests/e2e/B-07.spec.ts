@@ -4,7 +4,7 @@
 //
 // The cases share state on purpose, in file order: TC-001 creates the lead for P_5_52, TC-003 to
 // TC-010 work on it, TC-007 creates P_AGE48, TC-011 adds P_5_89. A lead cannot be created twice
-// (that is what AC-2 tests), so `beforeAll` first deletes the three test leads from `crm-leads`
+// (that is what AC-2 tests), so `beforeAll` first deletes the four test leads from `crm-leads`
 // (tests/e2e/lib/leads-cleanup.ts, GAP-3) and `afterAll` does it again only when CRM_E2E_CLEANUP=1.
 // That helper needs AWS credentials in the default chain; nothing here prints or stores them.
 //
@@ -13,8 +13,11 @@
 // from packages/api-client (same-origin /api/trpc, no transformer, `Authorization: Bearer` with
 // the Cognito ID token that the signed-in page keeps in localStorage `crm.session`).
 //
-// Not covered live, by design (see the fixme titles): TC-002 (no "Create lead" on a permit row),
-// TC-014/TC-015 (GAP-5, needs a second published run), TC-NF-03 (GAP-1, needs 50+ leads).
+// TC-014/TC-015 use a fixture lead for request identifier B07STALE, created by a direct tRPC POST
+// with a real published manifest that is not the served one; its property is absent from the
+// served run, which is exactly AC-5's "not in the current run" (no second published run needed).
+//
+// Not covered live, by design (see the fixme title): TC-NF-03 (GAP-1, needs 50+ leads).
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type APIResponse, type Locator, type Page } from "@playwright/test";
@@ -31,6 +34,9 @@ const P_5_52 = "baguqeera6sd3t5tdfy7xzfaycmcggimk6nzqv7prlcwvbqebohurx37cnpha";
 const P_AGE48 = "baguqeerakmixkpatzw4wbiqtxcqbewecmgrzcw3j4vcm3skbe7zofycy5daq";
 const P_5_89 = "baguqeeraowktgtrrqrvysxggav2z6sxl5jzy4y5ql43c4ye5mivxphj7p3na";
 const MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
+/** A published manifest that is NOT the served one, and a request identifier absent from the index. */
+const OLD_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
+const STALE_REQUEST_ID = "B07STALE";
 const TRAVIS_FIPS = "48453";
 const ROUND_ROCK = { lat: 30.5083, lng: -97.6789 };
 /** Prefix for every note this suite writes, so one run can be told apart from another. */
@@ -51,6 +57,8 @@ interface Facts {
   readonly roofAgeBasis: string;
   readonly sourceManifestCid: string;
   readonly hasOpenPermit: boolean;
+  /** The first open permit, which the lead snapshot holds (AC-1). */
+  readonly openPermit: { readonly permitNumber: string; readonly openDays: number | null } | null;
 }
 
 /** Property facts read from the index in `beforeAll`, keyed by property CID. */
@@ -98,9 +106,10 @@ async function loadFacts(page: Page, cid: string): Promise<Facts> {
       roofAgeBasis: string;
       sourceManifestCid: string;
     } | null;
-    permits: { statusClass: string | null }[];
+    permits: { statusClass: string | null; permitNumber: string | null; openDays: number | null }[];
   }>(page, "property.get", { propertyCid: cid });
   const p = data.property;
+  const open = data.permits.find((permit) => permit.statusClass === "open");
   if (p === null || p.latitude === null || p.longitude === null) {
     throw new Error(`property ${cid} is not in the served run or has no location`);
   }
@@ -113,7 +122,11 @@ async function loadFacts(page: Page, cid: string): Promise<Facts> {
     roofAgeYears: p.roofAgeYears,
     roofAgeBasis: p.roofAgeBasis,
     sourceManifestCid: p.sourceManifestCid,
-    hasOpenPermit: data.permits.some((permit) => permit.statusClass === "open"),
+    hasOpenPermit: open !== undefined,
+    openPermit:
+      open?.permitNumber == null
+        ? null
+        : { permitNumber: open.permitNumber, openDays: open.openDays },
   };
 }
 
@@ -128,10 +141,32 @@ function createInput(f: Facts): Record<string, unknown> {
     signals: {
       ...(f.roofAgeYears === null ? {} : { roofAgeYears: f.roofAgeYears }),
       roofAgeBasis: f.roofAgeBasis,
+      ...(f.openPermit === null ? {} : { openPermitId: f.openPermit.permitNumber }),
+      ...(f.openPermit?.openDays == null ? {} : { openDays: f.openPermit.openDays }),
     },
     sourceManifestCid: f.sourceManifestCid,
     createdFrom: "map",
   };
+}
+
+/** The AC-5 fixture: a lead captured under an older manifest whose property is not in the served run. */
+async function createStaleLead(page: Page): Promise<void> {
+  const f = factsOf(P_5_52);
+  const response = await page.request.post("/api/trpc/leads.create", {
+    headers: await authHeaders(page),
+    data: {
+      fips: TRAVIS_FIPS,
+      requestIdentifier: STALE_REQUEST_ID,
+      address: `TCAD ${STALE_REQUEST_ID}`,
+      lat: f.latitude,
+      lon: f.longitude,
+      signals: { roofAgeYears: 40 },
+      sourceManifestCid: OLD_MANIFEST_CID,
+      createdFrom: "map",
+    },
+  });
+  // 409 = left behind by a previous run (cleanup is opt-in); the fixture is the same either way.
+  expect([200, 409], `leads.create HTTP ${response.status()}`).toContain(response.status());
 }
 
 async function listLeadKeys(page: Page): Promise<string[]> {
@@ -151,7 +186,7 @@ async function openDrawer(page: Page, cid: string): Promise<Locator> {
 
 /** Taps "Create lead" in the drawer and returns the resulting status line. */
 async function createFromDrawer(drawer: Locator): Promise<Locator> {
-  await drawer.getByRole("button", { name: "Create lead" }).click();
+  await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
   const state = drawer.getByRole("status");
   await expect(state).toBeVisible();
   return state;
@@ -192,7 +227,10 @@ test.describe("B-07 leads", () => {
     } finally {
       await page.close();
     }
-    const keys = [P_5_52, P_AGE48, P_5_89].map((cid) => factsOf(cid).leadKey);
+    const keys = [
+      ...[P_5_52, P_AGE48, P_5_89].map((cid) => factsOf(cid).leadKey),
+      leadKeyFor(STALE_REQUEST_ID),
+    ];
     cleanup = createLeadsCleanup(keys);
     await cleanup.deleteLeads(keys); // clean slate: reruns are otherwise refused by design
   });
@@ -220,7 +258,7 @@ test.describe("B-07 leads", () => {
     const empty = page.getByText("No leads yet");
     const count = leadCount(page);
     await expect(empty.or(count)).toBeVisible();
-    // The three test leads were just deleted; other leads of this user would make the state
+    // The four test leads were just deleted; other leads of this user would make the state
     // legitimately non-empty, so say so instead of passing or failing on someone else's data.
     test.skip(await count.isVisible(), "this user already has leads beyond the test properties");
     await expect(empty).toBeVisible();
@@ -255,17 +293,27 @@ test.describe("B-07 leads", () => {
     await shot(page, "001", "top-of-list");
   });
 
-  test.fixme(
-    "B-07-TC-002 create lead from permit row",
-    {
-      annotation: {
-        type: "known-gap",
-        description:
-          "The permit cards in the property drawer (PropertyDetail.tsx) have no Create lead action; only the property-level LeadCreateAction exists. Un-fix when a permit-row action ships.",
-      },
-    },
-    () => {},
-  );
+  test("B-07-TC-002 create lead from permit row", async ({ page }) => {
+    const f = factsOf(P_5_52);
+    const permit = f.openPermit;
+    if (permit === null) throw new Error("P_5_52 has no open permit with a number");
+    const drawer = await openDrawer(page, P_5_52);
+    const button = drawer.getByRole("button", {
+      name: `Create lead from permit ${permit.permitNumber}`,
+    });
+    const card = drawer.locator("article[data-permit-cid]").filter({ has: button });
+    await button.click();
+    // The key is per property, so TC-001's lead already exists: the permit row just says so.
+    await expect(card.getByRole("status")).toContainText(/Lead created|Already a lead/);
+    await shot(page, "002", "permit-row");
+
+    await page.goto("/leads");
+    await expect(leadLink(page, f)).toHaveCount(1);
+    await page.goto(leadPath(f.requestIdentifier));
+    await expect(page.getByRole("region", { name: "Current signals" })).toContainText(
+      permit.permitNumber,
+    );
+  });
 
   test("B-07-TC-003 signals snapshot and source CID", async ({ page }) => {
     const f = factsOf(P_5_52);
@@ -277,11 +325,12 @@ test.describe("B-07 leads", () => {
     // Character-for-character: the stored CID equals both the index row's and the plan's CID.
     expect(f.sourceManifestCid).toBe(MANIFEST_CID);
     await expect(signals.locator(`[data-cid="${MANIFEST_CID}"]`).first()).toBeVisible();
-    test.info().annotations.push({
-      type: "known-gap",
-      description:
-        "Permit id is not asserted: LeadCreateAction.toCreateInput sends no openPermitId, so the snapshot shows 'No open permit at capture' instead of the permit.",
-    });
+    // The snapshot holds the first open permit's id (AC-1), read from the index like the facts above.
+    const permit = f.openPermit;
+    if (permit === null) throw new Error("P_5_52 has no open permit with a number");
+    await expect(signals).toContainText(permit.permitNumber);
+    if (permit.openDays !== null)
+      await expect(signals).toContainText(`open ${permit.openDays} days`);
     await shot(page, "003", "snapshot");
   });
 
@@ -304,7 +353,7 @@ test.describe("B-07 leads", () => {
 
   test("B-07-TC-005 duplicate shows Already a lead", async ({ page }) => {
     const drawer = await openDrawer(page, P_5_52);
-    await drawer.getByRole("button", { name: "Create lead" }).click();
+    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
     const state = drawer.getByRole("status");
     await expect(state).toContainText("Already a lead");
     await expect(state).not.toContainText("Lead created");
@@ -319,7 +368,7 @@ test.describe("B-07 leads", () => {
     const before = (await leadCount(page).textContent()) ?? "";
 
     const drawer = await openDrawer(page, P_5_52);
-    await drawer.getByRole("button", { name: "Create lead" }).click();
+    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
     await expect(drawer.getByRole("status")).toContainText("Already a lead");
 
     await page.goto("/leads");
@@ -460,7 +509,7 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-011 combined filters agree with map", async ({ page }) => {
     // Third lead for the count; "Already a lead" is fine when a previous run left it behind.
     const drawer = await openDrawer(page, P_5_89);
-    await drawer.getByRole("button", { name: "Create lead" }).click();
+    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
     await expect(drawer.getByRole("status")).toContainText(/Lead created|Already a lead/);
 
     // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of Round Rock).
@@ -576,28 +625,46 @@ test.describe("B-07 leads", () => {
 
   // ---- AC-5 and scale: blocked by known gaps -----------------------------------------------
 
-  test.fixme(
-    "B-07-TC-014 not in Run n",
-    {
-      annotation: {
-        type: "known-gap",
-        description:
-          "GAP-5: needs a second published run that drops a property present in run 1. The UI also words it 'Not in the current run' (no run number), to be reconciled with the story's 'not in Run {n}'.",
-      },
-    },
-    () => {},
-  );
+  test("B-07-TC-014 not in Run n", async ({ page }) => {
+    await createStaleLead(page);
+    await page.goto(leadPath(STALE_REQUEST_ID));
+    const state = page.getByTestId("not-in-run");
+    await expect(state).toBeVisible();
+    // "Not in run {id}" names the served run, taken from the index; never a made-up number.
+    await expect(state).toContainText(/Not in run \S+/);
+    await expect(state.locator(`[data-cid="${OLD_MANIFEST_CID}"]`).first()).toBeVisible();
+    await shot(page, "014", "not-in-run");
 
-  test.fixme(
-    "B-07-TC-015 no stale values",
-    {
-      annotation: {
-        type: "known-gap",
-        description: "GAP-5: needs a second published run (see TC-014).",
-      },
-    },
-    () => {},
-  );
+    await page.goto("/leads");
+    const row = page.locator("li[data-lead-id]").filter({ hasText: `TCAD ${STALE_REQUEST_ID}` });
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("Not in the current run");
+    await shot(page, "014", "list-pill");
+  });
+
+  test("B-07-TC-015 no stale values", async ({ page }) => {
+    await page.goto(leadPath(STALE_REQUEST_ID));
+    const signals = page.getByRole("region", { name: "Current signals" });
+    await expect(signals).toContainText("Signals withheld");
+    // The captured roof age (40) is not shown as current, and no other value takes its place.
+    await expect(page.getByText(/\b40 yrs/)).toHaveCount(0);
+    await expect(signals).not.toContainText(/\d+ yrs/);
+    await expect(signals).not.toContainText("Roof age");
+    await expect(signals).not.toContainText("Open permit");
+    await shot(page, "015", "signals-withheld");
+  });
+
+  test("B-07-TC-015b lead on a property still in the run is not flagged", async ({ page }) => {
+    const f = factsOf(P_5_52);
+    await page.goto(leadPath(f.requestIdentifier));
+    await expect(page.getByRole("region", { name: "Current signals" })).toBeVisible();
+    await expect(page.getByTestId("not-in-run")).toHaveCount(0);
+    await page.goto("/leads");
+    const row = page.locator("li[data-lead-id]").filter({ hasText: `TCAD ${f.requestIdentifier}` });
+    await expect(row).toHaveCount(1);
+    await expect(row).not.toContainText("Not in the current run");
+    // A differing manifest with the property still present is covered by the service unit tests.
+  });
 
   // ---- Edge: unknown lead ------------------------------------------------------------------
 
@@ -645,7 +712,7 @@ test.describe("B-07 leads", () => {
       await cleanup?.deleteLeads([f.leadKey]);
       const drawer = await openDrawer(page, P_5_89);
       const startedAt = Date.now();
-      await drawer.getByRole("button", { name: "Create lead" }).click();
+      await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
       await drawer.getByRole("link", { name: "View leads" }).click();
       await expect(page.locator("li[data-lead-id]").first()).toContainText(
         `TCAD ${f.requestIdentifier}`,

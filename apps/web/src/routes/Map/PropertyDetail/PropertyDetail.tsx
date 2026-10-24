@@ -3,9 +3,9 @@
 // CrmPropertyPartial390/CrmPropertyNoContractor390/CrmPropertyNoAddress390: address-or-NoAddress
 // header (never a fake address — this contract has none yet, FU-A-01), Roof and Permits sections
 // with their own headings, contractor "as printed" with ContractorBadge, BBB in one of its real
-// states, a source link per permit and "View lineage in Explorer". Deliberately does NOT include
-// a "Create lead" button of its own: B-07 owns all lead creation and adds it additively through
-// `LeadCreateAction` (Leads/LeadCreateAction.tsx, B-07 T026), which also shows "Already a lead".
+// states, a source link per permit and "View lineage in Explorer". Lead creation is owned by B-07 and
+// added additively through `LeadCreateAction` (Leads/LeadCreateAction.tsx, B-07 T026): one for the
+// property and one per permit row, both making the same lead; it also shows "Already a lead".
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
@@ -62,10 +62,12 @@ function BbbField({
 
 function PermitDetail({
   permit,
+  property,
   bbbStatus,
   bbbStatusReason,
 }: {
   readonly permit: Provenanced<CrmPermit>;
+  readonly property: Provenanced<CrmProperty>;
   readonly bbbStatus: "not_checked" | null;
   readonly bbbStatusReason: string | null;
 }): ReactElement {
@@ -115,6 +117,7 @@ function PermitDetail({
           </dd>
         </div>
       </dl>
+      <LeadCreateAction property={property} permit={permit} />
       <Provenance
         sourceUrl={null}
         capturedAt={permit.capturedAt}
@@ -216,6 +219,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
               <PermitDetail
                 key={permit.permitCid}
                 permit={permit}
+                property={property}
                 bbbStatus={data.bbbStatus}
                 bbbStatusReason={data.bbbStatusReason}
               />
@@ -233,7 +237,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
       >
         View lineage in Explorer
       </a>
-      <LeadCreateAction property={property} />
+      <LeadCreateAction property={property} permits={data.permits} />
       <MissingSummary row={property} />
       <RowProvenance row={property} />
     </aside>

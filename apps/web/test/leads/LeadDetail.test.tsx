@@ -6,9 +6,10 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const useLead = vi.fn();
+let statusPending = false;
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: statusPending }),
   useAddLeadNote: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
@@ -17,6 +18,7 @@ import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
 afterEach(() => {
   cleanup();
   useLead.mockReset();
+  statusPending = false;
 });
 
 const base = {
@@ -100,6 +102,28 @@ describe("LeadDetail", () => {
     expect(screen.queryByText(/ACME ROOFING/)).toBeNull();
     // status/assignee/notes/history (the rep's own work) remain
     expect(screen.getByText("Called owner")).toBeTruthy();
+  });
+
+  it("names the current run in the not-in-run heading when its id is known", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...base, notInCurrentRun: true, currentRunId: "travis-run-2" },
+      refetch: vi.fn(),
+    });
+    renderDetail();
+    expect(
+      within(screen.getByTestId("not-in-run")).getByText("Not in run travis-run-2"),
+    ).toBeTruthy();
+  });
+
+  it("disables Add note while the status change is saving (race guard)", () => {
+    useLead.mockReturnValue({ status: "success", data: base, refetch: vi.fn() });
+    renderDetail();
+    expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(false);
+    cleanup();
+    statusPending = true;
+    renderDetail();
+    expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("shows an error banner when the lead cannot be loaded", () => {

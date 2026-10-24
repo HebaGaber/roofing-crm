@@ -4,7 +4,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CrmProperty, Provenanced } from "@crm/index-schema";
+import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 
 const mutate = vi.fn();
 let mutationState: { isPending: boolean; isSuccess: boolean; error: unknown } = {
@@ -16,6 +16,7 @@ vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate, ...mutationState }),
 }));
 
+import { toCreateInput } from "../../src/routes/Leads/LeadCreateAction";
 import {
   PropertyDetail,
   type PropertyDetailData,
@@ -104,5 +105,64 @@ describe("LeadCreateAction in the PropertyDetail drawer", () => {
     mutationState = { isPending: false, isSuccess: true, error: null };
     renderDrawer();
     expect(screen.getByText(/lead created/i)).toBeTruthy();
+  });
+});
+
+// AC-1 / TC-002 / TC-003: the snapshot holds the permit; a rep can create from a permit row.
+const permit = (over: Partial<Provenanced<CrmPermit>>): Provenanced<CrmPermit> =>
+  ({
+    propertyCid: property.propertyCid,
+    permitCid: "bafkreipermit1",
+    permitNumber: "2025-100",
+    statusClass: "open",
+    openDays: 340,
+    contractorResolution: "unresolved",
+    improvementType: "roof",
+    improvementAction: "replace",
+    issueDate: "2025-01-01",
+    finalDate: null,
+    capturedAt: "2026-10-20T00:00:00Z",
+    cid: "bafkreipermitcid",
+    runId: "run-3",
+    ...over,
+  }) as unknown as Provenanced<CrmPermit>;
+
+describe("signals snapshot holds the permit", () => {
+  const closed = permit({ permitCid: "c", permitNumber: "2020-1", statusClass: "closed" });
+  const open = permit({ permitCid: "o" });
+
+  it("defaults to the first open permit (id and open days); never invents a contractor", () => {
+    const input = toCreateInput(property, [closed, open]);
+    expect(input?.signals).toMatchObject({ openPermitId: "2025-100", openDays: 340 });
+    expect(input?.signals).not.toHaveProperty("contractor");
+  });
+
+  it("has no permit fields when no permit is open, and omits null number/days", () => {
+    expect(toCreateInput(property, [closed])?.signals).not.toHaveProperty("openPermitId");
+    const bare = permit({ permitNumber: null, openDays: null });
+    const signals = toCreateInput(property, [bare])?.signals;
+    expect(signals).not.toHaveProperty("openPermitId");
+    expect(signals).not.toHaveProperty("openDays");
+  });
+
+  it("an explicit permit wins over the first open one", () => {
+    const input = toCreateInput(property, [open], closed);
+    expect(input?.signals).toMatchObject({ openPermitId: "2020-1", openDays: 340 });
+  });
+
+  it("each permit card has its own 'Create lead from permit' button; the header one stays 'Create lead'", () => {
+    render(
+      <MemoryRouter>
+        <PropertyDetail data={{ ...data, permits: [closed, open] }} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getAllByRole("button", { name: "Create lead" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Create lead from permit 2020-1" }));
+    expect(mutate.mock.calls[0]?.[0]).toMatchObject({
+      requestIdentifier: "0201885122",
+      signals: { openPermitId: "2020-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
+    expect(mutate.mock.calls[1]?.[0]).toMatchObject({ signals: { openPermitId: "2025-100" } });
   });
 });

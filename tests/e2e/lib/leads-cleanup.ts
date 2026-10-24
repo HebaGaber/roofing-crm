@@ -1,6 +1,6 @@
 // B-07 test cleanup (GAP-3: no lead-delete exists in the product, and a second create on the same
-// property is refused by design, so reruns need the three test leads removed first). Deletes ONLY
-// items whose pk is one of the three allow-listed test-lead keys from DynamoDB `crm-leads`
+// property is refused by design, so reruns need the four test leads removed first). Deletes ONLY
+// items whose pk is one of the (at most four) allow-listed test-lead keys from DynamoDB `crm-leads`
 // (eu-north-1), using the default AWS credential chain. Credentials are never read or printed
 // here; any other pk is refused before a request is made.
 import {
@@ -14,7 +14,7 @@ export const LEADS_TABLE = "crm-leads";
 export const LEADS_REGION = "eu-north-1";
 
 const LEAD_KEY_PATTERN = /^48453:tcad:[A-Za-z0-9_-]+$/;
-const MAX_ALLOWED_KEYS = 3;
+const MAX_ALLOWED_KEYS = 4;
 const BATCH_LIMIT = 25; // BatchWriteItem accepts at most 25 requests per call.
 
 export interface LeadsCleanup {
@@ -24,8 +24,9 @@ export interface LeadsCleanup {
   deleteLeads(leadKeys: readonly string[]): Promise<number>;
 }
 
-/** `allowedLeadKeys` are the `48453:tcad:{request_identifier}` keys of the three test properties
- *  (the spec reads each request identifier from the live index, never guesses it). */
+/** `allowedLeadKeys` are the `48453:tcad:{request_identifier}` keys of the test leads: three real
+ *  properties (the spec reads each request identifier from the live index, never guesses it) plus
+ *  the B07STALE fixture. */
 export function createLeadsCleanup(allowedLeadKeys: readonly string[]): LeadsCleanup {
   if (allowedLeadKeys.length === 0 || allowedLeadKeys.length > MAX_ALLOWED_KEYS) {
     throw new Error(`leads cleanup: the allow-list must hold 1 to ${MAX_ALLOWED_KEYS} lead keys`);

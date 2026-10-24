@@ -38,7 +38,11 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
   if (lead.notInCurrentRun) {
     return (
       <section className={styles.section} data-testid="not-in-run" aria-label="Current signals">
-        <h3 className={styles.sectionTitle}>Not in the current run</h3>
+        <h3 className={styles.sectionTitle}>
+          {lead.currentRunId === undefined
+            ? "Not in the current run"
+            : `Not in run ${lead.currentRunId}`}
+        </h3>
         <StatusPill
           status="unavailable"
           text="Signals withheld: property absent from current run"
@@ -193,7 +197,11 @@ function LeadBody({ lead }: { readonly lead: LeadDetailData }): ReactElement {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <button type="submit" className={styles.action} disabled={addNote.isPending}>
+          <button
+            type="submit"
+            className={styles.action}
+            disabled={addNote.isPending || updateStatus.isPending}
+          >
             Add note
           </button>
         </form>

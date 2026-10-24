@@ -2,7 +2,7 @@
 // `leads.create` through leadsApi; an `ALREADY_EXISTS` error (the dedupe on
 // {fips}:tcad:{request_identifier}, ADR-04) is shown as "Already a lead", not as a failure.
 import { ErrorBanner } from "../../components/ErrorBanner.js";
-import type { CrmProperty, Provenanced } from "@crm/index-schema";
+import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type { ReactElement } from "react";
 import { Link } from "react-router";
 import { useCreateLead, type LeadCreateInput } from "./leadsApi.js";
@@ -19,9 +19,16 @@ export function isAlreadyExists(error: unknown): boolean {
 }
 
 /** Builds the `leads.create` input from the drawer's property. This contract publishes no street
- *  address (FU-A-01), so the lead is labelled by its TCAD id, never a fabricated address. */
-export function toCreateInput(property: Provenanced<CrmProperty>): LeadCreateInput | null {
+ *  address (FU-A-01), so the lead is labelled by its TCAD id, never a fabricated address. The
+ *  snapshot holds the given permit, else the property's first open one (AC-1). The contractor is
+ *  left out: no permit in this slice publishes a name, and none is ever invented. */
+export function toCreateInput(
+  property: Provenanced<CrmProperty>,
+  permits: readonly Provenanced<CrmPermit>[] = [],
+  permit?: Provenanced<CrmPermit>,
+): LeadCreateInput | null {
   if (property.latitude === null || property.longitude === null) return null;
+  const snapshotPermit = permit ?? permits.find((p) => p.statusClass === "open");
   return {
     fips: TRAVIS_FIPS,
     requestIdentifier: property.requestIdentifier,
@@ -31,6 +38,10 @@ export function toCreateInput(property: Provenanced<CrmProperty>): LeadCreateInp
     signals: {
       ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
       roofAgeBasis: property.roofAgeBasis,
+      ...(snapshotPermit?.permitNumber == null
+        ? {}
+        : { openPermitId: snapshotPermit.permitNumber }),
+      ...(snapshotPermit?.openDays == null ? {} : { openDays: snapshotPermit.openDays }),
     },
     sourceManifestCid: property.sourceManifestCid,
     createdFrom: "map",
@@ -39,13 +50,21 @@ export function toCreateInput(property: Provenanced<CrmProperty>): LeadCreateInp
 
 export function LeadCreateAction({
   property,
+  permits = [],
+  permit,
 }: {
   readonly property: Provenanced<CrmProperty>;
-}): ReactElement {
+  /** The drawer's permits (the snapshot takes the first open one). */
+  readonly permits?: readonly Provenanced<CrmPermit>[];
+  /** Set on a permit row's button: the snapshot holds this permit. The lead is still per property. */
+  readonly permit?: Provenanced<CrmPermit>;
+}): ReactElement | null {
   const create = useCreateLead();
-  const input = toCreateInput(property);
+  const input = toCreateInput(property, permits, permit);
 
   if (input === null) {
+    // The header action already says so; a permit row stays quiet.
+    if (permit !== undefined) return null;
     return (
       <p className={styles.meta}>
         Create lead unavailable: this property has no published location.
@@ -80,10 +99,15 @@ export function LeadCreateAction({
       <button
         type="button"
         className={styles.action}
+        aria-label={
+          permit === undefined
+            ? undefined
+            : `Create lead from permit ${permit.permitNumber ?? "(number not published)"}`
+        }
         disabled={create.isPending}
         onClick={() => create.mutate(input)}
       >
-        Create lead
+        {permit === undefined ? "Create lead" : "Create lead from permit"}
       </button>
     </div>
   );

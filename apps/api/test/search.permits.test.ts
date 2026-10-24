@@ -97,6 +97,12 @@ class FakeLeadIndex implements LeadIndex {
       return b.openDays - a.openDays;
     });
   }
+  async presentRequestIdentifiers() {
+    return new Set<string>();
+  }
+  async currentRunId() {
+    return undefined;
+  }
   async getProperty() {
     return null;
   }

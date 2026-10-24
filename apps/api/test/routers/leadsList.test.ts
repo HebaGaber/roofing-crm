@@ -47,6 +47,9 @@ function index(): LeadIndex {
     ]),
     searchPermits: vi.fn(async () => [{ propertyCid: "bafyP1", statusClass: "open" }]),
     getProperty: vi.fn(),
+    // property "3" is absent from run2, so the run1 lead is flagged (AC-5)
+    presentRequestIdentifiers: vi.fn(async () => new Set<string>()),
+    currentRunId: vi.fn(async () => "run-two"),
   } as unknown as LeadIndex;
 }
 const c = (r: LeadRepo, i?: LeadIndex) =>

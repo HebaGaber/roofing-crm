@@ -8,8 +8,9 @@ export function leadKey(fips: string, requestIdentifier: string): string {
   return `${fips}:tcad:${requestIdentifier}`;
 }
 
-/** True when a lead was captured under a different manifest than the one currently served
- *  (AC-5: computed at read time, never stored). */
+/** Cheap pre-check: the lead was captured under a different manifest than the one now served.
+ *  This alone does NOT decide AC-5 ("not in the current run"); the service also requires the
+ *  lead's property to be absent from the current index. Computed at read time, never stored. */
 export function isNotInCurrentRun(sourceManifestCid: string, currentManifestCid: string): boolean {
   return sourceManifestCid !== currentManifestCid;
 }
