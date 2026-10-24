@@ -71,7 +71,7 @@ production-ready, not just demo-ready.
 ## 3. Assumptions
 
 - **Data source.** Per AC-7, this story's deployed build reads property/permit data directly by
-  Task A's Run 2 full-county manifest CID `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`
+  Task A's Run 2 full-county manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`
   (441,961 properties / 15,025 permits). Test data below (`{P_...}` tokens) must be filled in from
   this manifest once it is live — they are placeholders, not fabricated values, consistent with
   this template's convention. **Do not** substitute B-03/B-07's earlier 35-row-sample fixtures;
@@ -129,7 +129,7 @@ production-ready, not just demo-ready.
   real open permit number), not invented.
 - **Lakeway combined-filter case (G4):** "Lakeway", tenure ≥10 years, owner mailing address outside
   the area — exact property set read from the live index at test time.
-- **Data snapshot:** manifest CID `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`
+- **Data snapshot:** manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`
   (441,961 properties / 15,025 permits). Every agent-created lead must store this CID in
   `sourceManifestCid`.
 - **Run-scoped values:** every lead created by this suite is created with a note/tag prefixed
@@ -395,7 +395,7 @@ production-ready, not just demo-ready.
 - **Maps to:** AC-7, FR-007
 - **Steps:**
   1. **Call** the deployed API's index-info endpoint (or equivalent) and read `manifestCid`.
-  2. **Verify** it equals `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`.
+  2. **Verify** it equals `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`.
   3. **Open** `{RUNTIME_URL}/map` and verify the property count shown is consistent with 441,961
      properties in scope (not the earlier 35-row sample's count).
 - **Expected result:** both the API and the UI trace to the real Run 2 publication.

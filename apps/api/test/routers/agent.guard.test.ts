@@ -25,7 +25,7 @@ import { agentRouter } from "../../src/routers/agent.js";
 import { createCallerFactory, router } from "../../src/trpc.js";
 import { fakeUsageGuard } from "../support/fakeUsageGuard.js";
 
-const MANIFEST = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const MANIFEST = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 const PROPERTY_CID = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 function property(): Provenanced<CrmProperty> {

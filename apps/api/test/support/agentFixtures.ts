@@ -11,7 +11,7 @@ import type {
 } from "../../src/adapters/duckDbParquet.js";
 import type { LeadRepo } from "../../src/adapters/leadRepo.js";
 
-export const MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+export const MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 export const PROPERTY_CID_A = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 export const PROPERTY_CID_B = "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 export const PERMIT_CID_P = "bafkreipppppppppppppppppppppppppppppppppppppppppppppppppppppppppp";

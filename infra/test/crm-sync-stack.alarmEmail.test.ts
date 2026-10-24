@@ -20,7 +20,7 @@ const CONFIG: CrmAppConfig = {
   additionalBranches: [],
   aiProvider: "bedrock",
   agentModelId: "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  dataManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
+  dataManifestCid: "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
   alarmEmail: "eng.heba.gaber@gmail.com",
   deployNonce: "alarmtest",
 };

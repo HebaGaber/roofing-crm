@@ -27,7 +27,7 @@ afterEach(() => resetUsageGuardForTest());
 class EmptyLeadIndex implements LeadIndex {
   async indexInfo() {
     return {
-      manifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
+      manifestCid: "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
       propertyCount: 0,
       permitCount: 0,
       promotedAt: "2026-10-21T10:35:16Z",

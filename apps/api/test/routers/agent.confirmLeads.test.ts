@@ -17,7 +17,7 @@ import type { CreateLeadInput, LeadService } from "../../src/services/leads.js";
 import { createCallerFactory, router } from "../../src/trpc.js";
 import { fakeUsageGuard, type FakeUsageGuardOptions } from "../support/fakeUsageGuard.js";
 
-const MANIFEST = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const MANIFEST = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 
 function property(
   tcadId: string,

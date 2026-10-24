@@ -15,7 +15,7 @@ const BUILD_INDEX_ENTRY = new URL("../../apps/sync/handlers/buildIndex.ts", impo
 const VALIDATE_ENTRY = new URL("../../apps/sync/handlers/validate.ts", import.meta.url).pathname;
 const PROMOTE_ENTRY = new URL("../../apps/sync/handlers/promote.ts", import.meta.url).pathname;
 /** Task A's Run 2 full-county manifest — the value `DATA_MANIFEST_CID` carries in config. */
-const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const RUN_2_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 const RUN_1_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
 
 /** `skipBundling` (default on) synthesizes without esbuild/Docker (CDK's own `aws:cdk:bundling-stacks`

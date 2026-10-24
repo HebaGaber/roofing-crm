@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { setLeadIndexForTest, tryLeadIndex } from "../src/leadIndex.js";
 
-const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const RUN_2_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 
 const hasDeployedIndexEnv =
   process.env.CRM_INDEX_BUCKET_NAME !== undefined &&

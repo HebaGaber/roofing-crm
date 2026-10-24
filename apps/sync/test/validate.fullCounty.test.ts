@@ -10,7 +10,7 @@ import type { CrmPermit, CrmProperty } from "@crm/index-schema";
 import { validateCore, type ValidateInput } from "../handlers/validate.js";
 
 const RUN_1_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
-const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const RUN_2_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 
 /** validateCore reads only the row count and each row's sourceManifestCid. */
 function rows<T>(count: number, manifestCid: string): T[] {

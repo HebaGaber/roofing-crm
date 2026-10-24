@@ -26,7 +26,7 @@ import { resetUsageGuardForTest, setUsageGuardForTest } from "../../src/agent/us
 import { fakeUsageGuard, type FakeUsageGuardOptions } from "../support/fakeUsageGuard.js";
 
 /** Task A's Run 2 full-county manifest (runId travis-full-run2-20261024). */
-const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
+const RUN_2_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 const TCAD_ID = "0208011301";
 const PROPERTY_CID = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 

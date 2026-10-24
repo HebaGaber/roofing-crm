@@ -35,7 +35,7 @@ function build() {
       promoteHandlerEntry: PROMOTE_ENTRY,
       indexBucketName: "crm-index",
       leadsTableName: "crm-leads",
-      dataManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
+      dataManifestCid: "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
       deployNonce: "iamdenytest",
     }),
   );

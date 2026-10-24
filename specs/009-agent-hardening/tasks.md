@@ -85,11 +85,11 @@ and are tested. No story's user-facing behavior exists yet.
 full-county manifest, by CID (AC-7, FR-007, constitution B1).
 
 **Independent Test**: confirm the data shown in the CRM and returned by the agent traces to
-manifest `bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy`, not the earlier 35-row sample.
+manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`, not the earlier 35-row sample.
 
 ### Tests for User Story 4 (write first)
 
-- [x] T020 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
+- [x] T020 [P] [US4] Write a failing integration test asserting `leadIndex.indexInfo().manifestCid === "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute"` against the deployed index, in `apps/api/test/leadIndex.manifestCid.test.ts` (builder: alakazam)
 
 ### Implementation for User Story 4
 

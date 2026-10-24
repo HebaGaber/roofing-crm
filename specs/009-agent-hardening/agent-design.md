@@ -157,7 +157,7 @@ Neither refusal path makes a compose call; the answer is a fixed template.
 - It calls `agent.ask` through `packages/api-client` on `RUNTIME_URL` (localhost is refused) with a Cognito eval user. G2 and G7 run in G1's `threadId`.
 
 Assertions per query:
-- **Groundedness (100%):** every `results[].propertyCid` returns non-null from `property.get`, and `answer.manifestCid === bafkreihidj4…kbcy`.
+- **Groundedness (100%):** every `results[].propertyCid` returns non-null from `property.get`, and `answer.manifestCid === bafkreife3vk…pcute`.
 - **Correctness:** re-run `search.properties` or `search.permits` with the center and thresholds the answer states. The returned rows must be a subset of that result, with recall ≥ 80% of the top N.
 - **Honesty:** the text contains the center coordinates and thresholds. "BBB not available" appears when `bbbStatus === "not_checked"`.
 - **G6:** `outcome === "invalid_scope"` and `results.length === 0`.
