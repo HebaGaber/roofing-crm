@@ -63,6 +63,14 @@ export const AUDITED_PROPERTIES = [
 /** Runs in the page: the audit of every rendered element under `<body>`. */
 export function atlasTokenAudit(properties: readonly string[]): TokenAudit {
   const root = document.documentElement;
+  // Measure SETTLED values: a colour read mid-fade (for example the nav pill's background at
+  // alpha 0 or 0.592 of an Atlas token) is not a token value. Found in CI, where the slower
+  // browser caught the transition. With transitions off, every computed value is its final one.
+  const settle = document.createElement("style");
+  settle.textContent =
+    "*, *::before, *::after { transition: none !important; animation: none !important; }";
+  document.head.appendChild(settle);
+  void document.body.offsetHeight; // flush styles so the change takes effect before measuring
   const names = new Set<string>();
   const rootStyle = getComputedStyle(root);
   for (let i = 0; i < rootStyle.length; i += 1) {
@@ -159,6 +167,7 @@ export function atlasTokenAudit(properties: readonly string[]): TokenAudit {
       violations.push({ selector: describe(el), property, value });
     }
   }
+  settle.remove();
   return { tokens: names.size, checkedElements, violations };
 }
 
