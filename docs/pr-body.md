@@ -14,7 +14,7 @@ A Roofing CRM that turns published Travis County property and permit data into r
 | Test credentials | Username `admin@roofing-crm.test`. The password is in AWS Secrets Manager (`roofing-crm/admin-user`, `eu-north-1`) and is shared privately with the assessor, never in this PR |
 | Demo video | Not recorded yet (release) |
 | Data source (Task A) | Oracle manifest CID `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` (run `travis-202609-permits-20261021t103516z`: 35 Austin reroof permits on 14 TCAD parcels). Task A's full-county run (A-11) is not picked up yet: that switch is a later story |
-| CI | GitHub Actions on the fork, green on this branch: lint, type-check and unit tests; secret scan (gitleaks); and Playwright on the hosted URL |
+| CI | GitHub Actions run on the fork, so they do not appear in this PR's checks list: [all runs on `feature/roofing-crm`](https://github.com/HebaGaber/roofing-crm/actions?query=branch%3Afeature%2Froofing-crm), green on this branch: lint, type-check and unit tests; secret scan (gitleaks); and Playwright on the hosted URL (run [40087783428](https://github.com/HebaGaber/roofing-crm/actions/runs/40087783428)) |
 
 ## Evaluation points
 
