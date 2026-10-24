@@ -23,7 +23,11 @@ import { resolve } from "node:path";
 import { expect, test, type APIResponse, type Locator, type Page } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
-import { createLeadsCleanup, type LeadsCleanup } from "./lib/leads-cleanup.js";
+import {
+  awsCredentialsAvailable,
+  createLeadsCleanup,
+  type LeadsCleanup,
+} from "./lib/leads-cleanup.js";
 
 /** A saved note shows once the save and the page's refetch complete. */
 const NOTE_VISIBLE_MS = 15_000;
@@ -228,6 +232,14 @@ test.describe("B-07 leads", () => {
 
   test.beforeAll(async ({ browser }, testInfo) => {
     if (!SEEDED_PASSWORD) return;
+    // CI has no AWS credentials (the account's organization policy blocks the GitHub OIDC role),
+    // and without them the four test leads cannot be cleared, so a second run would be refused as
+    // a duplicate. Skip the whole file there, loudly. Locally, missing or expired credentials
+    // must FAIL, never skip, so this applies on CI only.
+    test.skip(
+      process.env.CI !== undefined && !(await awsCredentialsAvailable()),
+      "B-07 needs AWS credentials to clear its test leads; CI has none. Proven by the local hosted run (docs/evidence/B-07.md).",
+    );
     const baseURL = testInfo.project.use.baseURL;
     const page = await browser.newPage(baseURL === undefined ? {} : { baseURL });
     try {

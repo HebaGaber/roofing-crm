@@ -17,6 +17,17 @@ const LEAD_KEY_PATTERN = /^48453:tcad:[A-Za-z0-9_-]+$/;
 const MAX_ALLOWED_KEYS = 4;
 const BATCH_LIMIT = 25; // BatchWriteItem accepts at most 25 requests per call.
 
+/** True when the AWS default credential chain can produce credentials. Used only to decide whether
+ *  CI can run the lead specs (it has no AWS credentials); nothing is read from or printed of them. */
+export async function awsCredentialsAvailable(): Promise<boolean> {
+  try {
+    await new DynamoDBClient({ region: LEADS_REGION }).config.credentials();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface LeadsCleanup {
   /** The frozen allow-list: the only pks this helper will ever touch. */
   readonly allowed: readonly string[];

@@ -157,7 +157,12 @@ jobs:
 
       # The Playwright config refuses an explicit localhost RUNTIME_URL (config-guard.spec.ts);
       # RUNTIME_URL here is always the hosted branch URL.
+      # CRM_TEST_PASSWORD is the seeded test user's password (repository secret, set from Secrets
+      # Manager `roofing-crm/admin-user`); without it the logged-in specs skip. The B-07 spec also
+      # needs AWS credentials, which CI does not have, so it skips itself on CI with a reason.
       - name: Playwright on the hosted URL
+        env:
+          CRM_TEST_PASSWORD: ${{ secrets.CRM_TEST_PASSWORD }}
         run: pnpm exec playwright test
 
       - name: Upload the Playwright report
