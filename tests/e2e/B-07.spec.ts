@@ -25,8 +25,7 @@ import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
 import { createLeadsCleanup, type LeadsCleanup } from "./lib/leads-cleanup.js";
 
-/** A saved note shows once the page's refetch lands. React Query retries a throttled refetch
- *  after 1 s, 2 s and 4 s (about 7 s), so wait that long, not the 5 s default. */
+/** A saved note shows once the save and the page's refetch complete. */
 const NOTE_VISIBLE_MS = 15_000;
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
@@ -178,29 +177,6 @@ async function listLeadKeys(page: Page): Promise<string[]> {
     limit: 100,
   });
   return data.leads.map((lead) => lead.leadKey);
-}
-
-/** Records every lead API call the page makes (status + milliseconds since start), so a failed
- *  note test carries its own network evidence. */
-function trackLeadCalls(page: Page): () => Promise<void> {
-  const t0 = Date.now();
-  const calls: string[] = [];
-  page.on("response", (r) => {
-    const m = /\/api\/trpc\/(leads\.[a-zA-Z]+)/.exec(r.url());
-    if (m)
-      calls.push(
-        `${String(Date.now() - t0).padStart(6)}ms ${r.request().method()} ${m[1]} -> ${r.status()}`,
-      );
-  });
-  page.on("requestfailed", (r) => {
-    const m = /\/api\/trpc\/(leads\.[a-zA-Z]+)/.exec(r.url());
-    if (m)
-      calls.push(
-        `${String(Date.now() - t0).padStart(6)}ms ${m[1]} FAILED ${r.failure()?.errorText ?? ""}`,
-      );
-  });
-  return () =>
-    test.info().attach("lead-calls.txt", { body: calls.join("\n"), contentType: "text/plain" });
 }
 
 /** Opens the Map drawer for a property through the `sel` deep link (no pin-drop needed). */
@@ -499,15 +475,12 @@ test.describe("B-07 leads", () => {
 
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
-    const notes = page.getByRole("region", { name: "Notes" });
-    await expect(notes).toContainText(note, { timeout: NOTE_VISIBLE_MS });
+    await expect(savedNotes(page)).toContainText(note, { timeout: NOTE_VISIBLE_MS });
     await shot(page, "008", "saved");
 
     await page.reload();
     await expect(page.getByRole("combobox", { name: "Status" })).toHaveValue("contacted");
-    await expect(page.getByRole("region", { name: "Notes" })).toContainText(note, {
-      timeout: NOTE_VISIBLE_MS,
-    });
+    await expect(savedNotes(page)).toContainText(note, { timeout: NOTE_VISIBLE_MS });
     // History records both the status change and the note (plus the creation event).
     const history = page.getByRole("region", { name: "History" }).locator("li");
     expect(await history.count()).toBeGreaterThanOrEqual(2);
@@ -518,26 +491,19 @@ test.describe("B-07 leads", () => {
     const filler = "Roof walk notes, flashing & vents ok; ".repeat(40).slice(0, 1000);
     const note = `${RUN_TAG} "quoted" & 'single'\nsecond line ${filler}`.slice(0, 1000);
     expect(note).toHaveLength(1000);
-    const attachCalls = trackLeadCalls(page);
-    test.info().annotations.push({ type: "calls", description: "see lead-calls.txt attachment" });
     await page.goto(leadPath(factsOf(P_5_52).requestIdentifier));
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
-    // Wait for THIS note (TC-008's note carries the same run tag, so the tag alone is not enough).
-    await expect(page.getByRole("region", { name: "Notes" }))
-      .toContainText(`${RUN_TAG} "quoted" & 'single'`, { timeout: NOTE_VISIBLE_MS })
-      .catch(async (error: unknown) => {
-        await attachCalls();
-        throw error;
-      });
+    // Wait until THIS note is SAVED (in the list, not just typed in the textarea) before reloading.
+    await expect(savedNotes(page)).toContainText(`${RUN_TAG} "quoted" & 'single'`, {
+      timeout: NOTE_VISIBLE_MS,
+    });
 
     await page.reload();
-    // The notes load after the page does; wait for this note before reading the whole text.
-    await expect(page.getByRole("region", { name: "Notes" })).toContainText(
-      `${RUN_TAG} "quoted" & 'single'`,
-      { timeout: NOTE_VISIBLE_MS },
-    );
-    const text = await page.getByRole("region", { name: "Notes" }).textContent();
+    await expect(savedNotes(page)).toContainText(`${RUN_TAG} "quoted" & 'single'`, {
+      timeout: NOTE_VISIBLE_MS,
+    });
+    const text = await savedNotes(page).textContent();
     // textContent keeps the line break and every character, so a plain includes() is exact.
     expect(text ?? "").toContain(note);
   });
