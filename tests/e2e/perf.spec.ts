@@ -51,7 +51,8 @@ async function timedRadiusChange(
   toRadiusMi: number,
 ): Promise<number> {
   const started = await page.evaluate(() => performance.now());
-  const radius = page.getByLabel("Radius");
+  // The number box, not the slider (its label is "Radius (slider)", which also matches "Radius").
+  const radius = page.getByRole("spinbutton", { name: "Radius" });
   await radius.fill(String(toRadiusMi));
   await radius.blur();
   await page

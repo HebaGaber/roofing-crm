@@ -20,6 +20,9 @@
   position: relative;
   flex: 1 1 auto;
   min-height: 420px;
+  /* The map canvas keeps its own 480px minimum; without this it spilled over the notice below
+     (for example "Widen to {n} mi") on a 1440x900 screen and swallowed the click (found live). */
+  overflow: hidden;
 }
 
 .radiusOverlay {
