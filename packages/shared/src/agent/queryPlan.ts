@@ -41,6 +41,12 @@ export const QueryPlan = z.object({
     tenureYearsMin: z.number().int().min(0).max(100).optional(),
     kind: z.enum(["residential", "commercial"]).optional(),
     permitNumber: z.string().max(40).optional(),
+    // T043 (B-09/US2, G4 "owners outside the area") brought this filter to the tool/service layer
+    // (services/search.ts's SearchPropertiesInput.ownerAreaClass) but never back to this shared
+    // QueryPlan shape — added here (B-09 agent-hardening /simplify fix) so the plan-call's
+    // Zod validation and the deterministic dispatch both see the same enum
+    // (services/search.ts's existing `ownerAreaClass` values).
+    ownerAreaClass: z.array(z.enum(["in_county", "regional", "out_of_area", "unknown"])).optional(),
   }),
   // Drives the assumption chips: which slots the user stated vs. which were defaulted or carried
   // over from the previous turn's QueryPlan (ADR-06 §6.1's memory/"inherited" follow-up pattern).

@@ -1,22 +1,18 @@
-// T034 (B-09, Phase 4/US1): the tool loop via the AI SDK's own `generateText` (ADR-06 §6.1: "the
-// AI SDK's own tool-loop, not hand-rolled"), one 23s `AbortController`/`setTimeout` around the
-// whole call, with `AbortError` mapped to a typed `{outcome: "timed_out"}` result — never
-// rethrown as an unhandled 500, the same pattern as `mapIndexNotReady` in
-// apps/api/src/routers/search.ts.
-//
-// Deviation from the task's literal `generateText({model, tools, maxSteps: 3, abortSignal})`
-// phrasing, noted in the builder's report: the installed `ai@7.0.152` has no `maxSteps` option on
-// `generateText` — that name belongs to an older AI SDK major. This version's own multi-step
-// tool-loop control is `stopWhen: stepCountIs(n)` (exported from `ai`), which this module uses to
-// get the identical "at most 3 model calls this turn" budget (ADR §6.1) the task intends.
-import {
-  generateText,
-  stepCountIs,
-  type GenerateTextResult,
-  type LanguageModel,
-  type ModelMessage,
-  type ToolSet,
-} from "ai";
+// 009-agent-hardening architecture fix (ADR-06 §6.1/§6.3 as actually accepted:
+// docs/decisions/0000-agent-architecture.md — a two-call, code-driven design, not an AI-SDK
+// tool-loop). This module used to run the *whole* turn as one `generateText({model, tools,
+// stopWhen: stepCountIs(3)})` call, letting the model decide which tool to call and when to stop.
+// That doesn't match the accepted ADR: the model never gets tool-calling capability at all now
+// (`apps/api/src/agent/composeAnswer.ts`'s `runAsk` calls `generateOnce` with no `tools` argument
+// — the strongest guarantee this AI SDK version offers that a call cannot invoke a tool, stronger
+// than `toolChoice: "none"`, which not every provider honors identically). This module now owns
+// only two orchestration-agnostic things: (1) `withAgentTimeout`, the 23s `AbortController`/
+// `setTimeout` wrapper around the *whole* turn (every model call `runAsk` makes), mapped to a
+// typed `{outcome: "timed_out"}` — never an unhandled 500, the same pattern as
+// `mapIndexNotReady` in apps/api/src/routers/search.ts; and (2) `generateOnce`, a single
+// no-tools `generateText` call with the Bedrock prompt-caching wiring, used for both the plan
+// call and the compose call (and the plan's one repair call).
+import { generateText, type LanguageModel, type ModelMessage } from "ai";
 
 // T045 (B-09, Phase 5/US2): Bedrock prompt caching (ADR-06 §6.1: "Wrap the Bedrock model (cache
 // points on the system prompt and the last non-system message). Log cache read/write tokens. Put
@@ -30,7 +26,8 @@ import {
 // `system` field accepts a `SystemModelMessage`, not only a plain string — see `ai`'s
 // `Instructions = string | SystemModelMessage | Array<SystemModelMessage>`). The Gateway path
 // (`getModel.ts`'s other branch) has no equivalent control and keeps the original plain
-// `system`/`prompt` strings untouched.
+// `system`/`prompt` strings untouched. Applied identically to both the plan call and the compose
+// call (previously wrapped only the one tool-loop call).
 const BEDROCK_CACHE_POINT_PROVIDER_OPTIONS = { bedrock: { cachePoint: { type: "default" } } };
 
 /** Trace-metadata label for `AgentAnswer.trace.cacheStrategy` (ADR §6.1) — `"none"` when the
@@ -39,38 +36,25 @@ export type CacheStrategy = "bedrock:system+last-message" | "none";
 
 /** `@ai-sdk/amazon-bedrock`'s language model sets `provider: "amazon-bedrock"` (see
  *  `createAmazonBedrock(...)`'s model classes) — the one place this module can detect "we are on
- *  the Bedrock path" without threading `AI_PROVIDER` through `RunAgentInput` as a second signal
- *  that could drift from the model actually passed in. */
-function isBedrockModel(model: LanguageModel): boolean {
+ *  the Bedrock path" without threading `AI_PROVIDER` through as a second signal that could drift
+ *  from the model actually passed in. */
+export function isBedrockModel(model: LanguageModel): boolean {
   return typeof model !== "string" && model.provider === "amazon-bedrock";
 }
 
 /** ADR-06 §6.1 / contracts/agent-api.md step 9: the server aborts at 23s, inside the Lambda's own
- *  28s timeout and the HTTP API's 29-30s limit (nested on purpose, Task A AD-27-style layering). */
+ *  28s timeout and the HTTP API's 29-30s limit (nested on purpose, Task A AD-27-style layering).
+ *  This now wraps the whole `runAsk` turn (plan + repair + dispatch + compose), not just one
+ *  `generateText` call. */
 export const RUN_AGENT_TIMEOUT_MS = 23_000;
 
-/** ADR-06 §6.1: "At most 3 model calls" this turn — the AI SDK's own loop stops issuing further
- *  `doGenerate` calls once this many steps have run, whatever the model/tools still want to do. */
-export const RUN_AGENT_MAX_STEPS = 3;
-
-export interface RunAgentInput<TOOLS extends ToolSet> {
-  readonly model: LanguageModel;
-  readonly tools: TOOLS;
-  readonly system: string;
-  readonly prompt: string;
-}
-
-type GenerateTextReturn<TOOLS extends ToolSet> = Awaited<ReturnType<typeof generateText<TOOLS>>>;
-
-export type RunAgentResult<TOOLS extends ToolSet> =
-  | {
-      readonly outcome: "ok";
-      readonly result: GenerateTextReturn<TOOLS>;
-      /** ADR §6.1's trace-metadata requirement — which cache strategy (if any) this turn's
-       *  `generateText` call used, for `AgentAnswer.trace.cacheStrategy`. */
-      readonly cacheStrategy: CacheStrategy;
-    }
-  | { readonly outcome: "timed_out" };
+/** ADR-06 §6.1: "At most 3 model calls" this turn. Unlike the old tool-loop (`stopWhen:
+ *  stepCountIs(3)`, a model-driven stop condition), this budget is now enforced structurally by
+ *  `composeAnswer.ts`'s `runAsk`: it calls `generateOnce` at most 3 times in its own fixed
+ *  control flow (plan, at most 1 repair, compose) — there is no loop a model's own output could
+ *  extend further. This constant documents that ceiling; nothing reads it at runtime to decide
+ *  whether to make another call. */
+export const RUN_AGENT_MAX_MODEL_CALLS = 3;
 
 /** True for the AI SDK's own `AbortError` (thrown by `generateText` when `abortSignal` fires)
  *  and, defensively, for any error surfacing after the controller has already aborted — the same
@@ -80,36 +64,24 @@ function isAbortError(error: unknown, controller: AbortController): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-/** Runs one `agent.ask` turn's tool loop. Never throws on a timeout — callers get a typed
- *  `{outcome: "timed_out"}` instead, exactly like `IndexNotReadyError`'s mapping in
- *  `routers/search.ts`. Any other failure (a genuine model/tool error) is rethrown, since that is
- *  not a timeout and the caller's own error mapping (TRPCError) is the right place for it. */
-export async function runAgent<TOOLS extends ToolSet>(
-  input: RunAgentInput<TOOLS>,
-): Promise<RunAgentResult<TOOLS>> {
+export type AgentTimeoutResult<T> =
+  | { readonly outcome: "ok"; readonly result: T }
+  | { readonly outcome: "timed_out" };
+
+/** Runs `run` under one 23s `AbortController`/`setTimeout` for the whole turn. Never throws on a
+ *  timeout — callers get a typed `{outcome: "timed_out"}` instead, exactly like
+ *  `IndexNotReadyError`'s mapping in `routers/search.ts`. Any other failure (a genuine model/tool
+ *  error) is rethrown, since that is not a timeout and the caller's own error mapping (TRPCError)
+ *  is the right place for it. `run` receives the `AbortSignal` so every `generateOnce` call this
+ *  turn makes aborts together, not just the one in flight when the timer fires. */
+export async function withAgentTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<AgentTimeoutResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RUN_AGENT_TIMEOUT_MS);
-  const useBedrockCaching = isBedrockModel(input.model);
-  const cacheStrategy: CacheStrategy = useBedrockCaching ? "bedrock:system+last-message" : "none";
   try {
-    // Cache points per ADR §6.1: one on the system prompt, one on the last (here, the only)
-    // non-system message. Both are plain-string `system`/`prompt` on the Gateway path (no cache
-    // control exists there), and cache-annotated `SystemModelMessage`/`ModelMessage[]` on Bedrock.
-    const system = useBedrockCaching
-      ? { role: "system" as const, content: input.system, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }
-      : input.system;
-    const prompt: string | ModelMessage[] = useBedrockCaching
-      ? [{ role: "user" as const, content: input.prompt, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }]
-      : input.prompt;
-    const result = await generateText<TOOLS>({
-      model: input.model,
-      tools: input.tools,
-      system,
-      prompt,
-      stopWhen: stepCountIs(RUN_AGENT_MAX_STEPS),
-      abortSignal: controller.signal,
-    });
-    return { outcome: "ok", result, cacheStrategy };
+    const result = await run(controller.signal);
+    return { outcome: "ok", result };
   } catch (error) {
     if (isAbortError(error, controller)) {
       return { outcome: "timed_out" };
@@ -120,6 +92,59 @@ export async function runAgent<TOOLS extends ToolSet>(
   }
 }
 
-// Re-exported so callers that need to annotate a variable with the full result type never have to
-// import `GenerateTextResult` from `ai` directly just to spell this module's own return shape.
-export type { GenerateTextResult };
+export interface GenerateOnceInput {
+  readonly model: LanguageModel;
+  readonly system: string;
+  readonly prompt: string;
+}
+
+export interface GenerateOnceResult {
+  readonly text: string;
+  readonly cacheStrategy: CacheStrategy;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
+}
+
+/** One single-step, **no-tools** `generateText` call (ADR §6.1's "plan call"/"compose call" — the
+ *  model is never given `tools` at all, which is a stronger guarantee of "cannot call a tool"
+ *  than `toolChoice: "none"`, which not every provider honors identically). Used for the plan
+ *  call, the plan's one repair call, and the compose call — all three are this same shape, only
+ *  the system/prompt text differs. */
+export async function generateOnce(
+  input: GenerateOnceInput,
+  signal: AbortSignal,
+): Promise<GenerateOnceResult> {
+  const useBedrockCaching = isBedrockModel(input.model);
+  const cacheStrategy: CacheStrategy = useBedrockCaching ? "bedrock:system+last-message" : "none";
+
+  // Cache points per ADR §6.1: one on the system prompt, one on the last (here, the only)
+  // non-system message. Both are plain-string `system`/`prompt` on the Gateway path (no cache
+  // control exists there), and cache-annotated `SystemModelMessage`/`ModelMessage[]` on Bedrock.
+  const system = useBedrockCaching
+    ? { role: "system" as const, content: input.system, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }
+    : input.system;
+  const prompt: string | ModelMessage[] = useBedrockCaching
+    ? [{ role: "user" as const, content: input.prompt, providerOptions: BEDROCK_CACHE_POINT_PROVIDER_OPTIONS }]
+    : input.prompt;
+
+  const result = await generateText({
+    model: input.model,
+    // No `tools` field at all — see this module's header. There is nothing for either the plan
+    // call or the compose call to look up any more; retrieval is `composeAnswer.ts`'s
+    // `dispatchPlan`, called from plain TypeScript between these two model calls, never by the
+    // model itself.
+    system,
+    prompt,
+    abortSignal: signal,
+  });
+
+  const cacheReadTokens = result.usage.inputTokenDetails?.cacheReadTokens;
+  const cacheWriteTokens = result.usage.inputTokenDetails?.cacheWriteTokens;
+
+  return {
+    text: result.text,
+    cacheStrategy,
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+  };
+}

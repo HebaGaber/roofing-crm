@@ -1,22 +1,21 @@
-// T026 (B-09, Phase 4/US1): written and shown failing before apps/api/src/routers/agent.ts (and
-// apps/api/src/agent/getModel.ts, apps/api/src/agent/runAgent.ts) exist (TDD-first, constitution
-// XXI). Exercises the full `agent.ask` tool loop — plan -> resolvePlace -> searchProperties ->
-// compose -> verify — against a `MockLanguageModelV4` (not `MockLanguageModelV2`: that class does
-// not exist in the installed `ai@7.0.152`'s `ai/test` subpackage, which only ships
-// `MockLanguageModelV3`/`MockLanguageModelV4`; `V4` is the spec version `@ai-sdk/amazon-bedrock`
-// 5.0.123 (getModel.ts's Bedrock path, per agent-design.md ash §1) actually implements, so this is
-// the correct mock for the model `runAgent.ts` will receive, not a deviation from the task's
-// intent).
+// T026 (B-09, Phase 4/US1), rewritten for the 009-agent-hardening architecture fix: the accepted
+// ADR (docs/decisions/0000-agent-architecture.md §§4-6.3) is a two-call, code-driven design, not
+// an AI-SDK tool loop. There is no longer one `generateText({tools})` call whose own tool-loop
+// steps drive retrieval — `apps/api/src/agent/composeAnswer.ts`'s `runAsk` makes exactly two model
+// calls here (a plan call, then a compose call; see the repair-retry test below for the
+// three-call path) and calls the real `LeadIndex`-backed dispatch functions
+// (`services/agent/tools.ts`'s `createAgentDispatch`) itself, deterministically, from plain
+// TypeScript in between — never via a model-driven tool-call step.
 //
-// Per contracts/agent-api.md's `agent.ask` steps 3/5/6/7: a plan-step model call, two tool calls
-// (`resolvePlace`, `searchProperties`) executed by the AI SDK's own tool loop
-// (`generateText({model, tools, maxSteps: 3, ...})`, agent-design.md ash §1 — "the SDK's own
-// tool-loop, not hand-rolled"), then a compose-step model call whose output plants a fake
-// `property_cid` citation that is NOT present in any tool result this turn. The server-side
-// citation verifier (services/agent/verifyCitations.ts, T031 — also not built yet) must strip it
-// before the answer leaves the server, so the returned `AgentAnswer.claims` must never carry a
-// `citationIds` entry pointing at that fake citation. `trace.modelCalls` must stay within the
-// ADR-06 budget of <=3 model calls (plan + 2 tool-loop steps, no repair needed here).
+// `MockLanguageModelV4` (not `MockLanguageModelV2`: that class does not exist in the installed
+// `ai@7.0.152`'s `ai/test` subpackage) is given a `doGenerate` sequence of exactly two responses:
+// a plan-shaped JSON text (no tool call — `generateOnce` never passes `tools` at all, so the
+// model is never offered one), then a compose-shaped JSON text that plants a fake `property_cid`
+// citation NOT present in any dispatch result this turn. The server-side citation verifier
+// (services/agent/verifyCitations.ts) must strip it before the answer leaves the server, so the
+// returned `AgentAnswer.claims` must never carry a `citationIds` entry pointing at that fake
+// citation. `trace.modelCalls` must stay within the ADR-06 budget of <=3 model calls (here: 2 —
+// plan + compose, no repair needed).
 import { describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
@@ -26,16 +25,15 @@ import type {
   SearchPropertiesQuery,
 } from "../../src/adapters/duckDbParquet.js";
 import { router, createCallerFactory } from "../../src/trpc.js";
-// Does not exist yet (T035) — this import is expected to fail module resolution, which is the
-// correct TDD-first failure (constitution XXI), not a bad assertion in the test body below.
 import { agentRouter } from "../../src/routers/agent.js";
 
 const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
 
 const REAL_PROPERTY_CID =
   "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-// Planted in the mocked compose output only — never returned by any tool call this turn, so the
-// server-side citation verifier must strip any claim that cites it (the test's core assertion).
+// Planted in the mocked compose output only — never returned by any dispatch call this turn, so
+// the server-side citation verifier must strip any claim that cites it (the test's core
+// assertion).
 const FAKE_PLANTED_PROPERTY_CID =
   "bafkreiFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFA";
 
@@ -65,8 +63,12 @@ function property(overrides: Partial<Provenanced<CrmProperty>> = {}): Provenance
 }
 
 /** Same shape as search.properties.test.ts's `FakeLeadIndex` (B-03 convention) — never reaches
- *  real DuckDB/S3; the agent's `searchProperties` tool (T032) calls this same `LeadIndex` port. */
+ *  real DuckDB/S3; the agent's dispatch functions (`services/agent/tools.ts`) call this same
+ *  `LeadIndex` port. `searchProperties`/`searchPermits` are spy-wrapped so the out-of-scope test
+ *  (agent.outOfScope.test.ts) can assert they were never called; here they're exercised for
+ *  real. */
 class FakeLeadIndex implements LeadIndex {
+  readonly searchPropertiesCalls: SearchPropertiesQuery[] = [];
   constructor(private readonly rows: Provenanced<CrmProperty>[]) {}
   async indexInfo() {
     return {
@@ -76,7 +78,8 @@ class FakeLeadIndex implements LeadIndex {
       promotedAt: "2026-10-21T10:35:16Z",
     };
   }
-  async searchProperties(_query: SearchPropertiesQuery) {
+  async searchProperties(query: SearchPropertiesQuery) {
+    this.searchPropertiesCalls.push(query);
     return this.rows;
   }
   async searchPermits(_query: SearchPermitsQuery): Promise<Provenanced<CrmPermit>[]> {
@@ -97,23 +100,29 @@ class FakeLeadIndex implements LeadIndex {
   }
 }
 
-/** Three steps: a plan-shaped tool call, a resolvePlace tool call, a searchProperties tool call,
- *  then a final compose step whose text plants a fake `property_cid` citation. The AI SDK's own
- *  tool loop (`maxSteps: 3`) drives these three `doGenerate` calls, matching the <=3-model-calls
- *  NFR exactly. */
+/** Exactly two `doGenerate` calls: the plan call (a `QueryPlan`-shaped JSON — no tool call, since
+ *  `generateOnce` never offers one), then the compose call (claims + citations, one real + one
+ *  fake/planted). A third call would be the repair call, not exercised here (see
+ *  agent.planRepair.test.ts for that path) — a mock that only has two entries throws on a third
+ *  `doGenerate`, which would fail this test loudly if the implementation ever called more than
+ *  plan+compose on a valid-plan turn. */
 function buildMockModel(): MockLanguageModelV4 {
   return new MockLanguageModelV4({
     doGenerate: [
       {
         content: [
           {
-            type: "tool-call",
-            toolCallId: "call-1",
-            toolName: "resolvePlace",
-            input: JSON.stringify({ text: "Pflugerville" }),
+            type: "text",
+            text: JSON.stringify({
+              intent: "find_properties",
+              area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+              filters: { roofAgeMinYears: 15 },
+              slotSources: { roofAgeMinYears: "stated" },
+              unsupported: [],
+            }),
           },
         ],
-        finishReason: { unified: "tool-calls", raw: "tool_calls" },
+        finishReason: { unified: "stop", raw: "end_turn" },
         usage: {
           inputTokens: { total: 50, noCache: 50, cacheRead: undefined, cacheWrite: undefined },
           outputTokens: { total: 20, text: 20, reasoning: undefined },
@@ -121,30 +130,8 @@ function buildMockModel(): MockLanguageModelV4 {
         warnings: [],
       },
       {
-        content: [
-          {
-            type: "tool-call",
-            toolCallId: "call-2",
-            toolName: "searchProperties",
-            // Matches `services/agent/tools.ts`'s real `searchProperties` inputSchema
-            // (`AreaInput.extend({roofAgeMinYears?})` = `{lat, lon, radiusMi, roofAgeMinYears?}`),
-            // not the `{area, filters}` QueryPlan-ish shape this fixture originally guessed before
-            // T032 (alakazam) fixed the tool's actual input contract — the AI SDK validates a
-            // tool call's `input` against its `inputSchema` before `execute()` ever runs, so the
-            // old shape would have failed validation instead of exercising the real tool.
-            input: JSON.stringify({ lat: PFLUGERVILLE.lat, lon: PFLUGERVILLE.lng, radiusMi: 5 }),
-          },
-        ],
-        finishReason: { unified: "tool-calls", raw: "tool_calls" },
-        usage: {
-          inputTokens: { total: 80, noCache: 80, cacheRead: undefined, cacheWrite: undefined },
-          outputTokens: { total: 25, text: 25, reasoning: undefined },
-        },
-        warnings: [],
-      },
-      {
         // Compose step: cites one real, server-returned property plus one fake, planted CID that
-        // never appeared in any tool result this turn.
+        // never appeared in any dispatch result this turn.
         content: [
           {
             type: "text",
@@ -180,8 +167,6 @@ function ctx() {
   return {
     leadIndex,
     model,
-    // `agent.ts`'s context additionally needs the model and the usage-guard deps once it exists;
-    // the exact shape is this story's implementation detail (T033-T035), not fixed by this test.
     c: createCallerFactory(router({ agent: agentRouter }))({
       requestId: "req-agent-1",
       userId: "rep-1",
@@ -191,17 +176,21 @@ function ctx() {
   };
 }
 
-describe("agent.ask (T026) — full tool loop against a mocked model", () => {
-  it("stays within the <=3 model-calls budget and never lets a planted fake citation reach claims", async () => {
-    const { c, model } = ctx();
+describe("agent.ask (T026) — plan + compose, code-driven dispatch in between", () => {
+  it("stays within the <=3 model-calls budget, dispatches via the real LeadIndex, and never lets a planted fake citation reach claims", async () => {
+    const { c, model, leadIndex } = ctx();
 
     const answer = await c.agent.ask({ question: "roofing opportunities near Pflugerville", threadId: "thread-1" });
 
     expect(answer.trace.modelCalls).toBeLessThanOrEqual(3);
-    expect(model.doGenerateCalls.length).toBeLessThanOrEqual(3);
+    expect(answer.trace.modelCalls).toBe(2);
+    expect(model.doGenerateCalls.length).toBe(2);
+
+    // Deterministic dispatch happened via the real LeadIndex port, not a model tool-call step.
+    expect(leadIndex.searchPropertiesCalls.length).toBeGreaterThan(0);
 
     // Core assertion: the fake, planted `property_cid` must never surface in the returned
-    // claims/citations, however the server-side verifier (T031) implements the strip.
+    // claims/citations, however the server-side verifier implements the strip.
     const citedPropertyCids = answer.citations
       .map((citation) => citation.propertyCid)
       .filter((cid): cid is string => cid !== undefined);
@@ -239,8 +228,8 @@ describe("agent.ask (T026) — full tool loop against a mocked model", () => {
       const emf = JSON.parse(emfLine as string);
 
       // The fake planted citation never makes it into `rawCitations` at all (it isn't in this
-      // turn's tool-result properties map), so this representative call has exactly one citation,
-      // which does verify — total=verified=1, rate=100.
+      // turn's dispatch-result properties map), so this representative call has exactly one
+      // citation, which does verify — total=verified=1, rate=100.
       expect(emf.AgentAsksTotal).toBe(1);
       expect(typeof emf.AgentAnswerLatencyMs).toBe("number");
       expect(emf.AgentAnswerLatencyMs).toBeGreaterThanOrEqual(0);

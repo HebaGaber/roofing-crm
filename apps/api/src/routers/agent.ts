@@ -1,9 +1,10 @@
-// T035/T036 (B-09, Phase 4/US1): the `agent` tRPC router (contracts/agent-api.md). `ask` runs the
-// budget check, the scope/confidence short-circuit, the tool loop (`runAgent.ts`), and the
-// citation verifier (`composeAnswer.ts`); `confirmLead` is a plain, non-model-invoked mutation
-// that calls the exact same `requireLeadService(ctx).create(...)` path `leads.create` already
-// uses — per the confirm-flow-bypass guard (T029), nothing in `services/agent/tools.ts` may ever
-// reach that call; only this one handler does.
+// T035/T036 (B-09, Phase 4/US1), reshaped in the 009-agent-hardening architecture fix: the
+// `agent` tRPC router (contracts/agent-api.md). `ask` runs the budget check (step 1, before any
+// model call), then delegates the whole two-call, code-driven turn (plan -> scope gate ->
+// dispatch -> compose -> verify) to `agent/composeAnswer.ts`'s `runAsk`; `confirmLead` is a
+// plain, non-model-invoked mutation that calls the exact same `requireLeadService(ctx).create(...)`
+// path `leads.create` already uses — per the confirm-flow-bypass guard (T029), nothing in
+// `services/agent/tools.ts` may ever reach that call; only this one handler does.
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { gazetteer } from "@crm/oracle-views";
@@ -21,20 +22,12 @@ import {
 } from "../trpc.js";
 import type { LeadIndex } from "../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../adapters/leadRepo.js";
-import { createAgentTools, propertyByTcadId } from "../services/agent/tools.js";
+import { propertyByTcadId } from "../services/agent/tools.js";
 import { createPlaceResolver } from "../services/agent/placeResolver.js";
 import { getModel } from "../agent/getModel.js";
-import { runAgent } from "../agent/runAgent.js";
 import { tryUsageGuard } from "../agent/usageGuard.js";
 import { RateLimitedError, OverBudgetError } from "../agentErrors.js";
-import {
-  checkScope,
-  composeAnswer,
-  EMPTY_COUNTS,
-  emitCitationMetrics,
-  emptyPlan,
-  parsePlanDraftText,
-} from "../agent/composeAnswer.js";
+import { runAsk } from "../agent/composeAnswer.js";
 
 const obs = createObservability("crm-api");
 
@@ -106,46 +99,6 @@ function unavailableLeadRepo(): LeadRepo {
   } as unknown as LeadRepo;
 }
 
-const SYSTEM_PROMPT =
-  "You are the Roofing CRM's agent. Answer only from tool results; never invent a property, " +
-  "permit, address, contractor name or rating. If the question is outside Travis County, " +
-  "or you cannot place it with confidence, answer in plain text as a small JSON object " +
-  '{"intent","area":{"kind","query"},"filters"} describing how you read the question, and call ' +
-  "no tool. Otherwise use resolvePlace/searchProperties/searchPermits/getProperty/getCoverage/" +
-  "proposeLeads as needed, then finish with a JSON object " +
-  '{"claims":[{"text","citationIds":[...]}],"citations":[{"id","propertyCid"|"permitCid"}]} ' +
-  "citing only rows a tool actually returned this turn.";
-
-function emptyAnswer(
-  outcome: AgentAnswer["outcome"],
-  plan: AgentAnswer["plan"],
-  traceId: string,
-  modelCalls: number,
-  // T045: "none" for the `timed_out` short-circuit (no `runAgent` result to read a strategy off
-  // of) or any other call site that hasn't run a turn yet; callers that do have a finished
-  // `runAgent` result (the no-tool-called branch below) pass its real `cacheStrategy` through.
-  cacheStrategy: string = "none",
-): AgentAnswer {
-  return {
-    outcome,
-    claims: [],
-    citations: [],
-    plan,
-    resultSetId: traceId,
-    counts: EMPTY_COUNTS,
-    missing: [],
-    trace: {
-      traceId,
-      modelId: "n/a",
-      promptVersion: "2026-10-23",
-      rankVersion: "2026-10-23",
-      toolSteps: 0,
-      modelCalls,
-      cacheStrategy,
-    },
-  };
-}
-
 /** Typed by shape, not by `TrpcContext` itself — same reason as `requireLeadIndex`/
  *  `requireLeadService`: tRPC's resolved context for a `.mutation(({ctx}) => ...)` callback
  *  widens every optional property to an explicit `| undefined` union, which
@@ -167,65 +120,24 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
   const leadRepo = ctx.leadRepo ?? unavailableLeadRepo();
   const placeResolver = createPlaceResolver();
   const model = ctx.model ?? getModel();
-  const tools = createAgentTools({ leadIndex, leadRepo, placeResolver });
 
-  // Independent of each other — run concurrently rather than sequentially, but keep
-  // `indexInfo()`'s own typed-error mapping (`mapIndexNotReady`) applying to its own failure,
-  // exactly as it did when awaited on its own line before `runAgent`.
-  const [{ manifestCid }, run] = await Promise.all([
-    leadIndex.indexInfo().catch(mapIndexNotReady),
-    runAgent({
+  try {
+    return await runAsk({
       model,
-      tools,
-      system: SYSTEM_PROMPT,
-      prompt: input.question,
-    }),
-  ]);
-
-  if (run.outcome === "timed_out") {
-    emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
-    return emptyAnswer("timed_out", emptyPlan(input.question), ctx.requestId, 0);
+      leadIndex,
+      leadRepo,
+      placeResolver,
+      question: input.question,
+      traceId: ctx.requestId,
+      obs,
+    });
+  } catch (error) {
+    // `leadIndex.indexInfo()` (called inside `runAsk`'s dispatch step) keeps its own typed-error
+    // mapping (`mapIndexNotReady`) — same `SERVICE_UNAVAILABLE` pattern as `search.ts`/
+    // `property.ts` — applied here since `runAsk` itself has no reason to know about tRPC error
+    // shapes.
+    return mapIndexNotReady(error);
   }
-
-  const { result } = run;
-  const calledAnyTool = result.steps.some((step) => step.toolResults.length > 0);
-
-  if (!calledAnyTool) {
-    // Step 3/4 (contracts/agent-api.md): the model answered in its first step without calling a
-    // tool. Treat that text as its plan draft and run the scope/confidence check — out of scope,
-    // not found or low-confidence short-circuits here with no further model call.
-    emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
-    const area = parsePlanDraftText(result.text);
-    if (area === undefined) {
-      return emptyAnswer(
-        "needs_clarification",
-        emptyPlan(input.question),
-        ctx.requestId,
-        result.steps.length,
-        run.cacheStrategy,
-      );
-    }
-    const scope = await checkScope(area, { placeResolver });
-    const plan = emptyPlan(area.query);
-    if (scope.status !== "in_scope") {
-      return emptyAnswer(scope.status, plan, ctx.requestId, result.steps.length, run.cacheStrategy);
-    }
-    // In scope but the model still never called a tool this turn (no retrieval happened) — safest
-    // honest outcome is to ask for clarification rather than answer with nothing to cite.
-    return emptyAnswer("needs_clarification", plan, ctx.requestId, result.steps.length, run.cacheStrategy);
-  }
-
-  const modelId = typeof model === "string" ? model : model.modelId;
-  return composeAnswer({
-    result,
-    leadIndex,
-    manifestCid,
-    plan: emptyPlan(input.question),
-    traceId: ctx.requestId,
-    modelId,
-    obs,
-    cacheStrategy: run.cacheStrategy,
-  });
 }
 
 export const agentRouter = router({

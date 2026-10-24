@@ -31,8 +31,9 @@ export interface TrpcContext {
    *  real request falls back to a lazily-built DynamoDB-backed instance (`agent/usageGuard.ts`'s
    *  sibling pattern in `routers/agent.ts`). */
   readonly leadRepo?: LeadRepo;
-  /** B-09: the Vercel AI SDK model `agent.ask` calls through `runAgent.ts`'s tool loop (ADR-06
-   *  §6.1). Optional so a test can inject a `MockLanguageModelV4`; a real request falls back to
+  /** B-09: the Vercel AI SDK model `agent.ask` calls through `agent/composeAnswer.ts`'s `runAsk`
+   *  (the plan call, at most one repair call, and the compose call — ADR-06 §6.1, no tools ever
+   *  passed). Optional so a test can inject a `MockLanguageModelV4`; a real request falls back to
    *  `agent/getModel.ts`'s `AI_PROVIDER` switch. */
   readonly model?: LanguageModel;
 }
