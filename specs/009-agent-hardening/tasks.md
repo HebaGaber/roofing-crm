@@ -228,7 +228,7 @@ Phase N runs before its Phase Z).
 
 - [x] TN01 [P] Run `/simplify` over the diff (release fold-in R1, per `stories/B-09-agent-hardening.md`'s "Release fold-in" section)
 - [x] TN02 Run `pnpm --filter @crm/shared --filter @crm/domain --filter @crm/api --filter @crm/web test` full suite; fix any regression
-- [ ] TN03 Run `quickstart.md`'s steps 1 locally as a final sanity pass before deploying (steps 2–5 are the hosted-runtime proof, done in Phase Z below, not duplicated here)
+- [x] TN03 Run `quickstart.md`'s steps 1 locally as a final sanity pass before deploying (steps 2–5 are the hosted-runtime proof, done in Phase Z below, not duplicated here)
 
 ---
 
