@@ -11,7 +11,8 @@ priority: P1
 moscow: Must
 branch: 009-agent-hardening
 spec: specs/009-agent-hardening/
-depends_on: ["B-07 merged", "Task A A-14 (Agent + MCP) done", "Task A A-13 (Explorer UI + content pages) done"]
+depends_on: ["B-07 merged"]
+depends_on_deferred: ["Task A A-14 (Agent + MCP) — still Ready, not Done; agent runtime built natively in roofing-crm this round, accepted deviation, swap for A-14's version once it merges", "Task A A-13 (Explorer UI + content pages) — still Draft, not Done; responsive config built natively this round, swap for A-13's version once it merges"]
 size_days: 1.5
 agents:
   design: [alakazam, ash, smeargle, porygon]
@@ -22,17 +23,17 @@ agents:
   verify: "golden queries G1–G7 (checks.md §7) · full smeargle suite at 390/768/1440 · CloudWatch RoofingCrm dashboard"
 skills: [build-rag-systems, build-ai-agents, use-elephant-mcp, responsive-design-tests, unify-metrics, build-frontend-backends, apply-engineering-guidelines]
 ui: true
-status: Draft
+status: Ready
 gate: G4
 qc_testability_signoff: false
 created: 2026-10-23
 reuses:
-  - from: "Task A A-14 (Agent + MCP)"
-    paths: ["getModel() with AI_PROVIDER", "the agent.ask procedure incl. its timeouts and $3/day cap", "the Answer panel", "geocodePlace", "the golden-query Vitest harness"]
-    note: "New here: vector search is NOT added (ARD-08, no embeddings in v1); only createLead and map-pin tools are new."
-  - from: "Task A A-13 (Explorer UI + content pages)"
-    paths: ["smeargle breakpoints config", "container-query rules (tablet.css, compact.css)"]
-    note: "New here: lead business metrics and the CloudWatch dashboard (B-11)."
+  - from: "Task A A-14 (Agent + MCP) — NOT reused this round: A-14 is still status Ready in the oracle repo, no agent.ask.ts/getModel.ts exist yet to copy"
+    paths: []
+    note: "Built natively inside roofing-crm instead (accepted deviation): getModel()/AI_PROVIDER switch, agent.ask tRPC procedure with its timeouts and $3/day cap, the Answer panel, geocodePlace, the golden-query Vitest harness, and the new createLead + map-pin tools. Swap-back condition: once the user confirms A-14 has merged and published these, reconcile roofing-crm's version against it (no architecture change expected, since both follow the same ADR-06 contract)."
+  - from: "Task A A-13 (Explorer UI + content pages) — NOT reused this round: A-13 is still status Draft, no breakpoints config or tablet.css/compact.css exist yet to copy"
+    paths: []
+    note: "Built natively inside roofing-crm instead (accepted deviation): smeargle breakpoints config and container-query rules (tablet.css, compact.css), reusing B-01/B-03's existing responsive baseline where present. Swap-back condition: once the user confirms A-13 has merged, reconcile against its config. Lead business metrics and the CloudWatch dashboard (B-11) are new work either way."
 ---
 
 # B-09 Answer roofing-opportunity questions with a grounded agent, hardened for production
@@ -66,6 +67,8 @@ What will exist when done: a tRPC `agent.ask` procedure using the Vercel AI SDK 
 4. **AC-4 (B-09, scale)** · **Given** the 7 golden queries in `checks.md` §7 are run against the deployed agent endpoint, **When** each one executes, **Then** first-useful-answer p95 is under 20 s and 100% of cited `property_cid`s exist in the current index. ☐ testable
 5. **AC-5 (B-11)** · **Given** the full `smeargle` suite, **When** it runs at 390, 768 and 1440 px against the hosted URL, **Then** every screen in the app passes with no layout overflow or inaccessible controls. ☐ testable
 6. **AC-6 (B-11)** · **Given** a sync-job failure lands a message on the DLQ, **When** the DLQ depth becomes greater than 0, **Then** a CloudWatch alarm fires and self-resolves once the queue drains, visible on the `RoofingCrm` dashboard. ☐ testable
+7. **AC-7 (data switch, accepted deviation)** · **Given** Task A's Run 1 full-county manifest (`bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, 441,961 properties / 17,387 permits) is pinned but not yet Atlas-registered, **When** the CRM and agent read property/permit data, **Then** they read it directly by manifest CID (not through the Elephant MCP/`listPublishedCounties` lookup), documented in `docs/architecture-constitution.md` as an accepted deviation with a named swap-back condition: revert the data-access pointer to the MCP path once the user confirms Atlas registration for Travis County is complete. ☐ testable
+8. **AC-8 (prototype re-audit)** · **Given** `design/design-review-log.md`'s 25 prior issues are already marked Incorporated, **When** `audino` (already named as a B-09 reviewer in AGENT-MAP.md §5, brought forward to also run as a read-only design-time consult alongside `smeargle`'s Phase B responsive plan — not a new agent assignment) re-diffs every existing screen (CrmMap, FilterSheet, PropertyDetail, ContractorBadge, ResultsPanel, LeadsList, LeadDetail, AppShell/NavRail, plus the new B-09 Ask screens) against the current `design/screens/` prototype, **Then** every newly found mismatch (spacing, tokens, copy, missing states) is logged and fixed, or explicitly deferred with a reason. ☐ testable
 
 ## Edge cases
 
@@ -83,6 +86,8 @@ What will exist when done: a tRPC `agent.ask` procedure using the Vercel AI SDK 
 | FR-005 | System MUST pass the `smeargle` suite at 390/768/1440 on every screen | AC-5 |
 | FR-006 | System MUST alarm and self-resolve on DLQ depth, visible on a CloudWatch dashboard | AC-6 |
 | NFR-001 | Agent: ≤ 3 model calls per ask, 5 asks/min/user, $3/day cap, server abort at 23 s | ARD-B §10 |
+| FR-007 | System MUST read property/permit data by Task A's Run 1 manifest CID directly, with the MCP-path deviation and swap-back condition documented | AC-7 |
+| FR-008 | System MUST re-diff every existing and new screen against the prototype and fix or explicitly defer every mismatch found | AC-8 |
 
 No `[NEEDS CLARIFICATION]` remaining.
 
@@ -103,8 +108,14 @@ No `[NEEDS CLARIFICATION]` remaining.
 ## Out of scope
 
 - Vector/semantic search over permit or contractor text (no embeddings in v1, ARD-08).
-- Paging the on-call engineer through PagerDuty (accepted deviation, SNS email instead — ARD-B §13).
+- Paging the on-call engineer through PagerDuty (accepted deviation, SNS email instead — ARD-B §13). SNS subscriber: `eng.heba.gaber@gmail.com`.
 - Any new lead-store behavior beyond what B-07 already built.
+- Waiting for Atlas registration before switching data (accepted deviation, AC-7) — the direct-CID read is temporary by design and reverts once Atlas registration is confirmed.
+- A full ground-up prototype rebuild (that already happened in B-03); this round is a targeted re-diff of drift since then (AC-8).
+
+## Release fold-in (this is the last Task B story)
+
+Because this is the final story before Release, its close-out (Phase F) also executes PLAYBOOK-B Part 4's R1–R6 release steps before handing off: R1 golden-path conformance sweep + `/simplify`, R2 every kit agent reviews the whole repo, R3 `/code-review ultra`, R4 G8 pre-check + `release.md` + login proof + git tag, R5 draft PR against `prismteam-ai/roofing-crm:main`. R6 (self-score with `slowking` in a fresh session) runs to confirm every checkpoint passes except the two intentionally deferred: R7 (record demo video) and the final "mark PR ready to publish" step — both stay undone until the user explicitly asks for them.
 
 ## Evidence to capture
 
@@ -117,15 +128,15 @@ No `[NEEDS CLARIFICATION]` remaining.
 
 | # | Criterion | Status |
 | --- | --- | --- |
-| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, agents and skills from AGENT-MAP.md) | ☐ |
-| G4-2 | "As a / I want / So that" stated, with an independent test | ☐ |
-| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☐ |
-| G4-4 | One scale AC and one missing-data or error AC | ☐ |
-| G4-5 | At least two edge cases | ☐ |
-| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☐ |
-| G4-7 | Prototype screen linked (UI stories) | ☐ |
-| G4-8 | Dependencies done, or stubbed with real sample data | ☐ |
-| G4-9 | No `[NEEDS CLARIFICATION]` left | ☐ |
-| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☐ |
+| G4-1 | Front matter complete (parent FEAT, eval point, branch, priority, agents and skills from AGENT-MAP.md) | ☑ |
+| G4-2 | "As a / I want / So that" stated, with an independent test | ☑ |
+| G4-3 | Every AC is Given / When / Then, and its testable box is ticked | ☑ |
+| G4-4 | One scale AC and one missing-data or error AC | ☑ |
+| G4-5 | At least two edge cases | ☑ |
+| G4-6 | Every requirement traces to an AC; NFRs have thresholds | ☑ |
+| G4-7 | Prototype screen linked (UI stories) | ☑ |
+| G4-8 | Dependencies done, or stubbed with real sample data (A-13/A-14 deviation documented, see G4 report) | ☑ |
+| G4-9 | No `[NEEDS CLARIFICATION]` left | ☑ |
+| G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
 
-**Decision:** ☐ Ready ☐ Returned, reason: {…} · {date}
+**Decision:** ☑ Ready ☐ Returned, reason: {…} · 2026-10-24
