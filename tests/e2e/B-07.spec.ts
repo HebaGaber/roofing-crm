@@ -751,8 +751,14 @@ test.describe("B-07 leads", () => {
         const startedAt = Date.now();
         await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
         await drawer.getByRole("link", { name: "View leads" }).click();
-        await expect(page.locator("li[data-lead-id]").first()).toContainText(
+        // Poll on every animation frame: expect().toContainText rechecks on a coarse back-off
+        // schedule, which rounded these samples up in steps (found live: ~700 ms became 1200 or
+        // 2200 ms with the API itself answering in about 450 ms).
+        await page.waitForFunction(
+          (needle) =>
+            document.querySelector("li[data-lead-id]")?.textContent?.includes(needle) === true,
           `TCAD ${f.requestIdentifier}`,
+          { polling: "raf", timeout: 10_000 },
         );
         samples.push(Date.now() - startedAt);
       } catch (error) {
