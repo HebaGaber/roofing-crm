@@ -100,6 +100,8 @@ describe("CrmApi (T007)", () => {
         indexBucketName: "crm-index",
         leadsTableName: "crm-leads",
         agentUsageTableName: "crm-agent-usage",
+        aiProvider: "bedrock",
+        agentModelId: "eu.anthropic.claude-sonnet-4-6",
       }),
     );
     return cachedTemplate;

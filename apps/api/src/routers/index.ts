@@ -3,6 +3,7 @@
 // `leads`, `agent` are out of scope for B-01 (contracts/health.md) and are added by later stories
 // (B-02+/B-07/B-09).
 import { router } from "../trpc.js";
+import { agentRouter } from "./agent.js";
 import { authRouter } from "./auth.js";
 import { healthRouter } from "./health.js";
 import { leadsRouter } from "./leads.js";
@@ -18,6 +19,9 @@ export const appRouter = router({
   property: propertyRouter,
   // B-07: lead capture, status, notes, list (contracts/leads.md).
   leads: leadsRouter,
+  // B-09 (contracts/agent-api.md): ask + confirmLead. `packages/api-client`'s types update
+  // automatically through `inferRouterInputs/Outputs<AppRouter>` — no separate client change.
+  agent: agentRouter,
 });
 
 export type AppRouter = typeof appRouter;

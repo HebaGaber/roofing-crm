@@ -66,7 +66,11 @@ function buildNoComposeModel(): MockLanguageModelV4 {
           },
         ],
         finishReason: { unified: "stop", raw: "end_turn" },
-        usage: { inputTokens: 40, outputTokens: 15, totalTokens: 55 },
+        usage: {
+          inputTokens: { total: 40, noCache: 40, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 15, text: 15, reasoning: undefined },
+        },
+        warnings: [],
       };
     },
   });

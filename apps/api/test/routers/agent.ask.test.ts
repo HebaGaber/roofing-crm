@@ -111,7 +111,11 @@ function buildMockModel(): MockLanguageModelV4 {
           },
         ],
         finishReason: { unified: "tool-calls", raw: "tool_calls" },
-        usage: { inputTokens: 50, outputTokens: 20, totalTokens: 70 },
+        usage: {
+          inputTokens: { total: 50, noCache: 50, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 20, text: 20, reasoning: undefined },
+        },
+        warnings: [],
       },
       {
         content: [
@@ -119,14 +123,21 @@ function buildMockModel(): MockLanguageModelV4 {
             type: "tool-call",
             toolCallId: "call-2",
             toolName: "searchProperties",
-            input: JSON.stringify({
-              area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
-              filters: {},
-            }),
+            // Matches `services/agent/tools.ts`'s real `searchProperties` inputSchema
+            // (`AreaInput.extend({roofAgeMinYears?})` = `{lat, lon, radiusMi, roofAgeMinYears?}`),
+            // not the `{area, filters}` QueryPlan-ish shape this fixture originally guessed before
+            // T032 (alakazam) fixed the tool's actual input contract — the AI SDK validates a
+            // tool call's `input` against its `inputSchema` before `execute()` ever runs, so the
+            // old shape would have failed validation instead of exercising the real tool.
+            input: JSON.stringify({ lat: PFLUGERVILLE.lat, lon: PFLUGERVILLE.lng, radiusMi: 5 }),
           },
         ],
         finishReason: { unified: "tool-calls", raw: "tool_calls" },
-        usage: { inputTokens: 80, outputTokens: 25, totalTokens: 105 },
+        usage: {
+          inputTokens: { total: 80, noCache: 80, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 25, text: 25, reasoning: undefined },
+        },
+        warnings: [],
       },
       {
         // Compose step: cites one real, server-returned property plus one fake, planted CID that
@@ -150,7 +161,11 @@ function buildMockModel(): MockLanguageModelV4 {
           },
         ],
         finishReason: { unified: "stop", raw: "end_turn" },
-        usage: { inputTokens: 120, outputTokens: 60, totalTokens: 180 },
+        usage: {
+          inputTokens: { total: 120, noCache: 120, cacheRead: undefined, cacheWrite: undefined },
+          outputTokens: { total: 60, text: 60, reasoning: undefined },
+        },
+        warnings: [],
       },
     ],
   });

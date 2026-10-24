@@ -20,6 +20,10 @@ export const METRIC_NAMES = {
   LeadsRead: "LeadsRead",
   LeadsListed: "LeadsListed",
   LeadsErrors: "LeadsErrors",
+  // B-09 T035: only the one metric `agent.ask` itself emits this phase — T046 (US2) adds the rest
+  // of the ADR §9 agent metric set (AgentAnswerLatencyMs, AgentModelCallsTotal,
+  // AgentCitationsTotal/Verified, AgentCitationGroundednessRate).
+  AgentAsksTotal: "AgentAsksTotal",
 } as const;
 export type MetricName = (typeof METRIC_NAMES)[keyof typeof METRIC_NAMES];
 

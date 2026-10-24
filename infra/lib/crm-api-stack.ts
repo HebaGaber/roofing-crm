@@ -38,6 +38,11 @@ export interface CrmApiStackProps extends StackProps {
   /** B-09 T017: the `crm-agent-usage` rate-limit/spend-cap table name (data-model.md), same
    *  string-only pattern as leadsTableName above. */
   readonly agentUsageTableName: string;
+  /** B-09: apps/api/src/agent/getModel.ts reads these (never a hard-coded provider/model id,
+   *  constitution VI) — resolved by `@crm/config`'s `loadConfig`, same one-place-for-config-
+   *  literals pattern as `dataManifestCid`. */
+  readonly aiProvider: string;
+  readonly agentModelId: string;
 }
 
 export class CrmApiStack extends Stack {
@@ -89,6 +94,10 @@ export class CrmApiStack extends Stack {
         // B-09: apps/api/src/agent/{rateLimiter,spendCap}.ts read this (never a hard-coded table
         // name, architecture-constitution.md §9's module-boundary table).
         CRM_AGENT_USAGE_TABLE_NAME: props.agentUsageTableName,
+        // B-09: apps/api/src/agent/getModel.ts reads these (constitution VI — never a hard-coded
+        // provider or model id anywhere else).
+        AI_PROVIDER: props.aiProvider,
+        AGENT_MODEL_ID: props.agentModelId,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {

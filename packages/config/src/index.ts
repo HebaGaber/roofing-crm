@@ -14,12 +14,19 @@ import { isCidV1 } from "@crm/oracle-contract/cid";
 export const AllowedRegion = z.enum(["eu-north-1"]);
 export type AllowedRegion = z.infer<typeof AllowedRegion>;
 
+// B-09 (constitution VI): the agent's model provider, read here — never hard-coded in
+// apps/api/src/agent/getModel.ts, which has zero literal provider/model-id strings of its own.
+export const AiProvider = z.enum(["bedrock", "gateway"]);
+export type AiProvider = z.infer<typeof AiProvider>;
+
 export const RuntimeConfig = z.object({
   region: AllowedRegion,
   // The sample-or-full-county manifest this run reads, per B-02's explicit rule: never a
   // hard-coded constant anywhere in the codebase, so the later full-county data switch
   // (WALKTHROUGH-B-sample-first.md §2) is a one-setting change, not a code change.
   dataManifestCid: z.string().refine(isCidV1, { message: "expected a base32 CIDv1 string" }),
+  aiProvider: AiProvider,
+  agentModelId: z.string().min(1),
 });
 export type RuntimeConfig = z.infer<typeof RuntimeConfig>;
 
@@ -49,7 +56,19 @@ export function loadConfig(env: LoadConfigEnv = process.env): RuntimeConfig {
       "@crm/config: DATA_MANIFEST_CID is not set — refusing to default to any manifest.",
     );
   }
-  const parsed = RuntimeConfig.safeParse({ region, dataManifestCid });
+  // Constitution VI: Bedrock is the default and Golden Path, so AI_PROVIDER defaults to it
+  // rather than failing fast like the two checks above — unlike the manifest CID, there is a
+  // safe, documented default here (ADR-06 §6.1), not an arbitrary guess.
+  const aiProvider = env.AI_PROVIDER ?? "bedrock";
+  if (!AiProvider.safeParse(aiProvider).success) {
+    throw new Error(
+      `@crm/config: AI_PROVIDER "${aiProvider}" is not one of ${AiProvider.options.join(", ")}.`,
+    );
+  }
+  const agentModelId =
+    env.AGENT_MODEL_ID ??
+    (aiProvider === "bedrock" ? "eu.anthropic.claude-sonnet-4-6" : "anthropic/claude-sonnet-4.6");
+  const parsed = RuntimeConfig.safeParse({ region, dataManifestCid, aiProvider, agentModelId });
   if (!parsed.success) {
     throw new Error(
       `@crm/config: DATA_MANIFEST_CID "${dataManifestCid}" is not a valid base32 CIDv1 string.`,

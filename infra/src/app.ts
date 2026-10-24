@@ -72,6 +72,9 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     leadsTableName: CRM_LEADS_TABLE_NAME,
     // B-09 T017: rateLimiter.ts/spendCap.ts read/write this table.
     agentUsageTableName: dataStack.agentUsageTable.tableName,
+    // B-09: apps/api/src/agent/getModel.ts reads these via the Lambda's environment.
+    aiProvider: config.aiProvider,
+    agentModelId: config.agentModelId,
   });
   // The recorded deviation from architecture-constitution.md §11's literal stack order
   // (plan.md's Complexity Tracking table): CrmApi's JWT authorizer needs CrmOps's pool first.
