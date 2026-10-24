@@ -8,7 +8,7 @@ spec: specs/007-leads/spec.md        # FR numbers below are the spec's (FR-001�
 owner: HebaGaber                     # QC Lead
 status: Draft                        # Draft → In Review → Approved
 gate: G6
-version: 0.2
+version: 0.3
 created: 2026-10-24
 runtime_url: "{RUNTIME_URL} = https://crm.{domain} or the 007-leads Amplify branch preview; never localhost"
 reviewed_code: "67234b1 (deployed code; later commits are tests and docs only)"
@@ -99,6 +99,7 @@ Coverage includes: happy path, negative, edge, validation or permission, integra
 | B-07-TC-013 | Filter combination with no leads shows the no-match state | P2 | @negative | UI | AC-4, FR-004 | `B-07.spec.ts › "B-07-TC-013 no-match state"` |
 | B-07-TC-014 | Lead whose property is not in the current run shows "not in Run {n}" | P1 | @missing-data @demo | UI | AC-5, FR-005 | `B-07.spec.ts › "B-07-TC-014 not in Run n"` |
 | B-07-TC-015 | Stale lead shows no invented or stale values in place of the missing ones | P1 | @missing-data | UI | AC-5, FR-005 | `B-07.spec.ts › "B-07-TC-015 no stale values"` |
+| B-07-TC-015b | A lead on a property that is still in the run is not flagged as "not in run" | P1 | @missing-data | UI | AC-5, FR-005 | `B-07.spec.ts › "B-07-TC-015b lead on a property still in the run is not flagged"` |
 | B-07-TC-016 | Empty lead list shows the explicit empty state | P1 | @edge | UI | Edge case, FR-004 | `B-07.spec.ts › "B-07-TC-016 empty list state"` |
 | B-07-TC-017 | Unknown lead id shows the not-found state, not a spinner | P2 | @negative | UI | FR-003 | `B-07.spec.ts › "B-07-TC-017 unknown lead not found"` |
 | B-07-TC-NF-01 | Create-to-top-of-list p95 ≤ 2 s over 20 creates | P2 | @perf | UI | FR-001, AC-1 | `B-07.spec.ts › "B-07-TC-NF-01 create latency p95"` |
@@ -300,6 +301,17 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
   4. **Verify** the roof-age, permit and contractor fields on the same lead detail view.
 - **Expected result:** each field shows either the value stored in the lead's own snapshot, labelled as a snapshot from the earlier run, or "not in Run {n}". No value is recomputed from a missing source row, and no value is blank without a reason.
 
+### B-07-TC-015b: A lead whose property is still in the run is not flagged (negative control, AC-5)
+
+- **Priority / tags:** P1 · `@missing-data`
+- **Maps to:** AC-5, FR-005
+- **Preconditions:** the lead for `{P_5_52}` exists and was captured under the manifest the index now serves.
+- **Steps:**
+  1. **Open** `{RUNTIME_URL}/leads` and **log in** as `{TEST_USER}`.
+  2. **Tap** the row for `{P_5_52}`. → Lead detail opens.
+  3. **Verify** there is no "Not in run" banner and the signals show the current values (roof age, permit).
+- **Expected result:** no "not in run" state, and no values withheld. A lead is flagged only when its manifest differs from the one now served **and** its property is absent from the served index; the unit tests cover "manifest differs but property present" (not flagged).
+
 ### B-07-TC-016: Empty lead list shows the explicit empty state (edge)
 
 - **Priority / tags:** P1 · `@edge`
@@ -336,11 +348,33 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
 | B-07-TC-003, TC-004 | Contractor reason text | GAP-4: every permit in this slice is `unresolved`, so only the "not available" state can be shown | — |
 | B-07-TC-016, TC-006, TC-007 | Clean rerun | GAP-3: no lead-delete in scope; reruns on the same property are refused by design, so the test cleanup helper is needed | — |
 
-## 11. Execution log (filled in Phase 5)
+## 11. Execution log
 
-| TC ID | Run date | Build (sha) | Result | Evidence | Defect |
-| --- | --- | --- | --- | --- | --- |
-| B-07-TC-001 | — | `—` | not run | — | — |
+Hosted preview `https://007-leads.d1zmhc6kkyzsbe.amplifyapp.com`, web build `cbb068f`, API `2a2f669`, manifest `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i`, run 2026-10-24 on mobile 390, tablet 768 and desktop 1440 (final complete run: exit 0, 136 passed, 17 skipped, 0 failed; see `docs/evidence/B-07.md`). Screenshots are `docs/evidence/img/B-07-TC-{nnn}-*.png`.
+
+| TC ID | Result | Evidence / note | Defect |
+| --- | --- | --- | --- |
+| B-07-TC-001 | PASS | created, top of list | ERR-5 (order) |
+| B-07-TC-002 | PASS | per-permit button | — |
+| B-07-TC-003 | PASS | snapshot incl. permit id and open days | ERR-8 |
+| B-07-TC-004 | PASS | "Contractor not published" | — |
+| B-07-TC-005 | PASS | "Already a lead" | ERR-1 |
+| B-07-TC-006 | PASS | no second row | — |
+| B-07-TC-007 | PASS | 1 created, 19 refused on all 3 viewports | ERR-4, ERR-12 |
+| B-07-TC-008 | PASS | status and note persist | ERR-10 |
+| B-07-TC-009 | PASS | failed save undone | — |
+| B-07-TC-010 | PASS | 1,000-character note round-trips | ERR-6, ERR-10 |
+| B-07-TC-011 | PASS on the sample (3 leads); **scale variant DEFERRED by the PO** (needs 50+ leads, the A-11 full-county manifest) | `specs/007-leads/known-gaps.md` § 1 | — |
+| B-07-TC-012 | PASS | filters reopen from the URL | — |
+| B-07-TC-013 | PASS | no-match state | — |
+| B-07-TC-014 | PASS with a stale fixture lead (no second published run yet) | `B-07-TC-014-not-in-run.png` | ERR-9 |
+| B-07-TC-015 | PASS with the same fixture | signals withheld | ERR-9 |
+| B-07-TC-015b | PASS | not flagged | ERR-9 |
+| B-07-TC-016 | PASS | "No leads yet" | — |
+| B-07-TC-017 | PASS | "Lead not found" with a link back | ERR-20 |
+| B-07-TC-NF-01 | PASS, p95 613 / 590 / 591 ms (target 2000) | final run | ERR-11, ERR-13 |
+| B-07-TC-NF-03 | **DEFERRED by the PO** (not executed, not passed): list and map load p95 with 50+ leads | `specs/007-leads/known-gaps.md` § 1 | — |
+| B-07-TC-NF-04 | PASS on 3 viewports | token audit and no horizontal scroll | ERR-7, ERR-19 |
 
 ---
 
@@ -361,6 +395,8 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
 
 
 ## Change log
+
+**v0.3, 2026-10-24:** TC-015b added to the matrix and the cases; the execution log is filled in (results above, with the PO deferrals marked as deferred, not skipped).
 
 **v0.2, 2026-10-24** (after the hosted run; evidence in `docs/evidence/B-07.md`):
 
