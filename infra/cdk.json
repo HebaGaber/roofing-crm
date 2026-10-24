@@ -5,7 +5,12 @@
   "context": {
     "crm:githubRepository": "HebaGaber/roofing-crm",
     "crm:githubRef": "001-crm-shell",
-    "crm:additionalBranches": ["002-lead-index", "003-map-search", "007-leads", "feature/roofing-crm"],
+    "crm:additionalBranches": [
+      "002-lead-index",
+      "003-map-search",
+      "007-leads",
+      "feature/roofing-crm"
+    ],
     "crm:allowedRegions": ["eu-north-1"],
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
