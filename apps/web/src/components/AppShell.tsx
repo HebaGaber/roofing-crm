@@ -15,7 +15,7 @@ import styles from "./AppShell.module.css";
 export const APP_TITLE = "Roofing CRM";
 
 export interface Destination {
-  readonly to: "/" | "/leads";
+  readonly to: "/" | "/leads" | "/ask";
   readonly label: string;
   /** Material Symbols Rounded glyph name (Atlas § 6). */
   readonly icon: string;
@@ -24,6 +24,7 @@ export interface Destination {
 export const DESTINATIONS: readonly Destination[] = [
   { to: "/", label: "Map", icon: "map" },
   { to: "/leads", label: "Leads", icon: "contact_page" },
+  { to: "/ask", label: "Ask", icon: "chat" },
 ];
 
 export function AppShell(): ReactElement {
