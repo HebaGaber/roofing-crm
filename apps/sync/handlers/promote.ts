@@ -63,11 +63,13 @@ async function promoteCore(
         // fire. The API's LeadIndex adapter (apps/api/src/adapters/duckDbParquet.ts's
         // indexInfo()) reads the same three fields for its own IndexInfo response.
         UpdateExpression:
-          "SET #previous = #current, #current = :next, propertyCount = :propertyCount, permitCount = :permitCount, promotedAt = :promotedAt",
+          "SET #previous = if_not_exists(#current, :noPrevious), #current = :next, propertyCount = :propertyCount, permitCount = :permitCount, promotedAt = :promotedAt",
         ConditionExpression: "attribute_not_exists(#current) OR #current <> :next",
         ExpressionAttributeNames: { "#current": "current", "#previous": "previous" },
         ExpressionAttributeValues: {
           ":next": input.indexMeta.manifestCid,
+          // First-ever promotion: no #current to copy yet (found live on the first real table).
+          ":noPrevious": null,
           ":propertyCount": input.indexMeta.propertyCount,
           ":permitCount": input.indexMeta.permitCount,
           ":promotedAt": promotedAt,

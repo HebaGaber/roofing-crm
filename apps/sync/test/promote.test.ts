@@ -72,6 +72,19 @@ describe("Promote", () => {
     });
   });
 
+  it("does not read #current unguarded: the first-ever promotion has no item to copy it from (found live)", async () => {
+    ddbMock.onAnyCommand().resolves({});
+
+    await promoteWithClient(input(), DynamoDBDocumentClient.from(new DynamoDBClient({})), obs);
+
+    const sent = ddbMock.calls()[0]?.args[0].input as {
+      UpdateExpression: string;
+      ExpressionAttributeValues: Record<string, unknown>;
+    };
+    expect(sent.UpdateExpression).toContain("#previous = if_not_exists(#current, :noPrevious)");
+    expect(sent.ExpressionAttributeValues[":noPrevious"]).toBeNull();
+  });
+
   it("never flips the pointer for a Held run", async () => {
     ddbMock.onAnyCommand().resolves({});
 
