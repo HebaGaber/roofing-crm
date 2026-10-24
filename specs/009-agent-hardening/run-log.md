@@ -37,12 +37,17 @@ signal now available at county scale.
   (`docs/gates/G4-B-09-precheck.md`); user approved Ready. Committed `88cb7a5`.
 - 2026-10-24 · A2 · `/speckit-specify` → `spec.md` written, requirements checklist 16/16 passing.
 - 2026-10-24 · A2 · `/speckit-clarify` → no critical ambiguities (decisions already resolved pre-spec).
+- 2026-10-24 · B · Design consults run read-only: `alakazam` (Opus), `ash`, `smeargle`, `porygon`.
+  Answers compiled in `specs/009-agent-hardening/agent-design.md`. Two corrections found and resolved
+  without new PO input (both already settled by binding docs): confidence bands follow ADR-06 exactly
+  (auto ≥0.92 · clarify 0.80–0.92 · refuse <0.80), and the prototype path is `design/prototype/CrmAsk*.dc.html`,
+  not `design/screens/`.
 
 ## Next step
 
-`/speckit-plan` with this run-log + `stories/B-09-agent-hardening.md` as direction, then `/speckit-tasks`
-(3 groups: `alakazam` tools, `ash` agent runtime, `metagross` responsive+observability+data-switch), then
-`/speckit-analyze`, then G5/G6 pre-checks in parallel.
+`/speckit-plan` with this run-log + `stories/B-09-agent-hardening.md` + `specs/009-agent-hardening/agent-design.md`
+as direction, then `/speckit-tasks` (3 groups: `alakazam` tools, `ash` agent runtime, `metagross`
+responsive+observability+data-switch+dashboard), then `/speckit-analyze`, then G5/G6 pre-checks in parallel.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
