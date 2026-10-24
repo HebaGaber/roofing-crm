@@ -66,6 +66,16 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
     await expect(index.indexInfo()).rejects.toMatchObject({ code: "INDEX_NOT_READY" });
   });
 
+  it("reads the pointer with the pk+sk key crm-leads actually has (found live on the first real table)", async () => {
+    ddbMock.onAnyCommand().resolves({ Item: { pk: "META#index", current: "bafy-x" } });
+
+    await makeIndex().indexInfo();
+
+    expect(ddbMock.calls()[0]?.args[0].input).toMatchObject({
+      Key: { pk: "META#index", sk: "META" },
+    });
+  });
+
   it("reads propertyCount/permitCount/promotedAt from META#index (CR-B-02 finding #1: Promote now writes these)", async () => {
     ddbMock.onAnyCommand().resolves({
       Item: {
@@ -172,9 +182,14 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
       // already succeeded and cached its own connection.
       s3Responses[0]?.resolve({ Body: Readable.from([Buffer.from("property bytes")]) });
       s3Responses[3]?.resolve({ Body: Readable.from([Buffer.from("permit bytes")]) });
-      // Give attempt 1's now-unblocked background load a tick to finish running and discover it
-      // has been superseded.
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Wait (poll, up to 3 s) for attempt 1's now-unblocked background load to finish and
+      // discover it has been superseded. A fixed 50 ms sleep here flaked on a loaded CI machine.
+      await vi.waitFor(
+        () => {
+          expect(connections.filter((c) => c.closeSync.mock.calls.length > 0)).toHaveLength(1);
+        },
+        { timeout: 3_000, interval: 10 },
+      );
 
       // Two DuckDB connections were opened (one per attempt) — attempt 2's (the winner) was
       // never closed; attempt 1's (the stale loser) was closed rather than left open or returned

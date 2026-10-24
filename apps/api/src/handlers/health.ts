@@ -10,6 +10,7 @@ import { Tracer } from "@aws-lambda-powertools/tracer";
 import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
 import { appRouter } from "../routers/index.js";
 import { tryLeadIndex } from "../leadIndex.js";
+import { tryLeadService } from "../leadService.js";
 import type { TrpcContext } from "../trpc.js";
 
 const logger = new Logger({ serviceName: "crm-api" });
@@ -27,7 +28,18 @@ const trpcHandler = awsLambdaRequestHandler({
     // different things, and TrpcContext's `leadIndex` is the former; a spread of a ternary loses
     // that distinction (it infers `leadIndex?: LeadIndex | undefined`), so this branches instead.
     const leadIndex = tryLeadIndex();
-    return leadIndex === undefined ? base : { ...base, leadIndex };
+    // B-07: the lead service (LeadRepo injected inside tryLeadService) and the caller's Cognito
+    // `sub` from the HTTP API JWT authorizer. Same absent-not-undefined rule as `leadIndex`.
+    const leadService = tryLeadService();
+    const sub = (
+      event.requestContext as { authorizer?: { jwt?: { claims?: Record<string, unknown> } } }
+    ).authorizer?.jwt?.claims?.sub;
+    return {
+      ...base,
+      ...(leadIndex === undefined ? {} : { leadIndex }),
+      ...(leadService === undefined ? {} : { leadService }),
+      ...(typeof sub === "string" ? { userId: sub } : {}),
+    };
   },
 });
 

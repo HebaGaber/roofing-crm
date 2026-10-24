@@ -17,3 +17,4 @@ test-results/
 pipeline/data/
 *.car
 .DS_Store
+*.tsbuildinfo

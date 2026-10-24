@@ -28,6 +28,8 @@ export interface PromoteOutput {
 }
 
 const PK = "META#index";
+/** crm-leads has a pk+sk key (B-07); the pointer item lives at sk "META". */
+const SK = "META";
 
 async function promoteCore(
   input: PromoteInput,
@@ -47,7 +49,7 @@ async function promoteCore(
     await ddb.send(
       new UpdateCommand({
         TableName: input.tableName,
-        Key: { pk: PK },
+        Key: { pk: PK, sk: SK },
         // Guarded on the previous value: either the item does not exist yet (first-ever
         // promotion) or its current pointer is not already this manifestCid — a second Promote
         // call for an already-promoted manifestCid fails this condition and is a no-op, never a
@@ -61,11 +63,13 @@ async function promoteCore(
         // fire. The API's LeadIndex adapter (apps/api/src/adapters/duckDbParquet.ts's
         // indexInfo()) reads the same three fields for its own IndexInfo response.
         UpdateExpression:
-          "SET #previous = #current, #current = :next, propertyCount = :propertyCount, permitCount = :permitCount, promotedAt = :promotedAt",
+          "SET #previous = if_not_exists(#current, :noPrevious), #current = :next, propertyCount = :propertyCount, permitCount = :permitCount, promotedAt = :promotedAt",
         ConditionExpression: "attribute_not_exists(#current) OR #current <> :next",
         ExpressionAttributeNames: { "#current": "current", "#previous": "previous" },
         ExpressionAttributeValues: {
           ":next": input.indexMeta.manifestCid,
+          // First-ever promotion: no #current to copy yet (found live on the first real table).
+          ":noPrevious": null,
           ":propertyCount": input.indexMeta.propertyCount,
           ":permitCount": input.indexMeta.permitCount,
           ":promotedAt": promotedAt,

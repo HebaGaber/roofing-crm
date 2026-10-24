@@ -8,6 +8,7 @@
 // attached to the request context.
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { LeadIndex } from "./adapters/duckDbParquet.js";
+import type { LeadService } from "./services/leads.js";
 
 export interface TrpcContext {
   readonly requestId: string;
@@ -17,6 +18,11 @@ export interface TrpcContext {
    *  are never forced to supply one; `search`/`property` procedures fail fast with a typed error
    *  instead of an `undefined` crash when it is missing. */
   readonly leadIndex?: LeadIndex;
+  /** B-07: the Application-layer lead service, built in `createContext` with an injected
+   *  `LeadRepo` (never imported by the service). Optional for the same reason as `leadIndex`. */
+  readonly leadService?: LeadService;
+  /** B-07: the caller's Cognito `sub`, read from the API Gateway JWT authorizer claims. */
+  readonly userId?: string;
 }
 
 /** `search`/`property` procedures call this first — never destructure `ctx.leadIndex` directly
@@ -35,7 +41,42 @@ export function requireLeadIndex(ctx: { leadIndex: LeadIndex | undefined }): Lea
   return ctx.leadIndex;
 }
 
-const t = initTRPC.context<TrpcContext>().create();
+/** `leads` procedures call this first; a missing service is a typed wiring error, not a crash. */
+export function requireLeadService(ctx: { leadService: LeadService | undefined }): LeadService {
+  if (ctx.leadService === undefined) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "LeadService not wired into this Lambda's tRPC context",
+    });
+  }
+  return ctx.leadService;
+}
+
+/** The Cognito authorizer runs before the Lambda; a missing `sub` means the route was reached
+ *  without a validated token, so refuse rather than write a lead with no owner. */
+export function requireUserId(ctx: { userId: string | undefined }): string {
+  if (ctx.userId === undefined || ctx.userId === "") {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required" });
+  }
+  return ctx.userId;
+}
+
+/** tRPC drops `cause` from the wire error, so a domain code carried on it (ALREADY_EXISTS,
+ *  STALE_SEQUENCE) is surfaced as `data.appCode`; the web client keys off that, not the message. */
+export function withAppCode<D extends object>(
+  shape: { data: D },
+  cause: unknown,
+): { data: D & { appCode?: string } } {
+  const code = (cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" ? { data: { ...shape.data, appCode: code } } : shape;
+}
+
+const t = initTRPC.context<TrpcContext>().create({
+  errorFormatter: ({ shape, error }) => ({
+    ...shape,
+    data: withAppCode(shape, error.cause).data,
+  }),
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;

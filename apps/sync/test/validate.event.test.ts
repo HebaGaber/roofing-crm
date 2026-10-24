@@ -102,6 +102,16 @@ describe("Validate: event-driven handler (real S3 download + real DuckDB Parquet
     expect(result.reconcileDiff).toBe(0);
   });
 
+  it("reads the pointer with the pk+sk key crm-leads actually has", async () => {
+    ddbMock.on(GetCommand).resolves({ Item: { propertyCount: 1, pk: "META#index" } });
+
+    await validateHandler(baseEvent());
+
+    expect(ddbMock.commandCalls(GetCommand)[0]?.args[0].input).toMatchObject({
+      Key: { pk: "META#index", sk: "META" },
+    });
+  });
+
   it("treats a ResourceNotFoundException (B-07's table not deployed yet) as first_run, not a crash", async () => {
     ddbMock
       .on(GetCommand)

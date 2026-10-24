@@ -14,6 +14,12 @@ export const METRIC_NAMES = {
   SyncDurationMs: "SyncDurationMs",
   IndexColdLoadMs: "IndexColdLoadMs",
   IndexManifestAgeHours: "IndexManifestAgeHours",
+  LeadsCreated: "LeadsCreated",
+  LeadsStatusUpdated: "LeadsStatusUpdated",
+  LeadsNoteAdded: "LeadsNoteAdded",
+  LeadsRead: "LeadsRead",
+  LeadsListed: "LeadsListed",
+  LeadsErrors: "LeadsErrors",
 } as const;
 export type MetricName = (typeof METRIC_NAMES)[keyof typeof METRIC_NAMES];
 

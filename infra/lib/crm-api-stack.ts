@@ -106,8 +106,19 @@ export class CrmApiStack extends Stack {
     trpcHandler.role?.addToPrincipalPolicy(taskADenyStatement(this));
     props.lockoutTable.grantReadWriteData(trpcHandler);
     indexBucket.grantRead(trpcHandler);
-    dynamodb.Table.fromTableName(this, "LeadsTable", props.leadsTableName).grantReadData(
+    // B-07: leads read/write. TransactWriteItems is authorised per underlying action
+    // (PutItem/UpdateItem/ConditionCheckItem); Query on GSI1/GSI2 needs the index ARNs, which
+    // `grantIndexPermissions` adds. No Scan, no DeleteItem, no table-level admin actions.
+    const leadsTable = dynamodb.Table.fromTableAttributes(this, "LeadsTable", {
+      tableName: props.leadsTableName,
+      grantIndexPermissions: true,
+    });
+    leadsTable.grantReadData(trpcHandler);
+    leadsTable.grant(
       trpcHandler,
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:ConditionCheckItem",
     );
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
@@ -220,6 +231,17 @@ export class CrmApiStack extends Stack {
           appliesTo: [
             { regex: "/^Action::s3:(GetObject|GetBucket|List)\\*$/" },
             { regex: "/^Resource::arn:aws:s3:::<IndexBucket[A-Za-z0-9]+>\\/\\*$/" },
+          ],
+        },
+        {
+          id: "AwsSolutions-IAM5",
+          reason:
+            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; no Scan, no DeleteItem (see the grant comment above).",
+          appliesTo: [
+            {
+              regex:
+                "/^Resource::arn:aws:dynamodb:eu-north-1:(<AWS::AccountId>|[0-9]{12}):table\\/crm-leads\\/index\\/\\*$/",
+            },
           ],
         },
       ],

@@ -320,6 +320,18 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
     });
   });
 
+  it("presentRequestIdentifiers returns only identifiers in the promoted run (quote-safe); empty input skips the query", async () => {
+    const index = makeIndex();
+    const present = await index.presentRequestIdentifiers(["R-1001", "R-9999", "O'Brien"]);
+    expect([...present]).toEqual(["R-1001"]);
+    s3Mock.reset();
+    await expect(index.presentRequestIdentifiers([])).resolves.toEqual(new Set());
+  });
+
+  it("currentRunId reads the runId provenance column of the promoted run", async () => {
+    await expect(makeIndex().currentRunId()).resolves.toBe(common.runId);
+  });
+
   it("searchProperties returns every property, each carrying sourceManifestCid and passing the CrmProperty schema", async () => {
     const rows = await makeIndex().searchProperties({});
     expect(propertyCids(rows)).toEqual([P1, P2, P3].sort());

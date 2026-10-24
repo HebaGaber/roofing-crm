@@ -15,13 +15,16 @@ import styles from "./AppShell.module.css";
 export const APP_TITLE = "Roofing CRM";
 
 export interface Destination {
-  readonly to: "/";
+  readonly to: "/" | "/leads";
   readonly label: string;
   /** Material Symbols Rounded glyph name (Atlas § 6). */
   readonly icon: string;
 }
 
-export const DESTINATIONS: readonly Destination[] = [{ to: "/", label: "Map", icon: "map" }];
+export const DESTINATIONS: readonly Destination[] = [
+  { to: "/", label: "Map", icon: "map" },
+  { to: "/leads", label: "Leads", icon: "contact_page" },
+];
 
 export function AppShell(): ReactElement {
   // The main region is the scroll container (the bottom navigation stays in view on compact
@@ -41,6 +44,7 @@ export function AppShell(): ReactElement {
           <NavLink
             key={destination.to}
             to={destination.to}
+            end={destination.to === "/"}
             className={({ isActive }) =>
               isActive ? `${styles.item} ${styles.itemActive}` : styles.item
             }

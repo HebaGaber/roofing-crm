@@ -3,13 +3,15 @@
 // the built `crm_property`/`crm_permit` Parquet under `index/{manifestCid}/` (BuildIndex). Block
 // Public Access, SSE, `enforceSSL` (constitution P0-8, architecture-constitution.md §10 Security
 // row). No longer "intentionally empty" (B-01 T005) — infra/test/crm-data-stack.test.ts (T009).
-import { RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { RemovalPolicy, Stack, Tags, type StackProps } from "aws-cdk-lib";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 
 export class CrmDataStack extends Stack {
   public readonly indexBucket: s3.Bucket;
+  public readonly leadsTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
@@ -25,6 +27,32 @@ export class CrmDataStack extends Stack {
       // source of truth and can always be re-synced.
       removalPolicy: RemovalPolicy.DESTROY,
     });
+
+    // B-07 `crm-leads` (T002 skeleton, T012 GSIs). Grants to the API Lambda are in crm-api-stack.ts
+    // (it receives the table by name, like crm-sync-stack.ts).
+    this.leadsTable = new dynamodb.Table(this, "LeadsTable", {
+      tableName: "crm-leads",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "sk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: RemovalPolicy.DESTROY, // Demo project (Article III addendum).
+    });
+    // Sparse indexes: only `sk=LEAD` items carry `assignee`/`status`, so only they are indexed
+    // (data-model.md GSIs). KEYS_ONLY would force a second read; ALL keeps list views one query.
+    this.leadsTable.addGlobalSecondaryIndex({
+      indexName: "GSI1",
+      partitionKey: { name: "assignee", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    this.leadsTable.addGlobalSecondaryIndex({
+      indexName: "GSI2",
+      partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+    Tags.of(this.leadsTable).add("project_name", "roofing-crm");
 
     NagSuppressions.addResourceSuppressions(this.indexBucket, [
       {

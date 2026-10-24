@@ -101,6 +101,10 @@ export interface LeadIndex {
   searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]>;
   searchPermits(query: SearchPermitsQuery): Promise<PermitResult[]>;
   getProperty(propertyCid: string): Promise<(PropertyResult & { permits: PermitResult[] }) | null>;
+  /** Which of these request identifiers exist in the promoted run (AC-5 presence check). */
+  presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>>;
+  /** Run identifier (provenance `runId`) of the promoted run; undefined when it has no rows. */
+  currentRunId(): Promise<string | undefined>;
 }
 
 interface BoundIndex {
@@ -125,6 +129,8 @@ export interface DuckDbParquetDeps {
 
 const DEFAULT_COLD_LOAD_TIMEOUT_MS = 3_000;
 const PK = "META#index";
+/** crm-leads has a pk+sk key (B-07); the pointer item lives at sk "META". */
+const SK = "META";
 
 export class DuckDbParquetLeadIndex implements LeadIndex {
   private readonly ddb: DynamoDBDocumentClient;
@@ -170,7 +176,9 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       // as "no run has ever been promoted," not a crash.
       let item;
       try {
-        item = await this.ddb.send(new GetCommand({ TableName: this.tableName, Key: { pk: PK } }));
+        item = await this.ddb.send(
+          new GetCommand({ TableName: this.tableName, Key: { pk: PK, sk: SK } }),
+        );
       } catch (error) {
         if (error instanceof ResourceNotFoundException) throw new IndexNotReadyError();
         throw error;
@@ -378,6 +386,30 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       );
       const permits = permitReader.getRowObjectsJS() as unknown as PermitResult[];
       return { ...property, permits };
+    });
+  }
+
+  async presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    return withObservabilityOperation(this.obs, "LeadIndex.presentRequestIdentifiers", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const list = ids.map((id) => `'${sqlEscapeString(id)}'`).join(", ");
+      const reader = await connection.runAndReadAll(
+        `SELECT DISTINCT "requestIdentifier" FROM crm_property WHERE "requestIdentifier" IN (${list})`,
+      );
+      const rows = reader.getRowObjectsJS() as unknown as { requestIdentifier: string }[];
+      return new Set(rows.map((r) => r.requestIdentifier));
+    });
+  }
+
+  async currentRunId(): Promise<string | undefined> {
+    return withObservabilityOperation(this.obs, "LeadIndex.currentRunId", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const reader = await connection.runAndReadAll(`SELECT "runId" FROM crm_property LIMIT 1`);
+      const rows = reader.getRowObjectsJS() as unknown as { runId: string | null }[];
+      return rows[0]?.runId ?? undefined;
     });
   }
 }
