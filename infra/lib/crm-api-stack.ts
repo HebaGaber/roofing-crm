@@ -5,7 +5,7 @@
 // needs CrmOps's user pool/app client to exist first — the one recorded deviation from
 // architecture-constitution.md §11's literal stack order, justified in plan.md's Complexity
 // Tracking table).
-import { Duration, Stack, type StackProps } from "aws-cdk-lib";
+import { Annotations, Duration, Stack, Token, type StackProps } from "aws-cdk-lib";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
@@ -16,9 +16,26 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import { RegionInfo } from "aws-cdk-lib/region-info";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
+
+/** ADR-06 §6.1 nested timeouts: 23 s server abort < 28 s Lambda < 30 s HTTP API. */
+export const TRPC_LAMBDA_TIMEOUT_SECONDS = 28;
+
+/** Destination regions a system-defined *geographic* Bedrock cross-region inference profile
+ *  (`<geo>.<model id>`) may route a request to. Source: `bedrock:GetInferenceProfile` for
+ *  `eu.anthropic.claude-sonnet-4-6` in eu-north-1, account 515618610572, 2026-10-24 (read-only).
+ *  The foundation-model grant is scoped to exactly these regions (no `*` region), and only for
+ *  calls made *through* the configured profile (`bedrock:InferenceProfileArn` condition). If
+ *  AWS adds a destination region, InvokeModel fails with AccessDenied for requests routed there —
+ *  re-run GetInferenceProfile and update this list. A geo prefix not listed here fails synth
+ *  rather than silently granting nothing (or everything). */
+export const BEDROCK_GEO_PROFILE_DESTINATION_REGIONS: Readonly<Record<string, readonly string[]>> =
+  {
+    eu: ["eu-north-1", "eu-west-3", "eu-south-1", "eu-south-2", "eu-west-1", "eu-central-1"],
+  };
 
 export interface CrmApiStackProps extends StackProps {
   /** Path to apps/api/src/handlers/health.ts, relative to this file. */
@@ -79,9 +96,15 @@ export class CrmApiStack extends Stack {
       projectRoot: new URL("../../", import.meta.url).pathname,
       handler: "handler",
       // 1024 MB reduces cold-init without a standing provisioned-concurrency cost
-      // (plan.md "Cold-start risk decision" — measure via TZ03's X-Ray trace, then decide).
+      // (plan.md "Cold-start risk decision" — measure via TZ03's X-Ray trace, then decide). The
+      // agent path adds no large in-memory state (≤25 compact rows to the model, a lazily-built
+      // AI SDK client); the DuckDB index is the dominant footprint and is the same one
+      // search/property already serve from this function.
       memorySize: 1024,
-      timeout: Duration.seconds(10),
+      // ADR-06 §6.1 / architecture-constitution.md §8 nested timeouts: the agent aborts server-side
+      // at 23 s (apps/api/src/agent/runAgent.ts RUN_AGENT_TIMEOUT_MS), this Lambda at 28 s, the
+      // HTTP API at 30 s — so the rep sees a typed `timed_out` answer, never a 500/504.
+      timeout: Duration.seconds(TRPC_LAMBDA_TIMEOUT_SECONDS),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         POWERTOOLS_SERVICE_NAME: "crm-api",
@@ -144,7 +167,11 @@ export class CrmApiStack extends Stack {
       "AgentUsageTable",
       props.agentUsageTableName,
     );
-    agentUsageTable.grant(trpcHandler, "dynamodb:UpdateItem");
+    // GetItem (consistent read) is for the per-thread proposal record agent.confirmLead checks
+    // (apps/api/src/agent/threadStore.ts) — one item by key, still no Query/Scan/Delete.
+    agentUsageTable.grant(trpcHandler, "dynamodb:UpdateItem", "dynamodb:GetItem");
+
+    this.grantModelAccess(trpcHandler, props.aiProvider, props.agentModelId);
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],
@@ -304,6 +331,68 @@ export class CrmApiStack extends Stack {
             "auth.reportFailedAttempt is deliberately unauthenticated — called from the sign-in page before any session exists (found deploying; decided with the user: client-reported failure count, server-enforced block — see auth/lockout-handler.ts).",
         },
       ],
+    );
+  }
+
+  /** CR finding 2: the model grant for `AI_PROVIDER` (constitution VI — the model id is config,
+   *  never a literal here). `bedrock`: InvokeModel(+WithResponseStream) on the configured
+   *  inference profile in this account/region, plus the underlying foundation model in each
+   *  destination region of that geo profile, conditioned on being invoked through that profile.
+   *  `gateway`: no AWS grant at all; the Vercel AI Gateway key would have to come from Secrets
+   *  Manager, which is not wired in this deployment — so synth fails closed instead of deploying
+   *  a Lambda whose every ask would fail at its first model call. */
+  private grantModelAccess(fn: NodejsFunction, aiProvider: string, agentModelId: string): void {
+    if (aiProvider === "gateway") {
+      Annotations.of(this).addError(
+        "AI_PROVIDER=gateway is not deployable yet: the AI Gateway API key must be read from Secrets Manager at runtime (never an env literal), and that wiring does not exist in CrmApi. Deploy with AI_PROVIDER=bedrock, or add the Secrets Manager grant + runtime read first.",
+      );
+      return;
+    }
+    if (aiProvider !== "bedrock") {
+      Annotations.of(this).addError(`Unsupported AI_PROVIDER "${aiProvider}".`);
+      return;
+    }
+
+    const [geo, ...rest] = agentModelId.split(".");
+    const destinationRegions =
+      geo === undefined ? undefined : BEDROCK_GEO_PROFILE_DESTINATION_REGIONS[geo];
+    if (destinationRegions === undefined || rest.length === 0) {
+      Annotations.of(this).addError(
+        `AGENT_MODEL_ID "${agentModelId}" is not a known geographic inference profile id (expected "<geo>.<model id>" with geo in ${Object.keys(BEDROCK_GEO_PROFILE_DESTINATION_REGIONS).join(", ")}).`,
+      );
+      return;
+    }
+    const foundationModelId = rest.join(".");
+    // A literal partition (not the `AWS::Partition` pseudo-parameter) when the region is known,
+    // so the synthesized policy reads as plain ARNs a reviewer can check against
+    // GetInferenceProfile's own output.
+    const partition =
+      (Token.isUnresolved(this.region) ? undefined : RegionInfo.get(this.region).partition) ??
+      this.partition;
+    const profileArn = this.formatArn({
+      partition,
+      service: "bedrock",
+      resource: "inference-profile",
+      resourceName: agentModelId,
+    });
+    const actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeAgentInferenceProfile",
+        actions,
+        resources: [profileArn],
+      }),
+    );
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeAgentFoundationModelViaProfile",
+        actions,
+        resources: destinationRegions.map(
+          (region) => `arn:${partition}:bedrock:${region}::foundation-model/${foundationModelId}`,
+        ),
+        conditions: { StringEquals: { "bedrock:InferenceProfileArn": profileArn } },
+      }),
     );
   }
 }

@@ -12,7 +12,7 @@
 // are spied and asserted never invoked — the actual code-level proof the scope gate works, which
 // the old single-`generateText`-call test couldn't assert (tools were always available to that
 // one call, so "no tool call happened" was the model's choice, not a structural guarantee).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterEach, beforeEach } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type {
@@ -22,6 +22,13 @@ import type {
 } from "../../src/adapters/duckDbParquet.js";
 import { router, createCallerFactory } from "../../src/trpc.js";
 import { agentRouter } from "../../src/routers/agent.js";
+import { resetUsageGuardForTest, setUsageGuardForTest } from "../../src/agent/usageGuard.js";
+import { fakeUsageGuard } from "../support/fakeUsageGuard.js";
+
+// The usage guard fails closed when unconfigured (CR finding 4); these tests exercise the turn
+// itself, so they inject a permissive in-memory guard.
+beforeEach(() => setUsageGuardForTest(fakeUsageGuard().guard));
+afterEach(() => resetUsageGuardForTest());
 
 class EmptyLeadIndex implements LeadIndex {
   searchPropertiesCalls = 0;

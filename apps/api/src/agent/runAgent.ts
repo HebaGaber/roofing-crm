@@ -12,7 +12,8 @@
 // `mapIndexNotReady` in apps/api/src/routers/search.ts; and (2) `generateOnce`, a single
 // no-tools `generateText` call with the Bedrock prompt-caching wiring, used for both the plan
 // call and the compose call (and the plan's one repair call).
-import { generateText, type LanguageModel, type ModelMessage } from "ai";
+import { generateText, type LanguageModel, type LanguageModelUsage, type ModelMessage } from "ai";
+import { MAX_OUTPUT_TOKENS_PER_CALL } from "./modelPricing.js";
 
 // T045 (B-09, Phase 5/US2): Bedrock prompt caching (ADR-06 §6.1: "Wrap the Bedrock model (cache
 // points on the system prompt and the last non-system message). Log cache read/write tokens. Put
@@ -98,11 +99,56 @@ export interface GenerateOnceInput {
   readonly prompt: string;
 }
 
+/** One model call's token usage (CR finding 5), normalised from the AI SDK's `usage`:
+ *  `inputTokens` is the *non-cached* input count (cache reads/writes are priced differently, see
+ *  agent/modelPricing.ts), so the four fields never double-count. Absent = provider didn't say. */
+export interface ModelCallUsage {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly cacheReadTokens?: number;
+  readonly cacheWriteTokens?: number;
+}
+
 export interface GenerateOnceResult {
   readonly text: string;
   readonly cacheStrategy: CacheStrategy;
   readonly cacheReadTokens?: number;
   readonly cacheWriteTokens?: number;
+  readonly usage: ModelCallUsage;
+}
+
+function definedOnly(usage: Record<keyof ModelCallUsage, number | undefined>): ModelCallUsage {
+  return Object.fromEntries(
+    Object.entries(usage).filter(([, v]) => v !== undefined),
+  ) as ModelCallUsage;
+}
+
+/** Shared with agent/usageMeter.ts: AI SDK total input includes cached tokens; when the provider
+ *  doesn't split out the non-cached part, derive it so input is never charged twice. */
+export function nonCachedInput(
+  total: number | undefined,
+  noCache: number | undefined,
+  cacheRead: number | undefined,
+  cacheWrite: number | undefined,
+): number | undefined {
+  if (noCache !== undefined) return noCache;
+  if (total === undefined) return undefined;
+  return Math.max(0, total - (cacheRead ?? 0) - (cacheWrite ?? 0));
+}
+
+function toModelCallUsage(usage: LanguageModelUsage): ModelCallUsage {
+  const details = usage.inputTokenDetails;
+  return definedOnly({
+    inputTokens: nonCachedInput(
+      usage.inputTokens,
+      details?.noCacheTokens,
+      details?.cacheReadTokens,
+      details?.cacheWriteTokens,
+    ),
+    outputTokens: usage.outputTokens,
+    cacheReadTokens: details?.cacheReadTokens,
+    cacheWriteTokens: details?.cacheWriteTokens,
+  });
 }
 
 /** One single-step, **no-tools** `generateText` call (ADR §6.1's "plan call"/"compose call" — the
@@ -145,7 +191,13 @@ export async function generateOnce(
     // model itself.
     system,
     prompt,
+    // CR finding 7: the turn's one 23 s AbortSignal reaches the provider request itself, and the
+    // SDK never retries on its own (its default is 2 retries) — the only extra model call a turn
+    // may make is composeAnswer.ts's one plan-repair call, which keeps the ≤3-calls bound and
+    // the spend reservation (agent/modelPricing.ts) honest.
     abortSignal: signal,
+    maxRetries: 0,
+    maxOutputTokens: MAX_OUTPUT_TOKENS_PER_CALL,
   });
 
   const cacheReadTokens = result.usage.inputTokenDetails?.cacheReadTokens;
@@ -156,5 +208,6 @@ export async function generateOnce(
     cacheStrategy,
     ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
     ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    usage: toModelCallUsage(result.usage),
   };
 }

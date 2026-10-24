@@ -16,7 +16,7 @@
 // returned `AgentAnswer.claims` must never carry a `citationIds` entry pointing at that fake
 // citation. `trace.modelCalls` must stay within the ADR-06 budget of <=3 model calls (here: 2 —
 // plan + compose, no repair needed).
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type {
@@ -26,6 +26,13 @@ import type {
 } from "../../src/adapters/duckDbParquet.js";
 import { router, createCallerFactory } from "../../src/trpc.js";
 import { agentRouter } from "../../src/routers/agent.js";
+import { resetUsageGuardForTest, setUsageGuardForTest } from "../../src/agent/usageGuard.js";
+import { fakeUsageGuard } from "../support/fakeUsageGuard.js";
+
+// The usage guard fails closed when unconfigured (CR finding 4); these tests exercise the turn
+// itself, so they inject a permissive in-memory guard.
+beforeEach(() => setUsageGuardForTest(fakeUsageGuard().guard));
+afterEach(() => resetUsageGuardForTest());
 
 const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
 

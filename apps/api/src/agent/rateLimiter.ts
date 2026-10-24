@@ -18,14 +18,30 @@ export interface RateLimiterDeps {
   readonly now?: () => Date;
 }
 
+/** `ask` = `agent.ask`; `confirm` = `agent.confirmLead` (CR finding 6c) — same 5/min/user limit,
+ *  separate windows, so confirming a proposal never competes with the questions that produced it. */
+export type RateLimitScope = "ask" | "confirm";
+
 export interface RateLimiter {
-  /** Throws `RateLimitedError` when this ask would be the user's 6th+ in the current UTC minute. */
-  check(userId: string): Promise<void>;
+  /** Throws `RateLimitedError` (with `retryAfterSec`) when this call would be the user's 6th+ in
+   *  the current UTC minute for `scope` (default `ask`). */
+  check(userId: string, scope?: RateLimitScope): Promise<void>;
 }
 
-function windowKey(userId: string, now: Date): string {
-  const windowMinute = Math.floor(now.getTime() / 60_000);
-  return `USER#${userId}#MIN#${windowMinute}`;
+const MS_PER_MINUTE = 60_000;
+
+function windowKey(userId: string, now: Date, scope: RateLimitScope): string {
+  const windowMinute = Math.floor(now.getTime() / MS_PER_MINUTE);
+  // `ask` keeps the original key shape (data-model.md) so items already in the table still count.
+  return scope === "ask"
+    ? `USER#${userId}#MIN#${windowMinute}`
+    : `USER#${userId}#CONFIRM#MIN#${windowMinute}`;
+}
+
+/** Whole seconds until the next UTC minute window opens (>= 1). */
+function secondsToNextWindow(now: Date): number {
+  const msIntoWindow = now.getTime() % MS_PER_MINUTE;
+  return Math.max(1, Math.ceil((MS_PER_MINUTE - msIntoWindow) / 1000));
 }
 
 export function createRateLimiter(deps: RateLimiterDeps): RateLimiter {
@@ -33,14 +49,14 @@ export function createRateLimiter(deps: RateLimiterDeps): RateLimiter {
   const now = deps.now ?? (() => new Date());
 
   return {
-    async check(userId) {
+    async check(userId, scope = "ask") {
       const at = now();
       const ttl = Math.floor(at.getTime() / 1000) + ITEM_TTL_SECONDS;
       try {
         await client.send(
           new UpdateCommand({
             TableName: tableName,
-            Key: { pk: windowKey(userId, at) },
+            Key: { pk: windowKey(userId, at, scope) },
             UpdateExpression: "SET #ttl = :ttl ADD #count :inc",
             ConditionExpression: "attribute_not_exists(pk) OR #count < :limit",
             ExpressionAttributeNames: { "#count": "count", "#ttl": "ttl" },
@@ -52,7 +68,9 @@ export function createRateLimiter(deps: RateLimiterDeps): RateLimiter {
           }),
         );
       } catch (error) {
-        if (isConditionalCheckFailed(error)) throw new RateLimitedError(userId);
+        if (isConditionalCheckFailed(error)) {
+          throw new RateLimitedError(userId, secondsToNextWindow(at));
+        }
         throw error;
       }
     },

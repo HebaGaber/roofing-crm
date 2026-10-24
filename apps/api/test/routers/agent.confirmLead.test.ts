@@ -8,7 +8,8 @@
 // sends), never a CID pinned in code. This test also ties to T029: the confirm-flow-bypass guard
 // says that same `LeadService.create` call must never be reachable from
 // `apps/api/src/services/agent/tools.ts` — only from this router handler.
-import { describe, expect, it, vi } from "vitest";
+import { TRPCError } from "@trpc/server";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type {
   LeadIndex,
@@ -21,6 +22,8 @@ import { router, createCallerFactory } from "../../src/trpc.js";
 // Does not exist yet (T036) — this import is expected to fail module resolution, the correct
 // TDD-first failure here, not a bad assertion in the test body below.
 import { agentRouter } from "../../src/routers/agent.js";
+import { resetUsageGuardForTest, setUsageGuardForTest } from "../../src/agent/usageGuard.js";
+import { fakeUsageGuard, type FakeUsageGuardOptions } from "../support/fakeUsageGuard.js";
 
 /** Task A's Run 2 full-county manifest (runId travis-full-run2-20261024). */
 const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
@@ -102,11 +105,19 @@ function fakeLeadService(): LeadService & { create: ReturnType<typeof vi.fn> } {
   } as unknown as LeadService & { create: ReturnType<typeof vi.fn> };
 }
 
-function ctx(rows: Provenanced<CrmProperty>[] = [property()]) {
+/** By default the agent proposed TCAD_ID to rep-1 in thread-1 (CR finding 6b: confirmLead only
+ *  confirms a tcadId the agent actually proposed in that thread). */
+function ctx(
+  rows: Provenanced<CrmProperty>[] = [property()],
+  guardOptions: FakeUsageGuardOptions = { proposed: { "thread-1|rep-1": [TCAD_ID] } },
+) {
   const leadIndex = new FakeLeadIndex(rows);
   const leadService = fakeLeadService();
+  const fake = fakeUsageGuard(guardOptions);
+  setUsageGuardForTest(fake.guard);
   return {
     leadService,
+    fake,
     c: createCallerFactory(router({ agent: agentRouter }))({
       requestId: "req-agent-confirm-1",
       userId: "rep-1",
@@ -114,6 +125,12 @@ function ctx(rows: Provenanced<CrmProperty>[] = [property()]) {
       leadService,
     }),
   };
+}
+
+afterEach(() => resetUsageGuardForTest());
+
+function appCodeOf(error: unknown): string | undefined {
+  return ((error as TRPCError).cause as { code?: string } | undefined)?.code;
 }
 
 describe("agent.confirmLead (T028)", () => {
@@ -140,5 +157,69 @@ describe("agent.confirmLead (T028)", () => {
 
     const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
     expect(input.sourceManifestCid).toBe(otherManifestCid);
+  });
+
+  // CR finding 6a: never invent coordinates. The map path (LeadCreateAction's toCreateInput)
+  // offers no create at all for a property without coordinates, and the lead schema requires
+  // lat/lon — so the agent path refuses with a typed NO_COORDINATES error instead of writing (0,0).
+  it("refuses with NO_COORDINATES (and writes nothing) when the property has no coordinates", async () => {
+    const { c, leadService } = ctx([{ ...property(), latitude: null, longitude: null }]);
+
+    const error = await c.agent
+      .confirmLead({ threadId: "thread-1", tcadId: TCAD_ID })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TRPCError);
+    expect((error as TRPCError).code).toBe("PRECONDITION_FAILED");
+    expect(appCodeOf(error)).toBe("NO_COORDINATES");
+    expect(leadService.create).not.toHaveBeenCalled();
+  });
+
+  it("passes the property's real coordinates through, never a default", async () => {
+    const { c, leadService } = ctx();
+    await c.agent.confirmLead({ threadId: "thread-1", tcadId: TCAD_ID });
+    const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
+    expect(input.lat).toBe(30.4118);
+    expect(input.lon).toBe(-97.7069);
+  });
+
+  // CR finding 6b: only a tcadId the agent proposed in this thread, to this rep.
+  it("rejects a tcadId that was never proposed in this thread (NOT_PROPOSED), writing nothing", async () => {
+    const { c, leadService } = ctx([property()], { proposed: { "thread-1|rep-1": ["other"] } });
+
+    const error = await c.agent
+      .confirmLead({ threadId: "thread-1", tcadId: TCAD_ID })
+      .catch((e: unknown) => e);
+
+    expect((error as TRPCError).code).toBe("FORBIDDEN");
+    expect(appCodeOf(error)).toBe("NOT_PROPOSED");
+    expect(leadService.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a proposal from a different thread", async () => {
+    const { c, leadService } = ctx();
+    const error = await c.agent
+      .confirmLead({ threadId: "thread-2", tcadId: TCAD_ID })
+      .catch((e: unknown) => e);
+    expect(appCodeOf(error)).toBe("NOT_PROPOSED");
+    expect(leadService.create).not.toHaveBeenCalled();
+  });
+
+  // CR finding 6c: same per-user rate limit as agent.ask (its own window).
+  it("applies the per-user rate limit (RATE_LIMITED) before any lookup or write", async () => {
+    const { c, leadService, fake } = ctx([property()], {
+      proposed: { "thread-1|rep-1": [TCAD_ID] },
+      rateLimited: { retryAfterSec: 12 },
+    });
+
+    const error = await c.agent
+      .confirmLead({ threadId: "thread-1", tcadId: TCAD_ID })
+      .catch((e: unknown) => e);
+
+    expect((error as TRPCError).code).toBe("TOO_MANY_REQUESTS");
+    expect(appCodeOf(error)).toBe("RATE_LIMITED");
+    expect(fake.check).toHaveBeenCalledWith("rep-1", "confirm");
+    expect(fake.wasProposed).not.toHaveBeenCalled();
+    expect(leadService.create).not.toHaveBeenCalled();
   });
 });

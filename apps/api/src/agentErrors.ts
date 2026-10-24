@@ -14,7 +14,11 @@ export function isConditionalCheckFailed(error: unknown): boolean {
  *  DynamoDB cancellation reason the conditional UpdateItem produced. */
 export class RateLimitedError extends Error {
   readonly code = "ConditionalCheckFailed";
-  constructor(readonly userId: string) {
+  /** `retryAfterSec`: whole seconds until the next minute window (the Ask screen's throttled hint). */
+  constructor(
+    readonly userId: string,
+    readonly retryAfterSec: number,
+  ) {
     super(`User ${userId} exceeded 5 asks/min; wait for the next window`);
     this.name = "RateLimitedError";
   }
@@ -24,8 +28,22 @@ export class RateLimitedError extends Error {
  *  (checked before any model call, never after). `code` is the DynamoDB cancellation reason. */
 export class OverBudgetError extends Error {
   readonly code = "ConditionalCheckFailed";
-  constructor(readonly userId: string) {
+  /** `resetsAt`: ISO time of the next 00:00 UTC, when the daily cap resets. */
+  constructor(
+    readonly userId: string,
+    readonly resetsAt: string,
+  ) {
     super(`User ${userId} would exceed the $3/day agent spend cap`);
     this.name = "OverBudgetError";
+  }
+}
+
+/** CR finding 4: the rate-limit/spend-cap guard is not configured in this deploy
+ *  (`CRM_AGENT_USAGE_TABLE_NAME` unset). The agent fails closed: no model call runs unmetered. */
+export class UsageGuardNotConfiguredError extends Error {
+  readonly code = "AGENT_GUARD_NOT_CONFIGURED";
+  constructor() {
+    super("Agent usage guard not configured (CRM_AGENT_USAGE_TABLE_NAME unset); refusing to run");
+    this.name = "UsageGuardNotConfiguredError";
   }
 }

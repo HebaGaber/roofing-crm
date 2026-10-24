@@ -50,6 +50,11 @@ export const AgentAnswer = z.object({
     truncated: z.boolean(),
   }),
   missing: z.array(z.object({ field: z.string(), reason: z.string() })),
+  // B-09 review (CR finding 3): budget outcomes are typed answers the Ask screen keys on, with the
+  // hint it needs. Optional and additive: set only on `rate_limited` (whole seconds until the
+  // next per-minute window) and `paused` (ISO time the daily cap resets, next 00:00 UTC).
+  retryAfterSec: z.number().int().nonnegative().optional(),
+  resetsAt: z.string().optional(),
   proposals: z
     .array(
       z.object({

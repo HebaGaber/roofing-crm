@@ -25,17 +25,15 @@ import type { LeadRepo } from "../adapters/leadRepo.js";
 import { propertyByTcadId } from "../services/agent/tools.js";
 import { createPlaceResolver } from "../services/agent/placeResolver.js";
 import { getModel } from "../agent/getModel.js";
-import { tryUsageGuard } from "../agent/usageGuard.js";
-import { RateLimitedError, OverBudgetError } from "../agentErrors.js";
-import { runAsk } from "../agent/composeAnswer.js";
+import { estimateCents } from "../agent/modelPricing.js";
+import { RUN_AGENT_MAX_MODEL_CALLS } from "../agent/runAgent.js";
+import type { SpendReservation } from "../agent/spendCap.js";
+import { requireUsageGuard, type UsageGuard } from "../agent/usageGuard.js";
+import { meterModel, meteredCostCents, type UsageMeter } from "../agent/usageMeter.js";
+import { OverBudgetError, RateLimitedError } from "../agentErrors.js";
+import { emptyAnswer, emptyPlan, runAsk } from "../agent/composeAnswer.js";
 
 const obs = createObservability("crm-api");
-
-/** A flat per-ask spend estimate, reserved before any model call (contracts/agent-api.md step 1).
- *  Refined to real measured Bedrock token costs in US2 (T045's prompt-caching work); until then
- *  this is deliberately conservative-cheap so the $3/day cap is never the first thing a demo
- *  hits. */
-const ESTIMATED_COST_CENTS_PER_ASK = 1;
 
 const AskInput = z.object({
   question: z.string().trim().min(1).max(500),
@@ -47,32 +45,139 @@ const ConfirmLeadInput = z.object({
   tcadId: z.string().min(1),
 });
 
-/** contracts/agent-api.md step 1: budget check first, before any model call. A deploy that
- *  hasn't wired `CRM_AGENT_USAGE_TABLE_NAME` yet (the same "known infra gap, degrade not crash"
- *  rule `tryLeadIndex`/`tryLeadService` already follow) skips enforcement rather than failing
- *  every ask. */
-async function checkBudget(userId: string): Promise<void> {
-  const guard = tryUsageGuard();
-  if (guard === undefined) return;
+/** Outcomes whose `plan` is a real, in-scope reading of the rep's question — the only ones worth
+ *  recording as the thread's last plan (follow-up inheritance) or carrying proposals. */
+const RECORDABLE_OUTCOMES: ReadonlySet<AgentAnswer["outcome"]> = new Set([
+  "answered",
+  "empty_in_scope",
+  "field_not_published",
+]);
+
+/** CR finding 4: the guard fails closed. A deploy without `CRM_AGENT_USAGE_TABLE_NAME` (or with an
+ *  unpriced `AGENT_MODEL_ID`) gets a typed `AGENT_GUARD_NOT_CONFIGURED` error and an error log —
+ *  never an unmetered model call. */
+function guardOrFail(requestId: string): UsageGuard {
   try {
-    await guard.rateLimiter.check(userId);
-    await guard.spendCap.reserve(userId, ESTIMATED_COST_CENTS_PER_ASK);
+    return requireUsageGuard();
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "unknown";
+    obs.logger.error("agent usage guard not configured", { requestId, reason: name });
+    const message = "The agent is not configured on this deploy (usage guard unavailable).";
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message,
+      cause: causeWithCode("AGENT_GUARD_NOT_CONFIGURED", message),
+    });
+  }
+}
+
+/** contracts/agent-api.md step 1, before any model call. CR finding 3: over either limit the
+ *  procedure *returns* a typed `AgentAnswer` (`rate_limited` with `retryAfterSec`, `paused` with
+ *  `resetsAt`) — the outcomes the Ask screen keys its throttled/paused states on — instead of
+ *  throwing. On success, returns the spend reservation to reconcile after the turn. */
+async function checkBudget(
+  guard: UsageGuard,
+  userId: string,
+  question: string,
+  traceId: string,
+): Promise<{ readonly blocked: AgentAnswer } | { readonly reservation: SpendReservation }> {
+  try {
+    await guard.rateLimiter.check(userId, "ask");
   } catch (error) {
     if (error instanceof RateLimitedError) {
-      throw new TRPCError({
-        code: "TOO_MANY_REQUESTS",
-        message: error.message,
-        cause: causeWithCode("RATE_LIMITED", error.message),
-      });
-    }
-    if (error instanceof OverBudgetError) {
-      throw new TRPCError({
-        code: "TOO_MANY_REQUESTS",
-        message: error.message,
-        cause: causeWithCode("OVER_BUDGET", error.message),
-      });
+      return {
+        blocked: {
+          ...emptyAnswer("rate_limited", emptyPlan(question), traceId, 0),
+          retryAfterSec: error.retryAfterSec,
+        },
+      };
     }
     throw error;
+  }
+  try {
+    const estimate = estimateCents(guard.price, RUN_AGENT_MAX_MODEL_CALLS);
+    return { reservation: await guard.spendCap.reserve(userId, estimate) };
+  } catch (error) {
+    if (error instanceof OverBudgetError) {
+      return {
+        blocked: {
+          ...emptyAnswer("paused", emptyPlan(question), traceId, 0),
+          resetsAt: error.resetsAt,
+        },
+      };
+    }
+    throw error;
+  }
+}
+
+/** CR finding 5: replace the up-front reservation with the turn's metered cost (every model call
+ *  actually started, at real token prices; a call that never reported usage at the per-call
+ *  estimate). A failed reconcile leaves the conservative reservation in place — it can only make
+ *  the cap stricter, never looser — and is logged. */
+async function reconcileSpend(
+  guard: UsageGuard,
+  reservation: SpendReservation,
+  meter: UsageMeter | undefined,
+  requestId: string,
+): Promise<void> {
+  if (meter === undefined) {
+    obs.logger.warn("agent spend not metered; keeping the full reservation", { requestId });
+    return;
+  }
+  const snapshot = meter.snapshot();
+  const actualCents = meteredCostCents(guard.price, snapshot);
+  try {
+    await guard.spendCap.reconcile(reservation, actualCents);
+    obs.logger.info("agent spend reconciled", {
+      requestId,
+      reservedCents: reservation.reservedCents,
+      actualCents,
+      modelCallsStarted: snapshot.started,
+    });
+  } catch (error) {
+    obs.logger.error("agent spend reconcile failed; reservation kept", {
+      requestId,
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+  }
+}
+
+/** CR finding 6b: record the turn's plan and proposals under `threadId` + the rep, so
+ *  `confirmLead` can check a tcadId was really proposed here. If the record can't be written, the
+ *  proposals are dropped from the answer (with a `missing` reason) rather than offering a Create
+ *  button `confirmLead` would then refuse. */
+async function recordThreadTurn(
+  guard: UsageGuard,
+  threadId: string,
+  userId: string,
+  answer: AgentAnswer,
+  requestId: string,
+): Promise<AgentAnswer> {
+  if (!RECORDABLE_OUTCOMES.has(answer.outcome)) return answer;
+  try {
+    await guard.threadStore.recordTurn(threadId, userId, {
+      plan: answer.plan,
+      proposedTcadIds: (answer.proposals ?? []).map((p) => p.tcadId),
+    });
+    return answer;
+  } catch (error) {
+    obs.logger.error("agent thread record failed", {
+      requestId,
+      reason: error instanceof Error ? error.name : "unknown",
+    });
+    if (answer.proposals === undefined) return answer;
+    const { proposals: _dropped, ...rest } = answer;
+    return {
+      ...rest,
+      missing: [
+        ...answer.missing,
+        {
+          field: "proposals",
+          reason:
+            "The proposals couldn't be saved to this conversation, so they can't be confirmed. Ask again to get them.",
+        },
+      ],
+    };
   }
 }
 
@@ -110,29 +215,36 @@ interface AskContext {
 
 async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<AgentAnswer> {
   const userId = requireUserId(ctx);
-  await checkBudget(userId); // step 1: before any model call
+  const guard = guardOrFail(ctx.requestId);
+  const budget = await checkBudget(guard, userId, input.question, ctx.requestId); // step 1
+  if ("blocked" in budget) return budget.blocked;
 
-  const leadIndex: LeadIndex = requireLeadIndex(ctx);
-  const leadRepo = ctx.leadRepo ?? unavailableLeadRepo();
-  const placeResolver = createPlaceResolver();
-  const model = ctx.model ?? getModel();
-
+  const baseModel = ctx.model ?? getModel();
+  const meter = typeof baseModel === "string" ? undefined : meterModel(baseModel);
   try {
-    return await runAsk({
-      model,
-      leadIndex,
-      leadRepo,
-      placeResolver,
-      question: input.question,
-      traceId: ctx.requestId,
-      obs,
-    });
-  } catch (error) {
-    // `leadIndex.indexInfo()` (called inside `runAsk`'s dispatch step) keeps its own typed-error
-    // mapping (`mapIndexNotReady`) — same `SERVICE_UNAVAILABLE` pattern as `search.ts`/
-    // `property.ts` — applied here since `runAsk` itself has no reason to know about tRPC error
-    // shapes.
-    return mapIndexNotReady(error);
+    const leadIndex: LeadIndex = requireLeadIndex(ctx);
+    const leadRepo = ctx.leadRepo ?? unavailableLeadRepo();
+    let answer: AgentAnswer;
+    try {
+      answer = await runAsk({
+        model: meter?.model ?? baseModel,
+        leadIndex,
+        leadRepo,
+        placeResolver: createPlaceResolver(),
+        question: input.question,
+        traceId: ctx.requestId,
+        obs,
+      });
+    } catch (error) {
+      // `leadIndex.indexInfo()` (called inside `runAsk`'s dispatch step) keeps its own typed-error
+      // mapping (`mapIndexNotReady`) — same `SERVICE_UNAVAILABLE` pattern as `search.ts`/
+      // `property.ts` — applied here since `runAsk` itself has no reason to know about tRPC error
+      // shapes.
+      return mapIndexNotReady(error);
+    }
+    return await recordThreadTurn(guard, input.threadId, userId, answer, ctx.requestId);
+  } finally {
+    await reconcileSpend(guard, budget.reservation, meter, ctx.requestId);
   }
 }
 
@@ -189,20 +301,58 @@ export const agentRouter = router({
   }),
 
   confirmLead: publicProcedure.input(ConfirmLeadInput).mutation(async ({ input, ctx }) => {
+    const userId = requireUserId(ctx);
+    const guard = guardOrFail(ctx.requestId);
+
+    // CR finding 6c: same per-user rate limit as `agent.ask` (its own window).
+    try {
+      await guard.rateLimiter.check(userId, "confirm");
+    } catch (error) {
+      if (error instanceof RateLimitedError) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: error.message,
+          cause: causeWithCode("RATE_LIMITED", error.message),
+        });
+      }
+      throw error;
+    }
+
+    // CR finding 6b: only a tcadId the agent actually proposed in this thread, to this rep.
+    if (!(await guard.threadStore.wasProposed(input.threadId, userId, input.tcadId))) {
+      const message = "That property wasn't proposed in this conversation.";
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message,
+        cause: causeWithCode("NOT_PROPOSED", message),
+      });
+    }
+
     const leadIndex = requireLeadIndex(ctx);
     const property = await propertyByTcadId(leadIndex, input.tcadId).catch(mapIndexNotReady);
     if (property === undefined) {
       throw new TRPCError({ code: "NOT_FOUND", message: `No property for tcadId ${input.tcadId}` });
+    }
+    // CR finding 6a: never invent coordinates. The lead schema requires lat/lon and the map
+    // path's `leads.create` (apps/web LeadCreateAction's `toCreateInput`) offers no create at all
+    // for a property without them — so this path refuses, typed, instead of writing (0,0).
+    if (property.latitude === null || property.longitude === null) {
+      const message = "This property has no published coordinates, so it can't be made a lead.";
+      throw new TRPCError({
+        code: "PRECONDITION_FAILED",
+        message,
+        cause: causeWithCode("NO_COORDINATES", message),
+      });
     }
     return requireLeadService(ctx).create(
       {
         fips: gazetteer.TRAVIS_FIPS,
         requestIdentifier: input.tcadId,
         address: `TCAD ${input.tcadId}`,
-        lat: property.latitude ?? 0,
-        lon: property.longitude ?? 0,
+        lat: property.latitude,
+        lon: property.longitude,
         signals: {
-          roofAgeYears: property.roofAgeYears ?? undefined,
+          ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
           roofAgeBasis: property.roofAgeBasis,
         },
         // Constitution B2 / AC-7: the lead records the manifest this property row actually came
@@ -212,7 +362,7 @@ export const agentRouter = router({
         sourceManifestCid: property.sourceManifestCid,
         createdFrom: "agent",
       },
-      requireUserId(ctx),
+      userId,
     );
   }),
 });

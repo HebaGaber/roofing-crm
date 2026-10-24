@@ -85,4 +85,28 @@ describe("rateLimiter (T015)", () => {
       .map((c) => c.args[0]?.input?.Key?.pk as string);
     expect(new Set(keys).size).toBe(2);
   });
+
+  // CR finding 3: the Ask screen's throttled state can say how long to wait — seconds to the
+  // next UTC minute window, computed by the limiter that owns the window.
+  it("carries retryAfterSec = seconds until the next minute window", async () => {
+    ddbMock.on(UpdateCommand).rejects(conditionalCheckFailed());
+    const limiter = makeLimiter(() => new Date("2026-10-24T10:00:20.500Z"));
+
+    const error = await limiter.check("user-1").catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RateLimitedError);
+    expect((error as RateLimitedError).retryAfterSec).toBe(40);
+  });
+
+  // CR finding 6c: agent.confirmLead gets the same 5/min/user limit, in its own window so a rep
+  // who just asked 5 questions can still confirm a proposal.
+  it("keys the confirm scope separately from asks, same limit", async () => {
+    ddbMock.on(UpdateCommand).resolves({});
+    const limiter = makeLimiter(() => new Date("2026-10-24T10:00:00.000Z"));
+
+    await limiter.check("user-42", "confirm");
+
+    const input = ddbMock.commandCalls(UpdateCommand)[0]?.args[0]?.input;
+    expect(input?.Key?.pk).toBe("USER#user-42#CONFIRM#MIN#29880600");
+    expect(input?.ExpressionAttributeValues?.[":limit"]).toBe(RATE_LIMIT_PER_MINUTE);
+  });
 });
