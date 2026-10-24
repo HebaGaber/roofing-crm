@@ -37,7 +37,7 @@ The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/tracea
 | B-02 Lead search index | Done | `d01c06e` | G7 |
 | B-03 Map search (radius, roof age, permits, detail) | Done | `80873e1` | G7 |
 | B-07 Leads and lead list | Done | `8b13240` | G7 approved with exceptions (below) |
-| B-09 Agent and hardening | Not started | n/a | n/a |
+| B-09 Agent and hardening | In progress: built and unit-tested; live proof waits for Task A's Run 2 manifest | n/a | G4, G5 passed; G6 held for Run 2 data |
 
 ## Verification
 
