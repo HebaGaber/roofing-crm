@@ -103,12 +103,30 @@ signal now available at county scale.
   `6421e47`. **T021 stays open, needs your explicit go-ahead** — it's the actual "data readiness"
   action, same category as the G6 block, not a coding task.
 
+- 2026-10-24 · E · Phase 4 (US1, the MVP, T024-T040): three waves of builder subagents —
+  alakazam (T024,T025,T029(moved from ash's test-only wave),T030-T032: placeResolver,
+  verifyCitations, tools.ts), ash (T026-T029 tests then T033-T038: getModel/runAgent/agent.ts —
+  one `generateText` call with `stopWhen: stepCountIs(3)`, not `maxSteps` which doesn't exist in
+  the installed AI SDK version), metagross (T039/T040: Ask.tsx, the `/ask` route+nav, the
+  outcome→data-state mapping for smeargle's later suite). Also fixed a real deploy gap: `AI_PROVIDER`/
+  `AGENT_MODEL_ID` were never wired to the API Lambda — added both to `@crm/config`'s
+  `RuntimeConfig` (bedrock default per constitution VI) and threaded through CDK. 159→164 api
+  tests, 155 web tests, clean tsc throughout. Committed `c7a3fdc`, `1bd988f`, `b664cf3`. **US1 (the
+  story's MVP) is now fully implemented.**
+- 2026-10-24 · E · Phase 5 (US2, golden queries at scale, T041-T046): three builders in parallel
+  on disjoint files — alakazam (golden harness as a new `tests-agent` workspace package,
+  skip-guarded same as T020; real `ownerAreaClass`/`tenureYearsMin`/`permitNumber` SQL filters,
+  not just types), ash (Bedrock prompt caching), metagross (6 new agent metrics + fixed
+  `AgentAsksTotal`'s missing `outcome` dimension). Merged cleanly, no conflicts. 164 api + 31
+  shared + 14 observability + 155 web tests pass, full `pnpm test` (18 packages) green. Committed
+  `7f8b60b`. T047 (running the harness for real) stays blocked on data readiness, same as T021.
+
 ## Next step
 
-Continue `/speckit-implement` into Phase 4 (US1, the core agent) — none of its tasks need real
-data to write or unit-test (only T047's golden-query *run* and the live Playwright suite do).
-T021 (the real data switch) and T047/test-token-fill (its downstream validation) stay open,
-needing your go-ahead given AWS cost/time. Stop before G7 approval, merge, push, or deploy — unchanged.
+Phase 6 (US3, responsive + observable: DLQ-alarm confirm, `RoofingCrm` dashboard, full responsive
+suite, T048-T057) — all `metagross`-owned. Then Phase 7 (US5, prototype re-audit, T058-T060).
+T021/T047 and the test-case token fill stay open, needing your go-ahead given AWS cost/time, same
+as before. Stop before G7 approval, merge, push, or deploy — unchanged.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
