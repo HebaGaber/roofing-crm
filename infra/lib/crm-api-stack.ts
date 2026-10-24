@@ -35,6 +35,9 @@ export interface CrmApiStackProps extends StackProps {
   /** B-07's leads table name, for the META#index pointer read (ADR-05) — same string-only
    *  pattern as crm-sync-stack.ts's leadsTableName (no real table construct exists yet). */
   readonly leadsTableName: string;
+  /** B-09 T017: the `crm-agent-usage` rate-limit/spend-cap table name (data-model.md), same
+   *  string-only pattern as leadsTableName above. */
+  readonly agentUsageTableName: string;
 }
 
 export class CrmApiStack extends Stack {
@@ -83,6 +86,9 @@ export class CrmApiStack extends Stack {
         // architecture-constitution.md §9's module-boundary table).
         CRM_INDEX_BUCKET_NAME: props.indexBucketName,
         CRM_LEADS_TABLE_NAME: props.leadsTableName,
+        // B-09: apps/api/src/agent/{rateLimiter,spendCap}.ts read this (never a hard-coded table
+        // name, architecture-constitution.md §9's module-boundary table).
+        CRM_AGENT_USAGE_TABLE_NAME: props.agentUsageTableName,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {
@@ -120,6 +126,16 @@ export class CrmApiStack extends Stack {
       "dynamodb:UpdateItem",
       "dynamodb:ConditionCheckItem",
     );
+
+    // B-09 T017: `crm-agent-usage` rate-limit/spend-cap guard — rateLimiter.ts/spendCap.ts only
+    // ever send one conditional UpdateItem per check (no reads, no transactions), so this grant
+    // is UpdateItem-only, no Query/Scan/Delete (same minimal-actions pattern as leadsTable above).
+    const agentUsageTable = dynamodb.Table.fromTableName(
+      this,
+      "AgentUsageTable",
+      props.agentUsageTableName,
+    );
+    agentUsageTable.grant(trpcHandler, "dynamodb:UpdateItem");
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],

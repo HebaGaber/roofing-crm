@@ -99,6 +99,7 @@ describe("CrmApi (T007)", () => {
         lockoutTable: ops.lockoutTable,
         indexBucketName: "crm-index",
         leadsTableName: "crm-leads",
+        agentUsageTableName: "crm-agent-usage",
       }),
     );
     return cachedTemplate;

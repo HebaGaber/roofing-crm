@@ -22,3 +22,25 @@ export {
   LeadSignals,
   LeadStatus,
 } from "./schemas/lead.js";
+export { QueryPlan } from "./agent/queryPlan.js";
+export { AgentAnswer } from "./agent/answer.js";
+export {
+  classifyPlaceConfidence,
+  PLACE_CONFIDENCE_BANDS,
+  PLACE_CONFIDENCE_BANDS_VERSION,
+  type PlaceConfidenceBand,
+} from "./agent/thresholds.js";
+export type {
+  AliasRecord,
+  ConversationEvent,
+  ConversationEventStore,
+  ConversationEventType,
+  FeedbackRecord,
+  InterpretationRecord,
+  PlaceCandidate,
+  PlaceResolution,
+  PlaceResolver,
+  ReviewStore,
+  TraceEvent,
+  TraceSink,
+} from "./rag/ports.js";

@@ -12,6 +12,7 @@ import { NagSuppressions } from "cdk-nag";
 export class CrmDataStack extends Stack {
   public readonly indexBucket: s3.Bucket;
   public readonly leadsTable: dynamodb.Table;
+  public readonly agentUsageTable: dynamodb.Table;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
@@ -53,6 +54,21 @@ export class CrmDataStack extends Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
     Tags.of(this.leadsTable).add("project_name", "roofing-crm");
+
+    // B-09 T017 (data-model.md "agent usage / rate+spend guard"): 5 asks/min/user and the $3/day
+    // spend cap, each an item keyed `USER#{sub}#MIN#{windowMinute}` / `USER#{sub}#DAY#{yyyy-mm-dd}`
+    // on a single partition key (no sort key needed — one item per window). TTL reclaims expired
+    // windows/days automatically; grants to the API Lambda are in crm-api-stack.ts, same pattern
+    // as leadsTable above.
+    this.agentUsageTable = new dynamodb.Table(this, "AgentUsageTable", {
+      tableName: "crm-agent-usage",
+      partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl",
+      pointInTimeRecovery: true,
+      removalPolicy: RemovalPolicy.DESTROY, // Demo project (Article III addendum).
+    });
+    Tags.of(this.agentUsageTable).add("project_name", "roofing-crm");
 
     NagSuppressions.addResourceSuppressions(this.indexBucket, [
       {

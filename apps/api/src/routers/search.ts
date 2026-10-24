@@ -1,13 +1,17 @@
-// T013 (B-03, US1): search.properties per contracts/search-api.md. The radius math (bboxFor,
-// implicitly via the adapter) and the exact-circle cut live in the extended
-// `DuckDbParquetLeadIndex.searchProperties` (T012) — this router only validates input, calls the
-// port twice (with and without roofAgeMinYears, so `counts` is always fresh over the full
-// matching set, never a cached subset — FR-004/AC-4) and shapes the response.
+// T013 (B-03, US1): search.properties per contracts/search-api.md. Thin-router extraction
+// (tasks.md T012, agent-design.md alakazam §1): the radius/roof-age/permit business logic now
+// lives in ../services/search.ts, shared with the new agent tools (Phase 4) — this router only
+// validates input, calls the service, and shapes the tRPC response (manifestCid/traceId, typed
+// error mapping).
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { isLongOpen, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import { IndexNotReadyError } from "../adapters/duckDbParquet.js";
+import {
+  searchPermits as searchPermitsService,
+  searchProperties as searchPropertiesService,
+} from "../services/search.js";
 
 /** Same mapping as routers/property.ts: a typed, honest "index not ready" response (never a bare
  *  500) when no run has ever been promoted — found live (B-03): crm-leads is B-07's table
@@ -38,44 +42,14 @@ export const searchRouter = router({
   properties: publicProcedure.input(SearchPropertiesInput).query(async ({ input, ctx }) => {
     const leadIndex = requireLeadIndex(ctx);
     try {
-      const { manifestCid } = await leadIndex.indexInfo();
-
-      // Both counts run over the full radius-matching set, with no SQL LIMIT applied (the
-      // adapter only applies `limit` to the final exact-circle-cut result) —
-      // contracts/search-api.md step 4.
-      const afterRadius = await leadIndex.searchProperties({
-        center: input.center,
-        radiusMi: input.radiusMi,
-      });
-      const afterRoofAge =
-        input.roofAgeMinYears === undefined
-          ? afterRadius
-          : await leadIndex.searchProperties({
-              center: input.center,
-              radiusMi: input.radiusMi,
-              roofAgeMinYears: input.roofAgeMinYears,
-            });
-
-      const properties = afterRoofAge.slice(0, input.limit ?? 100);
-
-      return {
-        properties,
-        counts: {
-          afterRadius: afterRadius.length,
-          afterRoofAge: afterRoofAge.length,
-        },
-        manifestCid,
-        traceId: ctx.requestId,
-      };
+      const result = await searchPropertiesService(leadIndex, input);
+      return { ...result, traceId: ctx.requestId };
     } catch (error) {
       mapIndexNotReady(error);
     }
   }),
 
-  // T028 (B-03, US3): search.permits per contracts/search-api.md. Joins through the same
-  // radius-filtered property set `properties` above computes (via one extra searchProperties
-  // call, not a separately-derived radius — SC-06), then attaches isLongOpen (packages/domain) as
-  // a display-layer flag, never stored or re-derived from issueDate (data-model.md).
+  // T028 (B-03, US3): search.permits per contracts/search-api.md. sort is fixed to "openDays".
   permits: publicProcedure
     .input(
       z.object({
@@ -87,24 +61,8 @@ export const searchRouter = router({
     .query(async ({ input, ctx }) => {
       const leadIndex = requireLeadIndex(ctx);
       try {
-        const { manifestCid } = await leadIndex.indexInfo();
-
-        const inRadius = await leadIndex.searchProperties({
-          center: input.center,
-          radiusMi: input.radiusMi,
-        });
-        const propertyCids = inRadius.map((p) => p.propertyCid);
-
-        const permits = await leadIndex.searchPermits({ propertyCids, sort: "openDays" });
-
-        return {
-          permits: permits.map((permit) => ({
-            ...permit,
-            isLongOpen: isLongOpen(permit.openDays),
-          })),
-          manifestCid,
-          traceId: ctx.requestId,
-        };
+        const result = await searchPermitsService(leadIndex, input);
+        return { ...result, traceId: ctx.requestId };
       } catch (error) {
         mapIndexNotReady(error);
       }
