@@ -42,12 +42,40 @@ signal now available at county scale.
   without new PO input (both already settled by binding docs): confidence bands follow ADR-06 exactly
   (auto ≥0.92 · clarify 0.80–0.92 · refuse <0.80), and the prototype path is `design/prototype/CrmAsk*.dc.html`,
   not `design/screens/`.
+- 2026-10-24 · C · `/speckit-plan` → `plan.md`, `research.md`, `data-model.md`, `contracts/agent-api.md`,
+  `contracts/observability.md`, `quickstart.md`. Technical design reuses the already-accepted ADR-06
+  agent architecture (`docs/decisions/0000-agent-architecture.md`), nothing under which was built yet.
+  The two corrections above applied to `stories/B-09-agent-hardening.md` and `spec.md`. Committed `dc2d3e0`.
+- 2026-10-24 · C · `/speckit-tasks` → `tasks.md`, 60 tasks (T001–T060) + Phase Z/N, organized by spec.md's
+  5 user stories with US4 (data switch) sequenced before US1/US2 (their golden-query tests need the real
+  manifest CID to mean anything). 3 builder groups tagged per task: `alakazam`, `ash`, `metagross`. Committed `d8d28cd`.
+- 2026-10-24 · C · `/speckit-analyze` → 0 CRITICAL, 1 HIGH (F1: invalid `[US-shared]` label on a
+  Foundational task), 1 MEDIUM (F2: a confirm-flow guard test scheduled before the file it tests
+  exists), 3 LOW (no action needed). User approved applying all fixes immediately. Both fixed:
+  F1's label dropped; F2's test moved into Phase 4/US1 as T029 (renumbered T012–T029, net-zero
+  shift from T030 on). Committed `d8e9299`.
+- 2026-10-24 · D · Drafted `testplans/B-09-test-cases.md` (27 functional/NF cases + edge-case rows)
+  from the story's ACs, independent of `tasks.md`, per constitution XXII. Committed `b48b26c`.
+- 2026-10-24 · D · G5 pre-check on plan.md/tasks.md: **PASS, 0 FAIL** — fixed Phase N/Phase Z
+  ordering in `tasks.md` so the hosted-runtime proof is genuinely last (matches B-07's gated
+  precedent); added TZ07 for the post-merge `docs/progress.md` update. `docs/gates/G5-B-09-precheck.md`.
+- 2026-10-24 · D · G6 pre-check on `testplans/B-09-test-cases.md`: **FAIL, 1 FAIL** — added the
+  missing TC-025b (ADR-06's 0.80–0.92 clarify band had no case), fixed the Login assumption for
+  non-UI case types and the automation mapping for 7 Infra/Docs cases. The one remaining FAIL
+  (C-07, real test data) is expected and documented: the Run-1-manifest record values are left as
+  placeholder tokens until US4 (the data switch) actually deploys — filling them now would be
+  fabricated data, not a drafting gap. `docs/gates/G6-B-09-precheck.md`. **Awaits your decision**:
+  approve G6 with this one documented exception (same pattern as B-07's "G7 approved with
+  exceptions," `be3c337`), or hold G6 until US4 deploys and the tokens are filled with real values.
+  Committed `05d64af`.
 
 ## Next step
 
-`/speckit-plan` with this run-log + `stories/B-09-agent-hardening.md` + `specs/009-agent-hardening/agent-design.md`
-as direction, then `/speckit-tasks` (3 groups: `alakazam` tools, `ash` agent runtime, `metagross`
-responsive+observability+data-switch+dashboard), then `/speckit-analyze`, then G5/G6 pre-checks in parallel.
+Your call on G5/G6 approval (see the D entries above — G5 is a clean PASS to approve; G6 has one
+expected, documented exception to decide on). Once both are recorded, `/speckit-implement` begins
+Phase B/E of the build (delegating each task group to its `soofi-xyz-team-kit:{builder}` subagent
+plus `apply-engineering-guidelines`) — not started yet, and not to be started without your
+explicit go-ahead, same as merge/push/deploy.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
