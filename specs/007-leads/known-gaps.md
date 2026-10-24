@@ -61,7 +61,7 @@ dependency moves out of B-07 into a later story.
 | # | Source | Finding | Severity |
 | --- | --- | --- | --- |
 | 7.1 | metagross, code-review | Ownership and roles: `get`, `updateStatus` and `addNote` accept any `leadKey` with no ownership or role check; an explicit `assignee` on `list` can read another user's leads. The product rule (private leads, or a shared team view) is undecided | Medium |
-| 7.2 | metagross | Throttling (`ProvisionedThroughputExceeded`) and `TransactionInProgress` are not retried; no `ClientRequestToken` on create, so a retry after an ambiguous failure of a create could report "Already a lead" for the caller's own write | Medium |
+| 7.2 | metagross | Create is not idempotent across an ambiguous failure: no `ClientRequestToken`, so a retry after an ambiguous create failure could report "Already a lead" for the caller's own write; `TransactionInProgress` and provisioned-throughput throttling are not retried (the pure `TransactionConflict` retry exists since `7eb800d`) | Medium |
 | 7.3 | code-review | The web client never sends `expectedSequence`, so two open sessions on one lead overwrite each other's status or note without a `STALE_SEQUENCE` error | Medium |
 | 7.4 | code-review | `append` maps any `ConditionalCheckFailed` to "changed since you loaded it", which hides a deleted lead or an existing event item | Low |
 | 7.5 | code-review | `notInRunKeys` and `currentManifest` swallow index errors with no log, so an index outage makes stale leads look current | Medium |
@@ -71,3 +71,6 @@ dependency moves out of B-07 into a later story.
 | 7.9 | audino | No per-datum provenance on assignee and created-at in the list card and detail; filter groups use a `<span>` label; the Status field's `<dt>` is not associated with the select; status shown lower-case in the detail but capitalised in the list; no inline validation on the numeric filter inputs; focus is not moved to the error banner after a failed create | Low to Medium |
 | 7.10 | audino | TC-016 accepts either "No leads yet" or a count and skips when the user already has leads, so it proves the empty state only on a fresh list; the token audit covers a fixed property list on two pages and not the create, empty and error states | Medium |
 | 7.11 | metagross | The vitals spec `A-13-vitals.spec.ts` (Oracle) was deleted to unblock CI; it could not run in this repo | Info |
+| 7.12 | metagross (re-score) | `presentRequestIdentifiers` calls `indexInfo()` again, so in a narrow window it can read a different manifest than the `current` value the caller used | Low |
+| 7.13 | metagross (re-score) | A lead key with no `:tcad:` marker gives an empty identifier, so that lead is always flagged absent | Low |
+| 7.14 | metagross (re-score) | The NOT_FOUND message echoes the lead key | Low |

@@ -16,9 +16,20 @@ One review round, three reviewers in parallel, all read-only, on the diff `featu
 
 | Reviewer | Score | Pass mark | Re-score needed |
 | --- | --- | --- | --- |
-| `metagross` (patterns, contracts, guardrails) | **80 / 100** | 75 | no |
-| `audino` (front end, Atlas, regression tests) | **78 / 100** | 75 | no |
+| `metagross` (patterns, contracts, guardrails) | **80 / 100**, re-scored **85** | 75 | done |
+| `audino` (front end, Atlas, regression tests) | **78 / 100**, re-scored **86** | 75 | done |
 | `/code-review medium` | 10 ranked findings, no score | n/a | no |
+
+### Re-score on the current head (2026-10-24, after the review fixes)
+
+Both kit reviewers re-read the code at `ae7768c` and confirmed every finding marked Fixed holds in the code, with no new Critical or High finding.
+
+| Reviewer | First score | Re-score | What they confirmed |
+| --- | --- | --- | --- |
+| `metagross` | 80 | **85** | The conflict retry is safe: it retries only a pure `TransactionConflict`, re-reads every attempt, is capped at 6 and jittered. The AC-5 presence check is batched and fails open. Findings 3, 11, 15, 16 and 17 are fixed in code |
+| `audino` | 78 | **86** | The "Lead not found" page and retry policy are correct; the new hook, list, detail and not-found tests are real; the saved-notes assertion removed the textarea false pass; `.mapArea { overflow: hidden }` has no side effect on the radius overlay (it is positioned inside the area) |
+
+New low findings from the re-score, recorded in `specs/007-leads/known-gaps.md` § 7 (7.12 to 7.14): `presentRequestIdentifiers` re-reads the manifest pointer and could, in a narrow window, see a different manifest than the caller; a lead key with no `:tcad:` marker yields an empty identifier and is flagged absent; the NOT_FOUND message echoes the lead key. The e2e test TC-006 on desktop is the regression test for the map-area fix.
 
 ## Runs
 
