@@ -21,7 +21,7 @@ PlanResult = {
 
 **Input**: one manifest part per Map iteration, concurrency 2–3
 
-**Output**: `{ partPath: string, verifiedBytes: Buffer, sha256: string }` — or routes to the DLQ after 5 retries with backoff+jitter
+**Output**: `{ status: "verified", partPath: string, sha256: string, s3Key: string, written: boolean }` (the verified bytes are in S3 at `s3Key`, never in the task result: Step Functions rejects results over 256 KB) — or routes to the DLQ after 5 retries with backoff+jitter
 
 **Owns**: the gateway order (CloudFront → Filebase → Pinata, ADR-02), the ≤30 req/min token bucket per gateway, the content-addressed S3 write (`sha256(manifestCid + partPath)`, `If-None-Match`).
 

@@ -465,10 +465,11 @@ export class CrmSyncStack extends Stack {
       resultPath: sfn.JsonPath.DISCARD,
     });
 
-    // Discards FetchPart's verifiedBytes before this item's output joins the Map's aggregated
-    // result array — Step Functions state has a 256KB limit, and 23 parts' worth of downloaded
-    // file bytes riding through state (BuildIndex re-downloads from S3 itself; it never needs
-    // these bytes echoed back) blew straight through it (States.DataLimitExceeded, found live).
+    // Keeps only status and partPath of each FetchPart result before it joins the Map's aggregated
+    // result array (Step Functions state has a 256 KB limit). FetchPart itself never returns the
+    // downloaded bytes either (they are in S3 for BuildIndex): a single 6 MB part in the task
+    // result failed Task A's Run 2 sync with States.DataLimitExceeded, which this Pass state
+    // alone could not prevent because the limit applies to the Lambda task's own response.
     const partVerified = new sfn.Pass(this, "PartVerified", {
       parameters: {
         "status.$": "$.status",
