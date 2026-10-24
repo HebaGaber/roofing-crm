@@ -213,3 +213,53 @@
     border-radius: var(--md-sys-shape-corner-large);
   }
 }
+
+/* The match count on the phone toolbar's Filters button (boards CrmMap390, CrmMapPin390). */
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--space-6);
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+}
+
+/* Phones (board CrmMap390): the toolbar chip is a sliders icon and the match count; the word
+   "Filters" stays in the accessible name, clipped. From 600 px the word shows and the icon hides. */
+.toggleIcon {
+  display: none;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+}
+
+@media (max-width: 599.98px) {
+  .toggle {
+    position: relative;
+    padding: 0 var(--space-3);
+  }
+
+  .toggleIcon {
+    display: inline-flex;
+  }
+
+  .toggleLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .count {
+    margin-left: var(--space-1);
+  }
+}

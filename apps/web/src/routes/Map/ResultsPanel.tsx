@@ -9,6 +9,9 @@ import styles from "./ResultsPanel.module.css";
 export interface ResultsPanelProps {
   readonly count: number;
   readonly children: ReactNode;
+  /** Shows the filled "Triage n" action after the coverage info (the phone sheet, board
+   *  CrmMapPin390); absent from 840 px, where the board has none. */
+  readonly onTriage?: () => void;
 }
 
 /** CRM-HANDOFF §4.2 "Coverage note": the full text behind the results-header info icon. Static
@@ -18,7 +21,7 @@ export interface ResultsPanelProps {
 const COVERAGE_NOTE =
   "Permits are shown only where CountyLens publishes them. Part of this area may have no permit data.";
 
-export function ResultsPanel({ count, children }: ResultsPanelProps): ReactElement {
+export function ResultsPanel({ count, children, onTriage }: ResultsPanelProps): ReactElement {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
@@ -47,6 +50,11 @@ export function ResultsPanel({ count, children }: ResultsPanelProps): ReactEleme
             </Popover>
           </div>
         </span>
+        {onTriage === undefined ? null : (
+          <button type="button" className={styles.triage} onClick={onTriage}>
+            {`Triage ${count}`}
+          </button>
+        )}
       </header>
       {children}
     </div>

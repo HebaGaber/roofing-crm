@@ -255,6 +255,8 @@ export interface CrmMapProps {
   readonly pinMode?: boolean;
   /** A GPS fix's accuracy circle, drawn around `center` (board CrmMapGps390 / GpsLow390). */
   readonly accuracy?: { readonly meters: number } | null;
+  /** Field triage's current card (board CrmTriage390): its roof marker is ringed (`is-tri`). */
+  readonly triageCid?: string | null;
 }
 
 /** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
@@ -271,8 +273,19 @@ function permitMarkerColor(point: PermitMarkerPoint): string {
 
 /** A DOM marker: a round dot (roof) or a diamond (permit, the legend's "◆"). Colours are CSS
  *  token references, so they follow dark mode with no re-render. */
-function dot(color: string, ringed: boolean, shape: "round" | "diamond" = "round"): HTMLDivElement {
+function dot(
+  color: string,
+  ringed: boolean,
+  shape: "round" | "diamond" = "round",
+  triage = false,
+): HTMLDivElement {
   const el = document.createElement("div");
+  if (triage) {
+    // The card being triaged: a primary ring around the dot (the board's current-card marker).
+    el.className = "is-tri";
+    el.style.boxShadow = "0 0 0 4px var(--md-sys-color-primary)";
+    el.style.zIndex = "2";
+  }
   el.style.width = "14px";
   el.style.height = "14px";
   el.style.borderRadius = shape === "round" ? "50%" : "2px";
@@ -303,6 +316,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     onZoomStepChange,
     pinMode = false,
     accuracy = null,
+    triageCid = null,
   }: CrmMapProps,
   ref,
 ) {
@@ -558,12 +572,14 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     roofMarkerRefs.current = [];
     if (map === null || !styleReady || !layers.roofs || overview) return;
     for (const point of roofMarkers) {
-      const marker = new Marker({ element: dot(roofMarkerColor(point), false) })
+      const marker = new Marker({
+        element: dot(roofMarkerColor(point), false, "round", point.propertyCid === triageCid),
+      })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
       roofMarkerRefs.current.push(marker);
     }
-  }, [roofMarkers, layers.roofs, styleReady, overview]);
+  }, [roofMarkers, layers.roofs, styleReady, overview, triageCid]);
 
   // E-72 Layers: open/stalled permit markers, ringed when `isLongOpen` already flagged the
   // permit ("Open > 5 yrs" — the flag itself comes from `packages/domain`'s `isLongOpen` via the

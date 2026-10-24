@@ -14,7 +14,7 @@
 // (aria-expanded; Escape and backdrop-click close it, matching `@crm/ui`'s `Popover`); from
 // 840 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
 // file this replaces). Atlas outlined text fields and chips, 48 px targets. Render-only.
-import { IconButton } from "@crm/ui";
+import { Icon, IconButton } from "@crm/ui";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
 import { useEffect, useId, useRef, useState, type ReactElement } from "react";
 import styles from "./FilterSheet.module.css";
@@ -39,6 +39,9 @@ export interface FilterSheetProps {
   /** Permit open ≥ N yrs; `undefined` = "Any". */
   readonly permitOpenYrs: number | undefined;
   readonly onPermitOpenYrsChange: (value: number | undefined) => void;
+  /** How many properties match the filters now (the chip on the phone toolbar's Filters button,
+   *  boards CrmMapPin390 and CrmMap390); absent while there is no search to count. */
+  readonly matchCount?: number | undefined;
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -58,6 +61,7 @@ export function FilterSheet({
   onPermitStatusChange,
   permitOpenYrs,
   onPermitOpenYrsChange,
+  matchCount,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -89,7 +93,15 @@ export function FilterSheet({
         aria-controls={`${id}-panel`}
         onClick={() => setOpen((o) => !o)}
       >
-        Filters
+        <span className={styles.toggleIcon}>
+          <Icon name="tune" size="medium" />
+        </span>
+        <span className={styles.toggleLabel}>Filters</span>
+        {matchCount === undefined ? null : (
+          <span className={styles.count} data-filter-count="">
+            {matchCount}
+          </span>
+        )}
       </button>
       {open ? <div className={styles.backdrop} onClick={close} aria-hidden="true" /> : null}
       <div

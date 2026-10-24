@@ -55,11 +55,14 @@ import { RadiusControl } from "../../components/Map/RadiusControl.js";
 import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
+import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
 import { ResultsSheet } from "./ResultsSheet.js";
 import { TopBar } from "./TopBar.js";
+import { TriageStack } from "./Triage/index.js";
+import { ViewToggle } from "./ViewToggle.js";
 import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
@@ -111,6 +114,10 @@ export function Component(): ReactElement {
   const [fromGps, setFromGps] = useState(false);
   const [statusHost, setStatusHost] = useState<HTMLDivElement | null>(null);
   const wide = useWide();
+  // `view=list` (the Candidate list) and `triage=1` (Field triage) live in the URL beside the
+  // centre, radius and filters, so reload, back and a shared link reopen the same view.
+  const { view, triage, setView, setTriage } = useMapViewParam();
+  const [triageCid, setTriageCid] = useState<string | null>(null);
 
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
@@ -222,6 +229,31 @@ export function Component(): ReactElement {
   const isZeroResult =
     searchInput !== null && query.data !== undefined && query.data.properties.length === 0;
 
+  // The map's own question, handed to the Candidate list and Field triage. Same centre rule as the
+  // map's search (an outside pin is never a search centre), so the three share one React Query
+  // cache entry for `search.properties` and `search.permits`.
+  const candidateFilters = useMemo(
+    () => ({
+      center: pinOutsideCounty ? null : center,
+      radiusMi,
+      roofAgeMinYears,
+      permitStatus,
+      permitOpenYrs,
+    }),
+    [pinOutsideCounty, center, radiusMi, roofAgeMinYears, permitStatus, permitOpenYrs],
+  );
+  // One URL update (two in a row would each start from the same params and drop the first).
+  const showOnMap = useCallback(
+    (cid: string) => {
+      setSearchParams((prev) => patchMapView(patchMapParams(prev, { sel: cid }), { view: "map" }));
+    },
+    [setSearchParams],
+  );
+  const closeTriage = useCallback(() => {
+    setTriage(false);
+    setTriageCid(null);
+  }, [setTriage]);
+
   const roofMarkers = useMemo(
     () =>
       (query.data?.properties ?? [])
@@ -318,7 +350,7 @@ export function Component(): ReactElement {
     ((overviewCells?.length ?? 0) > 0 || roofMarkers.length > 0);
 
   return (
-    <section aria-label="Map" data-route="map" className={styles.page}>
+    <section aria-label="Map" data-route="map" data-view={view} className={styles.page}>
       <div className={styles.top}>
         <TopBar />
       </div>
@@ -339,192 +371,238 @@ export function Component(): ReactElement {
           onPermitStatusChange={setPermitStatus}
           permitOpenYrs={permitOpenYrs}
           onPermitOpenYrsChange={setPermitOpenYrs}
+          matchCount={searchInput === null ? undefined : query.data?.properties.length}
         />
+        {wide ? null : <ViewToggle view={view} onChange={setView} />}
       </div>
-      <div className={styles.mapArea}>
-        <CrmMap
-          ref={mapHandleRef}
-          center={center}
-          {...(pinOutsideCounty ? {} : { radiusMi })}
-          onPinDrop={placePoint}
-          roofMarkers={roofMarkers}
-          permitMarkers={permitMarkers}
-          layers={layers}
-          onViewModeChange={setViewMode}
-          onZoomStepChange={setZoomStep}
-          overviewCells={overviewCells}
-          overviewPermits={overviewPermits}
-          pinMode={pinMode}
-          accuracy={accuracyM === null || center === null ? null : { meters: accuracyM }}
-        />
-        <MapControls
-          mapRef={mapHandleRef}
-          pinMode={pinMode}
-          onDropPin={() => setPinMode((on) => !on)}
-        />
-        <div className={styles.overlay}>
-          <div className={styles.layersRow}>
-            <LayersPopover value={layers} onChange={setLayers} />
-            <div className={styles.legendSlot}>
-              <MapLegend
-                mode={viewMode}
-                roofs={layers.roofs}
-                permits={layers.permits}
-                loadedCount={roofMarkers.length}
-                county={countyStatus}
-              />
-            </div>
-          </div>
-          <div ref={setStatusHost} className={styles.statusStack} data-map-status="" />
-          {showOverviewChip ? (
-            <p className={styles.chip} role="status" data-view-chip="overview">
-              <span>Zoomed out: median roof age per hexagon</span>
-              <button
-                type="button"
-                className={styles.chipAction}
-                aria-label="Zoom in to individual properties"
-                onClick={() => mapHandleRef.current?.zoomToDetail()}
-              >
-                Zoom in
-              </button>
-            </p>
-          ) : null}
-          {center === null ? null : (
-            <div className={styles.radiusOverlay}>
-              <RadiusControl
-                radiusMi={radiusMi}
-                onChange={setRadiusMi}
-                originLabel={
-                  !fromGps
-                    ? "Dropped pin"
-                    : accuracyM !== null && accuracyM > LOW_ACCURACY_M
-                      ? "Your location (approximate)"
-                      : "Your location (GPS)"
-                }
-              />
-            </div>
-          )}
+      {wide ? (
+        <div className={styles.viewBar} data-view-bar="">
+          <ViewToggle view={view} onChange={setView} />
         </div>
-        {center === null ? (
-          <p className={styles.countyCard} data-county-card="">
-            <strong>Whole county</strong>
-            <span>
-              Tap the map to drop a pin, or use your location, to list properties within a radius.
-            </span>
-          </p>
-        ) : null}
-        <WhatCanIAsk />
-        {statusHost !== null && pinMode
-          ? createPortal(
-              <MapStatusCard
-                state="CrmMapPinMode390"
-                role="status"
-                icon="add_location_alt"
-                actions={[
-                  ...(wide
-                    ? []
-                    : [
-                        {
-                          label: "Place pin here",
-                          primary: true,
-                          onClick: () => {
-                            mapHandleRef.current?.placeAtCenter();
-                            setPinMode(false);
-                          },
-                        },
-                      ]),
-                  { label: "Cancel", onClick: () => setPinMode(false) },
-                ]}
-              >
-                {wide
-                  ? "Click the map where you want the search centre. You can drag the pin afterwards."
-                  : "Move the map so the crosshair is on the spot, then place the pin."}
-              </MapStatusCard>,
-              statusHost,
-            )
-          : null}
-        {statusHost !== null && pinOutsideCounty && !fromGps
-          ? createPortal(
-              <MapStatusCard
-                state="CrmMapPinOutside390"
-                role="alert"
-                icon="wrong_location"
-                actions={[
-                  {
-                    label: "Go to Travis County",
-                    onClick: () => mapHandleRef.current?.showCounty(),
-                  },
-                ]}
-              >
-                This pin is outside Travis County. The CRM covers Travis County only.
-              </MapStatusCard>,
-              statusHost,
-            )
-          : null}
-      </div>
-      <div className={styles.resultsSlot} data-empty={sheetEmpty}>
-        <ResultsSheet>
-          {pinOutsideCounty ? (
-            <p className={styles.notice}>No search was run: the pin is outside Travis County.</p>
-          ) : null}
-          {isLoading ? (
-            <p
-              role="progressbar"
-              aria-label="Loading results"
-              data-state="CrmMapLoading390"
-              className={styles.notice}
-            >
-              Loading results…
-            </p>
-          ) : null}
-          {isIndexDown ? (
-            <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
-              <span>
-                <strong>Lead index unavailable.</strong> Map results can&apos;t load right now. Your
-                leads and notes still open.
-              </span>
-              <button type="button" className={styles.widen} onClick={() => void query.refetch()}>
-                Retry
-              </button>
-            </p>
-          ) : null}
-          {isZeroResult ? (
-            <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
-              No properties within {radiusMi} mi.
-              {widenTo === null ? null : (
-                <button type="button" className={styles.widen} onClick={() => setRadiusMi(widenTo)}>
-                  {`Widen to ${widenTo} mi`}
+      ) : null}
+      {view === "list" ? (
+        <div className={styles.listPane} data-view="list">
+          <CandidateList
+            filters={candidateFilters}
+            originLabel={center === null ? "the county" : fromGps ? "you" : "the pin"}
+            selectedCid={sel}
+            onSelect={selectProperty}
+            onShowOnMap={showOnMap}
+            onRadiusChange={setRadiusMi}
+            onRoofChange={setRoofAgeMinYears}
+          />
+        </div>
+      ) : null}
+      {view === "map" ? (
+        <div className={styles.mapArea}>
+          <CrmMap
+            ref={mapHandleRef}
+            center={center}
+            {...(pinOutsideCounty ? {} : { radiusMi })}
+            onPinDrop={placePoint}
+            roofMarkers={roofMarkers}
+            permitMarkers={permitMarkers}
+            layers={layers}
+            onViewModeChange={setViewMode}
+            onZoomStepChange={setZoomStep}
+            overviewCells={overviewCells}
+            overviewPermits={overviewPermits}
+            pinMode={pinMode}
+            accuracy={accuracyM === null || center === null ? null : { meters: accuracyM }}
+            triageCid={triage ? triageCid : null}
+          />
+          <MapControls
+            mapRef={mapHandleRef}
+            pinMode={pinMode}
+            onDropPin={() => setPinMode((on) => !on)}
+          />
+          <div className={styles.overlay}>
+            <div className={styles.layersRow}>
+              <LayersPopover value={layers} onChange={setLayers} />
+              <div className={styles.legendSlot}>
+                <MapLegend
+                  mode={viewMode}
+                  roofs={layers.roofs}
+                  permits={layers.permits}
+                  loadedCount={roofMarkers.length}
+                  county={countyStatus}
+                />
+              </div>
+            </div>
+            <div ref={setStatusHost} className={styles.statusStack} data-map-status="" />
+            {showOverviewChip ? (
+              <p className={styles.chip} role="status" data-view-chip="overview">
+                <span>Zoomed out: median roof age per hexagon</span>
+                <button
+                  type="button"
+                  className={styles.chipAction}
+                  aria-label="Zoom in to individual properties"
+                  onClick={() => mapHandleRef.current?.zoomToDetail()}
+                >
+                  Zoom in
                 </button>
-              )}
+              </p>
+            ) : null}
+            {center === null ? null : (
+              <div className={styles.radiusOverlay}>
+                <RadiusControl
+                  radiusMi={radiusMi}
+                  onChange={setRadiusMi}
+                  originLabel={
+                    !fromGps
+                      ? "Dropped pin"
+                      : accuracyM !== null && accuracyM > LOW_ACCURACY_M
+                        ? "Your location (approximate)"
+                        : "Your location (GPS)"
+                  }
+                />
+              </div>
+            )}
+          </div>
+          {center === null ? (
+            <p className={styles.countyCard} data-county-card="">
+              <strong>Whole county</strong>
+              <span>
+                Tap the map to drop a pin, or use your location, to list properties within a radius.
+              </span>
             </p>
           ) : null}
-          {sheetEmpty ? (
-            <p className={styles.notice} data-results-empty="">
-              No centre chosen yet, so no results. Drop a pin on the map or use your location to
-              list properties within a radius.
-            </p>
-          ) : null}
-          {query.data !== undefined && hasResults ? (
-            <ResultsPanel count={query.data.properties.length}>
-              <ul className={styles.results} aria-label="Results" data-testid="search-results">
-                {query.data.properties.map((property) => (
-                  <li key={property.propertyCid}>
-                    <ResultRow
-                      row={property}
-                      selected={sel === property.propertyCid}
-                      onSelect={selectProperty}
-                      {...(center === null ? {} : { center })}
-                      {...(permitView
-                        ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
-                        : {})}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </ResultsPanel>
-          ) : null}
-        </ResultsSheet>
-      </div>
+          <WhatCanIAsk />
+          {statusHost !== null && pinMode
+            ? createPortal(
+                <MapStatusCard
+                  state="CrmMapPinMode390"
+                  role="status"
+                  icon="add_location_alt"
+                  actions={[
+                    ...(wide
+                      ? []
+                      : [
+                          {
+                            label: "Place pin here",
+                            primary: true,
+                            onClick: () => {
+                              mapHandleRef.current?.placeAtCenter();
+                              setPinMode(false);
+                            },
+                          },
+                        ]),
+                    { label: "Cancel", onClick: () => setPinMode(false) },
+                  ]}
+                >
+                  {wide
+                    ? "Click the map where you want the search centre. You can drag the pin afterwards."
+                    : "Move the map so the crosshair is on the spot, then place the pin."}
+                </MapStatusCard>,
+                statusHost,
+              )
+            : null}
+          {statusHost !== null && pinOutsideCounty && !fromGps
+            ? createPortal(
+                <MapStatusCard
+                  state="CrmMapPinOutside390"
+                  role="alert"
+                  icon="wrong_location"
+                  actions={[
+                    {
+                      label: "Go to Travis County",
+                      onClick: () => mapHandleRef.current?.showCounty(),
+                    },
+                  ]}
+                >
+                  This pin is outside Travis County. The CRM covers Travis County only.
+                </MapStatusCard>,
+                statusHost,
+              )
+            : null}
+        </div>
+      ) : null}
+      {view === "map" && triage ? (
+        <div className={styles.resultsSlot} data-empty="false">
+          <div className={styles.triageDock}>
+            <TriageStack
+              filters={candidateFilters}
+              onBack={closeTriage}
+              onOpenDetails={selectProperty}
+              onCurrentChange={setTriageCid}
+              onRadiusChange={setRadiusMi}
+              onRoofChange={setRoofAgeMinYears}
+            />
+          </div>
+        </div>
+      ) : null}
+      {view === "map" && !triage ? (
+        <div className={styles.resultsSlot} data-empty={sheetEmpty}>
+          <ResultsSheet>
+            {pinOutsideCounty ? (
+              <p className={styles.notice}>No search was run: the pin is outside Travis County.</p>
+            ) : null}
+            {isLoading ? (
+              <p
+                role="progressbar"
+                aria-label="Loading results"
+                data-state="CrmMapLoading390"
+                className={styles.notice}
+              >
+                Loading results…
+              </p>
+            ) : null}
+            {isIndexDown ? (
+              <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
+                <span>
+                  <strong>Lead index unavailable.</strong> Map results can&apos;t load right now.
+                  Your leads and notes still open.
+                </span>
+                <button type="button" className={styles.widen} onClick={() => void query.refetch()}>
+                  Retry
+                </button>
+              </p>
+            ) : null}
+            {isZeroResult ? (
+              <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
+                No properties within {radiusMi} mi.
+                {widenTo === null ? null : (
+                  <button
+                    type="button"
+                    className={styles.widen}
+                    onClick={() => setRadiusMi(widenTo)}
+                  >
+                    {`Widen to ${widenTo} mi`}
+                  </button>
+                )}
+              </p>
+            ) : null}
+            {sheetEmpty ? (
+              <p className={styles.notice} data-results-empty="">
+                No centre chosen yet, so no results. Drop a pin on the map or use your location to
+                list properties within a radius.
+              </p>
+            ) : null}
+            {query.data !== undefined && hasResults ? (
+              <ResultsPanel
+                count={query.data.properties.length}
+                {...(wide ? {} : { onTriage: () => setTriage(true) })}
+              >
+                <ul className={styles.results} aria-label="Results" data-testid="search-results">
+                  {query.data.properties.map((property) => (
+                    <li key={property.propertyCid}>
+                      <ResultRow
+                        row={property}
+                        selected={sel === property.propertyCid}
+                        onSelect={selectProperty}
+                        {...(center === null ? {} : { center })}
+                        {...(permitView
+                          ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
+                          : {})}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </ResultsPanel>
+            ) : null}
+          </ResultsSheet>
+        </div>
+      ) : null}
       {sel !== null && detailQuery.data !== undefined ? (
         <div className={styles.drawerSlot}>
           <PropertyDetail

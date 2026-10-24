@@ -42,16 +42,33 @@ Second pass:
 - **Tile failure** is a banner ("Map unavailable, results below. ...") with Retry, so the radius,
   filters and results stay usable.
 
+Third pass (candidates and triage mounted):
+
+- **Candidate list** (`view=list`): mounted in `Map.tsx` in the map's place, under the toolbar below
+  840 px and across the centre and results panes from 840 px (board CrmCandidates1440 / 768 / 390).
+  It gets the map's own filters (centre, radius, roof age, permit status, permit open years); an
+  outside-county pin is never a centre, as for the map's search. Show on map returns to the map with
+  that property open in one URL update. Its empty-state actions change the map's radius and roof
+  filters.
+- **Field triage** (`triage=1`): mounted in place of the results sheet, docked at the bottom at a
+  fixed share of the page so a strip of the map stays above it and the card scrolls inside (Skip,
+  Create lead and Open details stay on screen). The current card's roof marker is ringed on the map
+  (`is-tri`). A filled "Triage n" button sits in the phone results sheet header (not from 840 px).
+- **Toolbar**: the "Map + cards | List" toggle (board CrmMap1440 and CrmMap390): in the toolbar row on
+  phones as two icons (the words stay in the accessible name), in a bar above the map from 840 px;
+  and the Filters chip on phones is the sliders icon plus the match count, as drawn. The phone toolbar
+  is one row, as the board's.
+
 ## Matrix
 
 | Board | Route + state | Status | Side-by-side | Notes |
 | --- | --- | --- | --- | --- |
 | Welcome1440 / 768 / 390 | `/?first=1` | Matched, data differs | Welcome1440, Welcome768, Welcome390 | Card position (16 px in from the map's left at 1440, x 96 at 768, full width at 390), header, intro line, three rows, Got it. The boards are the CountyLens shell; only the card is compared. Intro line and questions differ on purpose: the CRM's data and the golden queries. |
-| CrmMap1440 | `/`, county view | Deviation: toolbar not built | CrmMap1440 | Whole-county hexagons, chip, legend, controls match. Map + cards / List toggle, Area and Sort menus, Matches and Close tabs with no centre: not built. Hexagon size can look up to 2x the board's (drawn at the whole-number zoom). County outline: review-log row 9. |
+| CrmMap1440 | `/`, county view | Deviation: Area, Sort not built | CrmMap1440 | Whole-county hexagons, chip, legend, controls and the Map + cards / List toggle match. Area and Sort menus, Matches and Close tabs with no centre: not built. Hexagon size can look up to 2x the board's (drawn at the whole-number zoom). County outline: review-log row 9. |
 | CrmMap768 | `/`, county view | Deviation: as 1440 | CrmMap768 (first pass) | Same components. |
-| CrmMap390 | `/`, county view | Deviation: toolbar | CrmMap390 | Phone toolbar differs: board has filter count, Map/List toggle, Area, Sort; live has Use my location and Filters. |
+| CrmMap390 | `/`, county view | Deviation: Area, Sort not built | CrmMap390 | Phone toolbar: Use my location, Filters chip with count, Map/List toggle (board: filter count chip, toggle, locate chip, Area, Sort). |
 | CrmMapPin1440 | pin, 5 mi ring | Matched, data differs | CrmMapPin1440 | Result cards use the honest published-data layout (review-log row 1). |
-| CrmMapPin390 | pin, 5 mi ring | Deviation: radius card position, explainer toast | CrmMapPin390 | Radius card at the top, not the bottom (the results sheet covers the bottom on phones). Pin explainer toast not built. |
+| CrmMapPin390 | pin, 5 mi ring | Deviation: radius card position, explainer toast | CrmMapPin390 | Toolbar, results sheet header with Matches, coverage info and the filled Triage n match. Radius card at the top, not the bottom (the results sheet covers the bottom on phones). Pin explainer toast not built. |
 | CrmMapPinMode1440 | pin mode | Matched | CrmMapPinMode1440 | Card, Cancel, pressed control. |
 | CrmMapPinMode390 | pin mode | Matched, one deviation | CrmMapPinMode390 | Crosshair, Place pin here, Cancel. The board also says a long-press drops the pin: not built, so the card does not claim it. |
 | CrmMapPinMove1440 | drag the pin | Matched in behaviour | none (a drag, not a state) | The pin is draggable and re-centres the search. Not captured as an image. |
@@ -76,9 +93,13 @@ Second pass:
 | CrmPropertyFailed1440 / 390, CrmPropertyNoAddress1440 / 390, CrmPropertyNoContractor390, CrmPropertyPartial390, PropertyDetail, ContractorBadge | drawer states and components | Not mine | CrmPropertyFailed images only | Drawer owner. |
 | CrmPropertyCreated390, Creating390, Dup390 | lead creation states | Not mine | none | `LeadCreateAction` and the lead snackbar belong to the leads group. |
 
+| CrmCandidates1440 / 768 / 390 | `view=list` | Matched, data differs | CrmCandidates1440, 768, 390 | The component is the candidates group's (their record: design/board-match/candidates-triage.md); here it is the mounting: toggle, filters, placement, Show on map. The board's Area and Sort menus and Close tab are not built. |
+| CrmTriage390 | `triage=1` | Matched, data differs | CrmTriage390 | Dock, card, Skip, Create lead, Open details, ringed marker. Contractor and BBB lines show the published reason. |
+
 ## Gaps
 
-- Map + cards / List toggle, Area, Sort, filter count chip, Triage button, results list view.
+- Area and Sort menus (the list's Sort is the list's own default: roof age, or permit open with a
+  permit filter), the Close tab (no close-matches API).
 - Pin explainer toast, in-ring chips, hatched no-permit areas (no coverage data), pin snap-back,
   long-press to drop a pin, GPS Explain first (see above), rate-limited gateway note.
 - County outline and outside shading: review-log row 9.

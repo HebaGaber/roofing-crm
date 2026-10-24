@@ -21,3 +21,10 @@
   line-height: var(--md-sys-typescale-label-large-line-height);
   cursor: pointer;
 }
+
+/* Phone toolbar (board CrmMap390): Use my location, Filters and the view toggle share one row. */
+@media (max-width: 599.98px) {
+  .button {
+    padding: 0 var(--space-3);
+  }
+}

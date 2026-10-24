@@ -67,6 +67,19 @@
   pointer-events: auto;
 }
 
+/* The map's status stack: GPS, pin-mode and pin-outside cards portal in here (boards CrmGpsStates,
+   CrmMapPinMode*, CrmMapPinOutside390). No card, no box: it collapses when empty. */
+.statusStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(360px, 100%);
+}
+
+.statusStack:empty {
+  display: none;
+}
+
 .layersRow {
   display: flex;
   align-items: flex-start;
@@ -149,6 +162,45 @@
   display: contents;
 }
 
+/* The toolbar's view toggle, from 840 px (below it the toggle sits in .controls). */
+.viewBar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-4);
+}
+
+/* The Candidate list (board CrmCandidates390): under the toolbar, in the map's place. From 840 px
+   it takes the centre and results panes (rule below). */
+.listPane {
+  grid-area: map;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
+  overflow: hidden;
+}
+
+.triageDock > * {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+/* Field triage (board CrmTriage390): replaces the results sheet below 840 px, docked at the
+   bottom over the map's lower part so a strip of the map stays visible above it. */
+.triageDock {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  /* A fixed share of the page: a strip of the map stays above it and the card scrolls inside,
+     so Skip, Create lead and Open details are always on screen (board CrmTriage390). */
+  height: 60%;
+  overflow: hidden;
+  box-shadow: var(--md-sys-elevation-level3);
+  border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+}
+
 .resultsSlot[data-empty="true"] > * {
   display: none;
 }
@@ -211,10 +263,30 @@
 @media (min-width: 840px) {
   .page {
     grid-template-columns: 320px minmax(0, 1fr) 360px;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas:
       "controls top top"
+      "controls bar results"
       "controls map results";
+  }
+
+  /* The list takes the centre and results panes (board CrmCandidates1440). */
+  .page[data-view="list"] {
+    grid-template-areas:
+      "controls top top"
+      "controls bar bar"
+      "controls list list";
+  }
+
+  .listPane {
+    grid-area: list;
+  }
+
+  .triageDock {
+    position: static;
+    height: 100%;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .controls {
@@ -237,14 +309,20 @@
   .overlay {
     inset: var(--space-4);
     display: grid;
-    grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     grid-template-areas:
       "layers ."
+      "status ."
       "chip ."
       ". ."
       "legend radius";
     align-items: start;
+  }
+
+  .statusStack {
+    grid-area: status;
+    justify-self: start;
   }
 
   .layersRow {

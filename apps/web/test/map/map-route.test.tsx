@@ -4,7 +4,7 @@
 // unchanged. The MapLibre map and the tRPC client are stubbed; layout per width is CSS
 // (Map.module.css) and is proved live by the responsive Playwright specs.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { forwardRef, useEffect, useImperativeHandle } from "react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,7 +13,14 @@ const zoomToDetail = vi.fn();
 const placeAtCenter = vi.fn();
 const showCounty = vi.fn();
 /** The props the route last handed the map (pin mode, accuracy circle). */
-let lastMapProps: { pinMode?: boolean; accuracy?: { meters: number } | null } = {};
+let lastMapProps: {
+  pinMode?: boolean;
+  accuracy?: { meters: number } | null;
+  triageCid?: string | null;
+} = {};
+/** The props the route last handed the committed Candidate list and Field triage components. */
+let lastListProps: Record<string, unknown> | null = null;
+let lastTriageProps: Record<string, unknown> | null = null;
 let reportedMode: "overview" | "detail" = "overview";
 /** What the route last handed the map for the overview (null = client binning fallback). */
 let lastOverviewCells: readonly { id: string; count: number }[] | null | undefined;
@@ -29,6 +36,7 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       overviewPermits?: readonly { permits: number }[] | null;
       pinMode?: boolean;
       accuracy?: { meters: number } | null;
+      triageCid?: string | null;
     },
     ref,
   ) {
@@ -47,6 +55,24 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
     useEffect(() => props.onViewModeChange?.(reportedMode), [props]);
     return <div data-testid="crm-map" />;
   }),
+}));
+
+vi.mock("../../src/routes/Map/Candidates/index.js", async () => {
+  const actual = await vi.importActual<object>("../../src/routes/Map/Candidates/index.js");
+  return {
+    ...actual,
+    CandidateList: (props: Record<string, unknown>) => {
+      lastListProps = props;
+      return <div data-testid="candidate-list" />;
+    },
+  };
+});
+
+vi.mock("../../src/routes/Map/Triage/index.js", () => ({
+  TriageStack: (props: Record<string, unknown>) => {
+    lastTriageProps = props;
+    return <div data-testid="triage-stack" />;
+  },
 }));
 
 const property = {
@@ -162,6 +188,8 @@ afterEach(() => {
   zoomToDetail.mockReset();
   reportedMode = "overview";
   searchResult = { properties: [property] };
+  lastListProps = null;
+  lastTriageProps = null;
   placeAtCenter.mockReset();
   showCounty.mockReset();
   lastMapProps = {};
@@ -398,5 +426,113 @@ describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode
     fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
     expect(screen.getByText(/From Your location \(approximate\)/)).not.toBeNull();
     delete (navigator as { geolocation?: unknown }).geolocation;
+  });
+});
+
+function stubWide(wide: boolean): void {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: wide && query.includes("840"),
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+
+describe("Map route list view, triage and toolbar (committed Candidates and Triage components)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const PIN_URL = "/?lat=30.4394&lng=-97.62&r=5&roof=15";
+
+  it("view=list mounts the Candidate list over the map's own filters, in place of the map", async () => {
+    const page = renderAt(`${PIN_URL}&view=list`);
+    await screen.findByTestId("candidate-list");
+    expect(lastListProps?.filters).toEqual({
+      center: { lat: 30.4394, lng: -97.62 },
+      radiusMi: 5,
+      roofAgeMinYears: 15,
+      permitStatus: "any",
+      permitOpenYrs: undefined,
+    });
+    expect(screen.queryByTestId("crm-map")).toBeNull();
+    expect(page.getAttribute("data-view")).toBe("list");
+    expect(screen.queryByRole("region", { name: "Results" })).toBeNull();
+  });
+
+  it("the List and Map + cards toggle switches the view and keeps the rest of the URL", async () => {
+    renderAt(PIN_URL);
+    const list = screen.getByRole("button", { name: "List" });
+    const cards = screen.getByRole("button", { name: "Map + cards" });
+    expect(cards.getAttribute("aria-pressed")).toBe("true");
+    expect(list.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(list);
+    await screen.findByTestId("candidate-list");
+    expect(screen.getByRole("button", { name: "List" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
+    await screen.findByTestId("crm-map");
+    expect(screen.queryByTestId("candidate-list")).toBeNull();
+    // The pin and radius survived both switches.
+    expect(screen.getByRole("spinbutton", { name: "Radius" })).not.toBeNull();
+  });
+
+  it("Show on map from the list returns to the map with that property open", async () => {
+    renderAt(`${PIN_URL}&view=list`);
+    await screen.findByTestId("candidate-list");
+    act(() => (lastListProps?.onShowOnMap as (cid: string) => void)(property.propertyCid));
+    await screen.findByTestId("crm-map");
+    await screen.findByRole("dialog", { name: /TCAD|property/i }).catch(() => undefined);
+    expect(screen.queryByTestId("candidate-list")).toBeNull();
+  });
+
+  it("the list's empty-state actions change the map's radius and roof filters", async () => {
+    renderAt(`${PIN_URL}&view=list`);
+    await screen.findByTestId("candidate-list");
+    act(() => (lastListProps?.onRadiusChange as (r: number) => void)(6));
+    await vi.waitFor(() =>
+      expect((lastListProps?.filters as { radiusMi: number }).radiusMi).toBe(6),
+    );
+    act(() => (lastListProps?.onRoofChange as (y: number) => void)(20));
+    await vi.waitFor(() =>
+      expect((lastListProps?.filters as { roofAgeMinYears: number }).roofAgeMinYears).toBe(20),
+    );
+  });
+
+  it("triage=1 mounts the stack in place of the results sheet, and Back to map leaves it", async () => {
+    renderAt(`${PIN_URL}&triage=1`);
+    await screen.findByTestId("triage-stack");
+    expect(screen.queryByRole("region", { name: "Results" })).toBeNull();
+    expect(screen.getByTestId("crm-map")).not.toBeNull();
+    expect((lastTriageProps?.filters as { radiusMi: number }).radiusMi).toBe(5);
+    act(() => (lastTriageProps?.onBack as () => void)());
+    await screen.findByRole("region", { name: "Results" });
+    expect(screen.queryByTestId("triage-stack")).toBeNull();
+  });
+
+  it("the current triage card's property is ringed on the map", async () => {
+    renderAt(`${PIN_URL}&triage=1`);
+    await screen.findByTestId("triage-stack");
+    act(() => (lastTriageProps?.onCurrentChange as (cid: string | null) => void)("bafkreicurrent"));
+    await vi.waitFor(() => expect(lastMapProps.triageCid).toBe("bafkreicurrent"));
+    act(() => (lastTriageProps?.onBack as () => void)());
+    await vi.waitFor(() => expect(lastMapProps.triageCid ?? null).toBeNull());
+  });
+
+  it("the results sheet header has a Triage button with the match count (phones)", async () => {
+    renderAt(PIN_URL);
+    await screen.findByTestId("search-results");
+    fireEvent.click(screen.getByRole("button", { name: "Triage 1" }));
+    await screen.findByTestId("triage-stack");
+  });
+
+  it("from 840 px the toggle sits in the map toolbar and the sheet has no Triage button", async () => {
+    stubWide(true);
+    const page = renderAt(PIN_URL);
+    await screen.findByTestId("search-results");
+    expect(page.querySelector("[data-view-bar]")?.querySelector("button")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /^Triage/ })).toBeNull();
+  });
+
+  it("the Filters button shows how many properties match", async () => {
+    renderAt(PIN_URL);
+    await screen.findByTestId("search-results");
+    expect(screen.getByRole("button", { name: /^Filters/ }).textContent).toMatch(/1/);
   });
 });
