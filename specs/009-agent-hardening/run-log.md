@@ -69,13 +69,24 @@ signal now available at county scale.
   exceptions," `be3c337`), or hold G6 until US4 deploys and the tokens are filled with real values.
   Committed `05d64af`.
 
+- 2026-10-24 · D · **User decision:** hold G6 until data is ready (US4 deployed/data readable),
+  Atlas registration, and A-13/A-14's upstream merge status — proceed with what's buildable in the
+  meantime. **Recorded exception to constitution XVIII** ("No `/speckit-implement` before G4, G5
+  and G6 pass"): G6's one open failure (C-07, real test data) blocks *running* the golden-query
+  harness and the live Playwright suite against real values — it does not block *writing* the
+  code those tests will exercise. Implementation proceeds now on that basis: every task except
+  T047 (run golden queries against the deployed agent) and the token-fill step in
+  `testplans/B-09-test-cases.md` can complete without real data. G6 stays FAIL/Held in
+  `docs/traceability.md` until data readiness lets those two items close it for real — this is not
+  a silent reinterpretation of the gate, it's a recorded, user-directed exception, same category as
+  B-02's/B-03's/B-07's prior "approved with exceptions" gates.
+- 2026-10-24 · E · `/speckit-implement` started under the exception above.
+
 ## Next step
 
-Your call on G5/G6 approval (see the D entries above — G5 is a clean PASS to approve; G6 has one
-expected, documented exception to decide on). Once both are recorded, `/speckit-implement` begins
-Phase B/E of the build (delegating each task group to its `soofi-xyz-team-kit:{builder}` subagent
-plus `apply-engineering-guidelines`) — not started yet, and not to be started without your
-explicit go-ahead, same as merge/push/deploy.
+Continue `/speckit-implement`, delegating each task group to its `soofi-xyz-team-kit:{builder}`
+subagent plus `apply-engineering-guidelines`, per constitution XV. T047 and the test-case token
+fill stay blocked on data readiness. Stop before G7 approval, merge, push, or deploy — unchanged.
 
 ## Resume prompt (paste after `/clear`, a crash, or a new session)
 
