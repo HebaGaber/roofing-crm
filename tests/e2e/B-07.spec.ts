@@ -397,12 +397,23 @@ test.describe("B-07 leads", () => {
     // This AWS account allows 10 concurrent Lambda executions, so some of 20 simultaneous calls are
     // throttled (HTTP 503). A real client retries a throttle; so does this test, and it counts them.
     let throttled = 0;
+    let dnsRetried = 0;
     const post = async (): Promise<APIResponse> => {
       for (let attempt = 1; ; attempt++) {
-        const res = await page.request.post("/api/trpc/leads.create", {
-          headers,
-          data: createInput(f),
-        });
+        let res: APIResponse;
+        try {
+          res = await page.request.post("/api/trpc/leads.create", {
+            headers,
+            data: createInput(f),
+          });
+        } catch (error) {
+          // A lookup that fails under 20 simultaneous requests never reached the server, so
+          // retrying cannot duplicate anything (the server dedupes anyway). Counted, not hidden.
+          if (!/ENOTFOUND|EAI_AGAIN/.test(String(error)) || attempt >= 8) throw error;
+          dnsRetried += 1;
+          await page.waitForTimeout(150 * attempt + Math.floor(Math.random() * 150));
+          continue;
+        }
         if (res.status() !== 503 || attempt >= 8) return res;
         throttled += 1;
         await page.waitForTimeout(150 * attempt + Math.floor(Math.random() * 150));
@@ -422,7 +433,7 @@ test.describe("B-07 leads", () => {
       tally[key] = (tally[key] ?? 0) + 1;
     });
     console.log(
-      `TC-007 tally: ${JSON.stringify({ final: tally, throttledAndRetried: throttled })}`,
+      `TC-007 tally: ${JSON.stringify({ final: tally, throttledAndRetried: throttled, dnsRetried })}`,
     );
     await test.info().attach("TC-007-tally.json", {
       body: JSON.stringify({ final: tally, throttledAndRetried: throttled }, null, 2),
