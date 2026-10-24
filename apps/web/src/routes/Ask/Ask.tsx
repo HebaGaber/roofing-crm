@@ -59,15 +59,24 @@ export const OUTCOME_STATE: Readonly<Record<AgentAnswer["outcome"], AskState>> =
 
 type NonAnswerState = Exclude<AskState, "idle" | "working" | "answer">;
 
+// T059 (AC-8 re-diff): copy aligned to the prototype's actual wording (design/prototype/
+// Explore1440.dc.html lines ~412-1138, presets crmasknone/crmaskslow/crmaskthrottle/
+// crmaskpaused) where it was a plain string with no interactive chip attached. The prototype's
+// exact seconds-remaining ("Ask again in 40 s") and the "widen"/"use X instead" chips are NOT
+// reproduced here — the wire has no `retryAfterSec` on a rate-limited outcome and `agent.ask`
+// takes only `{question, threadId}`, no structured retry/edit; adding either would mean
+// reopening the accepted `AgentAnswer`/`agent.ask` contract shapes (ADR-06 §4, contracts/
+// agent-api.md), not a copy fix. Logged as deferred in design/design-review-log.md.
 const STATE_MESSAGE: Readonly<Record<NonAnswerState, string>> = {
-  no_results: "No matching properties or permits were found in Travis County for this question.",
+  no_results: "I found no properties that match. Try a bigger radius or a lower roof age.",
   low_confidence:
     "I'm not sure which place you meant. Try rephrasing with a more specific place name.",
   out_of_scope: "That's outside Travis County, so I can't answer it from this index.",
   not_found: "I couldn't confidently place that — try a more specific place name.",
-  throttled: "You've asked too many questions in the last minute. Wait a moment and try again.",
-  paused: "Today's question budget is used up. Try again tomorrow.",
-  timed_out: "That took too long to answer. Try again, or ask something narrower.",
+  throttled: "You've asked too many questions in a short time. Wait a moment, then try again.",
+  paused: "Today's question budget is used up. It resets at 00:00 UTC.",
+  timed_out:
+    "Took too long. The answer stopped at the 25 s limit; nothing was counted. Try again, or ask something narrower.",
 };
 
 const ALERT_STATES: ReadonlySet<NonAnswerState> = new Set(["throttled", "paused", "timed_out"]);
@@ -77,6 +86,39 @@ function newThreadId(): string {
     return crypto.randomUUID();
   }
   return `thread-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+type Plan = AgentAnswer["plan"];
+
+function describeFilters(filters: Plan["filters"]): readonly string[] {
+  const parts: string[] = [];
+  if (filters.kind !== undefined) parts.push(filters.kind);
+  if (filters.roofAgeMinYears !== undefined) parts.push(`roof age ≥ ${filters.roofAgeMinYears} yrs`);
+  if (filters.roofConfidenceMin !== undefined) {
+    parts.push(`roof confidence ≥ ${filters.roofConfidenceMin}`);
+  }
+  if (filters.statusClass !== undefined && filters.statusClass.length > 0) {
+    parts.push(`permit ${filters.statusClass.join("/")}`);
+  }
+  if (filters.openYearsMin !== undefined) parts.push(`open ≥ ${filters.openYearsMin} yrs`);
+  if (filters.tenureYearsMin !== undefined) parts.push(`owner tenure ≥ ${filters.tenureYearsMin} yrs`);
+  if (filters.permitNumber !== undefined) parts.push(`permit # ${filters.permitNumber}`);
+  return parts;
+}
+
+/** "How I read this" (T059, AC-8 re-diff fix): the prototype shows this on every completed turn
+ *  (Explore1440.dc.html line ~414, `{{ans.how}}`). `answer.plan` already carries everything it
+ *  needs — `packages/shared/src/agent/queryPlan.ts` even comments `// "How I read this"` on the
+ *  field — but the first wave of this screen (T039/T040) never rendered it. Pure display, no new
+ *  data and no architecture change, so fixed directly rather than deferred. The prototype's
+ *  "tap to change, ✕ to drop" editable chips are NOT reproduced: `agent.ask` takes only
+ *  `{question, threadId}` with no structured plan-edit input, so making this editable would mean
+ *  adding a new procedure input shape, not a copy/token fix. Logged as deferred. */
+function planSummary(plan: Plan): string {
+  const place = plan.area.resolved !== undefined ? plan.area.resolved.name : plan.area.query;
+  const base = `within ${plan.area.radiusMi} mi of ${place}`;
+  const filters = describeFilters(plan.filters);
+  return filters.length === 0 ? base : `${base}, ${filters.join(", ")}`;
 }
 
 type Citation = AgentAnswer["citations"][number];
@@ -310,7 +352,14 @@ export function Component(): ReactElement {
         </p>
       ) : null}
 
-      {ask.data === undefined ? null : <AnswerBody answer={ask.data} threadId={threadId} />}
+      {ask.data === undefined ? null : (
+        <>
+          <p className={styles.plan}>
+            <b>How I read this:</b> {planSummary(ask.data.plan)}
+          </p>
+          <AnswerBody answer={ask.data} threadId={threadId} />
+        </>
+      )}
     </section>
   );
 }

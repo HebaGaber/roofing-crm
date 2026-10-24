@@ -72,6 +72,18 @@
   outline-offset: 2px;
 }
 
+/* "How I read this" (T059, AC-8 re-diff): Explore1440.dc.html line ~414's plan-summary chip
+   (surface-container background, body-small text, small corner radius). */
+.plan {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
 .notice {
   display: flex;
   align-items: center;

@@ -134,6 +134,13 @@ describe("Ask screen", () => {
     expect(link.getAttribute("href")).toContain(encodeURIComponent(answeredFixture().citations[0]?.propertyCid ?? ""));
   });
 
+  it('shows "How I read this" from the returned plan (T059, AC-8 re-diff fix)', () => {
+    askState = { ...askState, data: answeredFixture() };
+    renderAsk();
+    expect(screen.getByText(/How I read this:/)).toBeTruthy();
+    expect(screen.getByText(/within 5 mi of Pflugerville/)).toBeTruthy();
+  });
+
   it("shows the confirm-lead card and calls confirmLead only on an explicit click", () => {
     askState = { ...askState, data: answeredFixture() };
     renderAsk();
@@ -164,7 +171,7 @@ describe("Ask screen", () => {
     };
     renderAsk();
     expect(screen.getByLabelText("Ask").getAttribute("data-state")).toBe("no_results");
-    expect(screen.getByText(/no matching properties or permits/i)).toBeTruthy();
+    expect(screen.getByText(/found no properties that match/i)).toBeTruthy();
   });
 
   it('maps needs_clarification to data-state="low_confidence" without inventing candidate buttons', () => {
