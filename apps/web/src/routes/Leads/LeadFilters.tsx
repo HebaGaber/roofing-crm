@@ -3,7 +3,7 @@
 // `leads.list` accepts (contracts/leads.md):
 // - Status chips (New … Lost). The API takes one status, so one chip is on at a time (the board's
 //   multi-select needs a list input the API does not have yet).
-// - Assignee: an exact name, committed on Enter or leaving the box. There is no rep directory yet
+// - Assignee: Me (the API default) or an exact name, committed on Enter or leaving the box. There is no rep directory yet
 //   (design-review-log row 17, `users.list`), so there is no Me / All reps menu; the hint says so.
 // - Roof age ≥ Any / 15 / 20 / 25, Permit status Open / Stalled / Any (no Closed:
 //   design-review-log row 6; the API takes one value, so Open and Stalled do not combine).
@@ -13,7 +13,7 @@
 // Below 600 px the controls sit in a bottom sheet behind "Filters" with the active count.
 import { Icon, IconButton } from "@crm/ui";
 import { LEAD_STATUSES, type LeadStatus } from "@crm/shared";
-import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import {
   PERMIT_STATUSES,
@@ -142,27 +142,36 @@ function AssigneeField({
     setDraft(undefined);
   };
   return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={id}>
+    <div className={styles.group}>
+      <label className={styles.groupLabel} htmlFor={id}>
         Assignee
       </label>
-      <input
-        id={id}
-        className={styles.input}
-        type="text"
-        placeholder="A name…"
-        autoComplete="off"
-        aria-describedby={`${id}-hint`}
-        value={draft ?? value ?? ""}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-        }}
-        onBlur={commit}
-      />
-      <p id={`${id}-hint`} className={styles.hint}>
-        Type the name exactly as it shows on a lead. A team list is not available yet.
-      </p>
+      <div className={styles.groupBody}>
+        <div className={styles.chips}>
+          {/* "Me" is the list's default (the API scopes to the caller); "All reps" and a rep
+              menu need a rep directory the API does not have (design-review-log row 17). */}
+          <Chip pressed={value === undefined} onClick={() => onCommit(null)}>
+            Me
+          </Chip>
+          <input
+            id={id}
+            className={`${styles.input} ${styles.nameInput}`}
+            type="text"
+            placeholder="A name…"
+            autoComplete="off"
+            aria-describedby={`${id}-hint`}
+            value={draft ?? value ?? ""}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+            }}
+            onBlur={commit}
+          />
+        </div>
+        <p id={`${id}-hint`} className={styles.hint}>
+          Type the name exactly as it shows on a lead. A team list is not available yet.
+        </p>
+      </div>
     </div>
   );
 }
@@ -211,83 +220,137 @@ function AreaControls({
   };
 
   return (
-    <fieldset className={styles.group}>
-      <legend className={styles.groupLabel}>Within</legend>
-      <div className={styles.row}>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor={`${id}-radius`}>
-            Radius, mi
-          </label>
-          <select
-            id={`${id}-radius`}
-            className={styles.select}
-            value={String(query.radiusMi)}
-            disabled={noArea}
-            aria-describedby={noArea ? `${id}-radius-hint` : undefined}
-            onChange={(e) => onPatch({ r: committedNumber(e.target.value) })}
-          >
-            {radiusOptions.map((mi) => (
-              <option key={mi} value={String(mi)}>
-                {`${mi} mi`}
-              </option>
-            ))}
-          </select>
-        </div>
-        <span className={styles.unit}>of</span>
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor={`${id}-area`}>
-            Area
-          </label>
-          <select
-            id={`${id}-area`}
-            className={styles.select}
-            value={isPoint ? "point" : "anywhere"}
-            onChange={(e) => {
-              if (e.target.value === "point") {
-                setPointChosen(true);
-              } else {
-                setPointChosen(false);
-                onPatch({ lat: null, lng: null, r: null });
-              }
-            }}
-          >
-            <option value="anywhere">Anywhere in Travis County</option>
-            <option value="point">A point (latitude, longitude)</option>
-          </select>
-        </div>
-        <button type="button" className={styles.tool} onClick={useMyLocation}>
-          <Icon name="my_location" size="medium" />
-          Use my location
-        </button>
-      </div>
-      {noArea ? (
-        <p id={`${id}-radius-hint`} className={styles.hint}>
-          Choose an area to search within a radius.
-        </p>
-      ) : null}
-      {locating === null ? null : (
-        <p className={styles.hint} role="status">
-          {locating}
-        </p>
-      )}
-      {isPoint ? (
+    <div className={styles.group} role="group" aria-labelledby={`${id}-within`}>
+      <span id={`${id}-within`} className={styles.groupLabel}>
+        Within
+      </span>
+      <div className={styles.groupBody}>
         <div className={styles.row}>
-          <NumberField
-            id={`${id}-lat`}
-            label="Center latitude"
-            value={params.get("lat") ?? ""}
-            onCommit={(lat) => onPatch({ lat })}
-          />
-          <NumberField
-            id={`${id}-lng`}
-            label="Center longitude"
-            value={params.get("lng") ?? ""}
-            onCommit={(lng) => onPatch({ lng })}
-          />
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${id}-radius`}>
+              Radius, mi
+            </label>
+            <select
+              id={`${id}-radius`}
+              className={styles.select}
+              value={String(query.radiusMi)}
+              disabled={noArea}
+              aria-describedby={noArea ? `${id}-radius-hint` : undefined}
+              onChange={(e) => onPatch({ r: committedNumber(e.target.value) })}
+            >
+              {radiusOptions.map((mi) => (
+                <option key={mi} value={String(mi)}>
+                  {`${mi} mi`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <span className={styles.unit}>of</span>
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${id}-area`}>
+              Area
+            </label>
+            <select
+              id={`${id}-area`}
+              className={styles.select}
+              value={isPoint ? "point" : "anywhere"}
+              onChange={(e) => {
+                if (e.target.value === "point") {
+                  setPointChosen(true);
+                } else {
+                  setPointChosen(false);
+                  onPatch({ lat: null, lng: null, r: null });
+                }
+              }}
+            >
+              <option value="anywhere">Anywhere in Travis County</option>
+              <option value="point">A point (latitude, longitude)</option>
+            </select>
+          </div>
+          <button type="button" className={styles.tool} onClick={useMyLocation}>
+            <Icon name="my_location" size="medium" />
+            Use my location
+          </button>
         </div>
-      ) : null}
-    </fieldset>
+        {noArea ? (
+          <p id={`${id}-radius-hint`} className={styles.hint}>
+            Choose an area to search within a radius.
+          </p>
+        ) : null}
+        {locating === null ? null : (
+          <p className={styles.hint} role="status">
+            {locating}
+          </p>
+        )}
+        {isPoint ? (
+          <div className={styles.row}>
+            <NumberField
+              id={`${id}-lat`}
+              label="Center latitude"
+              value={params.get("lat") ?? ""}
+              onCommit={(lat) => onPatch({ lat })}
+            />
+            <NumberField
+              id={`${id}-lng`}
+              label="Center longitude"
+              value={params.get("lng") ?? ""}
+              onCommit={(lng) => onPatch({ lng })}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
+}
+
+/** Copy link and Show on map (board CrmLeads1440 page header). Copy link copies the current URL,
+ *  which already holds every filter; Show on map opens the map on the same area. Icon-only below
+ *  600 px (CrmLeads390), keeping the same accessible names. */
+export function LeadActions({ query }: { readonly query: LeadQuery }): ReactElement {
+  const location = useLocation();
+  const [copyState, setCopyState] = useState<string | null>(null);
+  const copyLink = (): void => {
+    const href = `${window.location.origin}${location.pathname}${location.search}`;
+    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+    if (clipboard === undefined) {
+      setCopyState("Couldn't copy the link. Copy it from the address bar.");
+      return;
+    }
+    clipboard.writeText(href).then(
+      () => setCopyState("Link copied"),
+      () => setCopyState("Couldn't copy the link. Copy it from the address bar."),
+    );
+  };
+  return (
+    <div className={styles.actions}>
+      <button type="button" className={styles.tool} aria-label="Copy link" onClick={copyLink}>
+        <Icon name="link" size="medium" />
+        <span className={styles.toolLabel}>Copy link</span>
+      </button>
+      <Link
+        className={`${styles.tool} ${styles.toolTonal}`}
+        to={leadsMapHref(query)}
+        aria-label="Show on map"
+      >
+        <Icon name="map" size="medium" />
+        <span className={styles.toolLabel}>Show on map</span>
+      </Link>
+      <span className={styles.note} role="status">
+        {copyState ?? ""}
+      </span>
+    </div>
+  );
+}
+
+/** The active filters as short chip texts, in the order of the sentence (board CrmLeadsPaged390). */
+export function activeFilterChips(query: LeadQuery): readonly string[] {
+  return [
+    query.status === undefined ? null : STATUS_LABEL[query.status],
+    query.assignee === undefined ? null : query.assignee,
+    query.roofAgeMinYears === undefined ? null : `Roof ≥ ${query.roofAgeMinYears} yrs`,
+    query.permitStatus === undefined ? null : `${PERMIT_LABEL[query.permitStatus]} permit`,
+    query.center === null ? null : `Within ${query.radiusMi} mi`,
+  ].filter((chip): chip is string => chip !== null);
 }
 
 export interface LeadFiltersProps {
@@ -296,6 +359,12 @@ export interface LeadFiltersProps {
   readonly onPatch: (patch: LeadQueryPatch) => void;
   /** Matching leads, once known: the sheet's "Show n leads" button. */
   readonly totalCount: number | undefined;
+  /** The page header (title, count, actions). Below 600 px it stays pinned with the chips. */
+  readonly head: ReactNode;
+  /** The list is empty because of these filters: the state card owns "Clear filters". */
+  readonly noMatch?: boolean;
+  /** No leads exist at all: there is nothing to filter, so the controls are not drawn. */
+  readonly hidePanel?: boolean;
 }
 
 export function LeadFilters({
@@ -303,11 +372,12 @@ export function LeadFilters({
   params,
   onPatch,
   totalCount,
+  head,
+  noMatch = false,
+  hidePanel = false,
 }: LeadFiltersProps): ReactElement {
   const id = useId();
-  const location = useLocation();
   const [open, setOpen] = useState(false);
-  const [copyState, setCopyState] = useState<string | null>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const count = activeFilterCount(query);
@@ -330,20 +400,6 @@ export function LeadFilters({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open]);
 
-  const copyLink = (): void => {
-    const href = `${window.location.origin}${location.pathname}${location.search}`;
-    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
-    if (clipboard === undefined) {
-      setCopyState("Couldn't copy the link. Copy it from the address bar.");
-      return;
-    }
-    clipboard.writeText(href).then(
-      () => setCopyState("Link copied"),
-      () => setCopyState("Couldn't copy the link. Copy it from the address bar."),
-    );
-  };
-
-  const summary = filterSummary(query);
   const roofChips =
     query.roofAgeMinYears === undefined || LEAD_ROOF_AGE_CHIPS.includes(query.roofAgeMinYears)
       ? LEAD_ROOF_AGE_CHIPS
@@ -352,128 +408,143 @@ export function LeadFilters({
     totalCount === undefined
       ? "Show leads"
       : `Show ${totalCount} ${totalCount === 1 ? "lead" : "leads"}`;
+  const chips = activeFilterChips(query);
 
   return (
     <section className={styles.region} aria-label="Lead filters">
-      <div className={styles.toolbar}>
-        <button
-          ref={toggleRef}
-          type="button"
-          className={styles.toggle}
-          aria-expanded={open}
-          aria-controls={`${id}-panel`}
-          aria-label={count === 0 ? "Filters" : `Filters, ${count} active`}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <Icon name="tune" size="medium" />
-          Filters
-          {count === 0 ? null : <span className={styles.badge}>{count}</span>}
-        </button>
-        <button type="button" className={styles.tool} onClick={copyLink}>
-          <Icon name="link" size="medium" />
-          Copy link
-        </button>
-        <Link className={styles.tool} to={leadsMapHref(query)}>
-          <Icon name="map" size="medium" />
-          Show on map
-        </Link>
-        {count === 0 ? null : (
-          <button type="button" className={styles.clear} onClick={() => onPatch(CLEARED)}>
-            Clear filters
-          </button>
-        )}
-        <span className={styles.note} role="status">
-          {copyState ?? ""}
-        </span>
-      </div>
-      {summary === null ? null : <p className={styles.summary}>{summary}</p>}
-      {open ? <div className={styles.backdrop} onClick={close} aria-hidden="true" /> : null}
-      <div
-        ref={panelRef}
-        id={`${id}-panel`}
-        role={open ? "dialog" : undefined}
-        aria-label={open ? "Filters" : undefined}
-        aria-modal={open || undefined}
-        className={`${styles.panel} ${open ? styles.open : ""}`}
-      >
-        <div className={styles.sheetHeader}>
-          <h3 className={styles.sheetTitle}>Filters</h3>
-          <IconButton icon="close" label="Close filters" onClick={close} />
-        </div>
-        <div className={styles.group}>
-          <span className={styles.groupLabel}>Status</span>
-          <div className={styles.chips} role="group" aria-label="Lead status">
-            {LEAD_STATUSES.map((status) => (
-              <Chip
-                key={status}
-                pressed={query.status === status}
-                onClick={() => onPatch({ status: query.status === status ? null : status })}
-              >
-                {STATUS_LABEL[status]}
-              </Chip>
-            ))}
-          </div>
-        </div>
-        <AssigneeField
-          key={query.assignee ?? ""}
-          id={`${id}-assignee`}
-          value={query.assignee}
-          onCommit={(assignee) => onPatch({ assignee })}
-        />
-        <div className={styles.group}>
-          <span className={styles.groupLabel}>Roof age ≥</span>
-          <div className={styles.chips} role="group" aria-label="Roof age threshold">
-            <Chip
-              pressed={query.roofAgeMinYears === undefined}
-              onClick={() => onPatch({ roof: null })}
+      <div className={styles.sticky}>
+        {head}
+        {hidePanel ? null : (
+          <div className={styles.toolbar}>
+            <button
+              ref={toggleRef}
+              type="button"
+              className={styles.toggle}
+              aria-expanded={open}
+              aria-controls={`${id}-panel`}
+              aria-label={count === 0 ? "Filters" : `Filters, ${count} active`}
+              onClick={() => setOpen((o) => !o)}
             >
-              Any
-            </Chip>
-            {roofChips.map((years) => (
-              <Chip
-                key={years}
-                pressed={query.roofAgeMinYears === years}
-                onClick={() => onPatch({ roof: query.roofAgeMinYears === years ? null : years })}
-              >
-                {String(years)}
-              </Chip>
-            ))}
-          </div>
-        </div>
-        <div className={styles.group}>
-          <span className={styles.groupLabel}>Permit status</span>
-          <div className={styles.chips} role="group" aria-label="Permit status">
-            {PERMIT_STATUSES.map((status) => (
-              <Chip
-                key={status}
-                pressed={query.permitStatus === status}
-                onClick={() => onPatch({ permit: query.permitStatus === status ? null : status })}
-              >
-                {PERMIT_LABEL[status]}
-              </Chip>
-            ))}
-            <Chip
-              pressed={query.permitStatus === undefined}
-              onClick={() => onPatch({ permit: null })}
-            >
-              Any
-            </Chip>
-          </div>
-        </div>
-        <AreaControls id={id} query={query} params={params} onPatch={onPatch} />
-        <div className={styles.sheetFooter}>
-          {count === 0 ? (
-            <span />
-          ) : (
-            <button type="button" className={styles.clear} onClick={() => onPatch(CLEARED)}>
-              Reset
+              <Icon name="tune" size="medium" />
+              Filters
+              {count === 0 ? null : <span className={styles.badge}>{count}</span>}
             </button>
-          )}
-          <button type="button" className={styles.done} onClick={close}>
-            {showLabel}
-          </button>
-        </div>
+            {(chips.length === 0 ? ["All my leads"] : chips).map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                className={styles.summaryChip}
+                aria-label={`Change filter, ${chip}`}
+                onClick={() => setOpen(true)}
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+      {hidePanel ? null : (
+        <>
+          {open ? <div className={styles.backdrop} onClick={close} aria-hidden="true" /> : null}
+          <div
+            ref={panelRef}
+            id={`${id}-panel`}
+            role={open ? "dialog" : undefined}
+            aria-label={open ? "Filters" : undefined}
+            aria-modal={open || undefined}
+            className={`${styles.panel} ${open ? styles.open : ""}`}
+          >
+            <div className={styles.sheetHeader}>
+              <h3 className={styles.sheetTitle}>Filters</h3>
+              <IconButton icon="close" label="Close filters" onClick={close} />
+            </div>
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>Status</span>
+              <div className={styles.chips} role="group" aria-label="Lead status">
+                {LEAD_STATUSES.map((status) => (
+                  <Chip
+                    key={status}
+                    pressed={query.status === status}
+                    onClick={() => onPatch({ status: query.status === status ? null : status })}
+                  >
+                    {STATUS_LABEL[status]}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <AssigneeField
+              key={query.assignee ?? ""}
+              id={`${id}-assignee`}
+              value={query.assignee}
+              onCommit={(assignee) => onPatch({ assignee })}
+            />
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>Roof age ≥</span>
+              <div className={styles.chips} role="group" aria-label="Roof age threshold">
+                <Chip
+                  pressed={query.roofAgeMinYears === undefined}
+                  onClick={() => onPatch({ roof: null })}
+                >
+                  Any
+                </Chip>
+                {roofChips.map((years) => (
+                  <Chip
+                    key={years}
+                    pressed={query.roofAgeMinYears === years}
+                    onClick={() =>
+                      onPatch({ roof: query.roofAgeMinYears === years ? null : years })
+                    }
+                  >
+                    {String(years)}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>Permit status</span>
+              <div className={styles.chips} role="group" aria-label="Permit status">
+                {PERMIT_STATUSES.map((status) => (
+                  <Chip
+                    key={status}
+                    pressed={query.permitStatus === status}
+                    onClick={() =>
+                      onPatch({ permit: query.permitStatus === status ? null : status })
+                    }
+                  >
+                    {PERMIT_LABEL[status]}
+                  </Chip>
+                ))}
+                <Chip
+                  pressed={query.permitStatus === undefined}
+                  onClick={() => onPatch({ permit: null })}
+                >
+                  Any
+                </Chip>
+              </div>
+            </div>
+            <AreaControls id={id} query={query} params={params} onPatch={onPatch} />
+            {count === 0 || noMatch ? null : (
+              <div className={styles.wideFooter}>
+                <button type="button" className={styles.clear} onClick={() => onPatch(CLEARED)}>
+                  Clear filters
+                </button>
+              </div>
+            )}
+            <div className={styles.sheetFooter}>
+              {count === 0 ? (
+                <span />
+              ) : (
+                <button type="button" className={styles.clear} onClick={() => onPatch(CLEARED)}>
+                  Reset
+                </button>
+              )}
+              <button type="button" className={styles.done} onClick={close}>
+                {showLabel}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </section>
   );
 }

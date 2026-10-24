@@ -12,6 +12,29 @@
   min-width: 0;
 }
 
+/* Compact: the page header (title, count, actions) and the chips stay pinned while the list
+   scrolls under them (CrmLeadsPaged390). The main region is the scroll container and pads 16 px,
+   so the pinned block pulls up into that padding and carries its own. */
+.sticky {
+  position: sticky;
+  top: calc(-1 * var(--space-4));
+  z-index: 5;
+  display: grid;
+  gap: var(--space-3);
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) 0;
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  background: var(--md-sys-color-surface-container-low);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -42,11 +65,51 @@
   text-decoration: none;
 }
 
-/* Copy link and Show on map: Atlas outlined buttons (full corner, primary label). */
+/* Copy link: an Atlas text button (primary label); Show on map: tonal (secondary container).
+   Below 600 px both are 48 px icon buttons (CrmLeads390); the names stay on aria-label. */
 .tool {
+  justify-content: center;
+  padding: 0;
+  border-color: transparent;
   border-radius: var(--md-sys-shape-corner-full);
   background: transparent;
   color: var(--md-sys-color-primary);
+}
+
+.toolTonal {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.toolLabel {
+  display: none;
+}
+
+/* The active filters under the Filters button: each opens the sheet (CrmLeadsPaged390). */
+.summaryChip {
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-small);
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+}
+
+.summaryChip:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* The Filters button reads as tonal when it is the way in (CrmLeads390). */
+.toggle {
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
 }
 
 .clear {
@@ -180,6 +243,22 @@
   font-weight: var(--md-sys-typescale-label-large-weight);
 }
 
+.groupBody {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.nameInput {
+  width: auto;
+  flex: 1 1 calc(var(--space-10) * 2);
+  max-width: calc(var(--space-10) * 4);
+}
+
+.wideFooter {
+  display: none;
+}
+
 .chips,
 .row {
   display: flex;
@@ -247,8 +326,25 @@
   .toggle,
   .backdrop,
   .sheetHeader,
-  .sheetFooter {
+  .sheetFooter,
+  .toolbar {
     display: none;
+  }
+
+  .sticky {
+    position: static;
+    margin: 0;
+    padding: 0;
+    border-bottom: 0;
+    background: transparent;
+  }
+
+  .tool {
+    padding: 0 var(--space-4);
+  }
+
+  .toolLabel {
+    display: inline;
   }
 
   .panel,
@@ -261,5 +357,23 @@
     overflow-y: visible;
     border-radius: var(--md-sys-shape-corner-medium);
     background: var(--md-sys-color-surface);
+  }
+
+  /* One row per control: the label in a fixed column, the chips or fields beside it
+     (CrmLeads768/1440). */
+  .panel .group {
+    grid-template-columns: calc(var(--space-10) * 2) minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-4);
+  }
+
+  .panel .group > .groupLabel {
+    align-self: start;
+    padding-top: var(--space-3);
+  }
+
+  .wideFooter {
+    display: flex;
+    justify-content: flex-end;
   }
 }

@@ -109,8 +109,18 @@ export function Component(): ReactElement {
               </p>
             )}
             <button type="submit" className={styles.submit} disabled={submitting}>
+              {submitting ? (
+                <span className={styles.spin}>
+                  <Icon name="progress_activity" size="medium" />
+                </span>
+              ) : null}
               {submitting ? "Signing in…" : "Sign in"}
             </button>
+            {/* Announced politely when sign-in starts (CrmSignInLoading390: the same words under
+                the button), empty otherwise so it never reads out on its own. */}
+            <p role="status" aria-live="polite" className={styles.progress}>
+              {submitting ? "Signing in…" : ""}
+            </p>
           </form>
           {/* No self sign-up link anywhere on this page (AC-1, constitution: no self-service path). */}
           <p className={styles.note}>No account? Access is shared privately with reviewers.</p>

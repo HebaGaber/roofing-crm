@@ -17,9 +17,9 @@ export type LeadCreateInput = ApiInputs["leads"]["create"];
 
 export type { LeadFilters };
 
-export function useLeadsList(input: LeadsListInput) {
+export function useLeadsList(input: LeadsListInput, options: { readonly enabled?: boolean } = {}) {
   const trpc = useTRPC();
-  return useQuery(trpc.leads.list.queryOptions(input));
+  return useQuery({ ...trpc.leads.list.queryOptions(input), enabled: options.enabled ?? true });
 }
 
 export function useLead(leadKey: string) {

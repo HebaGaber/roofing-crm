@@ -9,8 +9,8 @@ const useLead = vi.fn();
 let statusPending = false;
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: statusPending }),
-  useAddLeadNote: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateLeadStatus: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: statusPending }),
+  useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
@@ -85,7 +85,7 @@ describe("LeadDetail", () => {
     expect(screen.getByText(/ACME ROOFING/)).toBeTruthy();
     expect(screen.queryByText(/not in the current run/i)).toBeNull();
     expect(screen.getByText("Called owner")).toBeTruthy();
-    expect(screen.getByText("new -> contacted")).toBeTruthy();
+    expect(screen.getByText("Status: New → Contacted")).toBeTruthy();
   });
 
   it("renders the not-in-run state and never renders the signals as current", () => {

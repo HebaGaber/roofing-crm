@@ -150,7 +150,7 @@ describe("Sign-in screen (CrmSignIn390/768/1440)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
     const alert = await screen.findByRole("alert");
     expect(alert.hasAttribute("data-sign-in-error")).toBe(true);
-    expect(alert.textContent).toBe("Incorrect username or password.");
+    expect(alert.textContent).toBe("Wrong email or password. Check the test login you were sent.");
   });
 
   it("the lockout keeps its typed message", async () => {
@@ -167,5 +167,29 @@ describe("Sign-in screen (CrmSignIn390/768/1440)", () => {
     expect(source).toMatch(/--md-sys-shape-corner-extra-large/);
     expect(source).toMatch(/background: var\(--md-sys-color-primary\)/);
     expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+  });
+});
+
+describe("Sign-in loading (CrmSignInLoading390)", () => {
+  it("shows a progress icon in the disabled button and announces Signing in… politely", async () => {
+    signInMock.mockReturnValue(new Promise(() => undefined));
+    await renderSignIn();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    const button = await screen.findByRole("button", { name: "Signing in…" });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(button.querySelector('[data-icon="progress_activity"]')).not.toBeNull();
+    const live = screen.getByRole("status");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.textContent).toBe("Signing in…");
+  });
+
+  it("keeps the live region empty when nothing is happening", async () => {
+    await renderSignIn();
+    expect(document.querySelector("[role=status]")?.textContent).toBe("");
+  });
+
+  it("keeps the card at the top of the page from 600 px (no vertical centring)", () => {
+    const sheet = css();
+    expect(sheet).not.toMatch(/\.main\s*{\s*place-items: center;/);
   });
 });

@@ -87,8 +87,9 @@ describe("LeadsList rows", () => {
     renderAt("/leads");
     expect(screen.getByText("1 lead")).toBeTruthy();
     expect(within(screen.getByRole("listitem")).getByText("Contacted")).toBeTruthy();
-    expect(screen.getByText("Assignee rep@example.com")).toBeTruthy();
-    expect(screen.getByText("Created 2026-10-20 09:14 UTC")).toBeTruthy();
+    expect(within(screen.getByRole("listitem")).getByText("rep@example.com")).toBeTruthy();
+    expect(within(screen.getByRole("listitem")).getByText("Oct 20, 09:14 UTC")).toBeTruthy();
+    expect(screen.getByText("Address not published · 30.27000, −97.74000")).toBeTruthy();
     expect(screen.getByRole("link", { name: "TCAD 0201885122" }).getAttribute("href")).toBe(
       `/leads/${encodeURIComponent(lead.leadKey)}`,
     );
@@ -244,9 +245,13 @@ describe("LeadsList filters write the URL", () => {
   it("Clear filters removes every filter and is hidden when none is active", () => {
     withLeads();
     renderOpen("/leads?roof=20&permit=open&status=new&lat=30&lng=-97&r=8&assignee=a%40b.c");
-    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    // Below 600 px the sheet's footer says "Reset"; from 600 px the panel's says "Clear filters"
+    // (both are rendered, the stylesheet shows one per width: LeadFilters.module.css).
+    expect(screen.getByText("Clear filters")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     expect(url()).toBe("/leads");
-    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    expect(screen.queryByText("Clear filters")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   });
 
   it("a filter change drops a stale page cursor", () => {

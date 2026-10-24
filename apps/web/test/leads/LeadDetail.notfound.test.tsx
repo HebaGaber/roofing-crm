@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const useLead = vi.fn();
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: false }),
-  useAddLeadNote: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateLeadStatus: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
+  useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";

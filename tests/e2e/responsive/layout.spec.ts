@@ -25,13 +25,33 @@ interface Layout {
   readonly drawer: DrawerLayout;
   /** Leads filters: a sheet behind a Filters button below 600 px, inline from 600 px. */
   readonly leadsFilters: "sheet" | "inline";
+  /** Top bar: the county label and the long data text need 840 px; below, the chip is short. */
+  readonly topBar: "compact" | "full";
 }
 
 /** One entry per viewport project in playwright.config.ts. */
 const LAYOUTS: Record<string, Layout> = {
-  "mobile-390": { nav: "bottom", map: "sheet", drawer: "full", leadsFilters: "sheet" },
-  "tablet-768": { nav: "rail", map: "sheet", drawer: "full", leadsFilters: "inline" },
-  "desktop-1440": { nav: "rail", map: "panes", drawer: "side", leadsFilters: "inline" },
+  "mobile-390": {
+    nav: "bottom",
+    map: "sheet",
+    drawer: "full",
+    leadsFilters: "sheet",
+    topBar: "compact",
+  },
+  "tablet-768": {
+    nav: "rail",
+    map: "sheet",
+    drawer: "full",
+    leadsFilters: "inline",
+    topBar: "compact",
+  },
+  "desktop-1440": {
+    nav: "rail",
+    map: "panes",
+    drawer: "side",
+    leadsFilters: "inline",
+    topBar: "full",
+  },
 };
 
 const DESIGN = {
@@ -383,6 +403,73 @@ test.describe("Layout: Leads filters", () => {
       await expect(toggle).toBeHidden();
       await expect(statusChips).toBeVisible();
       expectInsideViewport(await ensureBox(statusChips), page, "lead status chips");
+    }
+  });
+});
+
+test.describe("Layout: top bar below 840 px and the open Coming-soon page", () => {
+  test.beforeEach(async ({ page }) => {
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    await page.goto("/leads");
+    await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
+    await ready(page);
+  });
+
+  test("the bar fits its title, data chip and menus; the county label and long data text only from 840 px", async ({
+    page,
+  }, testInfo) => {
+    const layout = layoutFor(testInfo.project.name);
+    const bar = shell(page).bar;
+    const chip = bar.getByRole("button", { name: /^Data:/ });
+    const account = bar.getByRole("button", { name: "Account" });
+    const county = bar.locator("[data-county]");
+    await expect(chip).toBeVisible();
+
+    if (layout.topBar === "compact") {
+      await expect(county, "county label is dropped below 840 px").toBeHidden();
+      // The chip reads like "Run 3" or "Data", never the long "Data: CountyLens run ..." text.
+      await expect(chip).not.toContainText("CountyLens");
+      await expect(chip, "the full run stays in the tooltip").toHaveAttribute(
+        "title",
+        /CountyLens/,
+      );
+    } else {
+      await expect(county).toBeVisible();
+      await expect(chip).toContainText("CountyLens");
+    }
+
+    const chipBox = await ensureBox(chip);
+    const accountBox = await ensureBox(account);
+    expectInsideViewport(chipBox, page, "data chip");
+    expectInsideViewport(accountBox, page, "account button");
+    expect(overlapArea(chipBox, accountBox), "chip and account do not overlap").toBe(0);
+    const title = bar.getByRole("heading", { name: "Roofing CRM" });
+    expect(overlapArea(await ensureBox(title), chipBox), "title and chip do not overlap").toBe(0);
+    const apps = bar.getByRole("button", { name: "Apps" });
+    if (layout.nav === "rail") {
+      expect(overlapArea(await ensureBox(apps), chipBox), "Apps and chip do not overlap").toBe(0);
+    }
+  });
+
+  test("the open Coming-soon section is the current page (aria-current) in the rail or the More sheet", async ({
+    page,
+  }, testInfo) => {
+    await page.goto("/coming-soon/campaigns");
+    await ready(page);
+    const layout = layoutFor(testInfo.project.name);
+    if (layout.nav === "rail") {
+      const rail = shell(page).nav;
+      const current = rail.locator('[aria-current="page"]');
+      await expect(current).toHaveCount(1);
+      await expect(current).toHaveAttribute("data-roadmap-section", "campaigns");
+    } else {
+      await shell(page).nav.getByRole("button", { name: "More" }).click();
+      const sheet = page.getByRole("dialog", { name: "More" });
+      await expect(sheet.locator('[aria-current="page"][data-roadmap-section]')).toHaveAttribute(
+        "data-roadmap-section",
+        "campaigns",
+      );
+      await page.keyboard.press("Escape");
     }
   });
 });

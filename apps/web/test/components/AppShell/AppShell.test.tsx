@@ -41,13 +41,20 @@ const signOutMock = vi.fn(() => localStorage.removeItem("crm.session"));
 vi.mock("../../../src/auth/signOut", () => ({ signOut: () => signOutMock() }));
 
 import { AppShell, DESTINATIONS } from "../../../src/components/AppShell";
+import { shortRunLabel } from "../../../src/components/AppShell/DataChip";
+import { WHAT_CAN_I_ASK_EVENT } from "../../../src/components/Onboarding/firstVisit";
+import { capitalise, initialsOf } from "../../../src/components/AppShell/ShellTopBar";
 
 const shellDir = join(__dirname, "../../../src/components/AppShell");
 const css = (file: string): string => readFileSync(join(shellDir, file), "utf8");
 
 function Where(): ReactElement {
   const location = useLocation();
-  return <div data-testid="where">{location.pathname}</div>;
+  return (
+    <div data-testid="where" data-search={location.search}>
+      {location.pathname}
+    </div>
+  );
 }
 
 function renderShell(path = "/"): QueryClient {
@@ -306,5 +313,200 @@ describe("AppShell main region: full-bleed Map, padded everywhere else", () => {
     expect(sheet).toMatch(
       /@media \(min-width: 600px\)[\s\S]*\.main\s*\{\s*padding:\s*var\(--space-6\)/,
     );
+  });
+});
+
+// ---- Board review fixes (2026-10-25): 768 top bar, chip icon, rail current page, account,
+// More sheet, Help menu ------------------------------------------------------------------------
+
+const b64 = (value: unknown): string => Buffer.from(JSON.stringify(value)).toString("base64url");
+function signInAs(claims: Record<string, unknown>): void {
+  localStorage.setItem(
+    "crm.session",
+    JSON.stringify({
+      idToken: `${b64({ alg: "none" })}.${b64(claims)}.sig`,
+      accessToken: "a",
+      refreshToken: "r",
+      expiresAt: Date.now() + 3_600_000,
+    }),
+  );
+}
+
+describe("top bar below 840 px (CrmShellApps768)", () => {
+  it("drops the county label below 840 px and keeps Apps from 600 px", () => {
+    const bar = css("ShellTopBar.module.css");
+    expect(bar).toMatch(/@media \(max-width: 839px\)\s*{\s*\.county\s*{\s*display: none;/);
+    expect(bar).toMatch(/@media \(max-width: 599px\)\s*{\s*\.apps,\s*\.help\s*{\s*display: none;/);
+  });
+
+  it("swaps the long data label for the short run label below 840 px", () => {
+    const chip = css("DataChip.module.css");
+    expect(chip).toMatch(/@media \(max-width: 839px\)\s*{\s*\.long\s*{\s*display: none;/);
+    expect(chip).toMatch(/\.short\s*{\s*display: inline;/);
+  });
+
+  it("shortRunLabel: a short run id as is, a dated id as its date, a long id by its tail", () => {
+    expect(shortRunLabel("3")).toBe("Run 3");
+    expect(shortRunLabel("travis-2026-10-21-permits")).toBe("Run 2026-10-21");
+    expect(shortRunLabel("travis-202609-permits-20261021t103516z")).toBe("Run …03516z");
+    expect(shortRunLabel(null)).toBe("Data");
+  });
+
+  it("the chip shows the short label and keeps the full run id in its name and tooltip", () => {
+    renderShell();
+    const chip = screen.getByRole("button", { name: `Data: CountyLens run ${RUN_ID}` });
+    expect(chip.getAttribute("title")).toBe(`Data: CountyLens run ${RUN_ID}`);
+    expect(chip.lastElementChild?.textContent).toBe("Run …03516z");
+  });
+
+  it("the bar sits 24 px from the edge from 600 px and has a 1 px edge on compact", () => {
+    const shell = readFileSync(
+      join(__dirname, "../../../src/components/AppShell.module.css"),
+      "utf8",
+    );
+    expect(shell).toMatch(
+      /\.bar\s*{[^}]*border-bottom: 1px solid var\(--md-sys-color-outline-variant\)/,
+    );
+    expect(shell).toMatch(
+      /@media \(min-width: 600px\)[\s\S]*\.bar\s*{\s*padding: 0 var\(--space-6\);/,
+    );
+  });
+
+  it("Apps menu rows are body-medium", () => {
+    expect(css("AppLinks.module.css")).toMatch(/\.item\s*{[^}]*typescale-body-medium-size/);
+  });
+});
+
+describe("data chip ready icon", () => {
+  it("draws the ready glyph in the success token, and the error glyph in the error colour", () => {
+    renderShell();
+    const chip = screen.getByRole("button", { name: `Data: CountyLens run ${RUN_ID}` });
+    expect(chip.querySelector('[data-state="ready"] [data-icon="cloud_done"]')).not.toBeNull();
+    const chipCss = css("DataChip.module.css");
+    expect(chipCss).toMatch(
+      /\.stateIcon\[data-state="ready"\]\s*{\s*color: var\(--status-success\)/,
+    );
+    expect(chipCss).toMatch(
+      /\.stateIcon\[data-state="error"\]\s*{\s*color: var\(--md-sys-color-error\)/,
+    );
+  });
+});
+
+describe("rail: the open Coming-soon page is the current page", () => {
+  it("marks the open section aria-current=page, and no other", () => {
+    renderShell("/coming-soon/campaigns");
+    const rail = document.querySelector(
+      '[aria-label="Roadmap sections (not yet built)"]',
+    ) as HTMLElement;
+    const current = rail.querySelectorAll('[aria-current="page"]');
+    expect(current).toHaveLength(1);
+    expect(current[0]?.getAttribute("data-roadmap-section")).toBe("campaigns");
+    expect(current[0]?.hasAttribute("data-active")).toBe(true);
+  });
+
+  it("marks none on the Map", () => {
+    renderShell("/");
+    const rail = document.querySelector(
+      '[aria-label="Roadmap sections (not yet built)"]',
+    ) as HTMLElement;
+    expect(rail.querySelectorAll('[aria-current="page"]')).toHaveLength(0);
+  });
+
+  it("fills the icon pill when current", () => {
+    expect(css("RoadmapItem.module.css")).toMatch(
+      /\.rail\[data-active\] \.iconPill\s*{[^}]*secondary-container/,
+    );
+  });
+});
+
+describe("account menu", () => {
+  it("initialsOf and capitalise", () => {
+    expect(initialsOf("jane.doe@example.com")).toBe("JD");
+    expect(initialsOf("sample@example.com")).toBe("SA");
+    expect(initialsOf(null)).toBe("?");
+    expect(capitalise("admin")).toBe("Admin");
+  });
+
+  it("shows an initials avatar, the email (not a user id), and the group as a capitalised pill beside the name", () => {
+    signInAs({
+      email: "jane.doe@example.com",
+      "cognito:username": "7f3c2a10-5b6e-4d1a-9c2b-0e8f6a4d1b23",
+      "cognito:groups": ["admin"],
+    });
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Account" }));
+    const menu = screen.getByRole("menu", { name: "Account" });
+    expect(within(menu).getByText("JD")).toBeTruthy();
+    const name = within(menu).getByText("jane.doe@example.com");
+    expect(within(menu).queryByText(/7f3c2a10/)).toBeNull();
+    expect(name.parentElement?.textContent).toContain("Admin");
+  });
+});
+
+describe("More sheet", () => {
+  it("does not take the active pill while open: the page's own tab stays the active one", () => {
+    renderShell("/");
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(screen.getByRole("link", { name: "Map" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "More" }).hasAttribute("aria-current")).toBe(false);
+    expect(css("MoreSheet.module.css")).not.toMatch(/triggerOpen/);
+  });
+
+  it("shows the role beside Sign out", () => {
+    signInAs({ email: "jane.doe@example.com", "cognito:groups": ["admin"] });
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const signOut = within(screen.getByRole("dialog", { name: "More" })).getByRole("button", {
+      name: /Sign out/,
+    });
+    expect(signOut.textContent).toContain("Admin");
+    expect(signOut.textContent).toContain("jane.doe@example.com");
+  });
+});
+
+describe("Help menu (What can I ask?)", () => {
+  it("opens a menu with the one item, which asks for the card and closes the menu", () => {
+    const heard = vi.fn();
+    window.addEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    const menu = screen.getByRole("menu", { name: "Help" });
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "What can I ask?" }));
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu", { name: "Help" })).toBeNull();
+    window.removeEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+  });
+
+  it("from another screen it goes to the map with the card forced open, and dispatches nothing", () => {
+    const heard = vi.fn();
+    window.addEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+    renderShell("/coming-soon/jobs");
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "What can I ask?" }));
+    expect(screen.getByTestId("where")?.textContent).toBe("/");
+    expect(screen.getByTestId("where")?.getAttribute("data-search")).toBe("?first=1");
+    expect(heard).not.toHaveBeenCalled();
+    window.removeEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+  });
+
+  it("is also a row in the More sheet", () => {
+    const heard = vi.fn();
+    window.addEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const sheet = screen.getByRole("dialog", { name: "More" });
+    fireEvent.click(within(sheet).getByRole("button", { name: "What can I ask?" }));
+    expect(heard).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("dialog", { name: "More" })).toBeNull();
+    window.removeEventListener(WHAT_CAN_I_ASK_EVENT, heard);
+  });
+
+  it("closes the other overlay when it opens (one overlay at a time)", () => {
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Apps" }));
+    fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    expect(screen.queryByRole("menu", { name: "Apps" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "Help" })).toBeTruthy();
   });
 });

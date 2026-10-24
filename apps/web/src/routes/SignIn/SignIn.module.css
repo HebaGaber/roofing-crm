@@ -185,13 +185,50 @@
   cursor: default;
 }
 
+.submit {
+  gap: var(--space-2);
+}
+
+.spin {
+  display: inline-flex;
+  animation: sign-in-spin 1s linear infinite;
+}
+
+@keyframes sign-in-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+}
+
+.progress {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+}
+
+/* Present but empty until sign-in starts (a live region must exist before its text changes);
+   it takes no room of its own, cancelling the form's gap above it. */
+.progress:empty {
+  margin-top: calc(-1 * var(--space-4));
+}
+
 @media (min-width: 600px) {
   .bar {
     padding: 0 var(--space-6);
   }
 
+  /* The card stays at the top of the page from 600 px, as the boards draw it, not centred
+     vertically (CrmSignIn768/1440). */
   .main {
-    place-items: center;
+    padding: var(--space-7) var(--space-6);
   }
 
   .card {

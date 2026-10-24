@@ -22,6 +22,16 @@ function runText(runId: string | null): string {
   return runId === null ? "run not recorded in the index" : `run ${runId}`;
 }
 
+/** The compact chip text (board CrmShellApps768 "Run 3"): a short run number as is, a run id that
+ *  carries a calendar date as that date, any other long id cut to its last six characters. The
+ *  full id stays in the chip's tooltip and in the panel; the chip never invents a run. */
+export function shortRunLabel(runId: string | null): string {
+  if (runId === null || runId === "") return "Data";
+  if (runId.length <= 8) return `Run ${runId}`;
+  const date = /\d{4}-\d{2}-\d{2}/.exec(runId);
+  return date === null ? `Run …${runId.slice(-6)}` : `Run ${date[0]}`;
+}
+
 export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactElement {
   const index = useShellIndexInfo();
   const links = useShellAppLinks();
@@ -51,10 +61,12 @@ export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactEleme
         title={label}
         onClick={onToggle}
       >
-        <Icon name={icon} size="small" />
+        <span className={styles.stateIcon} data-state={state}>
+          <Icon name={icon} size="small" />
+        </span>
         <span className={styles.long}>{label}</span>
         <span className={styles.short} aria-hidden="true">
-          Data
+          {state === "ready" && index.data !== undefined ? shortRunLabel(index.data.runId) : "Data"}
         </span>
       </button>
       {open && (
@@ -75,8 +87,10 @@ export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactEleme
                   : `Promoted ${formatUtc(index.data.promotedAt)} UTC.`}{" "}
                 The CRM reads only published CountyLens data.
               </p>
-              <p className={styles.status}>
-                <Icon name="cloud_done" size="small" />
+              <p className={styles.status} data-state="ready">
+                <span className={styles.stateIcon} data-state="ready">
+                  <Icon name="cloud_done" size="small" />
+                </span>
                 {`Index serving ${runText(index.data.runId)}`}
               </p>
               <p className={styles.meta}>

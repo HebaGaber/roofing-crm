@@ -11,3 +11,10 @@ export function isNotFoundError(error: unknown): boolean {
 export function retryUnlessNotFound(failureCount: number, error: unknown): boolean {
   return !isNotFoundError(error) && failureCount < 1;
 }
+
+/** True for the API's STALE_SEQUENCE conflict: someone else changed the lead since it was loaded
+ *  (`data.appCode`, set by the API's errorFormatter). */
+export function isStaleError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  return (error as { data?: { appCode?: unknown } }).data?.appCode === "STALE_SEQUENCE";
+}

@@ -44,7 +44,7 @@
   border-radius: var(--md-sys-shape-corner-full);
 }
 
-.trigger:not(.triggerOpen):hover .pill {
+.trigger:hover .pill {
   background: color-mix(
     in srgb,
     var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
@@ -56,15 +56,6 @@
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: -2px;
   border-radius: var(--md-sys-shape-corner-small);
-}
-
-.triggerOpen {
-  color: var(--md-sys-color-on-surface);
-}
-
-.triggerOpen .pill {
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
 }
 
 .scrim {
@@ -160,4 +151,41 @@
   font-weight: var(--md-sys-typescale-body-small-weight);
   line-height: var(--md-sys-typescale-body-small-line-height);
   letter-spacing: var(--md-sys-typescale-body-small-tracking);
+}
+
+/* "What can I ask?" (the Help entry of the top bar, which is hidden at this width). */
+.helpItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: none;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  background: none;
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+  line-height: var(--md-sys-typescale-body-large-line-height);
+}
+
+.helpItem:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+/* The signed-in role beside Sign out ("Admin"). */
+.role {
+  flex: none;
+  padding: 0 var(--space-2);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
 }

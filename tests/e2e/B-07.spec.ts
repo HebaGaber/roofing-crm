@@ -45,6 +45,14 @@ const MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5
 /** A published manifest that is NOT the served one, and a request identifier absent from the index. */
 const OLD_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
 const STALE_REQUEST_ID = "B07STALE";
+
+/** The lead page shows the roof-age basis in words (apps/web/src/format/labels.ts). */
+const BASIS_LABEL: Record<string, string> = {
+  permit: "Last reroof permit",
+  new_construction: "New construction (year built)",
+  built_year: "Year built (no reroof permit found)",
+  unknown: "Basis unknown",
+};
 const TRAVIS_FIPS = "48453";
 const ROUND_ROCK = { lat: 30.5083, lng: -97.6789 };
 /** Prefix for every note this suite writes, so one run can be told apart from another. */
@@ -318,12 +326,12 @@ test.describe("B-07 leads", () => {
     await expect(first).toContainText(`TCAD ${f.requestIdentifier}`);
     await expect(first).toContainText("New");
     await expect(leadLink(page, f)).toHaveCount(1);
-    // "Created YYYY-MM-DD HH:MM UTC" is within the last few minutes (minute-truncated stamp).
-    const stamp = /Created (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC/.exec(
-      (await first.textContent()) ?? "",
-    );
-    expect(stamp, "created-at is shown").not.toBeNull();
-    const ageMs = Date.now() - Date.parse(`${stamp?.[1]}T${stamp?.[2]}:00Z`);
+    // The row shows "Created Oct 20, 09:14 UTC"; the exact (minute-truncated) stamp is the <time>
+    // element's datetime attribute. It is within the last few minutes.
+    await expect(first).toContainText(/Created \w{3} \d{1,2}, \d{2}:\d{2} UTC/);
+    const createdAt = await first.locator("time").first().getAttribute("datetime");
+    expect(createdAt, "created-at is on the row").not.toBeNull();
+    const ageMs = Date.now() - Date.parse(createdAt ?? "");
     expect(Math.abs(ageMs)).toBeLessThan(3 * 60_000);
     await shot(page, "001", "top-of-list");
   });
@@ -359,7 +367,7 @@ test.describe("B-07 leads", () => {
     const signals = page.getByRole("region", { name: "Current signals" });
     await expect(signals).toBeVisible();
     await expect(signals).toContainText(`${f.roofAgeYears} yrs`);
-    await expect(signals).toContainText(f.roofAgeBasis);
+    await expect(signals).toContainText(BASIS_LABEL[f.roofAgeBasis] ?? f.roofAgeBasis);
     // Character-for-character: the stored CID equals both the index row's and the plan's CID.
     expect(f.sourceManifestCid).toBe(MANIFEST_CID);
     await expect(signals.locator(`[data-cid="${MANIFEST_CID}"]`).first()).toBeVisible();

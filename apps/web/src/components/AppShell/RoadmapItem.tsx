@@ -6,7 +6,7 @@
 // on-surface-variant text, not the 38% disabled opacity (E-64). The one line is the row's
 // accessible description, so the accessible name stays the section label.
 import { useCallback, useId, type KeyboardEvent, type ReactElement } from "react";
-import { useNavigate } from "react-router";
+import { useMatch, useNavigate } from "react-router";
 import { Icon } from "@crm/ui";
 import type { RoadmapNavItem } from "./navigation.js";
 import styles from "./RoadmapItem.module.css";
@@ -20,6 +20,9 @@ export interface RoadmapItemProps {
 export function RoadmapItem({ item, layout, onNavigate }: RoadmapItemProps): ReactElement {
   const navigate = useNavigate();
   const lineId = useId();
+  // The section whose Coming-soon page is open is the current page: marked for assistive
+  // technology and drawn with the same pill the primary destinations use (CrmShell390ComingSoon).
+  const active = useMatch(`/coming-soon/${item.section}`) !== null;
 
   const activate = useCallback(() => {
     onNavigate?.();
@@ -45,12 +48,16 @@ export function RoadmapItem({ item, layout, onNavigate }: RoadmapItemProps): Rea
       title="Coming soon"
       aria-label={`${item.label}, coming soon`}
       aria-describedby={lineId}
+      aria-current={active ? "page" : undefined}
       data-roadmap-section={item.section}
+      data-active={active ? "" : undefined}
       className={rail ? styles.rail : styles.sheet}
       onClick={activate}
       onKeyDown={onKeyDown}
     >
-      <Icon name={item.icon} />
+      <span className={styles.iconPill}>
+        <Icon name={item.icon} />
+      </span>
       <span className={styles.text}>
         <span className={styles.label}>{item.label}</span>
         <span id={lineId} className={rail ? styles.hiddenLine : styles.line}>

@@ -1,6 +1,6 @@
 /* Data-source chip + panel (CrmDataChip): Atlas assist chip (32 px, corner-small, outline-variant
    border, label-large) inside a 48 px hit area; the panel is an Atlas menu surface (corner-small,
-   surface-container, elevation 2). Compact (< 600 px) shows the icon and "Data" only (CRM-HANDOFF
+   surface-container, elevation 2). Below 840 px it shows the icon and the short run label (CRM-HANDOFF
    § Top bar: compact data chip). Tokens only. */
 .anchor {
   position: relative;
@@ -56,6 +56,20 @@
   color: var(--md-sys-color-error);
 }
 
+/* The state glyph: success green when the index is ready, error when it is down (CrmDataChip). */
+.stateIcon {
+  display: inline-flex;
+  color: inherit;
+}
+
+.stateIcon[data-state="ready"] {
+  color: var(--status-success);
+}
+
+.stateIcon[data-state="error"] {
+  color: var(--md-sys-color-error);
+}
+
 .long {
   min-width: 0;
   overflow: hidden;
@@ -67,7 +81,9 @@
   display: none;
 }
 
-@media (max-width: 599px) {
+/* Below 840 px the bar has no room for "Data: CountyLens run …": the chip shows the short run
+   label ("Run 3") and the full text stays in its tooltip and the panel (CrmShellApps768). */
+@media (max-width: 839px) {
   .long {
     display: none;
   }

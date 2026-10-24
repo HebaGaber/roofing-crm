@@ -28,6 +28,8 @@
   display: flex;
   align-items: center;
   padding: 0 var(--space-4);
+  /* The 1 px edge under the bar on compact (CrmShell390); from 600 px elevation on scroll. */
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   transition: box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
@@ -151,6 +153,12 @@
 
   .main {
     padding: var(--space-6);
+  }
+
+  /* The title sits 24 px from the window edge, in line with the page content (CrmShell1440). */
+  .bar {
+    padding: 0 var(--space-6);
+    border-bottom: 0;
   }
 }
 

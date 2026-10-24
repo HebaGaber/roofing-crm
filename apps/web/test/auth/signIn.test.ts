@@ -16,6 +16,8 @@ describe("classifySignInError (T020, AC-3: never a raw/generic error)", () => {
     });
     const result = classifySignInError(error);
     expect(result.kind).toBe("invalid-credentials");
+    // The board's wording (CrmSignInError390): never says which of the two was wrong.
+    expect(result.message).toBe("Wrong email or password. Check the test login you were sent.");
   });
 
   it("falls back to a typed unknown message, never the raw error, for anything else", () => {

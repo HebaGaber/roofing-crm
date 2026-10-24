@@ -1,12 +1,13 @@
 // B-07 T022 (deviation: RTL instead of Playwright component test, as apps/web has no Playwright
 // component setup): LeadCreateAction wired into the PropertyDetail drawer calls leads.create and
 // shows "Already a lead" on ALREADY_EXISTS (AC-1/AC-2).
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 
 const mutate = vi.fn();
+const noteMutate = vi.fn();
 let mutationState: { isPending: boolean; isSuccess: boolean; error: unknown } = {
   isPending: false,
   isSuccess: false,
@@ -14,6 +15,7 @@ let mutationState: { isPending: boolean; isSuccess: boolean; error: unknown } = 
 };
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate, ...mutationState }),
+  useAddLeadNote: () => ({ mutate: noteMutate, isPending: false, isSuccess: false, error: null }),
 }));
 
 import { toCreateInput } from "../../src/routes/Leads/LeadCreateAction";
@@ -89,7 +91,7 @@ describe("LeadCreateAction in the PropertyDetail drawer", () => {
       error: { data: { appCode: "ALREADY_EXISTS" }, message: "exists" },
     };
     renderDrawer();
-    expect(screen.getByText(/already a lead/i)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/already a lead/i);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("button", { name: /create lead/i })).toBeNull();
   });
@@ -104,7 +106,7 @@ describe("LeadCreateAction in the PropertyDetail drawer", () => {
   it("confirms creation after success with a link to the lead list", () => {
     mutationState = { isPending: false, isSuccess: true, error: null };
     renderDrawer();
-    expect(screen.getByText(/lead created/i)).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toMatch(/lead created/i);
   });
 });
 
@@ -164,5 +166,77 @@ describe("signals snapshot holds the permit", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create lead" }));
     expect(mutate.mock.calls[1]?.[0]).toMatchObject({ signals: { openPermitId: "2025-100" } });
+  });
+});
+
+describe("lead snackbar (CrmLeadCreate*, CrmLeadDup*)", () => {
+  it("one tap creates: the button reads Creating… while pending", () => {
+    mutationState = { isPending: true, isSuccess: false, error: null };
+    renderDrawer();
+    const button = screen.getByRole("button", { name: /creating/i });
+    expect(button.hasAttribute("disabled")).toBe(true);
+  });
+
+  it("created: a status snackbar with Open lead, View leads and an optional note", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null };
+    renderDrawer();
+    const bar = screen.getByRole("status");
+    expect(bar.textContent).toContain("Lead created · New · assigned to you");
+    expect(within(bar).getByRole("link", { name: "Open lead" }).getAttribute("href")).toBe(
+      `/leads/${encodeURIComponent("48453:tcad:0201885122")}`,
+    );
+    expect(within(bar).getByRole("link", { name: "View leads" }).getAttribute("href")).toBe(
+      "/leads",
+    );
+    expect(within(bar).getByLabelText("Add a note (optional)")).toBeTruthy();
+    expect(within(bar).queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("Save note sends the trimmed text for this lead; Skip closes the note box", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null };
+    renderDrawer();
+    fireEvent.change(screen.getByLabelText("Add a note (optional)"), {
+      target: { value: "  owner mails from Houston " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save note" }));
+    expect(noteMutate.mock.calls[0]?.[0]).toEqual({
+      leadKey: "48453:tcad:0201885122",
+      text: "owner mails from Houston",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(screen.queryByLabelText("Add a note (optional)")).toBeNull();
+  });
+
+  it("the snackbar can be dismissed", () => {
+    mutationState = { isPending: false, isSuccess: true, error: null };
+    renderDrawer();
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("already a lead: its own snackbar, Open lead goes to that lead, nothing is added", () => {
+    mutationState = {
+      isPending: false,
+      isSuccess: false,
+      error: { data: { appCode: "ALREADY_EXISTS" } },
+    };
+    renderDrawer();
+    const bar = screen.getByRole("status");
+    expect(bar.textContent).toContain("Already a lead. Nothing was added.");
+    expect(bar.textContent).not.toContain("Lead created");
+    expect(within(bar).getByRole("link", { name: "Open lead" })).toBeTruthy();
+  });
+
+  it("a failed create says nothing was saved, or that the device is offline", () => {
+    mutationState = { isPending: false, isSuccess: false, error: new Error("boom") };
+    renderDrawer();
+    expect(screen.getByRole("alert").textContent).toContain("Nothing was saved");
+    cleanup();
+    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    renderDrawer();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "You're offline. The lead was not saved.",
+    );
+    vi.restoreAllMocks();
   });
 });

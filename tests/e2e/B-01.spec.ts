@@ -133,7 +133,7 @@ test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", ()
       // attempt 2) would have passed unnoticed.
       if (attempt < 3) {
         await expect(page.locator("[data-sign-in-error]")).toHaveText(
-          "Incorrect username or password.",
+          "Wrong email or password. Check the test login you were sent.",
         );
       }
     }
