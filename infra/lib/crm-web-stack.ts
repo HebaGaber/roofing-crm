@@ -65,7 +65,15 @@ export class CrmWebStack extends Stack {
             frontend: {
               phases: {
                 preBuild: { commands: ["corepack enable", "pnpm install --frozen-lockfile"] },
-                build: { commands: ["pnpm --filter web build"] },
+                // build.json names the commit this build serves, so CI's e2e-hosted job can wait
+                // for its own commit instead of testing whatever build is live (AWS_COMMIT_ID is
+                // set by Amplify for every build). `.json` is excluded from the SPA rewrite above.
+                build: {
+                  commands: [
+                    "pnpm --filter web build",
+                    "node -e \"require('fs').writeFileSync('dist/build.json', JSON.stringify({ commit: process.env.AWS_COMMIT_ID ?? null }))\"",
+                  ],
+                },
               },
               artifacts: { baseDirectory: "dist", files: ["**/*"] },
               cache: { paths: ["../../node_modules/**/*"] },

@@ -22,12 +22,13 @@ permissions:
 
 jobs:
   workspace:
-    runs-on: ubuntu-latest
-    # B-02: CrmSync's native-DuckDB Lambda forces Docker-bundled arm64 builds; under this
-    # runner's QEMU emulation (docker/setup-qemu-action, added above) that's materially slower
-    # than the native-Docker-Desktop case this budget was set for — 15m wasn't enough. B-09: 45m;
-    # infra unit tests skip Docker bundling except stacks.test.ts's one real-bundle check.
-    timeout-minutes: 45
+    # B-09: GitHub's native arm64 runner (free for public repos). The three Docker-bundled
+    # Lambdas (CrmApi trpc, CrmSync BuildIndex/Validate: native DuckDB) are all arm64, so they
+    # bundle natively here instead of under QEMU emulation. Every other Lambda bundles with
+    # esbuild, no Docker. Infra unit tests skip Docker bundling except stacks.test.ts's one
+    # real-bundle check.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
     env:
       # @crm/config throws without CDK_DEFAULT_REGION (infra/src/config.ts); synth needs it even
       # though this job never deploys.
@@ -41,14 +42,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # B-02: CrmSync's BuildIndexFunction forces Docker bundling at arm64 (native DuckDB
-      # binding, infra/lib/crm-sync-stack.ts) — the stock runner has no arm64 binfmt handler
-      # registered, so that cross-platform docker build fails with "exec format error" without
-      # this step.
-      - uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
-
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -58,6 +51,17 @@ jobs:
 
       - name: pnpm install
         run: pnpm install --frozen-lockfile
+
+      # B-09: Turborepo's local cache across runs, so packages whose inputs did not change replay
+      # their type-check/test results instead of re-running. infra#test is never cached
+      # (turbo.json): it bundles apps/* code that infra does not declare as a dependency.
+      - name: Turborepo cache
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Type-check (Turborepo)
         run: pnpm run type-check
@@ -103,7 +107,9 @@ jobs:
 
   e2e-hosted:
     if: github.event_name == 'push' && (github.ref_name == 'feature/roofing-crm' || startsWith(github.ref_name, '0'))
-    needs: [workspace, gitleaks]
+    # B-09: runs alongside `workspace` (it tests the Amplify build of this commit, not anything
+    # `workspace` produces); only the secret scan has to pass first.
+    needs: [gitleaks]
     runs-on: ubuntu-latest
     # The one job outside the 15-minute budget: waits for the Amplify build of this commit, then
     # Playwright on the hosted URL.
@@ -138,15 +144,19 @@ jobs:
           fi
           slug=$(printf '%s' "$GITHUB_REF_NAME" | tr '/' '-')
           url="https://${slug}.${AMPLIFY_APP_ID}.amplifyapp.com"
-          deadline=$(( $(date +%s) + 12 * 60 ))
+          # B-09: wait for the Amplify build of THIS commit, not just any live page. The build
+          # writes /build.json with the commit it serves (infra/lib/crm-web-stack.ts); polling
+          # /sign-in alone passed instantly on the previous build once this job stopped waiting
+          # for `workspace`.
+          deadline=$(( $(date +%s) + 15 * 60 ))
           while :; do
-            code=$(curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 "$url/sign-in" || echo "000")
-            if [ "$code" = "200" ]; then
-              echo "$url is live"
+            served=$(curl -fsS --max-time 10 "$url/build.json" 2>/dev/null | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{process.stdout.write(String(JSON.parse(d).commit??""))}catch{}})' || true)
+            if [ "$served" = "$GITHUB_SHA" ]; then
+              echo "$url serves $GITHUB_SHA"
               break
             fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::$url did not come up within 12 minutes (last HTTP status: $code)"
+              echo "::error::$url did not serve $GITHUB_SHA within 15 minutes (it serves: ${served:-unknown})"
               exit 1
             fi
             sleep 15
