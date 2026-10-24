@@ -38,3 +38,16 @@ This is an AI pre-check. It reports gaps only. It does not approve the gate; the
 6. **Process note.** The playbook's stage 6 names `smeargle` on changed UI pages. TZ04 substituted TC-NF-04 and the agent was not run. The PO should accept that substitution.
 
 Nothing was edited, committed, pushed, deployed or run against AWS. Only this report was written.
+
+## Resolution and decision (2026-10-24)
+
+| Fix-list item | Outcome |
+| --- | --- |
+| 1. C-04 PO exception for TC-NF-03, TC-011 scale, AC-4 at 50+ | Granted by the PO (deferred to a later story with the A-11 data); recorded in `stories/B-07-leads.md` Gate G7 |
+| 2. C-04 missing test report | Written: `docs/reports/TR-B-07.md` |
+| 3. C-02 stale CI link | Fixed in `docs/reports/UT-B-07.md` (run 40084514554); CI is also green on the final commit |
+| 4. C-03 re-score | Done: metagross 85, audino 86 (`docs/reviews/CR-B-07.md`) |
+| 5. ERR-13 and 6. the `smeargle` substitution | Accepted by the PO |
+
+**Decision:** Approved with exceptions, HebaGaber (PO), 2026-10-24.
+

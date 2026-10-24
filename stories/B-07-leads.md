@@ -20,8 +20,8 @@ agents:
   verify: "Playwright: create, update, reload; URL-encoded combined filters"
 skills: [build-frontend-backends, use-neutral-lexicon, frontend-bug-fix, apply-engineering-guidelines]
 ui: true
-status: Ready
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: true
 created: 2026-10-23
 reuses: []  # nothing to copy from Task A (feature-list §4.6: "B-07 (leads), B08 (list) and B12 have nothing to copy")
@@ -119,3 +119,27 @@ No `[NEEDS CLARIFICATION]` remaining.
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ re-run after fixing G4-6/G4-7, 2026-10-24 |
 
 **Decision:** ☑ Ready ☐ Returned, reason: {…} · 2026-10-24
+
+## Gate G7: Validated build
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| C-01 | Every task in `tasks.md` is done | ☑ (36 of 36) |
+| C-02 | Unit and integration tests pass; coverage of new code at least 80 % | ☑ (845 passed, every lead file at least 80 %; `docs/reports/UT-B-07.md`) |
+| C-03 | Code review: every reviewer at least 75, no open Critical | ☑ (metagross 80, re-scored 85; audino 78, re-scored 86; `docs/reviews/CR-B-07.md`) |
+| C-04 | Test cases pass on the hosted URL | ☑ with PO exception (20 of 20 executed cases pass; TC-NF-03, the TC-011 scale variant and AC-4 at 50+ leads are deferred; `docs/reports/TR-B-07.md`) |
+| C-05 | Every defect closed | ☑ (ERR-1 to ERR-20) |
+| C-06 | No open Critical defect | ☑ |
+| C-07 | Evidence complete | ☑ (`docs/evidence/B-07.md`) |
+| C-08 | Traceability and kit usage complete | ☑ |
+| C-09 | Commits start with the story ID; no secrets | ☑ (all start `B-07:`; gitleaks green) |
+| C-10 | Story status Done after approval | ☑ |
+
+**Decision:** ☑ Approved with exceptions ☐ Returned · HebaGaber (PO) · 2026-10-24
+
+**Exceptions granted by the PO:**
+1. TC-NF-03, the TC-011 scale variant and AC-4 at 50 or more leads are **deferred, not passed**: they need the A-11 full-county manifest, which moves to a later story. Recorded in `specs/007-leads/known-gaps.md` § 1.
+2. ERR-13 (one unexplained TC-NF-01 failure) is accepted as closed **not reproduced, cause unproven**.
+3. The responsive check (TZ04) used TC-NF-04 at 390 / 768 / 1440; the separate `smeargle` agent was not run.
+4. The B-07 e2e spec skips on GitHub Actions (CI has no AWS credentials, and the organization policy blocks the GitHub-to-AWS role); its logged-in proof is the hosted local run recorded in `docs/evidence/B-07.md`.
+5. The review findings deferred to the follow-up story (`known-gaps.md` §§ 4 and 7) are accepted, including the client-trusted `leads.create` (4.1).

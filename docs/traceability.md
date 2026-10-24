@@ -71,5 +71,6 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G5 (B-03) | specs/003-map-search/{plan,tasks}.md | | FAIL (5 findings: synthetic data in hosted Playwright, missing `isAgedRoof`, task-before-its-file-exists ordering, imprecise paths); all fixed | Approved | 2026-10-23 |
 | G6 (B-03) | testplans/B-03-test-cases.md | | FAIL (3 findings: placeholder CIDs, missing login/URL steps, bundled steps); fixed by querying the live B-02 index directly | Approved with exceptions (GAP-1/3/4/5/6: Vitest-only proofs or explicitly blocked where real data can't demonstrate an AC yet) | 2026-10-23 |
 | G7 (B-03) | docs/gates/G7-B-03-precheck.md | | PASS (2 findings fixed: tasks.md checkboxes, apps/web coverage; GAP-7 exceptions carried forward) | pending Round 2 | 2026-10-24 |
+| G7 (B-07) | docs/gates/G7-B-07-precheck.md | | FAIL on C-04 only, a PO-deferred scope (A-11 data); every fixable finding fixed (coverage, commit prefixes, defect records, test report, re-scores 85 and 86, CI green) | Approved with exceptions (see `stories/B-07-leads.md` Gate G7) | 2026-10-24 |
 | G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |
