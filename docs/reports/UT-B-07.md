@@ -3,14 +3,14 @@ id: UT-B-07
 type: unit-test-report
 story: B-07
 branch: 007-leads
-commit: 4ee8e45
-ci_run: https://github.com/HebaGaber/roofing-crm/actions/runs/40076720899
+commit: ae7768c
+ci_run: https://github.com/HebaGaber/roofing-crm/actions/runs/40084514554
 created: 2026-10-24
 ---
 
 # Unit and Integration Test Report: B-07 Create, manage and browse CRM leads
 
-Totals are from the final code (fixes in `2a2f669`, tests-only changes after). The CI workspace job (lint, type-check, unit tests) passed on `2a2f669`: https://github.com/HebaGaber/roofing-crm/actions/runs/40076720899 . The per-package totals below are from a local `pnpm exec turbo run type-check test` run on the same code (28 of 28 tasks); the CI log keeps raw escape codes, so it was not parsed.
+Totals are from the final code (fixes in `2a2f669`, tests-only changes after). The CI workspace job (lint, type-check, unit tests) passed on the final commit `ae7768c`: https://github.com/HebaGaber/roofing-crm/actions/runs/40084514554 . The per-package totals below are from a local `pnpm exec turbo run type-check test` run on the same code (28 of 28 tasks); the CI log keeps raw escape codes, so it was not parsed.
 
 | Item | Value |
 | --- | --- |
