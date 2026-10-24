@@ -1,0 +1,13 @@
+// B-07: how the lead screens read a failed lookup. tRPC puts the error code on `data.code`.
+
+/** True for a tRPC NOT_FOUND: the lead id does not exist (not a transient failure). */
+export function isNotFoundError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  return (error as { data?: { code?: unknown } }).data?.code === "NOT_FOUND";
+}
+
+/** Retry policy for the lead lookup: a missing lead stays missing, so never retry it; retry any
+ *  other failure once (a dropped connection or a throttled call). */
+export function retryUnlessNotFound(failureCount: number, error: unknown): boolean {
+  return !isNotFoundError(error) && failureCount < 1;
+}

@@ -12,6 +12,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 import type { LeadsListInput } from "./leadFilters.state.js";
+import { retryUnlessNotFound } from "./leadErrors.js";
 
 export type LeadListItem = Lead & { readonly leadKey: string; readonly notInCurrentRun: boolean };
 export interface LeadsListOutput {
@@ -74,7 +75,7 @@ export function useLeadsList(input: LeadsListInput) {
 
 export function useLead(leadKey: string) {
   const trpc = useLeadsTrpc();
-  return useQuery(trpc.leads.get.queryOptions({ leadKey }));
+  return useQuery({ ...trpc.leads.get.queryOptions({ leadKey }), retry: retryUnlessNotFound });
 }
 
 /** Creating a lead refreshes any cached list so the new lead appears without a reload. */

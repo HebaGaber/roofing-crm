@@ -5,9 +5,10 @@
 import { CidDisplay, Provenance, StatusPill } from "@crm/ui";
 import { LEAD_STATUSES, type LeadEvent, type LeadStatus } from "@crm/shared";
 import { useState, type FormEvent, type ReactElement } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import { ErrorBanner } from "../../components/ErrorBanner.js";
 import { Skeleton } from "../../components/Skeleton.js";
+import { isNotFoundError } from "./leadErrors.js";
 import { LEAD_STATUS_KIND } from "./LeadsList.js";
 import { useAddLeadNote, useLead, useUpdateLeadStatus, type LeadDetailData } from "./leadsApi.js";
 import styles from "./Leads.module.css";
@@ -222,6 +223,19 @@ export function Component(): ReactElement {
   const { leadKey: routeKey = "" } = useParams();
   const result = useLead(routeKey);
   if (result.status === "pending") return <Skeleton variant="cards" />;
+  if (result.status === "error" && isNotFoundError(result.error)) {
+    return (
+      <section className={styles.page} aria-labelledby="lead-not-found">
+        <h2 id="lead-not-found" className={styles.title}>
+          Lead not found
+        </h2>
+        <p className={styles.meta}>No lead exists for this address. It may have been removed.</p>
+        <Link className={styles.link} to="/leads">
+          Back to leads
+        </Link>
+      </section>
+    );
+  }
   if (result.status === "error") {
     return (
       <ErrorBanner

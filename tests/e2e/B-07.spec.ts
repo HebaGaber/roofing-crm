@@ -706,17 +706,14 @@ test.describe("B-07 leads", () => {
 
   test("B-07-TC-017 unknown lead not found", async ({ page }) => {
     await page.goto("/leads/does-not-exist");
-    // The page retries once, then stops with an error banner (no spinner left running).
-    await expect(page.getByRole("alert")).toContainText(/could not be loaded/i, {
-      timeout: 15_000,
+    // A missing lead is not retried, so the not-found page appears straight away.
+    await expect(page.getByRole("heading", { name: "Lead not found" })).toBeVisible({
+      timeout: 5_000,
     });
-    await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
-    test.info().annotations.push({
-      type: "known-gap",
-      description:
-        "LeadDetail shows its generic load-error banner with Retry for an unknown id; the plan's 'lead not found' state with a link back to /leads is not implemented.",
-    });
+    await expect(page.getByRole("alert")).toHaveCount(0); // not the generic load-error banner
     await shot(page, "017", "not-found");
+    await page.getByRole("link", { name: "Back to leads" }).click();
+    await expect(page).toHaveURL(/\/leads$/);
   });
 
   // ---- NFRs --------------------------------------------------------------------------------

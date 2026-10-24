@@ -89,10 +89,18 @@ describe("leads queries", () => {
     expect(getFn).toHaveBeenCalledWith({ leadKey: "48453:tcad:1" });
   });
 
-  it("surfaces a failed query as an error status", async () => {
+  it("retries a failed lookup once, then surfaces it as an error status", async () => {
     getFn.mockRejectedValue(new Error("boom"));
     const { result } = renderHook(() => useLead("k"), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("error"), { timeout: 4_000 });
+    expect(getFn).toHaveBeenCalledTimes(2); // the first try plus one retry
+  });
+
+  it("does not retry a lead that does not exist", async () => {
+    getFn.mockRejectedValue({ data: { code: "NOT_FOUND" } });
+    const { result } = renderHook(() => useLead("missing"), { wrapper });
     await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(getFn).toHaveBeenCalledTimes(1);
   });
 });
 

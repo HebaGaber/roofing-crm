@@ -370,6 +370,6 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
 - **TC-008, TC-010:** assert on the SAVED notes list, not the whole Notes region (the region contains the textarea, so typed-but-unsaved text satisfied the old check).
 - **TC-014, TC-015:** run with a stale fixture lead (`48453:tcad:B07STALE`, manifest of another run, property absent from the current index). The flag now means "manifest differs AND property absent".
 - **TC-015b (new):** a lead whose property is still in the run is not flagged.
-- **TC-017:** the page shows a generic load-error banner, not "lead not found" with a link back.
+- **TC-017:** passes on its original wording. The page first showed only a generic load-error banner; the product now shows "Lead not found" with a "Back to leads" link, and a missing lead is not retried.
 - **TC-007:** throttled calls (HTTP 503, Lambda concurrency 10 on this account) are retried and counted, as a real client would.
 - **Deferred to a follow-up story (PO decision 2026-10-24):** TC-011 scale variant and TC-NF-03 (50+ leads need the A-11 full-county manifest). See `specs/007-leads/known-gaps.md`.
