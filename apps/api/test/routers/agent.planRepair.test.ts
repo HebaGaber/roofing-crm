@@ -23,7 +23,7 @@ import { agentRouter } from "../../src/routers/agent.js";
 class EmptyLeadIndex implements LeadIndex {
   async indexInfo() {
     return {
-      manifestCid: "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+      manifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
       propertyCount: 0,
       permitCount: 0,
       promotedAt: "2026-10-21T10:35:16Z",

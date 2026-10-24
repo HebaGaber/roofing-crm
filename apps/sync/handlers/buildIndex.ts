@@ -5,11 +5,17 @@
 // status_class/open_days/roof age — ADR-07), and Zod-validates every row against
 // packages/index-schema before it is ever written out as crm_property/crm_permit Parquet.
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mkdtempSync, rmSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
+import { once } from "node:events";
+import { finished } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import {
+  createInMemoryConnection,
+  duckDbOptionsFromEnv,
+  type DuckDBConnection,
+} from "../src/engine/duckdb.js";
 import { contentAddressedKey } from "./fetchPart.js";
 import { downloadS3ObjectToFile, withObservability, type Observability } from "@crm/observability";
 import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
@@ -243,12 +249,49 @@ function localPartPath(path: string): string {
   return join(String(group), String(table), String(part));
 }
 
+/**
+ * Streams one bound view through map+validate into an NDJSON file, one DuckDB chunk (~2,048 rows)
+ * at a time — B-09 full-county sizing. The earlier path read every row into one JS array and
+ * `JSON.stringify`-ed the whole array before COPY: at 441,961 properties that is ~1 GB of JS
+ * objects plus a single string near V8's ~512M-character limit, a real OOM/RangeError risk at the
+ * function's memory size. Each line is the same validated CrmProperty/CrmPermit object as before,
+ * so the Parquet written from it has the identical schema. Returns the row count.
+ */
+async function streamViewToNdjson<T>(
+  connection: DuckDBConnection,
+  sql: string,
+  destPath: string,
+  mapRow: (row: ViewRow) => T,
+): Promise<number> {
+  const out = createWriteStream(destPath, { encoding: "utf8" });
+  let count = 0;
+  try {
+    const result = await connection.stream(sql);
+    for await (const rows of result.yieldRowObjectJs()) {
+      if (rows.length === 0) continue;
+      const lines = rows.map((row) => JSON.stringify(mapRow(row))).join("\n") + "\n";
+      count += rows.length;
+      if (!out.write(lines)) await once(out, "drain");
+    }
+    out.end();
+    await finished(out);
+    return count;
+  } catch (error) {
+    out.destroy();
+    throw error;
+  }
+}
+
 async function buildIndexCoreFromEvent(
   event: BuildIndexEvent,
   obs: Observability,
 ): Promise<BuildIndexOutput> {
   const tmpDir = mkdtempSync(join(tmpdir(), "crm-build-index-"));
-  const connection = await createInMemoryConnection();
+  const spillDir = join(tmpDir, "duckdb-spill");
+  await mkdir(spillDir, { recursive: true });
+  // memory_limit + a /tmp spill directory: DuckDB spills the view joins to ephemeral storage
+  // instead of OOM-ing the function (CrmSyncStack sizes both per function).
+  const connection = await createInMemoryConnection(duckDbOptionsFromEnv(process.env, spillDir));
   try {
     await connection.run("SET TimeZone = 'UTC'");
     const engine: QueryEngine = {
@@ -274,26 +317,32 @@ async function buildIndexCoreFromEvent(
     }
 
     await bindManifest(manifestBytes, tmpDir, engine);
-    const { properties, permits } = await buildIndexCore(engine, event.manifestCid);
-    obs.logger.info("BuildIndex: rows mapped and validated", {
-      propertyCount: properties.length,
-      permitCount: permits.length,
-    });
 
     // Write the already-validated CrmProperty/CrmPermit rows (camelCase, index-schema shape) —
-    // never the raw view rows — as Parquet, via a JSON round-trip DuckDB reads back typed.
-    const propertyJson = join(tmpDir, "crm_property.json");
-    const permitJson = join(tmpDir, "crm_permit.json");
-    await writeFile(propertyJson, JSON.stringify(properties));
-    await writeFile(permitJson, JSON.stringify(permits));
+    // never the raw view rows — as Parquet, via an NDJSON round-trip DuckDB reads back typed.
+    const propertyJson = join(tmpDir, "crm_property.ndjson");
+    const permitJson = join(tmpDir, "crm_permit.ndjson");
+    const propertyCount = await streamViewToNdjson(
+      connection,
+      "SELECT * FROM v_property",
+      propertyJson,
+      (row) => mapPropertyRow(row, event.manifestCid),
+    );
+    const permitCount = await streamViewToNdjson(
+      connection,
+      "SELECT * FROM v_roofing_permit",
+      permitJson,
+      (row) => mapPermitRow(row, event.manifestCid),
+    );
+    obs.logger.info("BuildIndex: rows mapped and validated", { propertyCount, permitCount });
 
     const propertyFile = join(tmpDir, "crm_property.parquet");
     const permitFile = join(tmpDir, "crm_permit.parquet");
     await connection.run(
-      `COPY (SELECT * FROM read_json('${propertyJson}', columns = ${duckDbColumnsClause(CRM_PROPERTY_COLUMNS)})) TO '${propertyFile}' (FORMAT parquet)`,
+      `COPY (SELECT * FROM read_json('${propertyJson}', format = 'newline_delimited', columns = ${duckDbColumnsClause(CRM_PROPERTY_COLUMNS)})) TO '${propertyFile}' (FORMAT parquet)`,
     );
     await connection.run(
-      `COPY (SELECT * FROM read_json('${permitJson}', columns = ${duckDbColumnsClause(CRM_PERMIT_COLUMNS)})) TO '${permitFile}' (FORMAT parquet)`,
+      `COPY (SELECT * FROM read_json('${permitJson}', format = 'newline_delimited', columns = ${duckDbColumnsClause(CRM_PERMIT_COLUMNS)})) TO '${permitFile}' (FORMAT parquet)`,
     );
 
     const propertyKey = `index/${event.manifestCid}/crm_property.parquet`;
@@ -316,8 +365,8 @@ async function buildIndexCoreFromEvent(
     return {
       manifestCid: event.manifestCid,
       bucket: event.bucket,
-      propertyCount: properties.length,
-      permitCount: permits.length,
+      propertyCount,
+      permitCount,
       propertyKey,
       permitKey,
       coverageParcelsPublished: event.coverageParcelsPublished,

@@ -9,7 +9,7 @@
 // espeon's handler files don't exist yet when this stack is synthesized, `NodejsFunction`'s
 // esbuild bundling throws — that is expected mid-build-wave (Phase 5's integration check runs
 // after both groups finish), not a defect in this file.
-import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { Duration, RemovalPolicy, Size, Stack, type StackProps } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -19,10 +19,12 @@ import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sns from "aws-cdk-lib/aws-sns";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
+import * as cr from "aws-cdk-lib/custom-resources";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
@@ -50,10 +52,63 @@ export interface CrmSyncStackProps extends StackProps {
   /** Config value (ARD-B §13's accepted SNS-instead-of-PagerDuty deviation): an optional email
    * subscriber for the FetchPart DLQ alarm. No subscription is created when omitted. */
   readonly alarmEmail?: string;
+  /** `DATA_MANIFEST_CID` from `@crm/config` (already CIDv1-validated there): the Task A run
+   *  manifest this deployment serves. B-09 auto-sync: it is pinned in an SSM parameter Plan treats
+   *  as authoritative, and a change to it starts one crm-sync execution during the deploy. */
+  readonly dataManifestCid: string;
 }
 
-const HANDLER_MEMORY_MB = 1024;
-const HANDLER_TIMEOUT = Duration.minutes(5);
+interface HandlerSizing {
+  readonly memoryMb: number;
+  readonly timeout: Duration;
+  /** Lambda /tmp size; omitted = Lambda's 512 MB default. */
+  readonly ephemeralStorageMb?: number;
+  /** DuckDB `memory_limit` for handlers that open DuckDB (apps/sync/src/engine/duckdb.ts). */
+  readonly duckDbMemoryLimit?: string;
+}
+
+/** Plan, FetchPart, Promote: one manifest JSON, one ≤ ~6 MB part, one DynamoDB write. */
+const DEFAULT_SIZING: HandlerSizing = { memoryMb: 1024, timeout: Duration.minutes(5) };
+
+/**
+ * B-09 full-county sizing (Task A Run 2: 441,961 properties, 15,025 roofing permits; measured on
+ * the similar Run 1 manifest: 204 `kind: "table"` parts, ~556 MB). BuildIndex downloads every
+ * part into /tmp, binds the views in DuckDB, streams the mapped rows to NDJSON and writes the
+ * Parquet output, all in /tmp:
+ * - memory 3008 MB: the largest size proven to run in this (new, Free-plan) account — another
+ *   function here already runs at 3008 MB; new accounts can be capped there, so nothing above it
+ *   is assumed. ~1.7 vCPU at this size.
+ * - DuckDB memory_limit 1800 MB (~60%), spilling to /tmp beyond it, leaving ~1.2 GB for Node,
+ *   the native module and the S3 upload buffers. JS-side rows are streamed per DuckDB chunk.
+ * - /tmp 4096 MB: ~556 MB parts + ~0.5 GB NDJSON + Parquet output + DuckDB spill, ~2.5x headroom.
+ * - timeout 15 min (Lambda's maximum): architecture-constitution.md §10 budgets the build step at
+ *   < 12 min (else switch to Fargate); 15 min leaves margin above that budget, not a new target.
+ */
+const BUILD_INDEX_SIZING: HandlerSizing = {
+  memoryMb: 3008,
+  timeout: Duration.minutes(15),
+  ephemeralStorageMb: 4096,
+  duckDbMemoryLimit: "1800MB",
+};
+
+/** Validate downloads BuildIndex's two full-county Parquet files and reads every row's
+ *  sourceManifestCid (442k values) back through DuckDB — more than the 1024 MB default holds
+ *  comfortably, far less than BuildIndex. */
+const VALIDATE_SIZING: HandlerSizing = {
+  memoryMb: 2048,
+  timeout: Duration.minutes(10),
+  ephemeralStorageMb: 1024,
+  duckDbMemoryLimit: "1200MB",
+};
+
+/** Must exceed the sum of every step's own timeout (Plan + one FetchPart item + BuildIndex +
+ *  Validate + Promote = 40 min) plus the Map's ~204 rate-limited part fetches. NFR-001's
+ *  ≤ 30 min is the measured target (`SyncDurationMs`); this is only the hard ceiling. */
+const STATE_MACHINE_TIMEOUT = Duration.minutes(60);
+
+/** CDK-managed SSM parameter holding `DATA_MANIFEST_CID` — the authoritative CID Plan resolves
+ *  first (apps/sync/handlers/plan.ts). The CRM's own `/crm/` namespace; never `/countylens/*`. */
+const MANIFEST_CID_PARAMETER_NAME = "/crm/sync/data-manifest-cid";
 /** NFR-002 / ADR-02: FetchPart's Map runs with bounded concurrency 2–3. */
 const FETCH_PART_MAP_CONCURRENCY = 3;
 /** ADR-02: CloudFront first, then Filebase, then Pinata. Task A's own deployed distribution
@@ -150,7 +205,9 @@ export class CrmSyncStack extends Stack {
           // Cast: aws-cdk-lib's `ServicePrincipal` doesn't satisfy `IPrincipal` under this repo's
           // `exactOptionalPropertyTypes` (same pre-existing aws-cdk-lib/TS strictness mismatch as
           // the dashboard widgets in crm-ops-stack.ts), not a real type-safety issue here.
-          principals: [new iam.ServicePrincipal("cloudwatch.amazonaws.com") as unknown as iam.IPrincipal],
+          principals: [
+            new iam.ServicePrincipal("cloudwatch.amazonaws.com") as unknown as iam.IPrincipal,
+          ],
           resources: [alarmTopic.topicArn],
         }),
       );
@@ -163,14 +220,21 @@ export class CrmSyncStack extends Stack {
       entry: string,
       environment: Record<string, string>,
       handlerExportName: string,
-      nodeModules: string[] = [],
-      architecture: lambda.Architecture = lambda.Architecture.X86_64,
-      depsLockFilePath?: string,
+      options: {
+        readonly nodeModules?: string[];
+        readonly architecture?: lambda.Architecture;
+        readonly depsLockFilePath?: string;
+        readonly sizing?: HandlerSizing;
+      } = {},
     ): NodejsFunction => {
+      const nodeModules = options.nodeModules ?? [];
+      const architecture = options.architecture ?? lambda.Architecture.X86_64;
+      const { depsLockFilePath } = options;
+      const sizing = options.sizing ?? DEFAULT_SIZING;
       // An explicit LogGroup (rather than NodejsFunction's `logRetention` prop) avoids spinning
       // up CDK's LogRetention custom-resource Lambda per function — keeping this stack's Lambda
-      // count exactly the five pipeline handlers (infra/test/crm-sync-stack.test.ts's literal
-      // `resourceCountIs("AWS::Lambda::Function", 5)` assertion).
+      // count exactly the five pipeline handlers plus the one deploy-time sync starter
+      // (infra/test/crm-sync-stack.test.ts's literal `resourceCountIs` assertion).
       const logGroup = new logs.LogGroup(this, `${id}Logs`, {
         logGroupName: `/aws/lambda/${functionName}`,
         retention: logs.RetentionDays.ONE_MONTH,
@@ -191,12 +255,18 @@ export class CrmSyncStack extends Stack {
               projectRoot: new URL("../../", import.meta.url).pathname,
             }),
         handler: handlerExportName,
-        memorySize: HANDLER_MEMORY_MB,
-        timeout: HANDLER_TIMEOUT,
+        memorySize: sizing.memoryMb,
+        timeout: sizing.timeout,
+        ...(sizing.ephemeralStorageMb === undefined
+          ? {}
+          : { ephemeralStorageSize: Size.mebibytes(sizing.ephemeralStorageMb) }),
         tracing: lambda.Tracing.ACTIVE,
         environment: {
           POWERTOOLS_SERVICE_NAME: functionName,
           POWERTOOLS_METRICS_NAMESPACE: "RoofingCrm",
+          ...(sizing.duckDbMemoryLimit === undefined
+            ? {}
+            : { DUCKDB_MEMORY_LIMIT: sizing.duckDbMemoryLimit }),
           ...environment,
         },
         logGroup,
@@ -226,12 +296,24 @@ export class CrmSyncStack extends Stack {
       return fn;
     };
 
+    // B-09 auto-sync: the config CID, pinned where Plan treats it as authoritative (ahead of the
+    // runs/index.json hint and the execution's own manifestCidHint).
+    const manifestCidParameter = new ssm.StringParameter(this, "DataManifestCidParameter", {
+      parameterName: MANIFEST_CID_PARAMETER_NAME,
+      stringValue: props.dataManifestCid,
+      description:
+        "DATA_MANIFEST_CID (@crm/config): the Task A run manifest crm-sync builds and promotes. Managed by CDK; change it in config and deploy.",
+    });
+
     const planFn = makeHandler(
       "PlanFunction",
       "crm-sync-plan",
       props.planHandlerEntry,
       {
         CRM_INDEX_BUCKET_NAME: props.indexBucketName,
+        MANIFEST_CID_SSM_PARAM_NAME: manifestCidParameter.parameterName,
+        // Plan's already-promoted check reads META#index from this table (GetItem only).
+        CRM_LEADS_TABLE_NAME: props.leadsTableName,
         // ADR-02: CloudFront first for the one lightweight fetch Plan does (the manifest JSON).
         // plan.ts's manifestGatewayUrls() falls back to Filebase/Pinata's public defaults when
         // this is unset (local dev, tests), so this is additive, not a required env var.
@@ -263,18 +345,22 @@ export class CrmSyncStack extends Stack {
       props.buildIndexHandlerEntry,
       { CRM_INDEX_BUCKET_NAME: props.indexBucketName },
       "buildIndexHandler",
-      ["@duckdb/node-api"],
-      // ARM64, not the X86_64 default: Docker bundling on this Apple Silicon host runs native
-      // arm64 containers with no emulation, so the native DuckDB binding it installs is
-      // linux-arm64 — matching this architecture, not X86_64 (ARM64 Lambda is also the AWS-
-      // recommended, cheaper default; nothing else in this stack requires X86_64).
-      lambda.Architecture.ARM_64,
-      // Found live: this workspace's pnpm-lock.yaml is lockfileVersion-incompatible with the
-      // CDK build image's bundled pnpm, which then tries to re-resolve from the registry and
-      // hits a known old-pnpm/fetch bug (ERR_INVALID_THIS) — unrelated to architecture. A plain
-      // npm lockfile naming only this one native dependency sidesteps pnpm entirely for this
-      // one function's nodeModules install.
-      new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url).pathname,
+      {
+        nodeModules: ["@duckdb/node-api"],
+        sizing: BUILD_INDEX_SIZING,
+        // ARM64, not the X86_64 default: Docker bundling on this Apple Silicon host runs native
+        // arm64 containers with no emulation, so the native DuckDB binding it installs is
+        // linux-arm64 — matching this architecture, not X86_64 (ARM64 Lambda is also the AWS-
+        // recommended, cheaper default; nothing else in this stack requires X86_64).
+        architecture: lambda.Architecture.ARM_64,
+        // Found live: this workspace's pnpm-lock.yaml is lockfileVersion-incompatible with the
+        // CDK build image's bundled pnpm, which then tries to re-resolve from the registry and
+        // hits a known old-pnpm/fetch bug (ERR_INVALID_THIS) — unrelated to architecture. A plain
+        // npm lockfile naming only this one native dependency sidesteps pnpm entirely for this
+        // one function's nodeModules install.
+        depsLockFilePath: new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url)
+          .pathname,
+      },
     );
     const validateFn = makeHandler(
       "ValidateFunction",
@@ -285,12 +371,16 @@ export class CrmSyncStack extends Stack {
         CRM_LEADS_TABLE_NAME: props.leadsTableName,
       },
       "validateHandler",
-      // Validate also reads Parquet via apps/sync/src/engine/duckdb.ts now (it proves row
-      // counts/provenance against BuildIndex's own output) — same native-binding treatment as
-      // BuildIndexFunction (ARM64 + the npm-only lockfile for the Docker-bundled pnpm bug).
-      ["@duckdb/node-api"],
-      lambda.Architecture.ARM_64,
-      new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url).pathname,
+      {
+        sizing: VALIDATE_SIZING,
+        // Validate also reads Parquet via apps/sync/src/engine/duckdb.ts now (it proves row
+        // counts/provenance against BuildIndex's own output) — same native-binding treatment as
+        // BuildIndexFunction (ARM64 + the npm-only lockfile for the Docker-bundled pnpm bug).
+        nodeModules: ["@duckdb/node-api"],
+        architecture: lambda.Architecture.ARM_64,
+        depsLockFilePath: new URL("../duckdb-lambda-deps/package-lock.json", import.meta.url)
+          .pathname,
+      },
     );
     const promoteFn = makeHandler(
       "PromoteFunction",
@@ -306,6 +396,19 @@ export class CrmSyncStack extends Stack {
     indexBucket.grantRead(validateFn);
     leadsTable.grantReadData(validateFn);
     leadsTable.grantReadWriteData(promoteFn);
+    // Least privilege for Plan's two new reads: exactly one SSM parameter, one DynamoDB action.
+    planFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [manifestCidParameter.parameterArn],
+      }),
+    );
+    planFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:GetItem"],
+        resources: [leadsTable.tableArn],
+      }),
+    );
 
     const { queue: fetchPartDlq, alarm: fetchPartDlqAlarm } = addFetchPartDlqAndAlarm(this, {
       alarmTopic,
@@ -409,6 +512,12 @@ export class CrmSyncStack extends Stack {
       .when(sfn.Condition.stringEquals("$.indexMeta.status", "Validated"), promoteTask)
       .otherwise(heldNoPromotion);
 
+    const alreadyPromoted = new sfn.Succeed(this, "AlreadyPromotedNoOp", {
+      comment:
+        "Plan found this manifestCid is already META#index.current — nothing to fetch, build or " +
+        "promote (a repeat of the deploy-time start, or a rollback re-running it).",
+    });
+
     const planResultChoice = new sfn.Choice(this, "PlanResultChoice")
       // Plan's success shape (contracts/sync-pipeline.md's PlanResult) never sets `status` at all
       // — Condition.stringEquals on a path that's genuinely absent throws rather than evaluating
@@ -419,6 +528,13 @@ export class CrmSyncStack extends Stack {
           sfn.Condition.stringEquals("$.status", "Held"),
         ),
         heldNoPromotion,
+      )
+      .when(
+        sfn.Condition.and(
+          sfn.Condition.isPresent("$.status"),
+          sfn.Condition.stringEquals("$.status", "AlreadyPromoted"),
+        ),
+        alreadyPromoted,
       )
       .otherwise(fetchPartsMap.next(buildIndexTask).next(validateTask).next(validateResultChoice));
 
@@ -431,8 +547,7 @@ export class CrmSyncStack extends Stack {
     this.stateMachine = new sfn.StateMachine(this, "CrmSyncStateMachine", {
       stateMachineName: "crm-sync",
       definitionBody: sfn.DefinitionBody.fromChainable(definition),
-      // NFR-001: ≤30 min for the full county; generous headroom over the sample's ≤5 min.
-      timeout: Duration.minutes(35),
+      timeout: STATE_MACHINE_TIMEOUT,
       tracingEnabled: true,
       logs: { destination: stateMachineLogGroup, level: sfn.LogLevel.ALL },
     });
@@ -440,6 +555,73 @@ export class CrmSyncStack extends Stack {
     // including the state machine's own orchestration role, even though it only ever invokes
     // this stack's own Lambdas and its own DLQ (infra/test/iam-deny.test.ts, T037).
     this.stateMachine.role.addToPrincipalPolicy(taskADenyStatement(this));
+
+    // --- B-09 auto-sync on deploy ---
+    //
+    // One states:StartExecution call, made by CloudFormation through a custom resource whose
+    // properties carry the manifest CID (as the execution name and in its input). CloudFormation
+    // only re-invokes a custom resource when its properties change, so a deploy that leaves
+    // DATA_MANIFEST_CID alone never starts a sync; changing it starts exactly one. StartExecution
+    // returns as soon as the execution is accepted, so the deploy never waits on, or fails with,
+    // the sync itself — a failed run is the DLQ alarm's job (constitution P0-12). Execution name
+    // = manifest CID (architecture-constitution.md §8): a repeat start (e.g. a rollback replaying
+    // the previous CID) returns ExecutionAlreadyExists, which is ignored, and Plan's
+    // already-promoted check makes any re-run a no-op.
+    const startSyncRole = new iam.Role(this, "StartSyncOnDeployRole", {
+      // Same aws-cdk-lib/exactOptionalPropertyTypes cast as the SNS topic policy above.
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com") as unknown as iam.IPrincipal,
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
+      ],
+    });
+    startSyncRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        actions: ["states:StartExecution"],
+        resources: [this.stateMachine.stateMachineArn],
+      }),
+    );
+    startSyncRole.addToPrincipalPolicy(taskADenyStatement(this));
+
+    const startSyncCall: cr.AwsSdkCall = {
+      service: "SFN",
+      action: "startExecution",
+      parameters: {
+        stateMachineArn: this.stateMachine.stateMachineArn,
+        name: props.dataManifestCid,
+        input: JSON.stringify({ manifestCidHint: props.dataManifestCid }),
+      },
+      physicalResourceId: cr.PhysicalResourceId.of(`crm-sync-${props.dataManifestCid}`),
+      ignoreErrorCodesMatching: "ExecutionAlreadyExists",
+    };
+    const startSyncOnDeploy = new cr.AwsCustomResource(this, "StartSyncOnManifestChange", {
+      functionName: "crm-sync-start-on-deploy",
+      // Same aws-cdk-lib/exactOptionalPropertyTypes mismatch as the principals above
+      // (`Role#principalAccount` is `string | undefined`), not a real type-safety issue.
+      role: startSyncRole as unknown as iam.IRole,
+      onCreate: startSyncCall,
+      onUpdate: startSyncCall,
+      // No onDelete: removing this resource (or the stack) never starts or stops a sync.
+      installLatestAwsSdk: false,
+      timeout: Duration.minutes(2),
+      logGroup: new logs.LogGroup(this, "StartSyncOnDeployLogs", {
+        logGroupName: "/aws/lambda/crm-sync-start-on-deploy",
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+    });
+    // The new CID must be in SSM and Plan's new configuration live before the execution starts.
+    startSyncOnDeploy.node.addDependency(manifestCidParameter, this.stateMachine, planFn);
+    NagSuppressions.addResourceSuppressions(
+      this,
+      [
+        {
+          id: "AwsSolutions-L1",
+          reason:
+            "AWS679f53fa... is CDK's own internal Provider Lambda for AwsCustomResource (the deploy-time crm-sync starter), not app code — its runtime version is chosen and updated by the CDK framework, not by this stack (same accepted suppression as CrmOps).",
+        },
+      ],
+      true,
+    );
 
     NagSuppressions.addResourceSuppressions(
       this,

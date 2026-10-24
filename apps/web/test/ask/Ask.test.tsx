@@ -28,7 +28,7 @@ vi.mock("../../src/routes/Ask/askApi", () => ({
 
 import { Component as Ask } from "../../src/routes/Ask/Ask";
 
-const MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
+const MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
 
 const PLAN: AgentAnswer["plan"] = {
   intent: "find_properties",

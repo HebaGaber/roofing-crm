@@ -4,7 +4,7 @@
 // same guard `playwright.config.ts` already loads from `../e2e/lib/runtime-url.js`), 3 repeats
 // paced 13s apart (21 asks total, stays under 5 asks/min).
 //
-// This test is expected to fail until Phase 4 (US1) is deployed and the Run-1 manifest is the
+// This test is expected to fail until Phase 4 (US1) is deployed and the Run 2 manifest is the
 // promoted run (tasks.md T047) -- it cannot run in this development session at all: there is no
 // deployed RUNTIME_URL yet, and no Cognito eval-user credentials to hand it. It is skip-guarded
 // the same way `apps/api/test/leadIndex.manifestCid.test.ts` (T020) is: a real, assertion-bearing
@@ -372,7 +372,7 @@ describe.skipIf(canRun)(
       "skipped locally -- set RUNTIME_URL (hosted, never localhost), CRM_COGNITO_USER_POOL_ID, " +
         "CRM_COGNITO_USER_POOL_CLIENT_ID, CRM_TEST_PASSWORD and CRM_GOLDEN_G5_PERMIT_NUMBER to " +
         "the deployed stack's values to run this for real (quickstart.md step 3 / tasks.md T047), " +
-        "once Phase 4 (US1) is deployed and the Run-1 manifest is promoted",
+        "once Phase 4 (US1) is deployed and the Run 2 manifest is promoted",
     );
   },
 );

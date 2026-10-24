@@ -20,7 +20,7 @@ const CONFIG: CrmAppConfig = {
   additionalBranches: [],
   aiProvider: "bedrock",
   agentModelId: "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
-  dataManifestCid: "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+  dataManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
 };
 
 describe("CrmSyncStack composition (T050/T052, AC-6)", () => {

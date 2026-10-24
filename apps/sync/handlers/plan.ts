@@ -14,6 +14,8 @@ import { gazetteer } from "@crm/oracle-views";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { contentAddressedKey } from "./fetchPart.js";
 import { estimateCostFromManifest, evaluateCostGate } from "./costGate.js";
 
@@ -116,8 +118,19 @@ export interface PlanHeld {
   manifestCid: string;
 }
 
+/** B-09 auto-sync idempotency: the resolved manifestCid is already `META#index.current`, so this
+ *  run ends before fetching anything (the state machine routes it straight to a Succeed state). */
+export interface PlanAlreadyPromoted {
+  status: "AlreadyPromoted";
+  heldReason?: undefined;
+  manifestCid: string;
+}
+
 export interface PlanInput {
   manifestCidHint?: string;
+  /** Operator override: rebuild and re-validate even when this manifestCid is already promoted
+   *  (e.g. after a BuildIndex code change). Promote still no-ops on the pointer itself. */
+  forceRebuild?: boolean;
   /** Test-only: forces the digest guard to see a mismatch, without needing a crafted manifest. */
   __testForceDigestMismatch?: boolean;
 }
@@ -259,6 +272,29 @@ async function resolveAuthoritativeManifestCid(
   return undefined;
 }
 
+const META_INDEX_KEY = { pk: "META#index", sk: "META" } as const;
+
+/**
+ * True only when `META#index.current` (Promote's pointer item in crm-leads) is exactly this
+ * manifestCid. Any other outcome — no table configured (local runs), no pointer yet (first run),
+ * a different CID, or an unreadable pointer — returns false and the run proceeds; Promote's own
+ * conditional write remains the guard against a duplicate flip.
+ */
+async function isAlreadyPromoted(manifestCid: string, obs: Observability): Promise<boolean> {
+  const tableName = process.env.CRM_LEADS_TABLE_NAME;
+  if (tableName === undefined || tableName === "") return false;
+  try {
+    const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const result = await ddb.send(new GetCommand({ TableName: tableName, Key: META_INDEX_KEY }));
+    return result.Item?.current === manifestCid;
+  } catch (error) {
+    obs.logger.warn("Plan: META#index unreadable, continuing without the already-promoted check", {
+      error,
+    });
+    return false;
+  }
+}
+
 async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   let lastError: unknown;
   for (const url of manifestGatewayUrls(cid)) {
@@ -277,7 +313,10 @@ async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   );
 }
 
-async function planCore(input: PlanInput, obs: Observability): Promise<PlanResult | PlanHeld> {
+async function planCore(
+  input: PlanInput,
+  obs: Observability,
+): Promise<PlanResult | PlanHeld | PlanAlreadyPromoted> {
   const bucket = process.env.CRM_INDEX_BUCKET_NAME;
   if (bucket === undefined || bucket === "") {
     throw new Error("Plan: CRM_INDEX_BUCKET_NAME is not set");
@@ -305,6 +344,13 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
         "using the authoritative CID; the hint is advisory only",
       { manifestCidHint: input.manifestCidHint, authoritativeManifestCid },
     );
+  }
+
+  if (input.forceRebuild !== true && (await isAlreadyPromoted(manifestCid, obs))) {
+    obs.logger.info("Plan: no-op, this manifestCid is already the promoted index", {
+      manifestCid,
+    });
+    return { status: "AlreadyPromoted", manifestCid };
   }
 
   const manifestBytes = await fetchManifestBytes(manifestCid);

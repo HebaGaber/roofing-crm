@@ -31,10 +31,6 @@ import { runAsk } from "../agent/composeAnswer.js";
 
 const obs = createObservability("crm-api");
 
-/** AC-7/FR-007 (data-model.md "New this round: data-publication reference"): the Run-1
- *  full-county manifest CID this story pins `agent.confirmLead`'s `sourceManifestCid` to. */
-const PINNED_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
-
 /** A flat per-ask spend estimate, reserved before any model call (contracts/agent-api.md step 1).
  *  Refined to real measured Bedrock token costs in US2 (T045's prompt-caching work); until then
  *  this is deliberately conservative-cheap so the $3/day cap is never the first thing a demo
@@ -209,7 +205,11 @@ export const agentRouter = router({
           roofAgeYears: property.roofAgeYears ?? undefined,
           roofAgeBasis: property.roofAgeBasis,
         },
-        sourceManifestCid: PINNED_MANIFEST_CID,
+        // Constitution B2 / AC-7: the lead records the manifest this property row actually came
+        // from — the row's own provenance, exactly as `leads.create` on the map path does
+        // (apps/web LeadCreateAction sends `property.sourceManifestCid`). Never a pinned constant:
+        // switching Task A runs is a `DATA_MANIFEST_CID` config change + deploy, not a code edit.
+        sourceManifestCid: property.sourceManifestCid,
         createdFrom: "agent",
       },
       requireUserId(ctx),

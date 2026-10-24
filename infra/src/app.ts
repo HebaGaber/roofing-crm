@@ -53,6 +53,9 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     promoteHandlerEntry: new URL(PROMOTE_HANDLER_ENTRY, import.meta.url).pathname,
     indexBucketName: dataStack.indexBucket.bucketName,
     leadsTableName: CRM_LEADS_TABLE_NAME,
+    // B-09 auto-sync: the one place the served Task A run is chosen. Changing DATA_MANIFEST_CID and
+    // deploying updates CrmSync's SSM-pinned CID and starts one sync of that run.
+    dataManifestCid: config.dataManifestCid,
     // B-09 T050/T052 (AC-6): the FetchPart DLQ alarm's SNS topic was already wired to accept an
     // email subscriber (ARD-B §13's accepted SNS-instead-of-PagerDuty deviation) but this app
     // entrypoint never actually supplied one, so no subscription — and no alarm email — was ever

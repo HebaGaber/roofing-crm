@@ -16,7 +16,7 @@ import {
   type CrmProperty,
   type IndexMetaHeldReason,
 } from "@crm/index-schema";
-import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import { createInMemoryConnection, duckDbOptionsFromEnv } from "../src/engine/duckdb.js";
 
 /** Constitution §10 / Round 1 decision, 2026-10-23: a reconcile diff over 0.1% of the manifest's
  *  published coverage count fails outright — it is never a documented pass. */
@@ -178,7 +178,7 @@ async function validateCoreFromEvent(
     await downloadToFile(s3, event.bucket, event.propertyKey, propertyFile);
     await downloadToFile(s3, event.bucket, event.permitKey, permitFile);
 
-    const connection = await createInMemoryConnection();
+    const connection = await createInMemoryConnection(duckDbOptionsFromEnv(process.env, tmpDir));
     try {
       const propertyCids = await readSourceManifestCids(connection, propertyFile, "crm_property");
       const permitCids = await readSourceManifestCids(connection, permitFile, "crm_permit");

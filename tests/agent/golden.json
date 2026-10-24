@@ -1,6 +1,6 @@
 {
   "_comment": "T041 (B-09/US2). The exact G1-G7 prompts and pass rules from checks.md §7.1, verbatim where checks.md gives exact wording. golden.test.ts drives its per-query assertions from this file's `id` plus the shared groundedness/correctness/honesty checks in checks.md §7.2 -- the free-text `mustDo`/`passRule` fields here are the human-readable record of what checks.md requires, not machine-parsed; the test's switch-on-id logic is the executable version of the same rule.",
-  "manifestCid": "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+  "manifestCid": "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
   "queries": [
     {
       "id": "G1",

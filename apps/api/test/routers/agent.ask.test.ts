@@ -53,7 +53,7 @@ function property(overrides: Partial<Provenanced<CrmProperty>> = {}): Provenance
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,
-    sourceManifestCid: "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+    sourceManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
     missingReasons: [],
     capturedAt: "2026-10-21T10:40:04.525Z",
     cid: REAL_PROPERTY_CID,
@@ -72,7 +72,7 @@ class FakeLeadIndex implements LeadIndex {
   constructor(private readonly rows: Provenanced<CrmProperty>[]) {}
   async indexInfo() {
     return {
-      manifestCid: "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+      manifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
       propertyCount: this.rows.length,
       permitCount: 0,
       promotedAt: "2026-10-21T10:35:16Z",
