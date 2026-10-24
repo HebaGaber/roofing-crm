@@ -8,11 +8,13 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
+import { CrmCiUser } from "./crm-ci-user.js";
 
 export class CrmDataStack extends Stack {
   public readonly indexBucket: s3.Bucket;
   public readonly leadsTable: dynamodb.Table;
   public readonly agentUsageTable: dynamodb.Table;
+  public readonly ciUser: CrmCiUser;
 
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
@@ -69,6 +71,12 @@ export class CrmDataStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // Demo project (Article III addendum).
     });
     Tags.of(this.agentUsageTable).add("project_name", "roofing-crm");
+
+    // B-09: the GitHub Actions CI principal (crm-ci-user.ts). It lives with crm-leads because its
+    // DynamoDB grant is that table's ARN, partition-scoped to lead keys.
+    this.ciUser = new CrmCiUser(this, "CiUser", {
+      leadsTableArn: this.leadsTable.tableArn,
+    });
 
     NagSuppressions.addResourceSuppressions(this.indexBucket, [
       {

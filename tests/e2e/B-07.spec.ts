@@ -232,13 +232,15 @@ test.describe("B-07 leads", () => {
 
   test.beforeAll(async ({ browser }, testInfo) => {
     if (!SEEDED_PASSWORD) return;
-    // CI has no AWS credentials (the account's organization policy blocks the GitHub OIDC role),
-    // and without them the four test leads cannot be cleared, so a second run would be refused as
-    // a duplicate. Skip the whole file there, loudly. Locally, missing or expired credentials
-    // must FAIL, never skip, so this applies on CI only.
+    // CI's AWS credentials are the `crm-ci` IAM user's key (the organization policy blocks the
+    // GitHub OIDC role; infra/lib/crm-ci-user.ts), from the repository secrets
+    // CRM_CI_AWS_ACCESS_KEY_ID / CRM_CI_AWS_SECRET_ACCESS_KEY. Without them the four test leads
+    // cannot be cleared, so a second run would be refused as a duplicate: skip the whole file
+    // there, loudly. Locally, missing or expired credentials must FAIL, never skip, so this
+    // applies on CI only.
     test.skip(
       process.env.CI !== undefined && !(await awsCredentialsAvailable()),
-      "B-07 needs AWS credentials to clear its test leads; CI has none. Proven by the local hosted run (docs/evidence/B-07.md).",
+      "B-07 needs AWS credentials to clear its test leads; the CRM_CI_AWS_* repository secrets are not set. Proven by the local hosted run (docs/evidence/B-07.md).",
     );
     const baseURL = testInfo.project.use.baseURL;
     const page = await browser.newPage(baseURL === undefined ? {} : { baseURL });

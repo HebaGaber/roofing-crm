@@ -65,6 +65,9 @@ export function createLeadsCleanup(allowedLeadKeys: readonly string[]): LeadsCle
             KeyConditionExpression: "pk = :pk",
             ExpressionAttributeValues: { ":pk": { S: key } },
             ProjectionExpression: "pk, sk",
+            // Explicit (it is also the default with a projection): the CI user's IAM policy
+            // requires dynamodb:Select = SPECIFIC_ATTRIBUTES (infra/lib/crm-ci-user.ts).
+            Select: "SPECIFIC_ATTRIBUTES",
             ConsistentRead: true,
             ...(startKey === undefined ? {} : { ExclusiveStartKey: startKey }),
           }),

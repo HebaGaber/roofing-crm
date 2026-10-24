@@ -37,8 +37,8 @@ const ISOLATED = [
   // anything else asking as the same user.
   "responsive/ask.spec.ts",
   // Mutates the shared admin's leads (beforeAll deletes and recreates the test leads) and is
-  // `mode: "serial"` by design; two viewports at once would delete each other's leads. It skips
-  // itself on CI (no AWS credentials there), so on CI this costs nothing.
+  // `mode: "serial"` by design; two viewports at once would delete each other's leads. On CI it
+  // runs with the `crm-ci` key (infra/lib/crm-ci-user.ts) and skips itself when that is unset.
   "B-07.spec.ts",
 ];
 // Considered and left in the parallel phase, on purpose:

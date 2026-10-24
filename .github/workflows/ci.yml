@@ -7,8 +7,9 @@
 # and its entire second job (`oracle-runtime`) was Task A's own pipeline CI, verbatim, targeting
 # a `pipeline/oracle-runtime` directory this repo has never had.
 #
-# CI never deploys and never holds AWS credentials: infrastructure deploys run from the PO's
-# laptop (profile assess) after approval per deploy. Amplify builds every push from its own Git
+# CI never deploys: infrastructure deploys run from the PO's laptop (profile assess) after
+# approval per deploy. Its only AWS credentials are the narrowly scoped `crm-ci` key on the
+# `e2e-hosted` Playwright step (B-09, see that step). Amplify builds every push from its own Git
 # connection; `e2e-hosted` waits for that build and tests it. The region, account id and Amplify
 # app id are repository variables, never literals.
 name: ci
@@ -191,8 +192,16 @@ jobs:
       # CRM_TEST_PASSWORD is the seeded test user's password (repository secret, set from Secrets
       # Manager `roofing-crm/admin-user`); without it the logged-in specs skip. The `setup`
       # project signs in once per phase and keeps the session under playwright/.auth/ (never
-      # uploaded). The B-07 spec also needs AWS credentials, which CI does not have, so it skips
-      # itself on CI with a reason.
+      # uploaded).
+      # B-09: the B-07 spec also needs AWS credentials to delete its test leads. The org SCP
+      # blocks GitHub OIDC, so they are the long-lived key of IAM user `crm-ci` (CDK:
+      # infra/lib/crm-ci-user.ts; Query/BatchWriteItem on crm-leads lead partitions and
+      # PutMetricData in RoofingCrm only), copied from Secrets Manager `roofing-crm/ci-user` into
+      # the repository secrets CRM_CI_AWS_ACCESS_KEY_ID / CRM_CI_AWS_SECRET_ACCESS_KEY. They are
+      # set on this one step only, never in `workspace` or `gitleaks`, and this job runs only on
+      # `push` (see its `if:`), so pull requests from forks never receive them. If the secrets
+      # are unset the variables are empty, the SDK finds no credentials and B-07 skips itself
+      # with a reason, as before.
       # Two phases (playwright.config.ts PW_PHASE, Task A's pattern): `parallel` on 4 workers
       # (the account's 10-concurrent-Lambda limit is why not more), then `isolated` on 1 (perf
       # timings, the rate-limited paid agent, B-07's shared leads). Both always run; the step
@@ -200,6 +209,9 @@ jobs:
       - name: Playwright on the hosted URL
         env:
           CRM_TEST_PASSWORD: ${{ secrets.CRM_TEST_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CRM_CI_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CRM_CI_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
         run: |
           status=0
           PW_PHASE=parallel pnpm exec playwright test || status=1
