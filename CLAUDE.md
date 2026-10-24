@@ -17,6 +17,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 - Feature branch: `feature/roofing-crm`. PR from `{fork}:feature/roofing-crm` to `prismteam-ai/roofing-crm:main`. Never commit to `main`, never merge the PR.
 - Each story has its own branch `NNN-slug` (listed in AGENT-MAP.md), created by `/speckit-specify`. Merge it back with `git merge --no-ff` only after its G7 pre-check passes and the user approves, then run `bash scripts/progress.sh`.
 - Commit messages start with the story ID: `B-03: ...`.
+- Never write `#` followed by a number in commit messages, PR text or GitHub comments (write `F-8` or "finding 8"). This repo is a fork of `prismteam-ai/roofing-crm`, so GitHub links `#9` to PR #9 there, which is another candidate's submission.
 - Hosted runtime: `https://crm.{domain}`, plus Amplify branch previews for story branches. localhost is never evidence.
 
 ## Rules
