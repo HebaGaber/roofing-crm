@@ -40,7 +40,7 @@ Per `docs/architecture-constitution.md` § 14 ("Drift handling"): P2 items are l
 - **Resolution:** **fixed**, 2026-10-23 (initially accepted as an exception, then actually closed at the user's request rather than left standing). Added real unit tests for the envelope code itself — `handler()` against a realistic API Gateway v2 event, the `triggerSource` dispatch (mocking the AWS SDK at the module boundary, not real DynamoDB), `reportFailedAttempt`'s actual procedure body, `signIn()`'s real SRP call and `reportFailedAttempt` wiring, and `react.tsx`'s `ApiProvider`/`createQueryClient` (confirmed unused by any route in this repo, but tested rather than deleted, since it's a shared package another story may still want). Coverage now: `apps/api` 96.03%, `apps/web` 97.91%, `packages/api-client` 92.85% — all comfortably above 80%. 94 unit tests total (up from 75), `docs/reports/UT-B-01.md` updated.
 - **Owning story:** B-01 — closed.
 
-### TD (B-09): four sync unit tests fetch the real sample manifest over public IPFS gateways
+## TD-6: Sync unit tests fetch the real sample manifest over public IPFS gateways
 
 - **Where:** `apps/sync/test/plan.contract.test.ts`, `plan.digestGuard.test.ts`, `plan.authoritativeCid.test.ts`, `idempotency.test.ts` (and `fetchPart.test.ts`) call the real Plan/FetchPart fetch for manifest `bafkreiasycms…k5i` with no gateway configured.
 - **Source:** found 2026-10-24 during the B-09 review-fix verification: the suite failed in a clean checkout on vitest's 5 s timeout and passed on a re-run. Measured that minute: CloudFront copy 0.3 s, Filebase 0.7 s, Pinata 8.4 s. No code defect; the result depends on which gateway answers and how fast.
