@@ -15,17 +15,17 @@ Totals are from the final code (fixes in `2a2f669`, tests-only changes after). T
 | Item | Value |
 | --- | --- |
 | Command | `pnpm exec turbo run type-check test` (coverage: `pnpm --filter {pkg} run test:coverage`; `test:coverage` is not a turbo task) |
-| Suites / tests | 95 test files passed (+1 skipped) / 793 tests passed |
-| Passed / failed / skipped | 793 / 0 / 5 (the 5 skipped are inherited, in `@crm/oracle-views`) |
+| Suites / tests | 99 test files passed (+1 skipped) / 845 tests passed |
+| Passed / failed / skipped | 845 / 0 / 5 (the 5 skipped are inherited, in `@crm/oracle-views`) |
 | Lint, format | `eslint .` clean, `prettier --check .` clean |
-| Coverage of new and changed code | API lead code 91 to 97 % (met). Web lead screens **below** the 80 % target (see below) |
+| Coverage of new and changed code | **Met**: every B-07 lead file is at or above 80 % on statements, branches, functions and lines (see below) |
 
 ## By package (this story touched `@crm/api`, `web`, `@crm/domain`, `@crm/sync`)
 
 | Package | Files | Tests | Notes |
 | --- | --- | --- | --- |
-| `@crm/api` | 19 | 112 | lead repo, service, router, error format, index adapter |
-| `web` | 15 | 104 | lead list, detail, create action, filter state |
+| `@crm/api` | 20 | 130 | lead repo (incl. edge cases), service, router, error format, index adapter |
+| `web` | 18 | 138 | lead list, detail, create action, filter state, data hooks |
 | `@crm/domain` | 4 | 25 | lead key, `requestIdentifierOf`, AC-5 pre-check |
 | `@crm/sync` | 15 | 79 | promote and validate key shape, first-ever promote |
 | other packages | 42 | 473 | unchanged by this story |
@@ -34,17 +34,17 @@ Totals are from the final code (fixes in `2a2f669`, tests-only changes after). T
 
 | File | Statements | Branches | Functions | Lines |
 | --- | --- | --- | --- | --- |
-| `apps/api/src/adapters/leadRepo.ts` | 91.5 % | 69.6 % | 91.2 % | 93.5 % |
+| `apps/api/src/adapters/leadRepo.ts` | 97.9 % | 93.5 % | 94.1 % | 100 % |
 | `apps/api/src/services/leads.ts` | 96.7 % | 91.9 % | 100 % | 97.2 % |
 | `apps/api/src/routers/leads.ts` | 94 % | 84 % | 100 % | 93.8 % |
 | `apps/api/src/trpc.ts` | 93.8 % | 90 % | 100 % | 93.8 % |
 | `apps/api/src/adapters/duckDbParquet.ts` | 96.4 % | 85.5 % | 96.9 % | 96.9 % |
 | `packages/domain` (all) | 100 % | 85 % | 100 % | 100 % |
-| `apps/web/.../LeadDetail.tsx` | 68.2 % | 64.4 % | 60 % | 78.4 % |
-| `apps/web/.../LeadsList.tsx` | 53.8 % | 63.2 % | 36.4 % | 57.1 % |
-| `apps/web/.../leadsApi.ts` | 0 % | n/a | 0 % | 0 % |
+| `apps/web/.../LeadDetail.tsx` | 100 % | 97.8 % | 100 % | 100 % |
+| `apps/web/.../LeadsList.tsx` | 100 % | 97.4 % | 100 % | 100 % |
+| `apps/web/.../leadsApi.ts` | 100 % | no branches | 100 % | 100 % |
 
-**Below target, stated plainly:** the web lead screens are under 80 %. `leadsApi.ts` (the data hooks) has no unit coverage; the list, detail and create flows are exercised by the 20 hosted e2e cases (`docs/evidence/B-07.md`) instead. `leadRepo.ts` branch coverage (69.6 %) is also under 80 %. Both are listed for the follow-up story.
+**Raised after the G7 pre-check flagged it (commit below):** the web lead screens and the lead store's branches were under 80 % (list 54 %, detail 68 %, hooks 0 %, store branches 70 %). Four new test files bring every lead file to at least 80 % on all four measures: `leadsApi.test.tsx` (the real hooks on a real query client), `LeadsList.interactions.test.tsx`, `LeadDetail.actions.test.tsx` and `leadRepo.edges.test.ts`. No production bug was found by them.
 
 ## Tests written first (TDD)
 
