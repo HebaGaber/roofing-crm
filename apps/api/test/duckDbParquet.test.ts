@@ -182,9 +182,14 @@ describe("LeadIndex (DuckDB over S3 Parquet)", () => {
       // already succeeded and cached its own connection.
       s3Responses[0]?.resolve({ Body: Readable.from([Buffer.from("property bytes")]) });
       s3Responses[3]?.resolve({ Body: Readable.from([Buffer.from("permit bytes")]) });
-      // Give attempt 1's now-unblocked background load a tick to finish running and discover it
-      // has been superseded.
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Wait (poll, up to 3 s) for attempt 1's now-unblocked background load to finish and
+      // discover it has been superseded. A fixed 50 ms sleep here flaked on a loaded CI machine.
+      await vi.waitFor(
+        () => {
+          expect(connections.filter((c) => c.closeSync.mock.calls.length > 0)).toHaveLength(1);
+        },
+        { timeout: 3_000, interval: 10 },
+      );
 
       // Two DuckDB connections were opened (one per attempt) — attempt 2's (the winner) was
       // never closed; attempt 1's (the stale loser) was closed rather than left open or returned

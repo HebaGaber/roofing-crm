@@ -421,6 +421,9 @@ test.describe("B-07 leads", () => {
       const key = `${r.status()} ${message}`.trim();
       tally[key] = (tally[key] ?? 0) + 1;
     });
+    console.log(
+      `TC-007 tally: ${JSON.stringify({ final: tally, throttledAndRetried: throttled })}`,
+    );
     await test.info().attach("TC-007-tally.json", {
       body: JSON.stringify({ final: tally, throttledAndRetried: throttled }, null, 2),
       contentType: "application/json",
@@ -741,6 +744,7 @@ test.describe("B-07 leads", () => {
     }
     const sorted = [...samples].sort((a, b) => a - b);
     const p95 = sorted[Math.ceil(0.95 * sorted.length) - 1] ?? Number.POSITIVE_INFINITY;
+    console.log(`NF-01 samples ms: ${samples.join(", ")} | p95 ms: ${p95}`);
     await test.info().attach("B-07-TC-NF-01-samples.txt", {
       body: `samples ms: ${samples.join(", ")}\np95 ms: ${p95}\n`,
       contentType: "text/plain",
