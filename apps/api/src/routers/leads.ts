@@ -7,7 +7,13 @@ import { z } from "zod";
 import { LeadFilters, LeadStatus } from "@crm/shared";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import { publicProcedure, requireLeadService, requireUserId, router } from "../trpc.js";
+import {
+  causeWithCode,
+  publicProcedure,
+  requireLeadService,
+  requireUserId,
+  router,
+} from "../trpc.js";
 import {
   LeadAlreadyExistsError,
   LeadIndexUnavailableError,
@@ -58,10 +64,6 @@ const ListInput = z.object({
   cursor: z.string().max(32).optional(),
   limit: z.number().int().positive().max(LIST_MAX_LIMIT).optional(),
 });
-
-function causeWithCode(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code });
-}
 
 /** Typed lead errors -> tRPC errors; anything unrecognised is returned unchanged. */
 function toTrpcError(error: unknown): unknown {

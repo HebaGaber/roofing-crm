@@ -26,7 +26,7 @@
 // prompt below for that state rather than inventing button data the API never sends; see this
 // story's build report for the full note.
 import type { AgentAnswer } from "@crm/shared";
-import { CidDisplay, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import { CidDisplay, formatUtc, MissingReason, Provenance, StatusPill } from "@crm/ui";
 import { useState, type FormEvent, type ReactElement } from "react";
 import { Link } from "react-router";
 import { useAskAgent, useConfirmLead } from "./askApi.js";
@@ -152,7 +152,7 @@ function CitationLine({ citation }: { readonly citation: Citation }): ReactEleme
             {citation.sourceUrl}
           </a>
         )}
-        {` · collected ${citation.capturedAt.slice(0, 19).replace("T", " ")} UTC · table `}
+        {` · collected ${formatUtc(citation.capturedAt)} UTC · table `}
         <CidDisplay cid={citation.tableCid} />
         {" · manifest "}
         <CidDisplay cid={citation.manifestCid} />

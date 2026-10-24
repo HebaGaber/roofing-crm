@@ -3,26 +3,13 @@
 // lives in ../services/search.ts, shared with the new agent tools (Phase 4) — this router only
 // validates input, calls the service, and shapes the tRPC response (manifestCid/traceId, typed
 // error mapping).
-import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
-import { publicProcedure, requireLeadIndex, router } from "../trpc.js";
-import { IndexNotReadyError } from "../adapters/duckDbParquet.js";
+import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import {
   searchPermits as searchPermitsService,
   searchProperties as searchPropertiesService,
 } from "../services/search.js";
-
-/** Same mapping as routers/property.ts: a typed, honest "index not ready" response (never a bare
- *  500) when no run has ever been promoted — found live (B-03): crm-leads is B-07's table
- *  (architecture-constitution.md §9) and doesn't exist in this environment yet, so every search
- *  currently hits this path, not just a rare edge case. */
-function mapIndexNotReady(error: unknown): never {
-  if (error instanceof IndexNotReadyError) {
-    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
-  }
-  throw error;
-}
 
 const LatLngInput = z.object({
   lat: z.number().min(-90).max(90),

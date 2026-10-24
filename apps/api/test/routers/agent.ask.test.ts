@@ -92,6 +92,9 @@ class FakeLeadIndex implements LeadIndex {
     const found = this.rows.find((r) => r.propertyCid === propertyCid);
     return found === undefined ? null : { ...found, permits: [] };
   }
+  async getPropertyByRequestIdentifier(requestIdentifier: string) {
+    return this.rows.find((r) => r.requestIdentifier === requestIdentifier);
+  }
 }
 
 /** Three steps: a plan-shaped tool call, a resolvePlace tool call, a searchProperties tool call,
@@ -184,7 +187,7 @@ function ctx() {
       userId: "rep-1",
       leadIndex,
       model,
-    } as never),
+    }),
   };
 }
 

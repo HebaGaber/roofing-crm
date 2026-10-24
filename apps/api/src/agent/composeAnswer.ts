@@ -107,8 +107,6 @@ export function parsePlanDraftText(text: string): { kind: string; query: string 
 }
 
 interface GatheredToolResults {
-  readonly calledAnyTool: boolean;
-  readonly manifestCid: string | undefined;
   readonly properties: ReadonlyMap<string, PropertyResult>;
   readonly permits: ReadonlyMap<string, PermitResult>;
   readonly searchCounts: { readonly afterRadius: number; readonly afterRoofAge: number } | undefined;
@@ -169,23 +167,17 @@ export function gatherToolResults(
   const properties = new Map<string, PropertyResult>();
   const permits = new Map<string, PermitResult>();
   const proposals: { tcadId: string; alreadyLead: boolean; leadId?: string }[] = [];
-  let manifestCid: string | undefined;
   let searchCounts: { afterRadius: number; afterRoofAge: number } | undefined;
-  let calledAnyTool = false;
 
   for (const step of result.steps) {
     for (const toolResult of step.toolResults) {
-      calledAnyTool = true;
       const output: unknown = toolResult.output;
       if (isPropertySearchOutput(output)) {
-        manifestCid = output.manifestCid;
         searchCounts = output.counts;
         for (const property of output.properties) properties.set(property.propertyCid, property);
       } else if (isPermitSearchOutput(output)) {
-        manifestCid = output.manifestCid;
         for (const permit of output.permits) permits.set(permit.permitCid, permit);
       } else if (isGetPropertyOutput(output) && output.found && output.property !== undefined) {
-        manifestCid = output.manifestCid ?? manifestCid;
         properties.set(output.property.propertyCid, output.property);
         for (const permit of output.permits ?? []) permits.set(permit.permitCid, permit);
       } else if (isProposeLeadsOutput(output)) {
@@ -194,7 +186,7 @@ export function gatherToolResults(
     }
   }
 
-  return { calledAnyTool, manifestCid, properties, permits, searchCounts, proposals };
+  return { properties, permits, searchCounts, proposals };
 }
 
 function propertyCitation(property: PropertyResult, id: number): Citation {
@@ -228,7 +220,7 @@ function permitCitation(permit: PermitResult, id: number): Citation {
   };
 }
 
-const EMPTY_COUNTS: AgentAnswer["counts"] = {
+export const EMPTY_COUNTS: AgentAnswer["counts"] = {
   matched: 0,
   shown: 0,
   excludedNoCoordinates: 0,
@@ -380,7 +372,7 @@ export async function composeAnswer(input: ComposeInput): Promise<AgentAnswer> {
   });
 
   const outcome: AgentAnswer["outcome"] =
-    verified.claims.length > 0 ? "answered" : matched === 0 ? "empty_in_scope" : "answered";
+    matched === 0 && verified.claims.length === 0 ? "empty_in_scope" : "answered";
 
   return {
     outcome,

@@ -4,6 +4,12 @@
 // that never carry the question text or an address (P0-13).
 export { IndexNotReadyError } from "./adapters/duckDbParquet.js";
 
+/** True only for a failed condition on a single-item UpdateItem (never the transaction-style
+ *  TransactionCanceledException leadRepo.ts handles — a lone UpdateItem fails this way instead). */
+export function isConditionalCheckFailed(error: unknown): boolean {
+  return error instanceof Error && error.name === "ConditionalCheckFailedException";
+}
+
 /** The 6th+ `agent.ask` in the same user+minute window (NFR-001: 5 asks/min/user). `code` is the
  *  DynamoDB cancellation reason the conditional UpdateItem produced. */
 export class RateLimitedError extends Error {

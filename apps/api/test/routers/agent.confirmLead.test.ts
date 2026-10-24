@@ -76,6 +76,9 @@ class FakeLeadIndex implements LeadIndex {
     const found = this.rows.find((r) => r.propertyCid === propertyCid);
     return found === undefined ? null : { ...found, permits: [] };
   }
+  async getPropertyByRequestIdentifier(requestIdentifier: string) {
+    return this.rows.find((r) => r.requestIdentifier === requestIdentifier);
+  }
 }
 
 /** A spy standing in for the real `LeadService` (the same DI seam `leads.ts`'s router already
@@ -108,7 +111,7 @@ function ctx() {
       userId: "rep-1",
       leadIndex,
       leadService,
-    } as never),
+    }),
   };
 }
 

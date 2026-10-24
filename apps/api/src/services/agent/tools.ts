@@ -21,18 +21,21 @@ import type { LeadRepo } from "../../adapters/leadRepo.js";
 import { searchPermits, searchProperties } from "../search.js";
 import { propertyDetail } from "../propertyDetail.js";
 
-/** Mirrors `services/leads.ts`'s own `matchingRequestIdentifiers` scan — the LeadIndex port has
- *  no single "get by requestIdentifier" lookup, only by `propertyCid` (adapters/duckDbParquet.ts),
- *  so a `tcadId`-keyed tool input resolves to a `propertyCid` the same way that service already
- *  does: one bounded, unfiltered scan, then an in-memory match. */
-const INDEX_SCAN_LIMIT = 1_000_000;
+/** Shared by this tool's `getProperty` lookup and `routers/agent.ts`'s `confirmLead` handler: an
+ *  indexed `LeadIndex.getPropertyByRequestIdentifier` lookup (a real `WHERE` filter), never the
+ *  full-table-scan-then-`.find` workaround both call sites used to duplicate. */
+export async function propertyByTcadId(
+  leadIndex: LeadIndex,
+  tcadId: string,
+): Promise<PropertyResult | undefined> {
+  return leadIndex.getPropertyByRequestIdentifier(tcadId);
+}
 
 async function propertyCidForTcadId(
   leadIndex: LeadIndex,
   tcadId: string,
 ): Promise<string | undefined> {
-  const rows = await leadIndex.searchProperties({ limit: INDEX_SCAN_LIMIT });
-  return rows.find((row) => row.requestIdentifier === tcadId)?.propertyCid;
+  return (await propertyByTcadId(leadIndex, tcadId))?.propertyCid;
 }
 
 const AreaInput = z.object({

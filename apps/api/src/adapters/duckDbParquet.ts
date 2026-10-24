@@ -122,6 +122,11 @@ export interface LeadIndex {
   searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]>;
   searchPermits(query: SearchPermitsQuery): Promise<PermitResult[]>;
   getProperty(propertyCid: string): Promise<(PropertyResult & { permits: PermitResult[] }) | null>;
+  /** One property by its `requestIdentifier` (tcadId) — an indexed `WHERE` filter, not a
+   *  full-table scan (CR finding: `services/agent/tools.ts`'s `propertyCidForTcadId` and
+   *  `routers/agent.ts`'s `confirmLead` both used to pull the whole table into memory to find one
+   *  row). Returns `undefined` when no property in the promoted run has this requestIdentifier. */
+  getPropertyByRequestIdentifier(requestIdentifier: string): Promise<PropertyResult | undefined>;
   /** Which of these request identifiers exist in the promoted run (AC-5 presence check). */
   presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>>;
   /** Run identifier (provenance `runId`) of the promoted run; undefined when it has no rows. */
@@ -425,6 +430,24 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const permits = permitReader.getRowObjectsJS() as unknown as PermitResult[];
       return { ...property, permits };
     });
+  }
+
+  async getPropertyByRequestIdentifier(
+    requestIdentifier: string,
+  ): Promise<PropertyResult | undefined> {
+    return withObservabilityOperation(
+      this.obs,
+      "LeadIndex.getPropertyByRequestIdentifier",
+      async () => {
+        const { manifestCid } = await this.indexInfo();
+        const { connection } = await this.ensureLoaded(manifestCid);
+        const reader = await connection.runAndReadAll(
+          `SELECT * FROM crm_property WHERE "requestIdentifier" = '${sqlEscapeString(requestIdentifier)}'`,
+        );
+        const rows = reader.getRowObjectsJS() as unknown as PropertyResult[];
+        return rows[0];
+      },
+    );
   }
 
   async presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>> {

@@ -5,7 +5,7 @@
 // the same DI seam `services/leads.ts`'s `createLeadService(leadRepo, options)` uses, so a test
 // supplies a doubled DynamoDBDocumentClient instead of a real one.
 import { UpdateCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { RateLimitedError } from "../agentErrors.js";
+import { isConditionalCheckFailed, RateLimitedError } from "../agentErrors.js";
 
 export const RATE_LIMIT_PER_MINUTE = 5;
 
@@ -26,12 +26,6 @@ export interface RateLimiter {
 function windowKey(userId: string, now: Date): string {
   const windowMinute = Math.floor(now.getTime() / 60_000);
   return `USER#${userId}#MIN#${windowMinute}`;
-}
-
-/** True only for a failed condition on this single-item UpdateItem (never the transaction-style
- *  TransactionCanceledException leadRepo.ts handles — a lone UpdateItem fails this way instead). */
-function isConditionalCheckFailed(error: unknown): boolean {
-  return error instanceof Error && error.name === "ConditionalCheckFailedException";
 }
 
 export function createRateLimiter(deps: RateLimiterDeps): RateLimiter {

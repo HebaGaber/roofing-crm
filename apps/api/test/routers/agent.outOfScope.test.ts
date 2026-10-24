@@ -40,6 +40,9 @@ class EmptyLeadIndex implements LeadIndex {
   async getProperty() {
     return null;
   }
+  async getPropertyByRequestIdentifier() {
+    return undefined;
+  }
 }
 
 /** A single plan-step response is still expected (contracts/agent-api.md step 3 runs before the
@@ -86,7 +89,7 @@ function ctx() {
       userId: "rep-1",
       leadIndex,
       model,
-    } as never),
+    }),
   };
 }
 

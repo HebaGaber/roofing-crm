@@ -9,7 +9,7 @@
 // against the pre-reservation balance, so a call that would push the running total over the cap
 // fails the condition before anything is added.
 import { UpdateCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { OverBudgetError } from "../agentErrors.js";
+import { isConditionalCheckFailed, OverBudgetError } from "../agentErrors.js";
 
 /** $3/day (data-model.md, NFR-001), in cents. */
 export const DAILY_CAP_CENTS = 300;
@@ -32,12 +32,6 @@ export interface SpendCap {
 function dayKey(userId: string, now: Date): string {
   const yyyyMmDd = now.toISOString().slice(0, 10);
   return `USER#${userId}#DAY#${yyyyMmDd}`;
-}
-
-/** True only for a failed condition on this single-item UpdateItem (never the transaction-style
- *  TransactionCanceledException leadRepo.ts handles — a lone UpdateItem fails this way instead). */
-function isConditionalCheckFailed(error: unknown): boolean {
-  return error instanceof Error && error.name === "ConditionalCheckFailedException";
 }
 
 export function createSpendCap(deps: SpendCapDeps): SpendCap {

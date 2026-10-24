@@ -8,7 +8,7 @@
 // attached to the request context.
 import { initTRPC, TRPCError } from "@trpc/server";
 import type { LanguageModel } from "ai";
-import type { LeadIndex } from "./adapters/duckDbParquet.js";
+import { IndexNotReadyError, type LeadIndex } from "./adapters/duckDbParquet.js";
 import type { LeadRepo } from "./adapters/leadRepo.js";
 import type { LeadService } from "./services/leads.js";
 
@@ -71,6 +71,20 @@ export function requireUserId(ctx: { userId: string | undefined }): string {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required" });
   }
   return ctx.userId;
+}
+
+/** A typed, honest "index not ready" response (never a bare 500) when no run has ever been
+ *  promoted — shared by search/property/agent routers. */
+export function mapIndexNotReady(error: unknown): never {
+  if (error instanceof IndexNotReadyError) {
+    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
+  }
+  throw error;
+}
+
+/** Attaches a domain `code` to an `Error`'s `cause`, read back out by `withAppCode` below. */
+export function causeWithCode(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 /** tRPC drops `cause` from the wire error, so a domain code carried on it (ALREADY_EXISTS,

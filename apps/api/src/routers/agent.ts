@@ -11,15 +11,17 @@ import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { AgentAnswer } from "@crm/shared";
 import {
+  causeWithCode,
+  mapIndexNotReady,
   publicProcedure,
   requireLeadIndex,
   requireLeadService,
   requireUserId,
   router,
 } from "../trpc.js";
-import { IndexNotReadyError, type LeadIndex } from "../adapters/duckDbParquet.js";
+import type { LeadIndex } from "../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../adapters/leadRepo.js";
-import { createAgentTools } from "../services/agent/tools.js";
+import { createAgentTools, propertyByTcadId } from "../services/agent/tools.js";
 import { createPlaceResolver } from "../services/agent/placeResolver.js";
 import { getModel } from "../agent/getModel.js";
 import { runAgent } from "../agent/runAgent.js";
@@ -28,6 +30,7 @@ import { RateLimitedError, OverBudgetError } from "../agentErrors.js";
 import {
   checkScope,
   composeAnswer,
+  EMPTY_COUNTS,
   emitCitationMetrics,
   emptyPlan,
   parsePlanDraftText,
@@ -54,18 +57,6 @@ const ConfirmLeadInput = z.object({
   threadId: z.string().min(1),
   tcadId: z.string().min(1),
 });
-
-/** Same mapping as routers/search.ts's `mapIndexNotReady`. */
-function mapIndexNotReady(error: unknown): never {
-  if (error instanceof IndexNotReadyError) {
-    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
-  }
-  throw error;
-}
-
-function causeWithCode(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code });
-}
 
 /** contracts/agent-api.md step 1: budget check first, before any model call. A deploy that
  *  hasn't wired `CRM_AGENT_USAGE_TABLE_NAME` yet (the same "known infra gap, degrade not crash"
@@ -141,7 +132,7 @@ function emptyAnswer(
     citations: [],
     plan,
     resultSetId: traceId,
-    counts: { matched: 0, shown: 0, excludedNoCoordinates: 0, excludedNoRoofDate: 0, truncated: false },
+    counts: EMPTY_COUNTS,
     missing: [],
     trace: {
       traceId,
@@ -178,14 +169,18 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
   const model = ctx.model ?? getModel();
   const tools = createAgentTools({ leadIndex, leadRepo, placeResolver });
 
-  const { manifestCid } = await leadIndex.indexInfo().catch(mapIndexNotReady);
-
-  const run = await runAgent({
-    model,
-    tools,
-    system: SYSTEM_PROMPT,
-    prompt: input.question,
-  });
+  // Independent of each other — run concurrently rather than sequentially, but keep
+  // `indexInfo()`'s own typed-error mapping (`mapIndexNotReady`) applying to its own failure,
+  // exactly as it did when awaited on its own line before `runAgent`.
+  const [{ manifestCid }, run] = await Promise.all([
+    leadIndex.indexInfo().catch(mapIndexNotReady),
+    runAgent({
+      model,
+      tools,
+      system: SYSTEM_PROMPT,
+      prompt: input.question,
+    }),
+  ]);
 
   if (run.outcome === "timed_out") {
     emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
@@ -287,8 +282,7 @@ export const agentRouter = router({
 
   confirmLead: publicProcedure.input(ConfirmLeadInput).mutation(async ({ input, ctx }) => {
     const leadIndex = requireLeadIndex(ctx);
-    const detail = await leadIndex.searchProperties({ limit: 1_000_000 }).catch(mapIndexNotReady);
-    const property = detail.find((row) => row.requestIdentifier === input.tcadId);
+    const property = await propertyByTcadId(leadIndex, input.tcadId).catch(mapIndexNotReady);
     if (property === undefined) {
       throw new TRPCError({ code: "NOT_FOUND", message: `No property for tcadId ${input.tcadId}` });
     }

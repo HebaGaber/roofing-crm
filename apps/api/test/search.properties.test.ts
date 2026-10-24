@@ -71,6 +71,9 @@ class FakeLeadIndex implements LeadIndex {
   async getProperty() {
     return null;
   }
+  async getPropertyByRequestIdentifier(requestIdentifier: string) {
+    return this.rows.find((r) => r.requestIdentifier === requestIdentifier);
+  }
 }
 
 const createCaller = createCallerFactory(appRouter);

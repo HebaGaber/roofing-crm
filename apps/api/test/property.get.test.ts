@@ -94,6 +94,9 @@ class FakeLeadIndex implements LeadIndex {
   async getProperty(propertyCid: string) {
     return this.byCid.get(propertyCid) ?? null;
   }
+  async getPropertyByRequestIdentifier(requestIdentifier: string) {
+    return [...this.byCid.values()].find((p) => p.requestIdentifier === requestIdentifier);
+  }
 }
 
 function makeCaller(entries: (Provenanced<CrmProperty> & { permits: Provenanced<CrmPermit>[] })[]) {

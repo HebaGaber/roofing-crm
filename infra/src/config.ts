@@ -14,8 +14,21 @@ export type ContextGetter = (key: string) => unknown;
 
 export type LoadConfigEnv = Record<string, string | undefined>;
 
+/** Constitution VI: Bedrock is the default and Golden Path (ADR-06 §6.1) — a safe, documented
+ *  default, unlike `DATA_MANIFEST_CID`, which has none and must fail fast. `@crm/config`'s
+ *  `loadConfig` itself no longer defaults `AI_PROVIDER`/`AGENT_MODEL_ID` (it fails fast like every
+ *  other field); this composition layer is where the actual default selection lives, since it
+ *  has `process.env` in scope before `loadRuntimeConfig` validates it. */
+function withAiProviderDefaults(env: LoadConfigEnv): LoadConfigEnv {
+  const aiProvider = env.AI_PROVIDER ?? "bedrock";
+  const agentModelId =
+    env.AGENT_MODEL_ID ??
+    (aiProvider === "bedrock" ? "eu.anthropic.claude-sonnet-4-6" : "anthropic/claude-sonnet-4.6");
+  return { ...env, AI_PROVIDER: aiProvider, AGENT_MODEL_ID: agentModelId };
+}
+
 export function loadConfig(env: LoadConfigEnv, getContext: ContextGetter): CrmAppConfig {
-  const runtime = loadRuntimeConfig(env);
+  const runtime = loadRuntimeConfig(withAiProviderDefaults(env));
   const githubRepository = getContext("crm:githubRepository");
   const githubRef = getContext("crm:githubRef");
   if (typeof githubRepository !== "string" || githubRepository === "") {

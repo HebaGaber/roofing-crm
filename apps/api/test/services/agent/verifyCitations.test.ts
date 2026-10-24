@@ -54,6 +54,9 @@ function fakeLeadIndex(present: Record<string, string>): LeadIndex {
     currentRunId: () => {
       throw new Error("not used by verifyCitations");
     },
+    getPropertyByRequestIdentifier: () => {
+      throw new Error("not used by verifyCitations");
+    },
     async getProperty(propertyCid: string) {
       const manifestCid = present[propertyCid];
       if (manifestCid === undefined) return null;

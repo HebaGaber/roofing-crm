@@ -56,18 +56,25 @@ export function loadConfig(env: LoadConfigEnv = process.env): RuntimeConfig {
       "@crm/config: DATA_MANIFEST_CID is not set — refusing to default to any manifest.",
     );
   }
-  // Constitution VI: Bedrock is the default and Golden Path, so AI_PROVIDER defaults to it
-  // rather than failing fast like the two checks above — unlike the manifest CID, there is a
-  // safe, documented default here (ADR-06 §6.1), not an arbitrary guess.
-  const aiProvider = env.AI_PROVIDER ?? "bedrock";
+  // Same fail-fast rule as region/dataManifestCid above (constitution VI): no default here. The
+  // actual Bedrock-vs-Gateway default selection lives one layer up, at the CDK composition layer
+  // (infra/src/config.ts / infra/src/app.ts), which has `process.env` in scope before calling
+  // this function — this module only validates, it never picks a default.
+  const aiProvider = env.AI_PROVIDER;
+  if (aiProvider === undefined || aiProvider === "") {
+    throw new Error("@crm/config: AI_PROVIDER is not set — refusing to default to any provider.");
+  }
   if (!AiProvider.safeParse(aiProvider).success) {
     throw new Error(
       `@crm/config: AI_PROVIDER "${aiProvider}" is not one of ${AiProvider.options.join(", ")}.`,
     );
   }
-  const agentModelId =
-    env.AGENT_MODEL_ID ??
-    (aiProvider === "bedrock" ? "eu.anthropic.claude-sonnet-4-6" : "anthropic/claude-sonnet-4.6");
+  const agentModelId = env.AGENT_MODEL_ID;
+  if (agentModelId === undefined || agentModelId === "") {
+    throw new Error(
+      "@crm/config: AGENT_MODEL_ID is not set — refusing to default to any model.",
+    );
+  }
   const parsed = RuntimeConfig.safeParse({ region, dataManifestCid, aiProvider, agentModelId });
   if (!parsed.success) {
     throw new Error(

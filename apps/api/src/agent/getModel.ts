@@ -21,6 +21,12 @@ export class MissingAgentModelIdError extends Error {
   }
 }
 
+// Lazy singleton per provider+modelId combination — the same per-Lambda-sandbox caching pattern
+// as `usageGuard.ts`'s `tryUsageGuard`/`leadIndex.ts`'s `tryLeadIndex`, built once rather than on
+// every `agent.ask` — but keyed on the inputs (not a single unconditional cache) since a test may
+// call `getModel` with different `env` values in the same process.
+const cache = new Map<string, LanguageModel>();
+
 /** Reads `AI_PROVIDER` (`"bedrock" | "gateway"`) and `AGENT_MODEL_ID` from `env` (defaults to
  *  `process.env`, injectable for tests) and returns the corresponding Vercel AI SDK
  *  `LanguageModel` — `@ai-sdk/amazon-bedrock`'s provider for `bedrock` (ADR §6.1: `eu.` inference
@@ -33,14 +39,31 @@ export function getModel(env: AiProviderEnv = process.env): LanguageModel {
   if (modelId === undefined || modelId === "") {
     throw new MissingAgentModelIdError();
   }
-  switch (env.AI_PROVIDER) {
+  const provider = env.AI_PROVIDER;
+  const key = `${String(provider)}:${modelId}`;
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+
+  let model: LanguageModel;
+  switch (provider) {
     case "bedrock": {
       const bedrock = createAmazonBedrock({});
-      return bedrock(modelId);
+      model = bedrock(modelId);
+      break;
     }
     case "gateway":
-      return gateway(modelId);
+      model = gateway(modelId);
+      break;
     default:
-      throw new UnsupportedAiProviderError(env.AI_PROVIDER);
+      throw new UnsupportedAiProviderError(provider);
   }
+  cache.set(key, model);
+  return model;
+}
+
+/** Test-only reset point, same shape as `setLeadIndexForTest`/`setUsageGuardForTest`: clears the
+ *  per-provider+modelId cache so a test that varies `AI_PROVIDER`/`AGENT_MODEL_ID` doesn't read
+ *  back a previous test's cached model instance. */
+export function resetModelCacheForTest(): void {
+  cache.clear();
 }
