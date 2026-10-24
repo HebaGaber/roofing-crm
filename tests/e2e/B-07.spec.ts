@@ -180,6 +180,29 @@ async function listLeadKeys(page: Page): Promise<string[]> {
   return data.leads.map((lead) => lead.leadKey);
 }
 
+/** Records every lead API call the page makes (status + milliseconds since start), so a failed
+ *  note test carries its own network evidence. */
+function trackLeadCalls(page: Page): () => Promise<void> {
+  const t0 = Date.now();
+  const calls: string[] = [];
+  page.on("response", (r) => {
+    const m = /\/api\/trpc\/(leads\.[a-zA-Z]+)/.exec(r.url());
+    if (m)
+      calls.push(
+        `${String(Date.now() - t0).padStart(6)}ms ${r.request().method()} ${m[1]} -> ${r.status()}`,
+      );
+  });
+  page.on("requestfailed", (r) => {
+    const m = /\/api\/trpc\/(leads\.[a-zA-Z]+)/.exec(r.url());
+    if (m)
+      calls.push(
+        `${String(Date.now() - t0).padStart(6)}ms ${m[1]} FAILED ${r.failure()?.errorText ?? ""}`,
+      );
+  });
+  return () =>
+    test.info().attach("lead-calls.txt", { body: calls.join("\n"), contentType: "text/plain" });
+}
+
 /** Opens the Map drawer for a property through the `sel` deep link (no pin-drop needed). */
 async function openDrawer(page: Page, cid: string): Promise<Locator> {
   await page.goto(`/?sel=${cid}`); // the Map is the app's index route, not /map
@@ -495,14 +518,18 @@ test.describe("B-07 leads", () => {
     const filler = "Roof walk notes, flashing & vents ok; ".repeat(40).slice(0, 1000);
     const note = `${RUN_TAG} "quoted" & 'single'\nsecond line ${filler}`.slice(0, 1000);
     expect(note).toHaveLength(1000);
+    const attachCalls = trackLeadCalls(page);
+    test.info().annotations.push({ type: "calls", description: "see lead-calls.txt attachment" });
     await page.goto(leadPath(factsOf(P_5_52).requestIdentifier));
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
     // Wait for THIS note (TC-008's note carries the same run tag, so the tag alone is not enough).
-    await expect(page.getByRole("region", { name: "Notes" })).toContainText(
-      `${RUN_TAG} "quoted" & 'single'`,
-      { timeout: NOTE_VISIBLE_MS },
-    );
+    await expect(page.getByRole("region", { name: "Notes" }))
+      .toContainText(`${RUN_TAG} "quoted" & 'single'`, { timeout: NOTE_VISIBLE_MS })
+      .catch(async (error: unknown) => {
+        await attachCalls();
+        throw error;
+      });
 
     await page.reload();
     // The notes load after the page does; wait for this note before reading the whole text.
