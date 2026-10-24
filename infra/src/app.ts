@@ -26,6 +26,17 @@ const PROMOTE_HANDLER_ENTRY = "../../apps/sync/handlers/promote.ts";
  * own literal fixture value). */
 const CRM_LEADS_TABLE_NAME = "crm-leads";
 
+/** The git branch of the Amplify app that crm.aldarraj.com is served from: the feature branch (the
+ *  PR head) when it is deployed, else the primary branch. Never the stale primary one by accident. */
+export function domainBranchName(
+  deployed: readonly { readonly branchName: string }[],
+  primaryBranchName: string,
+): string {
+  return (
+    deployed.find((b) => b.branchName === "feature/roofing-crm")?.branchName ?? primaryBranchName
+  );
+}
+
 export function createCrmStacks(app: App, config: CrmAppConfig): void {
   const env = {
     region: config.region,
@@ -80,8 +91,13 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
   const domainStack = new CrmDomainStack(app, "CrmDomain", {
     env,
     domainName: "crm.aldarraj.com",
-    cutover: false, // Round 1 decision D-2: not pointed live until after this story merges.
-    web: { appId: webStack.app.attrAppId, branchName: webStack.branch.branchName },
+    // Round 1 decision D-2 (cut over only after the stories merge) is now executed: B-01, B-02,
+    // B-03 and B-07 are merged on feature/roofing-crm. The two DNS records go in at Namecheap.
+    cutover: true,
+    web: {
+      appId: webStack.app.attrAppId,
+      branchName: domainBranchName(webStack.additionalBranches, webStack.branch.branchName),
+    },
   });
   domainStack.addDependency(webStack);
 

@@ -5,6 +5,7 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { CrmApiStack } from "../lib/crm-api-stack.js";
 import { CrmDomainStack } from "../lib/crm-domain-stack.js";
+import { domainBranchName } from "../src/app.js";
 import { CrmOpsStack } from "../lib/crm-ops-stack.js";
 import { CrmWebStack } from "../lib/crm-web-stack.js";
 
@@ -192,5 +193,56 @@ describe("CrmDomain (T010)", () => {
     });
     const template = Template.fromStack(stack);
     expect(Object.keys(template.toJSON().Resources ?? {})).toHaveLength(0);
+  });
+
+  it("associates crm.aldarraj.com (the sub-domain itself, never the root) with the named branch once cutover is true", () => {
+    const stack = new CrmDomainStack(new App(), "CrmDomain", {
+      env: ENV,
+      domainName: "crm.aldarraj.com",
+      cutover: true,
+      web: { appId: "d1zmhc6kkyzsbe", branchName: "feature/roofing-crm" },
+    });
+    const template = Template.fromStack(stack);
+    template.resourceCountIs("AWS::Amplify::Domain", 1);
+    template.hasResourceProperties("AWS::Amplify::Domain", {
+      AppId: "d1zmhc6kkyzsbe",
+      DomainName: "crm.aldarraj.com",
+      EnableAutoSubDomain: false,
+      SubDomainSettings: [{ Prefix: "", BranchName: "feature/roofing-crm" }],
+    });
+    // The two DNS records the PO adds at Namecheap come from these outputs, so they must exist.
+    const outputs = Object.keys(template.toJSON().Outputs ?? {});
+    expect(outputs).toEqual(
+      expect.arrayContaining(["HostedUrl", "DomainStatus", "CertificateVerificationRecord"]),
+    );
+    // No certificate, no Route 53 zone: Amplify issues the certificate and DNS stays at Namecheap.
+    template.resourceCountIs("AWS::CertificateManager::Certificate", 0);
+    template.resourceCountIs("AWS::Route53::HostedZone", 0);
+  });
+
+  it("refuses a cutover that names no Amplify app and branch", () => {
+    expect(
+      () =>
+        new CrmDomainStack(new App(), "CrmDomain", {
+          env: ENV,
+          domainName: "crm.aldarraj.com",
+          cutover: true,
+        }),
+    ).toThrow(/props\.web/);
+  });
+});
+
+describe("domainBranchName", () => {
+  it("serves the domain from the feature branch, never the stale primary branch", () => {
+    expect(
+      domainBranchName(
+        [{ branchName: "007-leads" }, { branchName: "feature/roofing-crm" }],
+        "001-crm-shell",
+      ),
+    ).toBe("feature/roofing-crm");
+  });
+
+  it("falls back to the primary branch when the feature branch is not deployed", () => {
+    expect(domainBranchName([{ branchName: "007-leads" }], "001-crm-shell")).toBe("001-crm-shell");
   });
 });
