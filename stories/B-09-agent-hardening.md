@@ -68,12 +68,12 @@ What will exist when done: a tRPC `agent.ask` procedure using the Vercel AI SDK 
 5. **AC-5 (B-11)** · **Given** the full `smeargle` suite, **When** it runs at 390, 768 and 1440 px against the hosted URL, **Then** every screen in the app passes with no layout overflow or inaccessible controls. ☐ testable
 6. **AC-6 (B-11)** · **Given** a sync-job failure lands a message on the DLQ, **When** the DLQ depth becomes greater than 0, **Then** a CloudWatch alarm fires and self-resolves once the queue drains, visible on the `RoofingCrm` dashboard. ☐ testable
 7. **AC-7 (data switch, accepted deviation)** · **Given** Task A's Run 1 full-county manifest (`bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`, 441,961 properties / 17,387 permits) is pinned but not yet Atlas-registered, **When** the CRM and agent read property/permit data, **Then** they read it directly by manifest CID (not through the Elephant MCP/`listPublishedCounties` lookup), documented in `docs/architecture-constitution.md` as an accepted deviation with a named swap-back condition: revert the data-access pointer to the MCP path once the user confirms Atlas registration for Travis County is complete. ☐ testable
-8. **AC-8 (prototype re-audit)** · **Given** `design/design-review-log.md`'s 25 prior issues are already marked Incorporated, **When** `audino` (already named as a B-09 reviewer in AGENT-MAP.md §5, brought forward to also run as a read-only design-time consult alongside `smeargle`'s Phase B responsive plan — not a new agent assignment) re-diffs every existing screen (CrmMap, FilterSheet, PropertyDetail, ContractorBadge, ResultsPanel, LeadsList, LeadDetail, AppShell/NavRail, plus the new B-09 Ask screens) against the current `design/screens/` prototype, **Then** every newly found mismatch (spacing, tokens, copy, missing states) is logged and fixed, or explicitly deferred with a reason. ☐ testable
+8. **AC-8 (prototype re-audit)** · **Given** `design/design-review-log.md`'s 25 prior issues are already marked Incorporated, **When** `audino` (already named as a B-09 reviewer in AGENT-MAP.md §5, brought forward to also run as a read-only design-time consult alongside `smeargle`'s Phase B responsive plan — not a new agent assignment) re-diffs every existing screen (CrmMap, FilterSheet, PropertyDetail, ContractorBadge, ResultsPanel, LeadsList, LeadDetail, AppShell/NavRail, plus the new B-09 Ask screens) against the current `design/prototype/` prototype (corrected path — `design/screens/` doesn't exist in this repo; see `specs/009-agent-hardening/agent-design.md` correction #2), **Then** every newly found mismatch (spacing, tokens, copy, missing states) is logged and fixed, or explicitly deferred with a reason. ☐ testable
 
 ## Edge cases
 
 - The model call exceeds the 23 s server-side abort → the rep sees a typed "took too long" state, never an unhandled 500.
-- A place-resolution confidence below 0.80 (an ambiguous or unknown place name) → the agent asks a clarifying question instead of guessing a center point.
+- A place-resolution score below 0.80 → `not_found` (refuse, offer to rephrase); a score of 0.80–0.92, or two top candidates within 0.05 of each other → `needs_clarification` (ask, with the top 3 as options) instead of guessing a center point. (ADR-06 bands, `docs/architecture-constitution.md`; corrected from an earlier looser "below 0.80 → clarify" wording — see `specs/009-agent-hardening/agent-design.md` correction #1.)
 
 ## Requirements
 
@@ -95,7 +95,7 @@ No `[NEEDS CLARIFICATION]` remaining.
 
 | Element | Value |
 | --- | --- |
-| Claude Design screen | `design/screens/CrmAsk390/1440.html`, `CrmAskNoResults390.html`, `CrmAskLowConf390.html`, `CrmAskConfirm1440.html`, `CrmAskThrottled390.html` |
+| Claude Design screen | `design/prototype/CrmAsk390.dc.html` / `CrmAsk1440.dc.html`, `CrmAskNoResults390.dc.html`, `CrmAskLowConf390.dc.html`, `CrmAskConfirm390.dc.html` / `CrmAskConfirm1440.dc.html`, `CrmAskThrottled390.dc.html` (also see `CrmAskNotFound390`, `CrmAskOutside390`, `CrmAskPaused390`, `CrmAskSlow390`, `CrmAskStates` — path corrected from a stale `design/screens/` reference, see `specs/009-agent-hardening/agent-design.md` correction #2) |
 | States covered | working/answer-with-citations/no-results/low-confidence/throttled/paused; create-lead confirmation |
 | Design system | `../assessment-guide/design-system/` (Atlas, Material 3, mobile-first) |
 

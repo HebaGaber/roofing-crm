@@ -90,7 +90,7 @@ An evaluator or the product owner compares every screen — old and new — agai
 ### Edge Cases
 
 - What happens when the agent's underlying model call takes too long? → The rep sees a clear "this took too long, try again" state, never a broken/blank screen.
-- What happens when the rep names a place the agent isn't confident it resolved correctly? → The agent asks a clarifying question instead of guessing a location.
+- What happens when the rep names a place the agent isn't confident it resolved correctly? → Below a 0.80 match score, the agent declines and offers to rephrase rather than guess; between 0.80 and 0.92 (or when the top two candidates are close), it asks a clarifying question with the top options instead of guessing a location (ADR-06 bands; corrected from an earlier single-threshold description).
 - What happens when the retry-queue alert fires but the underlying failure never recovers? → The alert stays active (never silently clears) until the queue is actually empty.
 - What happens when a screen drift fix would require re-opening architecture already approved in an earlier story? → It is logged as deferred with a reason, not force-fixed under time pressure.
 
