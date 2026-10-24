@@ -92,6 +92,21 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
   );
 }
 
+/** The text a rep reads for an event. A note is stored as `note: "<JSON string>"`; show the rep's
+ *  own words (quotes, ampersands and line breaks intact), not the storage wrapper. */
+export function eventText(event: { readonly kind: string; readonly change: string }): string {
+  const prefix = "note: ";
+  if (event.kind === "note" && event.change.startsWith(prefix)) {
+    try {
+      const parsed: unknown = JSON.parse(event.change.slice(prefix.length));
+      if (typeof parsed === "string") return parsed;
+    } catch {
+      // not the expected wrapper: fall through to the stored text
+    }
+  }
+  return event.change;
+}
+
 function EventList({
   events,
   empty,
@@ -104,7 +119,7 @@ function EventList({
     <ol className={styles.events}>
       {events.map((event) => (
         <li key={event.sequence}>
-          <div>{event.change}</div>
+          <div className={styles.eventText}>{eventText(event)}</div>
           <div className={styles.meta}>
             {`${event.by} · ${event.at.slice(0, 16).replace("T", " ")} UTC`}
           </div>

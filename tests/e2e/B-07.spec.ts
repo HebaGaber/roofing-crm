@@ -426,13 +426,16 @@ test.describe("B-07 leads", () => {
   });
 
   test("B-07-TC-010 note round-trip", async ({ page }) => {
-    const filler = "Roof walk notes, flashing & vents ok; ".repeat(40).slice(0, 900);
+    const filler = "Roof walk notes, flashing & vents ok; ".repeat(40).slice(0, 1000);
     const note = `${RUN_TAG} "quoted" & 'single'\nsecond line ${filler}`.slice(0, 1000);
     expect(note).toHaveLength(1000);
     await page.goto(leadPath(factsOf(P_5_52).requestIdentifier));
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
-    await expect(page.getByRole("region", { name: "Notes" })).toContainText(RUN_TAG);
+    // Wait for THIS note (TC-008's note carries the same run tag, so the tag alone is not enough).
+    await expect(page.getByRole("region", { name: "Notes" })).toContainText(
+      `${RUN_TAG} "quoted" & 'single'`,
+    );
 
     await page.reload();
     const text = await page.getByRole("region", { name: "Notes" }).textContent();

@@ -208,3 +208,9 @@
 .link {
   color: var(--md-sys-color-primary);
 }
+
+/* A note keeps the rep's line breaks and wraps long unbroken text instead of overflowing. */
+.eventText {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
