@@ -2,8 +2,9 @@
 // state around it. The 5-step tour and welcome screen were cut; this one card replaces them.
 // Pure and DOM-light so the Help menu (components/AppShell/HelpMenu.tsx) can import it.
 
-/** The query param the Ask route reads to prefill its question box. The example links below set
- *  it; Ask must only prefill the box, never run the question (every ask costs model money). */
+/** The query param the map's AI mode reads to prefill its question box. The example links below
+ *  set it; the panel must only prefill the box, never run the question (every ask costs model
+ *  money). */
 export const ASK_QUESTION_PARAM = "q";
 
 /** `?first=1` forces the card open (demos and tests), even after it was dismissed. */
@@ -30,9 +31,10 @@ export const EXAMPLE_QUESTIONS: readonly string[] = [
   "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
 ];
 
-/** The Ask route with the question prefilled in its box (not run). */
+/** The map's AI mode with the question prefilled in its box (not run): Ask lives inside the map
+ *  (CRM-HANDOFF section 4.7), `/?mode=ai&q=...`. */
 export function askHref(question: string): string {
-  return `/ask?${ASK_QUESTION_PARAM}=${encodeURIComponent(question)}`;
+  return `/?mode=ai&${ASK_QUESTION_PARAM}=${encodeURIComponent(question)}`;
 }
 
 /** True once the person dismissed the card on this browser. Storage can be blocked or throw

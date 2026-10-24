@@ -4,11 +4,11 @@
 // the tRPC wiring itself (that's askApi.test.tsx, mirroring test/leads/leadsApi.test.tsx).
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { AgentAnswer } from "@crm/shared";
-import { MemoryRouter, useLocation } from "react-router";
-import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const askMutate = vi.fn();
+const askReset = vi.fn();
 let askState: { isPending: boolean; isError: boolean; data: AgentAnswer | undefined } = {
   isPending: false,
   isError: false,
@@ -17,21 +17,36 @@ let askState: { isPending: boolean; isError: boolean; data: AgentAnswer | undefi
 
 let runInfo: { runId: string | null } | undefined = { runId: "3" };
 
+const undoMutate = vi.fn();
+const confirmLeadsMutate = vi.fn();
+let confirmLeadsState: { isPending: boolean } = { isPending: false };
+const undoCreatedFn = vi.fn();
+let undoState: {
+  isPending: boolean;
+  isSuccess: boolean;
+  isError: boolean;
+  data: { deleted: boolean; reason?: string } | undefined;
+} = { isPending: false, isSuccess: false, isError: false, data: undefined };
+
 const confirmMutate = vi.fn();
 let confirmState: {
   isPending: boolean;
   isSuccess: boolean;
   isError: boolean;
   error: unknown;
+  data?: { leadKey: string; leadId: string };
 } = { isPending: false, isSuccess: false, isError: false, error: null };
 
 vi.mock("../../src/routes/Ask/askApi", () => ({
-  useAskAgent: () => ({ mutate: askMutate, ...askState }),
+  useAskAgent: () => ({ mutate: askMutate, reset: askReset, ...askState }),
   useConfirmLead: () => ({ mutate: confirmMutate, ...confirmState }),
   useRunInfo: () => ({ data: runInfo }),
+  useUndoCreate: () => ({ mutate: undoMutate, ...undoState }),
+  useConfirmLeads: () => ({ mutate: confirmLeadsMutate, ...confirmLeadsState }),
+  useUndoCreatedLeads: () => undoCreatedFn,
 }));
 
-import { Component as Ask } from "../../src/routes/Ask/Ask";
+import { AskPanel, type AskPanelProps } from "../../src/routes/Ask/AskPanel";
 
 const MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
 
@@ -104,16 +119,22 @@ function blockedFixture(overrides: Partial<AgentAnswer>): AgentAnswer {
 
 const QUESTION_LABEL = /^Ask your question in plain English$/;
 
-function Where(): ReactElement {
-  const { pathname, search } = useLocation();
-  return <span data-testid="where">{`${pathname}${search}`}</span>;
-}
+const panelCallbacks = {
+  onFocusCitation: vi.fn(),
+  onAnswer: vi.fn(),
+  onShowOnMap: vi.fn(),
+};
 
-function renderAsk(url = "/ask"): ReturnType<typeof render> {
+function renderAsk(props: Partial<AskPanelProps> = {}): ReturnType<typeof render> {
   return render(
-    <MemoryRouter initialEntries={[url]}>
-      <Ask />
-      <Where />
+    <MemoryRouter>
+      <AskPanel
+        threadId="thread-1"
+        focusedCitation={null}
+        layout="pane"
+        {...panelCallbacks}
+        {...props}
+      />
     </MemoryRouter>,
   );
 }
@@ -130,6 +151,13 @@ afterEach(() => {
   askState = { isPending: false, isError: false, data: undefined };
   confirmState = { isPending: false, isSuccess: false, isError: false, error: null };
   runInfo = { runId: "3" };
+  undoMutate.mockReset();
+  confirmLeadsMutate.mockReset();
+  undoCreatedFn.mockReset();
+  askReset.mockReset();
+  confirmLeadsState = { isPending: false };
+  for (const fn of Object.values(panelCallbacks)) fn.mockReset();
+  undoState = { isPending: false, isSuccess: false, isError: false, data: undefined };
 });
 
 describe("Ask screen", () => {
@@ -576,7 +604,7 @@ describe("Ask screen", () => {
       };
       view.rerender(
         <MemoryRouter>
-          <Ask />
+          <AskPanel threadId="thread-1" focusedCitation={null} layout="pane" {...panelCallbacks} />
         </MemoryRouter>,
       );
       expect(screen.getByRole("alert").textContent).toMatch(
@@ -599,30 +627,24 @@ describe("Ask screen", () => {
     });
   });
 
-  describe("?q= prefill from the first-visit card", () => {
+  describe("initialQuestion prefill (from ?q=)", () => {
     const Q = "Show me open roofing permits older than five years within five miles of Manor";
 
     it("prefills the question box and focuses it", () => {
-      renderAsk(`/ask?q=${encodeURIComponent(Q)}`);
+      renderAsk({ initialQuestion: Q });
       const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
       expect(box.value).toBe(Q);
       expect(document.activeElement).toBe(box);
     });
 
     it("never asks by itself", () => {
-      renderAsk(`/ask?q=${encodeURIComponent(Q)}`);
+      renderAsk({ initialQuestion: Q });
       expect(askMutate).not.toHaveBeenCalled();
       expect(askRoot().getAttribute("data-state")).toBe("idle");
     });
 
-    it("removes the param from the URL, keeping the path and other params", () => {
-      renderAsk(`/ask?q=${encodeURIComponent(Q)}&first=1`);
-      expect(screen.getByTestId("where").textContent).toBe("/ask?first=1");
-      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(Q);
-    });
-
     it("trims the text", () => {
-      renderAsk(`/ask?q=${encodeURIComponent("  roofs near Manor  ")}`);
+      renderAsk({ initialQuestion: "  roofs near Manor  " });
       expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(
         "roofs near Manor",
       );
@@ -630,20 +652,270 @@ describe("Ask screen", () => {
 
     it.each([
       ["empty", ""],
-      ["blank", "%20%20"],
+      ["blank", "   "],
       ["oversize", "x".repeat(501)],
-    ])("ignores an %s question but still clears the param", (_name, value) => {
-      renderAsk(`/ask?q=${value}`);
+    ])("ignores an %s question", (_name, value) => {
+      renderAsk({ initialQuestion: value });
       expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe("");
-      expect(screen.getByTestId("where").textContent).toBe("/ask");
       expect(askMutate).not.toHaveBeenCalled();
     });
 
     it("accepts exactly 500 characters", () => {
-      renderAsk(`/ask?q=${"y".repeat(500)}`);
+      renderAsk({ initialQuestion: "y".repeat(500) });
       expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toHaveLength(
         500,
       );
     });
+  });
+
+  describe("Undo after Create lead (leads.undoCreate)", () => {
+    const created = { leadKey: "48453:0201885122", leadId: "lead-9" };
+
+    it("sends the created lead's key and id, and nothing before the click", () => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isSuccess: true, data: created };
+      renderAsk();
+      expect(undoMutate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      expect(undoMutate).toHaveBeenCalledWith(created);
+    });
+
+    it("says the lead was removed, and drops Undo and Open Leads", () => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isSuccess: true, data: created };
+      undoState = { ...undoState, isSuccess: true, data: { deleted: true } };
+      renderAsk();
+      expect(screen.getByText("Lead removed")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+      expect(screen.queryByRole("link", { name: "Open Leads" })).toBeNull();
+    });
+
+    it("explains a refusal honestly and keeps the lead", () => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isSuccess: true, data: created };
+      undoState = { ...undoState, isSuccess: true, data: { deleted: false, reason: "CHANGED" } };
+      renderAsk();
+      expect(screen.getByText("Lead kept: it was updated after it was created.")).toBeTruthy();
+      expect(screen.getByText("Lead created")).toBeTruthy();
+    });
+
+    it("says the lead is still saved when the undo call fails", () => {
+      askState = { ...askState, data: answeredFixture() };
+      confirmState = { ...confirmState, isSuccess: true, data: created };
+      undoState = { ...undoState, isError: true };
+      renderAsk();
+      expect(screen.getByText("Couldn’t undo. The lead is still saved.")).toBeTruthy();
+    });
+  });
+
+  describe("Answer | Matches tabs and the map hooks", () => {
+    const pinned = (over: Partial<AgentAnswer> = {}): AgentAnswer => {
+      const base = answeredFixture();
+      const cite = {
+        ...(base.citations[0] as AgentAnswer["citations"][number]),
+        lat: 30.44,
+        lon: -97.62,
+      };
+      return answeredFixture({
+        citations: [cite],
+        rows: [
+          {
+            propertyCid: cite.propertyCid ?? "",
+            tcadId: "0201885122",
+            lat: 30.44,
+            lon: -97.62,
+            citationId: 1,
+            nearPlace: { name: "Pflugerville", distanceMi: 1.26 },
+            roofAgeYears: 24,
+            roofAgeBasis: "permit",
+            permit: { permitCid: "p1", number: "2019-1", statusClass: "stalled", openDays: 2338 },
+            contractorResolution: "unresolved",
+            missing: [{ field: "contractor_name_raw", reason: "no_lexicon_carrier" }],
+          },
+        ],
+        ...over,
+      });
+    };
+
+    it("tells the map about each new answer, and about none before the first", () => {
+      renderAsk();
+      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(null);
+      cleanup();
+      panelCallbacks.onAnswer.mockReset();
+      const answer = pinned();
+      askState = { ...askState, data: answer };
+      renderAsk();
+      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(answer);
+    });
+
+    it("shows the Matches count and lists each row with its facts", () => {
+      askState = { ...askState, data: pinned() };
+      renderAsk();
+      const tab = screen.getByRole("tab", { name: "Matches 1" });
+      fireEvent.click(tab);
+      const list = screen.getByRole("list", { name: "Matches" });
+      const text = list.textContent ?? "";
+      expect(text).toContain("TCAD 0201885122");
+      expect(text).toContain("near Pflugerville · 1.3 mi");
+      expect(text).toContain("Roof 24 yrs · Last reroof permit");
+      expect(text).toContain("Stalled · derived: no status in source · open 6.4 yrs");
+      expect(text).toContain("Contractor: Unresolved");
+      expect(text).toContain("Contractor name as printed");
+      expect(within(list).getByRole("button", { name: "Create lead" })).toBeTruthy();
+      expect(within(list).getByRole("link", { name: "Open on map" })).toBeTruthy();
+    });
+
+    it("says why Matches is empty when the answer carries no rows", () => {
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      fireEvent.click(screen.getByRole("tab", { name: "Matches 0" }));
+      expect(screen.getByText(/did not include a list of matches/)).toBeTruthy();
+    });
+
+    it("Show on map asks the map to fit the pins, and is off with none", () => {
+      askState = { ...askState, data: pinned() };
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Show on map" }));
+      expect(panelCallbacks.onShowOnMap).toHaveBeenCalledTimes(1);
+      cleanup();
+      askState = { ...askState, data: answeredFixture() };
+      renderAsk();
+      expect(screen.getByRole("button", { name: "Show on map" }).hasAttribute("disabled")).toBe(
+        true,
+      );
+      expect(
+        screen.getByText("No map pins: none of the cited properties has published coordinates."),
+      ).toBeTruthy();
+    });
+
+    it("clicking a citation number focuses it, and the focused source row is marked", () => {
+      askState = { ...askState, data: pinned() };
+      const view = renderAsk();
+      fireEvent.click(screen.getByRole("link", { name: "Source 1" }));
+      expect(panelCallbacks.onFocusCitation).toHaveBeenCalledWith(1);
+      view.rerender(
+        <MemoryRouter>
+          <AskPanel threadId="thread-1" focusedCitation={1} layout="pane" {...panelCallbacks} />
+        </MemoryRouter>,
+      );
+      expect(document.querySelector("#ask-source-1")?.getAttribute("data-focused")).toBe("true");
+    });
+
+    it("marks its layout for the map to size it", () => {
+      renderAsk({ layout: "sheet" });
+      expect(askRoot().getAttribute("data-layout")).toBe("sheet");
+    });
+  });
+
+  describe("Create leads for all n (confirmation first)", () => {
+    const three = (): AgentAnswer =>
+      answeredFixture({
+        proposals: [
+          { tcadId: "0201885122", alreadyLead: false },
+          { tcadId: "0210577629", alreadyLead: true, leadId: "lead-1" },
+          { tcadId: "0200314187", alreadyLead: false },
+        ],
+        rows: [
+          {
+            propertyCid: "c1",
+            tcadId: "0201885122",
+            lat: 30,
+            lon: -97,
+            missing: [],
+            roofAgeYears: 31,
+          },
+          { propertyCid: "c2", tcadId: "0210577629", lat: 30, lon: -97, missing: [] },
+          {
+            propertyCid: "c3",
+            tcadId: "0200314187",
+            missing: [{ field: "lat_lon", reason: "no_coordinates" }],
+          },
+        ],
+      });
+
+    it("opens a confirmation sheet and creates nothing until Create is pressed", () => {
+      askState = { ...askState, data: three() };
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      const dialog = screen.getByRole("dialog");
+      expect(confirmLeadsMutate).not.toHaveBeenCalled();
+      expect(within(dialog).getByText("Create 1 lead?")).toBeTruthy();
+      expect(within(dialog).getByText("Already a lead · skipped")).toBeTruthy();
+      expect(within(dialog).getByText("No published coordinates · skipped")).toBeTruthy();
+      expect(within(dialog).getByText("Main signal: Roof 31 yrs")).toBeTruthy();
+    });
+
+    it("Cancel closes it without creating", () => {
+      askState = { ...askState, data: three() };
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(confirmLeadsMutate).not.toHaveBeenCalled();
+    });
+
+    it("sends only the creatable ids with the thread, then reports and offers Undo", async () => {
+      askState = { ...askState, data: three() };
+      confirmLeadsMutate.mockImplementation((_vars, options) =>
+        options.onSuccess({
+          created: [{ tcadId: "0201885122", leadKey: "48453:0201885122", leadId: "lead-7" }],
+          alreadyLeads: [],
+          failed: [],
+        }),
+      );
+      undoCreatedFn.mockResolvedValue({ undone: 1, refused: [], failed: 0 });
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create 1 lead" }));
+      expect(confirmLeadsMutate.mock.calls[0]?.[0]).toEqual({
+        threadId: "thread-1",
+        tcadIds: ["0201885122"],
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByText("1 lead created · 1 already a lead")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+      await vi.waitFor(() => expect(screen.getByText("Undid 1 lead")).toBeTruthy());
+      expect(undoCreatedFn).toHaveBeenCalledWith([
+        { leadKey: "48453:0201885122", leadId: "lead-7" },
+      ]);
+    });
+
+    it("keeps the sheet open with the typed reason when the server refuses", () => {
+      askState = { ...askState, data: three() };
+      confirmLeadsMutate.mockImplementation((_vars, options) =>
+        options.onError({ data: { appCode: "RATE_LIMITED" } }),
+      );
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create 1 lead" }));
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toMatch(/Too many lead requests/);
+    });
+
+    it("rows created in bulk say Lead created instead of offering Create lead again", () => {
+      askState = { ...askState, data: three() };
+      confirmLeadsMutate.mockImplementation((_vars, options) =>
+        options.onSuccess({
+          created: [{ tcadId: "0201885122", leadKey: "k", leadId: "l" }],
+          alreadyLeads: [],
+          failed: [],
+        }),
+      );
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create 1 lead" }));
+      expect(screen.getByText("Lead created")).toBeTruthy();
+    });
+  });
+
+  it("a new thread forgets the last answer", () => {
+    askState = { ...askState, data: answeredFixture() };
+    const view = renderAsk();
+    view.rerender(
+      <MemoryRouter>
+        <AskPanel threadId="thread-2" focusedCitation={null} layout="pane" {...panelCallbacks} />
+      </MemoryRouter>,
+    );
+    expect(askReset).toHaveBeenCalledTimes(1);
   });
 });

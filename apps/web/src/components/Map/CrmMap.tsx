@@ -27,6 +27,7 @@ import {
   type MapMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type { AnswerPin } from "@crm/shared";
 import {
   forwardRef,
   useCallback,
@@ -56,6 +57,7 @@ import {
   type HexCell,
   type OverviewPermitPoint,
 } from "./hexbin.js";
+import { pinBounds, pinElement, setPinSelected } from "./answerPins.js";
 import styles from "./CrmMap.module.css";
 
 /** Default demo style: no API key required. MapLibre's own "demotiles" (the original default
@@ -223,6 +225,8 @@ export interface CrmMapHandle {
   readonly placeAtCenter: () => void;
   /** "Go to Travis County": shows the whole county, leaving any pin and ring where they are. */
   readonly showCounty: () => void;
+  /** AI mode's "Show on map": fits the answer's pins (and the search ring when there is a pin). */
+  readonly fitPins: () => void;
 }
 
 /** `overview` = hexagons and permit clusters; `detail` = individual markers. */
@@ -257,6 +261,12 @@ export interface CrmMapProps {
   readonly accuracy?: { readonly meters: number } | null;
   /** Field triage's current card (board CrmTriage390): its roof marker is ringed (`is-tri`). */
   readonly triageCid?: string | null;
+  /** AI mode: the answer's cited properties, drawn as numbered pins (the citation number). */
+  readonly answerPins?: readonly AnswerPin[];
+  /** The focused citation's number: its pin shows selected, and the map pans to it if needed. */
+  readonly focusedPin?: number | null;
+  /** A pin was clicked: the answer panel focuses that citation. */
+  readonly onPinSelect?: (n: number) => void;
 }
 
 /** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
@@ -317,6 +327,9 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     pinMode = false,
     accuracy = null,
     triageCid = null,
+    answerPins = [],
+    focusedPin = null,
+    onPinSelect,
   }: CrmMapProps,
   ref,
 ) {
@@ -334,6 +347,10 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const overview = isOverviewView(zoom, center !== null);
   const onViewModeChangeRef = useRef(onViewModeChange);
   onViewModeChangeRef.current = onViewModeChange;
+  const onPinSelectRef = useRef(onPinSelect);
+  onPinSelectRef.current = onPinSelect;
+  const pinsRef = useRef(answerPins);
+  pinsRef.current = answerPins;
   const onZoomStepChangeRef = useRef(onZoomStepChange);
   onZoomStepChangeRef.current = onZoomStepChange;
 
@@ -562,6 +579,31 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     });
   }, [center?.lat, center?.lng, accuracy?.meters, styleReady]);
 
+  // AI mode: the answer's numbered pins, above every other marker. Rebuilt when the set changes;
+  // selection only restyles in place (so a click does not flicker the whole set).
+  const pinMarkerRefs = useRef<{ n: number; marker: Marker; el: HTMLButtonElement }[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const { marker } of pinMarkerRefs.current) marker.remove();
+    pinMarkerRefs.current = [];
+    if (map === null || !styleReady) return;
+    for (const pin of answerPins) {
+      const el = pinElement(pin.n, false, (n) => onPinSelectRef.current?.(n));
+      const marker = new Marker({ element: el }).setLngLat([pin.lon, pin.lat]).addTo(map);
+      pinMarkerRefs.current.push({ n: pin.n, marker, el });
+    }
+  }, [answerPins, styleReady]);
+  useEffect(() => {
+    const map = mapRef.current;
+    for (const { n, el } of pinMarkerRefs.current) setPinSelected(el, n === focusedPin);
+    if (map === null || focusedPin === null) return;
+    const pin = answerPins.find((p) => p.n === focusedPin);
+    if (pin === undefined) return;
+    if (!map.getBounds().contains([pin.lon, pin.lat])) {
+      map.easeTo({ center: [pin.lon, pin.lat], duration: prefersReducedMotion() ? 0 : 400 });
+    }
+  }, [focusedPin, answerPins, styleReady]);
+
   // E-72 Layers: aged-roof markers. Re-created whenever the result set or the layer toggle
   // changes — the marker list is short (a radius search, never the whole county), so a full
   // remove/re-add is simpler and cheap enough, unlike the single pin marker above.
@@ -765,6 +807,19 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       placeAtCenter: () => {
         const at = mapRef.current?.getCenter();
         if (at !== undefined) onPinDropRef.current?.({ lat: at.lat, lng: at.lng });
+      },
+      fitPins: () => {
+        const map = mapRef.current;
+        if (map === null) return;
+        const ring =
+          center !== null && radiusMi !== undefined ? ringBounds(center, radiusMi) : undefined;
+        const bounds = pinBounds(pinsRef.current, ring);
+        if (bounds === null) return;
+        map.fitBounds(bounds, {
+          padding: 48,
+          maxZoom: 14,
+          duration: prefersReducedMotion() ? 0 : 400,
+        });
       },
       showCounty: () => {
         mapRef.current?.fitBounds(TRAVIS_COUNTY_BOUNDS, {

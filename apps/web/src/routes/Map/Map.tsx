@@ -62,6 +62,10 @@ import { ResultsPanel } from "./ResultsPanel.js";
 import { ResultsSheet } from "./ResultsSheet.js";
 import { TopBar } from "./TopBar.js";
 import { TriageStack } from "./Triage/index.js";
+import { AskPanel } from "../Ask/AskPanel.js";
+import { answerPins, type AgentAnswer } from "@crm/shared";
+import { ModeChips } from "./ModeChips.js";
+import { newThreadId, readThreadId, useMapMode } from "./mapMode.js";
 import { ViewToggle } from "./ViewToggle.js";
 import styles from "./Map.module.css";
 
@@ -118,6 +122,29 @@ export function Component(): ReactElement {
   // centre, radius and filters, so reload, back and a shared link reopen the same view.
   const { view, triage, setView, setTriage } = useMapViewParam();
   const [triageCid, setTriageCid] = useState<string | null>(null);
+  // AI mode (`mode=ai&q=`): the agent answers inside the map; its cited properties are numbered pins.
+  const { mode, q, setMode, clearQuestion } = useMapMode();
+  // The question in `?q=` only prefills the box. Keep what the panel should show in state, and take
+  // `q` out of the URL, so a reload or a shared link does not refill the box with an old question.
+  const [prefill, setPrefill] = useState<string | null>(null);
+  useEffect(() => {
+    if (q === null) return;
+    setPrefill(q);
+    clearQuestion();
+  }, [q, clearQuestion]);
+  const ai = mode === "ai";
+  const [threadId, setThreadId] = useState(readThreadId);
+  const [answer, setAnswer] = useState<AgentAnswer | null>(null);
+  const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
+  const pins = useMemo(() => (answer === null ? [] : answerPins(answer)), [answer]);
+  const hadAnswer = useRef(false);
+  const onAnswer = useCallback((next: AgentAnswer | null) => {
+    // "New question" clears the answer: that starts a new agent thread (no carried-over memory).
+    if (next === null && hadAnswer.current) setThreadId(newThreadId());
+    hadAnswer.current = next !== null;
+    setAnswer(next);
+    setFocusedCitation(null);
+  }, []);
 
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
@@ -350,7 +377,13 @@ export function Component(): ReactElement {
     ((overviewCells?.length ?? 0) > 0 || roofMarkers.length > 0);
 
   return (
-    <section aria-label="Map" data-route="map" data-view={view} className={styles.page}>
+    <section
+      aria-label="Map"
+      data-route="map"
+      data-view={view}
+      {...(ai ? { "data-mode": "ai" } : {})}
+      className={styles.page}
+    >
       <div className={styles.top}>
         <TopBar />
       </div>
@@ -372,12 +405,16 @@ export function Component(): ReactElement {
           permitOpenYrs={permitOpenYrs}
           onPermitOpenYrsChange={setPermitOpenYrs}
           matchCount={searchInput === null ? undefined : query.data?.properties.length}
+          open={mode === "filters"}
+          onOpenChange={(open) => setMode(open ? "filters" : "map")}
         />
         {wide ? null : <ViewToggle view={view} onChange={setView} />}
+        {wide ? null : <ModeChips mode={mode} onChange={setMode} />}
       </div>
       {wide ? (
         <div className={styles.viewBar} data-view-bar="">
           <ViewToggle view={view} onChange={setView} />
+          <ModeChips mode={mode} onChange={setMode} />
         </div>
       ) : null}
       {view === "list" ? (
@@ -410,6 +447,9 @@ export function Component(): ReactElement {
             pinMode={pinMode}
             accuracy={accuracyM === null || center === null ? null : { meters: accuracyM }}
             triageCid={triage ? triageCid : null}
+            answerPins={pins}
+            focusedPin={focusedCitation}
+            onPinSelect={setFocusedCitation}
           />
           <MapControls
             mapRef={mapHandleRef}
@@ -517,7 +557,22 @@ export function Component(): ReactElement {
             : null}
         </div>
       ) : null}
-      {view === "map" && triage ? (
+      {view === "map" && ai ? (
+        <div className={styles.resultsSlot} data-empty="false" data-slot="ai">
+          <ResultsSheet>
+            <AskPanel
+              threadId={threadId}
+              {...(prefill === null ? {} : { initialQuestion: prefill })}
+              focusedCitation={focusedCitation}
+              onFocusCitation={setFocusedCitation}
+              onAnswer={onAnswer}
+              onShowOnMap={() => mapHandleRef.current?.fitPins()}
+              layout={wide ? "pane" : "sheet"}
+            />
+          </ResultsSheet>
+        </div>
+      ) : null}
+      {view === "map" && triage && !ai ? (
         <div className={styles.resultsSlot} data-empty="false">
           <div className={styles.triageDock}>
             <TriageStack
@@ -531,7 +586,7 @@ export function Component(): ReactElement {
           </div>
         </div>
       ) : null}
-      {view === "map" && !triage ? (
+      {view === "map" && !triage && !ai ? (
         <div className={styles.resultsSlot} data-empty={sheetEmpty}>
           <ResultsSheet>
             {pinOutsideCounty ? (

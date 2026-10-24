@@ -27,3 +27,21 @@ export function useConfirmLead() {
   const trpc = useTRPC();
   return useMutation(trpc.agent.confirmLead.mutationOptions());
 }
+
+/** Undo of the one lead this screen just created (`leads.undoCreate`): the same call and refusal
+ *  wording as the candidate list and triage (`routes/Map/Candidates/undoCopy.ts`). A refusal comes
+ *  back as `{ deleted: false, reason }`, an outcome to explain rather than an error. */
+export function useUndoCreate() {
+  const trpc = useTRPC();
+  return useMutation(trpc.leads.undoCreate.mutationOptions());
+}
+
+/** The bulk "Create leads for all n" (`agent.confirmLeads`): only tcadIds this thread proposed.
+ *  Typed straight from the router. A duplicate is a per-item result, never an error. */
+export function useConfirmLeads() {
+  const trpc = useTRPC();
+  return useMutation(trpc.agent.confirmLeads.mutationOptions());
+}
+
+/** Undo of the leads one bulk create made (and only those); the candidate list's own hook. */
+export { useUndoCreatedLeads } from "../Map/Candidates/candidatesApi.js";

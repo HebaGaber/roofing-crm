@@ -59,6 +59,26 @@ Third pass (candidates and triage mounted):
   and the Filters chip on phones is the sliders icon plus the match count, as drawn. The phone toolbar
   is one row, as the board's.
 
+Fourth pass (Ask inside the map, AI mode; contract: ask-in-map CONTRACT.md section 4):
+
+- **URL**: `mode=ai&q=...` (also `mode=filters`, which opens the phone Filters sheet) beside the
+  centre, radius, filters, `view` and `triage` keys (`routes/Map/mapMode.ts`). `q` only prefills the
+  question; it never runs it. Leaving AI mode drops `q`.
+- **Chips**: Map | AI (`aria-pressed`, accessible names "Map mode" and "AI mode") next to the
+  Map + cards | List toggle; Filters is the toolbar's existing Filters button, now controlled by
+  `mode=filters`, so the name `Filters` is not repeated and existing selectors keep working.
+- **Panel**: AI replaces the results pane (from 840 px) or the results sheet (phones) with
+  `AskPanel` (built in `routes/Ask/AskPanel.tsx`; layout "pane" or "sheet"). The map stays.
+- **Answer pins**: the answer's cited properties with coordinates (`answerPins` from `@crm/shared`)
+  are numbered buttons on the map (same number as the citation, "Source n", 48 px hit area, selected
+  state, Atlas tokens), drawn above the roof markers. Click a pin to focus its citation; focusing a
+  citation selects its pin and pans to it if off screen. Show on map fits the pins and the search ring.
+- **Thread**: kept in sessionStorage (`crm.askThread.v1`, in try/catch); a new thread starts when the
+  answer is cleared ("New question").
+- The first-visit card's example questions now open `/?mode=ai&q=...`.
+- Not visually compared yet: `AskPanel` was still being written, so the CrmAsk boards are covered by
+  route tests with the panel stubbed. Capture and compare once it lands.
+
 ## Matrix
 
 | Board | Route + state | Status | Side-by-side | Notes |
@@ -95,6 +115,8 @@ Third pass (candidates and triage mounted):
 
 | CrmCandidates1440 / 768 / 390 | `view=list` | Matched, data differs | CrmCandidates1440, 768, 390 | The component is the candidates group's (their record: design/board-match/candidates-triage.md); here it is the mounting: toggle, filters, placement, Show on map. The board's Area and Sort menus and Close tab are not built. |
 | CrmTriage390 | `triage=1` | Matched, data differs | CrmTriage390 | Dock, card, Skip, Create lead, Open details, ringed marker. Contractor and BBB lines show the published reason. |
+
+| CrmAsk1440 / 768 / 390, CrmAskConfirm, CrmAskCreated | `/?mode=ai&q=` | Mounted, not yet compared | none | The map side is built and tested (chips, panel slot, numbered pins, Show on map, thread). The panel's content (Answer and Matches tabs, Create leads for all n, confirmation, Undo) is the Ask builder's; record the final status after a side-by-side. Editable Read as chips, Cancel while working, Sort menu and the Close tab stay deferred (need a plan-edit input, no close-matches API). |
 
 ## Gaps
 

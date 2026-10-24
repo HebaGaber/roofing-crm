@@ -1,6 +1,6 @@
 // B-09 T048 (US3, AC-5; agent-design.md smeargle §2/§4) + review round: responsive coverage for
 // the Ask screen at 390/768/1440 (playwright.config.ts's three viewport projects) against
-// RUNTIME_URL. Selectors come from `apps/web/src/routes/Ask/Ask.tsx`'s `data-state` values
+// RUNTIME_URL. Selectors come from `apps/web/src/routes/Ask/AskPanel.tsx`'s `data-state` values
 // (`OUTCOME_STATE` is the single source of truth there).
 //
 // Cost and rate limit: every `agent.ask` is a real, paid model call, rate-limited to 5 asks/min
@@ -26,14 +26,14 @@ import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } fr
 // Signed in once by the `setup` project; this file tests the Ask screen, not sign-in.
 test.use({ storageState: AUTH_STATE_PATH });
 
-const ASK_ROOT = '[data-route="ask"]';
+const ASK_ROOT = '[data-panel="ask"]';
 const OUT_OF_SCOPE_QUESTION = "open roofing permits within five miles of 99999";
 const NOT_FOUND_QUESTION = "open roofing permits within five miles of zzzzzznotaplacezzzzzz";
 /** The server stops a turn at 23 s; allow the round trip on top. */
 const ANSWER_TIMEOUT_MS = 30_000;
 
 async function gotoAsk(page: Page): Promise<void> {
-  await openSignedIn(page, "/ask");
+  await openSignedIn(page, "/?mode=ai");
   await expect(page.locator(ASK_ROOT)).toHaveAttribute("data-state", "idle");
   await page.evaluate(() => document.fonts.ready);
 }

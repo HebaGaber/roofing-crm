@@ -8,7 +8,7 @@
 import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
-import { fieldLabel } from "../../format/index.js";
+import { fieldLabel, permitStatusLabel, roofAgeBasisLabel } from "../../format/index.js";
 
 type Plan = AgentAnswer["plan"];
 type Outcome = AgentAnswer["outcome"];
@@ -296,4 +296,67 @@ export function confirmErrorCopy(error: unknown): ConfirmErrorCopy {
         retryable: true,
       };
   }
+}
+
+type Row = NonNullable<AgentAnswer["rows"]>[number];
+type Citation = AgentAnswer["citations"][number];
+
+const NO_SIGNAL = "No roof or permit signal published";
+const DAYS_PER_YEAR = 365.25;
+
+/** "near Pflugerville · 1.3 mi", only when the server sent the row's nearest place. */
+export function rowNearText(row: Row): string | undefined {
+  return row.nearPlace === undefined
+    ? undefined
+    : `near ${row.nearPlace.name} · ${row.nearPlace.distanceMi.toFixed(1)} mi`;
+}
+
+/** "Roof 24 yrs · Last reroof permit": the age and its basis, both from the row. */
+export function rowRoofText(row: Row): string | undefined {
+  if (row.roofAgeYears === undefined) return undefined;
+  const age = `Roof ${String(Math.round(row.roofAgeYears))} yrs`;
+  return row.roofAgeBasis === undefined ? age : `${age} · ${roofAgeBasisLabel(row.roofAgeBasis)}`;
+}
+
+/** "Stalled · derived: no status in source · open 6.4 yrs", from the row's permit. */
+export function rowPermitText(row: Row): string | undefined {
+  if (row.permit === undefined) return undefined;
+  const status = permitStatusLabel(row.permit.statusClass);
+  return row.permit.openDays === undefined
+    ? status
+    : `${status} · open ${(row.permit.openDays / DAYS_PER_YEAR).toFixed(1)} yrs`;
+}
+
+/** The confirmation sheet's "Main signal": the permit when there is one, else the roof. */
+export function rowSignal(row: Row | undefined): string {
+  if (row === undefined) return NO_SIGNAL;
+  if (row.permit !== undefined) {
+    const status = row.permit.statusClass === null ? "Status not published" : null;
+    const label = status ?? permitStatusLabel(row.permit.statusClass).replace(/ · derived.*$/, "");
+    return row.permit.openDays === undefined
+      ? label
+      : `${label} · open ${(row.permit.openDays / DAYS_PER_YEAR).toFixed(1)} yrs`;
+  }
+  return rowRoofText(row)?.replace(/ · .*$/, "") ?? NO_SIGNAL;
+}
+
+/** Why the Matches tab is empty: the answer had no `rows` at all, or none matched. */
+export function matchesEmptyText(rows: readonly Row[] | undefined): string {
+  return rows === undefined
+    ? "This answer did not include a list of matches. The cited sources are in the Answer tab."
+    : "No matches to list for this question.";
+}
+
+/** Why some or all cited properties have no map pin; undefined when every one has a pin. */
+export function pinsNote(citations: readonly Citation[], pinCount: number): string | undefined {
+  const properties = citations.filter((c) => c.kind === "property");
+  if (properties.length === 0) return "No map pins: this answer cites no property.";
+  const without = properties.length - pinCount;
+  if (without <= 0) return undefined;
+  if (pinCount === 0) {
+    return "No map pins: none of the cited properties has published coordinates.";
+  }
+  return `${String(without)} of ${String(properties.length)} cited properties ${
+    without === 1 ? "has" : "have"
+  } no published coordinates, so ${without === 1 ? "it has" : "they have"} no pin.`;
 }

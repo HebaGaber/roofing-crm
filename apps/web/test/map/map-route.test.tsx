@@ -5,8 +5,8 @@
 // (Map.module.css) and is proved live by the responsive Playwright specs.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { forwardRef, useEffect, useImperativeHandle } from "react";
-import { MemoryRouter } from "react-router";
+import { forwardRef, useEffect, useImperativeHandle, type ReactElement } from "react";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const zoomToDetail = vi.fn();
@@ -17,9 +17,14 @@ let lastMapProps: {
   pinMode?: boolean;
   accuracy?: { meters: number } | null;
   triageCid?: string | null;
+  answerPins?: { n: number }[];
+  focusedPin?: number | null;
+  onPinSelect?: (n: number) => void;
 } = {};
 /** The props the route last handed the committed Candidate list and Field triage components. */
 let lastListProps: Record<string, unknown> | null = null;
+let lastPanelProps: Record<string, unknown> | null = null;
+const fitPins = vi.fn();
 let lastTriageProps: Record<string, unknown> | null = null;
 let reportedMode: "overview" | "detail" = "overview";
 /** What the route last handed the map for the overview (null = client binning fallback). */
@@ -37,6 +42,9 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       pinMode?: boolean;
       accuracy?: { meters: number } | null;
       triageCid?: string | null;
+      answerPins?: { n: number }[];
+      focusedPin?: number | null;
+      onPinSelect?: (n: number) => void;
     },
     ref,
   ) {
@@ -51,6 +59,7 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       zoomToDetail,
       placeAtCenter,
       showCounty,
+      fitPins,
     }));
     useEffect(() => props.onViewModeChange?.(reportedMode), [props]);
     return <div data-testid="crm-map" />;
@@ -67,6 +76,13 @@ vi.mock("../../src/routes/Map/Candidates/index.js", async () => {
     },
   };
 });
+
+vi.mock("../../src/routes/Ask/AskPanel.js", () => ({
+  AskPanel: (props: Record<string, unknown>) => {
+    lastPanelProps = props;
+    return <div data-testid="ask-panel" />;
+  },
+}));
 
 vi.mock("../../src/routes/Map/Triage/index.js", () => ({
   TriageStack: (props: Record<string, unknown>) => {
@@ -189,6 +205,9 @@ afterEach(() => {
   reportedMode = "overview";
   searchResult = { properties: [property] };
   lastListProps = null;
+  lastPanelProps = null;
+  fitPins.mockReset();
+  sessionStorage.clear();
   lastTriageProps = null;
   placeAtCenter.mockReset();
   showCounty.mockReset();
@@ -201,6 +220,12 @@ afterEach(() => {
   lastOverviewPermits = undefined;
 });
 
+/** Exposes the router's current search string so tests can assert what the map did to the URL. */
+function LocationProbe(): ReactElement {
+  const { search } = useLocation();
+  return <output data-testid="url-search">{search}</output>;
+}
+
 function renderAt(url: string): HTMLElement {
   vi.stubGlobal(
     "fetch",
@@ -211,6 +236,7 @@ function renderAt(url: string): HTMLElement {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[url]}>
         <MapRoute />
+        <LocationProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -534,5 +560,99 @@ describe("Map route list view, triage and toolbar (committed Candidates and Tria
     renderAt(PIN_URL);
     await screen.findByTestId("search-results");
     expect(screen.getByRole("button", { name: /^Filters/ }).textContent).toMatch(/1/);
+  });
+});
+
+describe("Map route AI mode (mode=ai&q=)", () => {
+  const ANSWER = {
+    outcome: "answered",
+    claims: [{ text: "Two match.", citationIds: [1, 2] }],
+    citations: [
+      { id: 1, kind: "property", propertyCid: "bafkreia", lat: 30.4, lon: -97.6 },
+      { id: 2, kind: "property", propertyCid: "bafkreib", lat: 30.5, lon: -97.5 },
+      { id: 3, kind: "property", propertyCid: "bafkreic" },
+    ],
+  };
+  const aiProps = (): Record<string, unknown> => lastPanelProps as Record<string, unknown>;
+
+  it("mounts the panel with the prefilled question, never run, and marks the page AI", async () => {
+    const page = renderAt("/?mode=ai&q=roofs%20older%20than%2015&lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("ask-panel");
+    expect(aiProps().initialQuestion).toBe("roofs older than 15");
+    expect(typeof aiProps().threadId).toBe("string");
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    expect(screen.queryByTestId("search-results")).toBeNull();
+    expect(screen.getByTestId("crm-map")).not.toBeNull();
+  });
+
+  it("takes the prefilled question out of the URL once the panel has it, so a reload does not refill the box", async () => {
+    renderAt("/?mode=ai&q=roofs%20older%20than%2015&lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("ask-panel");
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("url-search").textContent).not.toContain("q="),
+    );
+    // The pin, radius and mode stay; the panel still received the question it should prefill.
+    expect(screen.getByTestId("url-search").textContent).toContain("mode=ai");
+    expect(screen.getByTestId("url-search").textContent).toContain("lat=30.4394");
+    expect(aiProps().initialQuestion).toBe("roofs older than 15");
+  });
+
+  it("the Map and AI chips switch mode and keep the pin", async () => {
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    const ai = screen.getByRole("button", { name: "AI mode" });
+    expect(ai.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(ai);
+    await screen.findByTestId("ask-panel");
+    expect(screen.getByRole("button", { name: "AI mode" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Map mode" }));
+    await screen.findByRole("region", { name: "Results" });
+    expect(screen.queryByTestId("ask-panel")).toBeNull();
+    expect(screen.getByRole("spinbutton", { name: "Radius" })).not.toBeNull();
+  });
+
+  it("an answer's cited properties become numbered pins; a citation with no coordinates has none", async () => {
+    renderAt("/?mode=ai");
+    await screen.findByTestId("ask-panel");
+    act(() => (aiProps().onAnswer as (a: unknown) => void)(ANSWER));
+    await vi.waitFor(() => expect(lastMapProps.answerPins?.map((p) => p.n)).toEqual([1, 2]));
+  });
+
+  it("a pin click focuses its citation, and the panel focusing a citation selects its pin", async () => {
+    renderAt("/?mode=ai");
+    await screen.findByTestId("ask-panel");
+    act(() => (aiProps().onAnswer as (a: unknown) => void)(ANSWER));
+    act(() => lastMapProps.onPinSelect?.(2));
+    await vi.waitFor(() => expect(aiProps().focusedCitation).toBe(2));
+    act(() => (aiProps().onFocusCitation as (n: number | null) => void)(1));
+    await vi.waitFor(() => expect(lastMapProps.focusedPin).toBe(1));
+  });
+
+  it("Show on map fits the pins", async () => {
+    renderAt("/?mode=ai");
+    await screen.findByTestId("ask-panel");
+    act(() => (aiProps().onShowOnMap as () => void)());
+    expect(fitPins).toHaveBeenCalledTimes(1);
+  });
+
+  it("the thread lasts the session and New question (answer cleared) starts a new one", async () => {
+    renderAt("/?mode=ai");
+    await screen.findByTestId("ask-panel");
+    const first = aiProps().threadId;
+    act(() => (aiProps().onAnswer as (a: unknown) => void)(ANSWER));
+    expect(aiProps().threadId).toBe(first);
+    act(() => (aiProps().onAnswer as (a: unknown) => void)(null));
+    await vi.waitFor(() => expect(aiProps().threadId).not.toBe(first));
+    expect(aiProps().threadId).toBe(sessionStorage.getItem("crm.askThread.v1"));
+  });
+
+  it("mode=filters opens the phone Filters sheet", async () => {
+    renderAt("/?mode=filters&lat=30.4394&lng=-97.62&r=5");
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Filters/ }).getAttribute("aria-expanded")).toBe(
+        "true",
+      ),
+    );
   });
 });

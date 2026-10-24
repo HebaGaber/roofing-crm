@@ -45,9 +45,9 @@ section 9.1); they are compared against the same live states.
 
 | Board | Route + state | Status | Side-by-side | Notes |
 |---|---|---|---|---|
-| CrmAsk1440 | `/ask`, answered | Matched, data differs | CrmAsk1440.png | Board nests Ask in the map screen; see Deferred rows. Numbered pins on the map are not built (review-log row 43). |
-| CrmAsk390 | `/ask`, answered | Matched, data differs | CrmAsk390.png | Same. The board's map behind the sheet is not part of `/ask`. |
-| CrmAsk768 | `/ask`, answered | Matched, data differs | CrmAsk768.png | One column under 1024. |
+| CrmAsk1440 | `/ask`, answered | Built, in-map visual not compared | CrmAsk1440.png | Now the map's AI mode (`/?mode=ai`, panel `AskPanel`); `/ask` redirects there. Not captured in the map: the in-map render could not be stubbed here (the map crashes without its own API fixtures), so this row rests on the panel unit tests and the earlier standalone captures. The map owner compares it in the map record. Answer | Matches tabs, Show on map and the numbered sources are built; the Close tab, Sort and the editable "Read as" chips stay deferred (no API). |
+| CrmAsk390 | `/ask`, answered | Built, in-map visual not compared | CrmAsk390.png | Now the map's AI mode (`/?mode=ai`, panel `AskPanel`); `/ask` redirects there. Not captured in the map: the in-map render could not be stubbed here (the map crashes without its own API fixtures), so this row rests on the panel unit tests and the earlier standalone captures. The map owner compares it in the map record. Answer | Matches tabs, Show on map and the numbered sources are built; the Close tab, Sort and the editable "Read as" chips stay deferred (no API). |
+| CrmAsk768 | `/ask`, answered | Built, in-map visual not compared | CrmAsk768.png | Now the map's AI mode (`/?mode=ai`, panel `AskPanel`); `/ask` redirects there. Not captured in the map: the in-map render could not be stubbed here (the map crashes without its own API fixtures), so this row rests on the panel unit tests and the earlier standalone captures. The map owner compares it in the map record. Answer | Matches tabs, Show on map and the numbered sources are built; the Close tab, Sort and the editable "Read as" chips stay deferred (no API). |
 | CrmAskWorking390 | working | Deviation: no Cancel | CrmAskWorking390.png | Cancel: review-log row 46 (`agent.ask` has no abort; hiding a charged answer would mislead). The PO said keep it deferred. Spinner, timer, progress, limit hint match. The hint says 23 s (the server's real stop), the board says 25 s. |
 | CrmAskNoResults390 | empty_in_scope | Deviation: no Widen / Open chips | CrmAskNoResults390.png | Chips: review-log row 47 (no structured plan-edit input on `agent.ask`). Sentence, exclusions and reason pills match. |
 | CrmAskLowConf390 | needs_clarification with candidates | Matched, data differs | CrmAskLowConf390.png | The board's "roof ages from year built only" banner is not a wire field: review-log row 49. Candidate chips are the live equivalent. |
@@ -56,10 +56,10 @@ section 9.1); they are compared against the same live states.
 | CrmAskThrottled390 | rate_limited | Matched | CrmAskThrottled390.png | Countdown from `retryAfterSec`, Ask held until zero, last answer kept under the banner. The board's "Wait 40 s" chip in the tab row has no counterpart (no tab row). |
 | CrmAskPaused390 | paused | Matched, data differs | CrmAskPaused390.png | Reset time from `resetsAt`, local and UTC. The "AI paused" chip in the tab row has no counterpart. |
 | CrmAskSlow390 | timed_out | Deviation: no "Use Filters instead" | CrmAskSlow390.png | Review-log rows 42 and 53. Try again is built. |
-| CrmAskConfirm390 | answered, Create lead on the row | Deviation: no bulk confirmation card | CrmAskConfirm390.png | Review-log row 43: `agent.confirmLead` takes one `{threadId, tcadId}`. Per-row Create lead is the live equivalent. |
-| CrmAskConfirm1440 | same | Deviation: same | CrmAskConfirm1440.png | Same. |
-| CrmAskCreated390 | confirmLead succeeded | Deviation: no "{n} created · {m} already" banner or Undo | CrmAskCreated390.png | Row 43. Lead created pill and Open Leads match. |
-| CrmAskCreateFailed390 | confirmLead failed | Matched, data differs | CrmAskCreateFailed390.png | Error banner inside the row; Create lead stays so it can retry. NOT_PROPOSED, NO_COORDINATES and RATE_LIMITED each have their own text and lock the button when retrying cannot work. |
+| CrmAskConfirm390 | answered, Create lead on the row | Built, in-map visual not compared | CrmAskConfirm390.png | Create leads for all n opens a confirmation sheet (the candidate list sheet's look) listing each property with its main signal; already-leads and no-coordinate rows are marked skipped. `agent.confirmLeads` sends only the creatable ids. |
+| CrmAskConfirm1440 | same | Built, in-map visual not compared | CrmAskConfirm1440.png | Same sheet, centred dialog at 600 px and up. |
+| CrmAskCreated390 | confirmLead succeeded | Built, in-map visual not compared | CrmAskCreated390.png | Snackbar "{n} leads created · {m} already leads" with Undo (`leads.undoCreate` per created lead, kept-reason wording) and Open Leads. Rows say Lead created. |
+| CrmAskCreateFailed390 | confirmLead failed | Built, in-map visual not compared | CrmAskCreateFailed390.png | A refused create keeps the sheet open with the typed reason in an alert; Create again retries. |
 | CrmAskNoAddress390 | answered, address and contractor missing | Matched, data differs | CrmAskNoAddress390.png | Rows show the TCAD id (the contract publishes no street address) and the missing-data pills with reasons. "near {place}" and the lat/lon line are not in the answer wire: gap below. |
 | CrmAskNoContractor390 | same | Matched, data differs | CrmAskNoContractor390.png | Same. |
 | CrmAskStates | idle | Deviation: overview board | CrmAskStates.png | An overview of five panels; each panel is compared as its own board above. The live idle page is the composer. |
@@ -74,10 +74,18 @@ section 9.1); they are compared against the same live states.
 | CrmAgentWorking1440 | working | Deviation: no Cancel | CrmAgentWorking1440.png | Row 46. |
 | CrmAgentWorking390 | working | Deviation: no Cancel | CrmAgentWorking390.png | Row 46. |
 
-Counts: 28 boards. Matched 2, Matched with data differing 12, Deviation with a recorded reason 14,
-Deferred as a feature 0 (every deferral above is a deviation with its review-log row).
-Ask as a mode inside the map (the boards' "AI mode") stays a deviation: Ask is its own page, review-log
-row 42 note and row 33.
+Update for Ask in the map: the three boards above, the Confirm, Created and CreateFailed rows are now
+built in the map's AI mode. Their counts below are from the earlier standalone comparison and are
+superseded by these rows.
+
+Counts: 28 boards. Matched 2, Matched with data differing 8 (LowConf, Paused, NoAddress,
+NoContractor, CrmAgent 1440/390/768, AgentPaused390), Deviation 18 (3 of them "pending PO decision").
+
+Ask inside the map: the handoff (CRM-HANDOFF section 4.7) says the CRM agent is the map's AI mode with
+the switch on, and the rail AI item, the 390 Ask tab and the property drawer's Ask open it. Ask as its
+own page (review-log rows 33 and 42) was the builder's choice, not a PO decision. Moving Ask into the map
+screen (Answer / Matches / Close tabs, numbered pins, Widen chip) is pending a PO decision and is not
+built here.
 
 ## Gaps (API or wire; not built here)
 
@@ -95,3 +103,32 @@ row 42 note and row 33.
    `{ created[], alreadyLeads[] }`, plus an undo (delete of the just-created leads).
 5. **Low-confidence reason.** Proposed: optional `AgentAnswer.confidenceNote` (`{ field, basis }`).
 6. **Cancel.** Needs an abort the server honours and does not charge twice (row 46).
+
+## Ask in the map (PO decision: the agent is the map's AI mode)
+
+- `AskPanel` (`routes/Ask/AskPanel.tsx`) takes the props in the build contract: `threadId`,
+  `initialQuestion`, `focusedCitation`, `onFocusCitation`, `onAnswer`, `onShowOnMap`, `layout`
+  (`pane` at 840 px and up, `sheet` below). Its root is `data-panel="ask"` with the same `data-state`
+  values as before and the same `#ask-result-heading`.
+- Answer | Matches tabs. Matches lists `answer.rows` (up to 25): the citation number when a claim cites
+  the row, TCAD id, near {place} and distance, roof age with its basis in words, permit class (stalled is
+  derived) and open years, contractor state, the reason for each missing value, Open on map and the
+  per-row Create lead. When the answer carries no rows the tab says so in words.
+- Numbers: a citation circle, its source row, its Matches row and its map pin all carry the citation id
+  (`answerPins` uses `n` = citation id), so the number in the text is the number on the pin. Clicking a
+  circle calls `onFocusCitation`; the focused row is marked and outlined.
+- Show on map calls `onShowOnMap`; it is off, with the reason in words, when no cited property has
+  published coordinates ("No map pins: ..."), and a partial case counts the ones without a pin.
+- `onAnswer` fires with each new answer, with the last real answer while a rate-limit or paused banner
+  shows, and with null before the first. It does not fire while a question is working.
+- Create leads for all n: `agent.confirmLeads` (typed from the router), Undo through `leads.undoCreate`.
+  The panel has its own small confirmation sheet (`AskConfirmSheet.tsx`, styles of the candidate list
+  sheet): the candidate sheet needs an existing lead's status, which an answer's proposal does not carry.
+- `?q=`: the map reads it and passes `initialQuestion`; the panel prefills and focuses the box, never
+  asks. Empty, blank and over-500 values are ignored. `/ask` redirects to `/?mode=ai` with `q` kept (see
+  `askRedirectTo`).
+- Still deferred (no API): editable "Read as" assumption chips and Widen / use-place chips, Cancel while
+  working, the Close-matches tab, Sort.
+
+Gaps 1, 2 and 4 above are now wire fields or procedures (`citations[].lat/lon/nearPlace`, `rows[]`,
+`agent.confirmLeads`); gaps 3, 5 and 6 remain.

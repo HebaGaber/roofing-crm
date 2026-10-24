@@ -42,13 +42,14 @@ describe("example questions", () => {
     for (const question of EXAMPLE_QUESTIONS) expect(prompts).toContain(question);
   });
 
-  it("each link prefills the Ask box through the exported param and never auto-runs", () => {
+  it("each link opens the map's AI mode with the question prefilled, and never runs it", () => {
     expect(ASK_QUESTION_PARAM).toBe("q");
     const href = askHref(EXAMPLE_QUESTIONS[0] as string);
-    expect(href.startsWith("/ask?q=")).toBe(true);
-    expect(new URL(href, "http://x").searchParams.get(ASK_QUESTION_PARAM)).toBe(
-      EXAMPLE_QUESTIONS[0],
-    );
+    expect(href.startsWith("/?mode=ai&q=")).toBe(true);
+    const url = new URL(href, "http://x");
+    expect(url.pathname).toBe("/");
+    expect(url.searchParams.get("mode")).toBe("ai");
+    expect(url.searchParams.get(ASK_QUESTION_PARAM)).toBe(EXAMPLE_QUESTIONS[0]);
     expect(href).not.toMatch(/run|auto|submit/i);
   });
 });

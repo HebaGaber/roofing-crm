@@ -265,6 +265,22 @@
   vertical-align: middle;
 }
 
+/* The 20 px circle stays; its hit area is 48 px (Atlas touch target) through a centred pseudo-
+   element, so neighbouring numbers overlap only in transparent space. */
+.citeRef {
+  position: relative;
+}
+
+.citeRef::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--space-9);
+  height: var(--space-9);
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
 .citeRef:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
@@ -618,23 +634,96 @@
   font-size: var(--md-sys-typescale-body-small-size);
 }
 
-/* Medium and up (Atlas § 4, the 600px rail breakpoint of AppShell.module.css): the answer stops
-   stretching the full main-region width. Expanded (CrmAsk1440 left AI pane + right answer pane):
-   composer left, answer right. */
-@media (min-width: 600px) {
-  .page {
-    padding: var(--space-6);
-  }
-
-  .answer {
-    max-width: 720px;
-  }
+/* Answer | Matches (CrmAsk1440 tab row): Atlas tabs, 48 px targets, a 3 px primary indicator. */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
 }
 
-@media (min-width: 1024px) {
-  .page {
-    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
-    column-gap: var(--space-6);
-    align-items: start;
-  }
+.tab {
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-title-small-font);
+  font-size: var(--md-sys-typescale-title-small-size);
+  font-weight: var(--md-sys-typescale-title-small-weight);
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-primary);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.outlineButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+}
+
+.outlineButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.outlineButton:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.pinNote {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+}
+
+.sourceNear {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  font-weight: var(--md-sys-typescale-body-medium-weight);
+}
+
+/* The focused citation (a pin or a number was selected): its row, and its number in the text. */
+.source[data-focused="true"] {
+  border-radius: var(--md-sys-shape-corner-small);
+  background: var(--md-sys-color-secondary-container);
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+.citeRef[data-focused="true"] {
+  outline: 2px solid var(--md-sys-color-on-surface);
+  outline-offset: 2px;
+}
+
+/* One column in both layouts: the pane (840 px and up) is a narrow side column, the sheet fills the
+   width below it. The panel never lays itself out in two columns. */
+.page[data-layout="sheet"] {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.page[data-layout="pane"] {
+  padding: var(--space-4);
 }

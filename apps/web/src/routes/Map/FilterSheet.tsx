@@ -42,6 +42,10 @@ export interface FilterSheetProps {
   /** How many properties match the filters now (the chip on the phone toolbar's Filters button,
    *  boards CrmMapPin390 and CrmMap390); absent while there is no search to count. */
   readonly matchCount?: number | undefined;
+  /** Controlled open state (the map's `mode=filters` opens the phone sheet). Absent = the sheet
+   *  keeps its own state, as before. */
+  readonly open?: boolean | undefined;
+  readonly onOpenChange?: ((open: boolean) => void) | undefined;
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -62,9 +66,17 @@ export function FilterSheet({
   permitOpenYrs,
   onPermitOpenYrsChange,
   matchCount,
+  open: controlledOpen,
+  onOpenChange,
 }: FilterSheetProps): ReactElement {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean | ((current: boolean) => boolean)): void => {
+    const value = typeof next === "function" ? next(open) : next;
+    setOwnOpen(value);
+    onOpenChange?.(value);
+  };
   // What the person is typing, until they leave the box (mirrors the copied-from file's "drafts"
   // pattern so a half-typed value is never clobbered by the committed one re-rendering).
   const [draft, setDraft] = useState<string | undefined>(undefined);

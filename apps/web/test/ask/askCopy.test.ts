@@ -18,7 +18,21 @@ import {
   timedOutText,
   composerNote,
   SUGGESTIONS,
+  matchesEmptyText,
+  pinsNote,
+  rowNearText,
+  rowPermitText,
+  rowRoofText,
+  rowSignal,
 } from "../../src/routes/Ask/askCopy";
+
+type Row = NonNullable<AgentAnswer["rows"]>[number];
+const row = (over: Partial<Row> = {}): Row => ({
+  propertyCid: "bafkprop1",
+  tcadId: "0200314187",
+  missing: [],
+  ...over,
+});
 
 type Plan = AgentAnswer["plan"];
 
@@ -331,5 +345,86 @@ describe("SUGGESTIONS", () => {
   it("is example questions only, the first being the README's own", () => {
     expect(SUGGESTIONS[0]).toMatch(/^Show me open roofing permits older than five years/);
     expect(SUGGESTIONS.every((q) => q.length <= 500)).toBe(true);
+  });
+});
+
+describe("Matches rows (Answer | Matches tab)", () => {
+  it("near {place} with the distance, only when the row carries it", () => {
+    expect(rowNearText(row({ nearPlace: { name: "Pflugerville", distanceMi: 1.26 } }))).toBe(
+      "near Pflugerville · 1.3 mi",
+    );
+    expect(rowNearText(row())).toBeUndefined();
+  });
+
+  it("roof age with its basis in words", () => {
+    expect(rowRoofText(row({ roofAgeYears: 24, roofAgeBasis: "permit" }))).toBe(
+      "Roof 24 yrs · Last reroof permit",
+    );
+    expect(rowRoofText(row({ roofAgeYears: 24 }))).toBe("Roof 24 yrs");
+    expect(rowRoofText(row())).toBeUndefined();
+  });
+
+  it("permit status (stalled is derived) and open years from openDays", () => {
+    expect(
+      rowPermitText(
+        row({
+          permit: { permitCid: "p", number: "2019-1", statusClass: "stalled", openDays: 2338 },
+        }),
+      ),
+    ).toBe("Stalled · derived: no status in source · open 6.4 yrs");
+    expect(
+      rowPermitText(row({ permit: { permitCid: "p", number: null, statusClass: null } })),
+    ).toBe("Status not published");
+    expect(rowPermitText(row())).toBeUndefined();
+  });
+
+  it("says why there is nothing to list", () => {
+    expect(matchesEmptyText(undefined)).toMatch(/did not include a list of matches/);
+    expect(matchesEmptyText([])).toBe("No matches to list for this question.");
+  });
+});
+
+describe("pinsNote (why a map pin is missing)", () => {
+  const cite = (id: number, extra: Partial<AgentAnswer["citations"][number]> = {}) =>
+    ({
+      id,
+      kind: "property",
+      propertyCid: `cid${String(id)}`,
+      sourceUrl: null,
+      capturedAt: "2026-10-20T00:00:00Z",
+      tableCid: "t",
+      manifestCid: "m",
+      asOf: "2026-10-20",
+      ...extra,
+    }) as AgentAnswer["citations"][number];
+
+  it("is silent when every cited property has a pin", () => {
+    expect(pinsNote([cite(1, { lat: 30, lon: -97 })], 1)).toBeUndefined();
+  });
+  it("names the case where none has coordinates", () => {
+    expect(pinsNote([cite(1), cite(2)], 0)).toBe(
+      "No map pins: none of the cited properties has published coordinates.",
+    );
+  });
+  it("counts the ones without a pin when some have one", () => {
+    expect(pinsNote([cite(1, { lat: 30, lon: -97 }), cite(2)], 1)).toBe(
+      "1 of 2 cited properties has no published coordinates, so it has no pin.",
+    );
+  });
+  it("says when the answer cites no property", () => {
+    expect(pinsNote([], 0)).toBe("No map pins: this answer cites no property.");
+  });
+});
+
+describe("rowSignal (the confirmation sheet's main signal)", () => {
+  it("prefers the permit, then the roof, then says nothing is published", () => {
+    expect(
+      rowSignal(
+        row({ permit: { permitCid: "p", number: null, statusClass: "open", openDays: 730 } }),
+      ),
+    ).toBe("Open · open 2.0 yrs");
+    expect(rowSignal(row({ roofAgeYears: 31 }))).toBe("Roof 31 yrs");
+    expect(rowSignal(row())).toBe("No roof or permit signal published");
+    expect(rowSignal(undefined)).toBe("No roof or permit signal published");
   });
 });
