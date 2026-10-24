@@ -79,6 +79,23 @@ export interface SearchPropertiesQuery {
   radiusMi?: number;
   roofAgeMinYears?: number;
   propertyUsageType?: string;
+  /** G4 (checks.md §7.1, T043): exact match against the stored `ownerAreaClass` enum
+   *  (`in_county|regional|out_of_area|unknown`) — never a second, independently-derived
+   *  classification. "Owners outside the area" means `ownerAreaClass IN
+   *  ("regional","out_of_area")`; callers pass the exact value(s) they mean, this adapter never
+   *  guesses which values "outside" covers. */
+  ownerAreaClass?: string | readonly string[];
+  /** G4 (T043): the only tenure granularity `crm_property` actually stores is the boolean
+   *  `isLongTenure` (`tenure_years > 10`, packages/oracle-views/src/derive.ts) — the raw
+   *  `tenure_years` count is deliberately not carried into this table (data-model.md,
+   *  mapPropertyRow's comment in apps/sync/handlers/buildIndex.ts). So `tenureYearsMin` is
+   *  honored only at that one fixed cutoff: any value <= 10 is answered exactly by
+   *  `isLongTenure = TRUE` (every long-tenure row owned for *more* than 10 years necessarily
+   *  satisfies a "at least N years" threshold for any N <= 10); a value above 10 cannot be
+   *  verified more precisely than that with the data this index has, so it is still answered
+   *  with `isLongTenure = TRUE` as the closest available (conservative, documented) match rather
+   *  than silently ignored or guessed at a finer grain. */
+  tenureYearsMin?: number;
   limit?: number;
 }
 
@@ -88,6 +105,10 @@ export interface SearchPermitsQuery {
    *  radius-filtered property set as `search.properties`, so the two procedures never disagree
    *  on which properties are in scope (SC-06). Ignored when `propertyCid` is also given. */
   propertyCids?: readonly string[];
+  /** G5 (checks.md §7.1, T044): exact lookup by the stored `permitNumber` string, independent of
+   *  (and combinable with) the propertyCid/propertyCids scoping above — a quote in the value is
+   *  escaped the same way every other string filter in this adapter is. */
+  permitNumber?: string;
   isOpen?: boolean;
   openDaysMinimum?: number;
   sort?: "openDays" | "issueDate";
@@ -291,6 +312,20 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       if (query.propertyUsageType !== undefined) {
         conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
       }
+      if (query.ownerAreaClass !== undefined) {
+        const values = Array.isArray(query.ownerAreaClass)
+          ? query.ownerAreaClass
+          : [query.ownerAreaClass as string];
+        conditions.push(
+          `"ownerAreaClass" IN (${values.map((v) => `'${sqlEscapeString(v)}'`).join(", ")})`,
+        );
+      }
+      if (query.tenureYearsMin !== undefined) {
+        // See the SearchPropertiesQuery.tenureYearsMin doc comment above: isLongTenure is the
+        // only tenure granularity this table stores, so every tenureYearsMin value is answered
+        // at that one fixed (>10 years) cutoff.
+        conditions.push(`"isLongTenure" = TRUE`);
+      }
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
       // No SQL LIMIT when an exact-circle cut still has to run client-side below (T012) — a
       // bbox-only limit could otherwise discard rows the circle cut would have kept out anyway,
@@ -346,6 +381,9 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
             ? "FALSE"
             : `"propertyCid" IN (${cids.map((cid) => `'${sqlEscapeString(cid)}'`).join(", ")})`,
         );
+      }
+      if (query.permitNumber !== undefined) {
+        conditions.push(`"permitNumber" = '${sqlEscapeString(query.permitNumber)}'`);
       }
       // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
       // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored

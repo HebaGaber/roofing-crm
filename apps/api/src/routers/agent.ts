@@ -25,7 +25,13 @@ import { getModel } from "../agent/getModel.js";
 import { runAgent } from "../agent/runAgent.js";
 import { tryUsageGuard } from "../agent/usageGuard.js";
 import { RateLimitedError, OverBudgetError } from "../agentErrors.js";
-import { checkScope, composeAnswer, emptyPlan, parsePlanDraftText } from "../agent/composeAnswer.js";
+import {
+  checkScope,
+  composeAnswer,
+  emitCitationMetrics,
+  emptyPlan,
+  parsePlanDraftText,
+} from "../agent/composeAnswer.js";
 
 const obs = createObservability("crm-api");
 
@@ -124,6 +130,10 @@ function emptyAnswer(
   plan: AgentAnswer["plan"],
   traceId: string,
   modelCalls: number,
+  // T045: "none" for the `timed_out` short-circuit (no `runAgent` result to read a strategy off
+  // of) or any other call site that hasn't run a turn yet; callers that do have a finished
+  // `runAgent` result (the no-tool-called branch below) pass its real `cacheStrategy` through.
+  cacheStrategy: string = "none",
 ): AgentAnswer {
   return {
     outcome,
@@ -140,6 +150,7 @@ function emptyAnswer(
       rankVersion: "2026-10-23",
       toolSteps: 0,
       modelCalls,
+      cacheStrategy,
     },
   };
 }
@@ -177,6 +188,7 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
   });
 
   if (run.outcome === "timed_out") {
+    emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
     return emptyAnswer("timed_out", emptyPlan(input.question), ctx.requestId, 0);
   }
 
@@ -187,18 +199,25 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
     // Step 3/4 (contracts/agent-api.md): the model answered in its first step without calling a
     // tool. Treat that text as its plan draft and run the scope/confidence check — out of scope,
     // not found or low-confidence short-circuits here with no further model call.
+    emitCitationMetrics(obs, { citationsTotal: 0, citationsVerified: 0, leadsProposed: 0 });
     const area = parsePlanDraftText(result.text);
     if (area === undefined) {
-      return emptyAnswer("needs_clarification", emptyPlan(input.question), ctx.requestId, result.steps.length);
+      return emptyAnswer(
+        "needs_clarification",
+        emptyPlan(input.question),
+        ctx.requestId,
+        result.steps.length,
+        run.cacheStrategy,
+      );
     }
     const scope = await checkScope(area, { placeResolver });
     const plan = emptyPlan(area.query);
     if (scope.status !== "in_scope") {
-      return emptyAnswer(scope.status, plan, ctx.requestId, result.steps.length);
+      return emptyAnswer(scope.status, plan, ctx.requestId, result.steps.length, run.cacheStrategy);
     }
     // In scope but the model still never called a tool this turn (no retrieval happened) — safest
     // honest outcome is to ask for clarification rather than answer with nothing to cite.
-    return emptyAnswer("needs_clarification", plan, ctx.requestId, result.steps.length);
+    return emptyAnswer("needs_clarification", plan, ctx.requestId, result.steps.length, run.cacheStrategy);
   }
 
   const modelId = typeof model === "string" ? model : model.modelId;
@@ -209,16 +228,42 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
     plan: emptyPlan(input.question),
     traceId: ctx.requestId,
     modelId,
+    obs,
+    cacheStrategy: run.cacheStrategy,
   });
 }
 
 export const agentRouter = router({
   ask: publicProcedure.input(AskInput).mutation(async ({ input, ctx }) => {
     const subsegment = obs.tracer.getSegment()?.addNewSubsegment("## agent.ask");
+    const startedAtMs = Date.now();
     try {
       const answer = await ask(input, ctx);
-      obs.logger.info("agent.ask ok", { requestId: ctx.requestId, outcome: answer.outcome });
+      // T045 (ADR §6.1: "Log cache read/write tokens"): logged here (not just carried in
+      // `trace`) so a deploy without any trace-consuming UI still surfaces cache-hit behaviour in
+      // CloudWatch Logs.
+      obs.logger.info("agent.ask ok", {
+        requestId: ctx.requestId,
+        outcome: answer.outcome,
+        cacheStrategy: answer.trace.cacheStrategy,
+        cacheReadTokens: answer.trace.cacheReadTokens,
+        cacheWriteTokens: answer.trace.cacheWriteTokens,
+      });
+      // `outcome` dimension (contracts/observability.md): same dimension value on both metrics
+      // below, cleared again on the publish in `finally` so it never leaks into another request's
+      // flush (Powertools `publishStoredMetrics()` clears dimensions as well as metrics).
+      obs.metrics.addDimension("outcome", answer.outcome);
       obs.metrics.addMetric(METRIC_NAMES.AgentAsksTotal, MetricUnit.Count, 1);
+      obs.metrics.addMetric(
+        METRIC_NAMES.AgentAnswerLatencyMs,
+        MetricUnit.Milliseconds,
+        Date.now() - startedAtMs,
+      );
+      obs.metrics.addMetric(
+        METRIC_NAMES.AgentModelCallsTotal,
+        MetricUnit.Count,
+        answer.trace.modelCalls,
+      );
       return answer;
     } catch (error) {
       const code = error instanceof TRPCError ? error.code : "INTERNAL_SERVER_ERROR";
@@ -226,6 +271,13 @@ export const agentRouter = router({
         requestId: ctx.requestId,
         code,
       });
+      obs.metrics.addDimension("outcome", "error");
+      obs.metrics.addMetric(METRIC_NAMES.AgentAsksTotal, MetricUnit.Count, 1);
+      obs.metrics.addMetric(
+        METRIC_NAMES.AgentAnswerLatencyMs,
+        MetricUnit.Milliseconds,
+        Date.now() - startedAtMs,
+      );
       throw error;
     } finally {
       subsegment?.close();

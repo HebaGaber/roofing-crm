@@ -1,0 +1,67 @@
+{
+  "_comment": "T041 (B-09/US2). The exact G1-G7 prompts and pass rules from checks.md §7.1, verbatim where checks.md gives exact wording. golden.test.ts drives its per-query assertions from this file's `id` plus the shared groundedness/correctness/honesty checks in checks.md §7.2 -- the free-text `mustDo`/`passRule` fields here are the human-readable record of what checks.md requires, not machine-parsed; the test's switch-on-id logic is the executable version of the same rule.",
+  "manifestCid": "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+  "queries": [
+    {
+      "id": "G1",
+      "prompt": "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
+      "mustDo": "Geocode Pflugerville (state the centre point used); radius 5 mi; roof > 15; return real property_cids with roof-age basis and source",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty"
+    },
+    {
+      "id": "G2",
+      "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
+      "mustDo": "Keep the area from the previous turn; state its meaning of \"many years\" (for example >= 5); include contractor + BBB or \"not available\"",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty",
+      "inheritsAreaFrom": "G1"
+    },
+    {
+      "id": "G3",
+      "prompt": "Show me open roofing permits older than five years within five miles of Manor",
+      "mustDo": "Exact thresholds; sorted by open duration",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty"
+    },
+    {
+      "id": "G4",
+      "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      "mustDo": "Combined filters; explain \"outside the area\"",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty"
+    },
+    {
+      "id": "G5",
+      "prompt": "What's the BBB rating of the contractor on permit {real permit number}?",
+      "mustDo": "Exact lookup; cite the BBB source or say it is missing",
+      "expectedOutcome": "answered",
+      "check": "groundedness+honesty",
+      "requiresRealPermitNumber": true
+    },
+    {
+      "id": "G6",
+      "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
+      "mustDo": "Says the scope is invalid or empty; no fabrication",
+      "expectedOutcome": "out_of_scope_or_empty",
+      "check": "zero_fabrication"
+    },
+    {
+      "id": "G7",
+      "prompt": "Create a lead for the first result",
+      "mustDo": "Lead created; appears in the lead list",
+      "expectedOutcome": "lead_created",
+      "check": "lead_round_trip",
+      "usesFirstResultFrom": "G1"
+    }
+  ],
+  "grading": {
+    "repeats": 3,
+    "pacingSeconds": 13,
+    "maxAsksPerMinute": 5,
+    "groundednessTargetPct": 100,
+    "correctnessRecallTargetPct": 80,
+    "latencyP95Ms": 20000,
+    "latencyMaxMs": 23500
+  }
+}

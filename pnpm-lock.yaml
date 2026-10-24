@@ -541,6 +541,37 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@6.4.5(@types/node@22.10.5)(lightningcss@1.33.0)(tsx@4.19.2))
 
+  tests/agent:
+    dependencies:
+      '@crm/api':
+        specifier: workspace:*
+        version: link:../../apps/api
+      '@crm/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@crm/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@crm/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      amazon-cognito-identity-js:
+        specifier: 6.3.12
+        version: 6.3.12
+      zod:
+        specifier: 3.25.76
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 22.10.5
+        version: 22.10.5
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(@types/node@22.10.5)(tsx@4.19.2))
+
 packages:
 
   '@adobe/css-tools@4.5.0':
@@ -5637,7 +5668,7 @@ snapshots:
       obug: 3.0.0
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(@types/node@22.10.5)(tsx@4.19.2))
+      vitest: 5.0.5(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(tsx@4.19.2))
 
   '@vitest/istanbul-lib-coverage@1.0.2': {}
 

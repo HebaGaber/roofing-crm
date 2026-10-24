@@ -77,15 +77,32 @@ export function createAgentTools(deps: AgentToolsDeps) {
 
   const searchPropertiesTool = tool({
     description:
-      "Find properties within a radius of a point, optionally filtered by a minimum roof age. Returns server-computed counts plus up to 25 compact rows. Does not write anything.",
+      "Find properties within a radius of a point, optionally filtered by a minimum roof age, " +
+      "the owner's area classification (e.g. regional/out_of_area for \"owners outside the " +
+      "area\"), and/or a minimum owner-tenure threshold in years (honored only at the stored " +
+      ">10-year cutoff). Returns server-computed counts plus up to 25 compact rows. Does not " +
+      "write anything.",
     inputSchema: AreaInput.extend({
       roofAgeMinYears: z.number().int().min(0).max(100).optional(),
+      // T043 (B-09/US2, G4 "owners outside the area"): exact match against the stored
+      // ownerAreaClass enum — the model passes the exact class(es) it means, never a free-text
+      // guess at what "outside the area" covers.
+      ownerAreaClass: z
+        .array(z.enum(["in_county", "regional", "out_of_area", "unknown"]))
+        .min(1)
+        .optional(),
+      // T043 (B-09/US2, G4 "10+ years"): see SearchPropertiesQuery.tenureYearsMin's doc comment
+      // in adapters/duckDbParquet.ts — honored only at the one fixed (>10yr) cutoff this index
+      // actually stores.
+      tenureYearsMin: z.number().int().min(0).max(100).optional(),
     }),
-    execute: async ({ lat, lon, radiusMi, roofAgeMinYears }) => {
+    execute: async ({ lat, lon, radiusMi, roofAgeMinYears, ownerAreaClass, tenureYearsMin }) => {
       const result = await searchProperties(leadIndex, {
         center: { lat, lng: lon },
         radiusMi,
         roofAgeMinYears,
+        ownerAreaClass,
+        tenureYearsMin,
         limit: MAX_COMPACT_ROWS,
       });
       return {
@@ -98,13 +115,22 @@ export function createAgentTools(deps: AgentToolsDeps) {
 
   const searchPermitsTool = tool({
     description:
-      "Find permits within a radius of a point, optionally filtered by status class and a minimum open-years threshold, sorted by open days descending. Returns up to 25 compact rows. Does not write anything.",
+      "Find permits within a radius of a point, optionally filtered by status class, a minimum " +
+      "open-years threshold, and/or an exact permit number lookup, sorted by open days " +
+      "descending. Returns up to 25 compact rows. Does not write anything.",
     inputSchema: AreaInput.extend({
       statusClass: z.array(z.enum(["open", "stalled", "closed"])).optional(),
       openYearsMin: z.number().min(0).max(50).optional(),
+      // T044 (B-09/US2, G5 "exact permit lookup"): an exact permitNumber lookup, scoped to the
+      // same radius as every other filter here (SC-06) — never a second, unscoped lookup path.
+      permitNumber: z.string().min(1).optional(),
     }),
-    execute: async ({ lat, lon, radiusMi, statusClass, openYearsMin }) => {
-      const result = await searchPermits(leadIndex, { center: { lat, lng: lon }, radiusMi });
+    execute: async ({ lat, lon, radiusMi, statusClass, openYearsMin, permitNumber }) => {
+      const result = await searchPermits(leadIndex, {
+        center: { lat, lng: lon },
+        radiusMi,
+        permitNumber,
+      });
       let permits: (PermitResult & { isLongOpen: boolean })[] = result.permits;
       if (statusClass !== undefined) {
         const allowed = new Set<string>(statusClass);

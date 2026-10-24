@@ -17,7 +17,7 @@
 // before the answer leaves the server, so the returned `AgentAnswer.claims` must never carry a
 // `citationIds` entry pointing at that fake citation. `trace.modelCalls` must stay within the
 // ADR-06 budget of <=3 model calls (plan + 2 tool-loop steps, no repair needed here).
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { MockLanguageModelV4 } from "ai/test";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type {
@@ -211,6 +211,44 @@ describe("agent.ask (T026) — full tool loop against a mocked model", () => {
       for (const citationId of claim.citationIds) {
         expect(fakeCitationIds).not.toContain(citationId);
       }
+    }
+  });
+
+  // T046 (B-09, Phase 5/US2, contracts/observability.md agent-metrics table): every real
+  // `agent.ask` call emits the full agent metric set in one EMF flush (same `obs` instance
+  // threaded from `routers/agent.ts` into `agent/composeAnswer.ts`). Powertools' `Metrics`
+  // writes its EMF JSON through its own internal `Console` bound to `process.stdout` (same
+  // mechanism `packages/observability/test/powertools.test.ts` already relies on for the
+  // Logger), so this spies on `process.stdout.write` rather than the global `console`.
+  it("emits AgentAsksTotal/AgentAnswerLatencyMs/AgentModelCallsTotal/citation metrics with the right values and an 'outcome' dimension", async () => {
+    const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      const { c } = ctx();
+      const answer = await c.agent.ask({
+        question: "roofing opportunities near Pflugerville",
+        threadId: "thread-2",
+      });
+
+      const emfLine = stdoutSpy.mock.calls
+        .map((call: unknown[]) => String(call[0]))
+        .find((line: string) => line.includes("AgentCitationsTotal"));
+      expect(emfLine).toBeDefined();
+      const emf = JSON.parse(emfLine as string);
+
+      // The fake planted citation never makes it into `rawCitations` at all (it isn't in this
+      // turn's tool-result properties map), so this representative call has exactly one citation,
+      // which does verify — total=verified=1, rate=100.
+      expect(emf.AgentAsksTotal).toBe(1);
+      expect(typeof emf.AgentAnswerLatencyMs).toBe("number");
+      expect(emf.AgentAnswerLatencyMs).toBeGreaterThanOrEqual(0);
+      expect(emf.AgentModelCallsTotal).toBe(answer.trace.modelCalls);
+      expect(emf.AgentCitationsTotal).toBe(1);
+      expect(emf.AgentCitationsVerified).toBe(1);
+      expect(emf.AgentCitationGroundednessRate).toBe(100);
+      expect(emf.AgentLeadsProposed).toBe(0);
+      expect(emf.outcome).toBe(answer.outcome);
+    } finally {
+      stdoutSpy.mockRestore();
     }
   });
 });

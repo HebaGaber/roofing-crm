@@ -12,6 +12,8 @@ import {
   type PlaceResolver,
   type QueryPlan,
 } from "@crm/shared";
+import { METRIC_NAMES, type Observability } from "@crm/observability";
+import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { LeadIndex, PermitResult, PropertyResult } from "../adapters/duckDbParquet.js";
 import { verifyCitations } from "../services/agent/verifyCitations.js";
 import type { AgentTools } from "../services/agent/tools.js";
@@ -251,6 +253,38 @@ export interface ComposeInput {
   readonly plan: QueryPlan;
   readonly traceId: string;
   readonly modelId: string;
+  readonly obs: Observability;
+  /** T045 (ADR §6.1 trace-metadata requirement): which cache strategy `runAgent` used this turn
+   *  (`runAgent.ts`'s `CacheStrategy`) — `"none"` on the Gateway path. */
+  readonly cacheStrategy: string;
+}
+
+/** `AgentCitationsTotal`/`AgentCitationsVerified`/`AgentCitationGroundednessRate`/
+ *  `AgentLeadsProposed` (contracts/observability.md agent-metrics table) — emitted from the
+ *  citation verifier's own call site (here, and from `routers/agent.ts`'s early-return branches
+ *  where no citation ever existed) so every real `agent.ask` call reports these four, regardless
+ *  of which code path produced the answer. No per-`property_cid` dimension (high-cardinality). */
+export function emitCitationMetrics(
+  obs: Observability,
+  counts: {
+    readonly citationsTotal: number;
+    readonly citationsVerified: number;
+    readonly leadsProposed: number;
+  },
+): void {
+  const { citationsTotal, citationsVerified, leadsProposed } = counts;
+  obs.metrics.addMetric(METRIC_NAMES.AgentCitationsTotal, MetricUnit.Count, citationsTotal);
+  obs.metrics.addMetric(METRIC_NAMES.AgentCitationsVerified, MetricUnit.Count, citationsVerified);
+  // Nothing was ever cited (e.g. empty_in_scope) -> trivially 100: there is no ungrounded claim to
+  // report, and 0/0 must never render as the dashboard's alarm-triggering 0%.
+  const groundednessRate =
+    citationsTotal === 0 ? 100 : (citationsVerified / citationsTotal) * 100;
+  obs.metrics.addMetric(
+    METRIC_NAMES.AgentCitationGroundednessRate,
+    MetricUnit.Percent,
+    groundednessRate,
+  );
+  obs.metrics.addMetric(METRIC_NAMES.AgentLeadsProposed, MetricUnit.Count, leadsProposed);
 }
 
 /** Turns a finished tool-loop `generateText` result into an `AgentAnswer` (contracts/agent-api.md
@@ -258,7 +292,7 @@ export interface ComposeInput {
  *  this turn's own tool results (never from the model's citation metadata), runs the server-side
  *  verifier, and keeps only the citations the surviving claims actually reference. */
 export async function composeAnswer(input: ComposeInput): Promise<AgentAnswer> {
-  const { result, leadIndex, manifestCid, plan, traceId, modelId } = input;
+  const { result, leadIndex, manifestCid, plan, traceId, modelId, obs, cacheStrategy } = input;
   const gathered = gatherToolResults(result);
   const modelCalls = result.steps.length;
 
@@ -279,6 +313,15 @@ export async function composeAnswer(input: ComposeInput): Promise<AgentAnswer> {
       ? gathered.proposals.map((p) => ({ tcadId: p.tcadId, alreadyLead: p.alreadyLead, leadId: p.leadId }))
       : undefined;
 
+  // T045 (ADR §6.1): `result.usage` is `generateText`'s own summed-across-all-steps usage
+  // (`GenerateTextResult.usage` docstring: "the usage is the sum of all step usages"), so this is
+  // the whole turn's cache read/write count, not just the final step's. `inputTokenDetails` is
+  // `undefined` only if the provider never reported usage at all (e.g. an aborted/mocked call);
+  // the per-field `cacheReadTokens`/`cacheWriteTokens` are `undefined` on any provider (including
+  // Gateway) that doesn't report prompt-cache token counts.
+  const cacheReadTokens = result.usage.inputTokenDetails?.cacheReadTokens;
+  const cacheWriteTokens = result.usage.inputTokenDetails?.cacheWriteTokens;
+
   const trace: AgentAnswer["trace"] = {
     traceId,
     modelId,
@@ -286,6 +329,9 @@ export async function composeAnswer(input: ComposeInput): Promise<AgentAnswer> {
     rankVersion: "2026-10-23",
     toolSteps: result.steps.reduce((sum, step) => sum + step.toolResults.length, 0),
     modelCalls,
+    cacheStrategy,
+    ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+    ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
   };
 
   let rawClaims: Claim[] = [];
@@ -326,6 +372,12 @@ export async function composeAnswer(input: ComposeInput): Promise<AgentAnswer> {
 
   const keptCitationIds = new Set(verified.claims.flatMap((claim) => claim.citationIds));
   const citations = rawCitations.filter((c) => keptCitationIds.has(c.id));
+
+  emitCitationMetrics(obs, {
+    citationsTotal: rawCitations.length,
+    citationsVerified: citations.length,
+    leadsProposed: gathered.proposals.length,
+  });
 
   const outcome: AgentAnswer["outcome"] =
     verified.claims.length > 0 ? "answered" : matched === 0 ? "empty_in_scope" : "answered";

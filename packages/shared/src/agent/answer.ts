@@ -66,6 +66,13 @@ export const AgentAnswer = z.object({
     rankVersion: z.string(),
     toolSteps: z.number(),
     modelCalls: z.number(),
+    // T045 (B-09, Phase 5/US2; ADR-06 §6.1: "Put `cacheStrategy` in the trace metadata. Log
+    // cache read/write tokens."). Optional and additive — a deploy/build predating this story's
+    // prompt-caching work, or an answer built on the Gateway path (no cache-point control there),
+    // simply omits these rather than failing validation.
+    cacheStrategy: z.string().optional(),
+    cacheReadTokens: z.number().optional(),
+    cacheWriteTokens: z.number().optional(),
   }),
 });
 export type AgentAnswer = z.infer<typeof AgentAnswer>;

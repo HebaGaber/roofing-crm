@@ -88,6 +88,34 @@ describe("AgentAnswer", () => {
     expect(withProposals.success).toBe(true);
   });
 
+  it("accepts trace without the optional cache fields (pre-T045 shape stays valid)", () => {
+    expect(AgentAnswer.safeParse(baseAnswer()).success).toBe(true);
+  });
+
+  it("accepts trace with T045's optional cache-metadata fields populated", () => {
+    const parsed = AgentAnswer.safeParse(
+      baseAnswer({
+        trace: {
+          traceId: "t-1",
+          modelId: "m-1",
+          promptVersion: "v1",
+          rankVersion: "v1",
+          toolSteps: 1,
+          modelCalls: 1,
+          cacheStrategy: "bedrock:system+last-message",
+          cacheReadTokens: 120,
+          cacheWriteTokens: 45,
+        },
+      }),
+    );
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data.trace.cacheStrategy).toBe("bedrock:system+last-message");
+      expect(parsed.data.trace.cacheReadTokens).toBe(120);
+      expect(parsed.data.trace.cacheWriteTokens).toBe(45);
+    }
+  });
+
   it("accepts a full citation with every field populated", () => {
     const parsed = AgentAnswer.safeParse(
       baseAnswer({

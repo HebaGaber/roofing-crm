@@ -59,6 +59,19 @@ describe("withObservability", () => {
     expect(METRIC_NAMES.IndexManifestAgeHours).toBe("IndexManifestAgeHours");
   });
 
+  // T046 (B-09, Phase 5/US2, contracts/observability.md agent-metrics table): the full agent
+  // metric set `apps/api/src/routers/agent.ts`/`apps/api/src/agent/composeAnswer.ts` emit per
+  // real `agent.ask` call.
+  it("exposes the agent metric constants contracts/observability.md names", () => {
+    expect(METRIC_NAMES.AgentAsksTotal).toBe("AgentAsksTotal");
+    expect(METRIC_NAMES.AgentAnswerLatencyMs).toBe("AgentAnswerLatencyMs");
+    expect(METRIC_NAMES.AgentModelCallsTotal).toBe("AgentModelCallsTotal");
+    expect(METRIC_NAMES.AgentCitationsTotal).toBe("AgentCitationsTotal");
+    expect(METRIC_NAMES.AgentCitationsVerified).toBe("AgentCitationsVerified");
+    expect(METRIC_NAMES.AgentCitationGroundednessRate).toBe("AgentCitationGroundednessRate");
+    expect(METRIC_NAMES.AgentLeadsProposed).toBe("AgentLeadsProposed");
+  });
+
   it("logs 'handler failed' with the error and rethrows, still closing the X-Ray subsegment", async () => {
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     const boom = new Error("handler exploded");

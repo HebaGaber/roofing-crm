@@ -368,6 +368,36 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
     expect(await makeIndex().searchProperties({ limit: 1 })).toHaveLength(1);
   });
 
+  // T043 (B-09/US2, G4 "owners outside the area"): P1 is in_county, P2 is regional, P3 is
+  // unknown — a single value is an exact match, an array is an IN-list (the "outside the area"
+  // shape, excluding in_county/unknown).
+  it("searchProperties ownerAreaClass matches a single value exactly", async () => {
+    expect(
+      propertyCids(await makeIndex().searchProperties({ ownerAreaClass: "in_county" })),
+    ).toEqual([P1]);
+  });
+
+  it("searchProperties ownerAreaClass accepts an array as an IN-list, a quote cannot break the query", async () => {
+    expect(
+      propertyCids(
+        await makeIndex().searchProperties({ ownerAreaClass: ["regional", "out_of_area"] }),
+      ),
+    ).toEqual([P2]);
+    await expect(
+      makeIndex().searchProperties({ ownerAreaClass: ["region'al"] }),
+    ).resolves.toEqual([]);
+  });
+
+  // T043 (B-09/US2, G4 "10+ years"): the index stores only the fixed >10yr isLongTenure
+  // boolean (P1=true, P2=false, P3=null), so every tenureYearsMin value is answered at that one
+  // cutoff (see SearchPropertiesQuery.tenureYearsMin's doc comment).
+  it("searchProperties tenureYearsMin keeps only isLongTenure rows, at any requested threshold", async () => {
+    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 10 }))).toEqual([
+      P1,
+    ]);
+    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 5 }))).toEqual([P1]);
+  });
+
   // T007 (B-03, US1): the extended SearchPropertiesQuery's center/radiusMi — a bbox prefilter via
   // packages/domain's bboxFor, then the exact-circle cut via distanceMeters, nearest-first sort
   // (contracts/search-api.md step 3; plan.md T012). P1 (30.2672, -97.7431) and P2 (30.3, -97.7)
@@ -421,6 +451,18 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       K2,
       K1,
     ]);
+  });
+
+  // T044 (B-09/US2, G5 "exact permit lookup"): K1="2026-001", independent of the propertyCid/
+  // propertyCids scoping — a quote in the value is escaped the same way every other string
+  // filter in this adapter is.
+  it("searchPermits permitNumber matches exactly, and a quote in the value cannot break the query", async () => {
+    expect(permitCids(await makeIndex().searchPermits({ permitNumber: "2026-001" }))).toEqual([
+      K1,
+    ]);
+    await expect(
+      makeIndex().searchPermits({ permitNumber: "2026-00'1" }),
+    ).resolves.toEqual([]);
   });
 
   it("searchPermits propertyCid returns only that property's permits, each passing the CrmPermit schema", async () => {

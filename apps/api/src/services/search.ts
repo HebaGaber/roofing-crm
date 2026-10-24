@@ -20,6 +20,12 @@ export interface SearchPropertiesInput {
   // Zod-inferred `{ roofAgeMinYears?: number }` (an explicit-undefined-bearing shape once spread
   // through `{ ...input }`) as distinct from a plain optional property.
   roofAgeMinYears?: number | undefined;
+  /** T043 (B-09/US2, G4): "owners outside the area." Passed straight through to the adapter's
+   *  exact-match `ownerAreaClass` filter — never a second, independently-derived classification. */
+  ownerAreaClass?: string | readonly string[] | undefined;
+  /** T043 (B-09/US2, G4): see `SearchPropertiesQuery.tenureYearsMin`'s doc comment in
+   *  `adapters/duckDbParquet.ts` for the fixed-cutoff limitation this threshold is honored at. */
+  tenureYearsMin?: number | undefined;
   limit?: number | undefined;
 }
 
@@ -41,14 +47,25 @@ export async function searchProperties(
     center: input.center,
     radiusMi: input.radiusMi,
   });
-  const afterRoofAge =
-    input.roofAgeMinYears === undefined
-      ? afterRadius
-      : await leadIndex.searchProperties({
-          center: input.center,
-          radiusMi: input.radiusMi,
-          roofAgeMinYears: input.roofAgeMinYears,
-        });
+  // T043 (B-09/US2): ownerAreaClass/tenureYearsMin are additional filters over the same
+  // radius-matching set, applied together with roofAgeMinYears in one query — never a
+  // separately-derived radius (SC-06's same rule, extended to these two new filters).
+  const hasFilter =
+    input.roofAgeMinYears !== undefined ||
+    input.ownerAreaClass !== undefined ||
+    input.tenureYearsMin !== undefined;
+  const afterRoofAge = !hasFilter
+    ? afterRadius
+    : await leadIndex.searchProperties({
+        center: input.center,
+        radiusMi: input.radiusMi,
+        // Conditional spreads, not literal `field: input.field` — exactOptionalPropertyTypes
+        // forbids assigning an explicit `| undefined` to SearchPropertiesQuery's plain-optional
+        // fields, so an unset filter must be omitted entirely, not passed as undefined.
+        ...(input.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: input.roofAgeMinYears }),
+        ...(input.ownerAreaClass === undefined ? {} : { ownerAreaClass: input.ownerAreaClass }),
+        ...(input.tenureYearsMin === undefined ? {} : { tenureYearsMin: input.tenureYearsMin }),
+      });
 
   const properties = afterRoofAge.slice(0, input.limit ?? 100);
 
@@ -65,6 +82,10 @@ export async function searchProperties(
 export interface SearchPermitsInput {
   center: SearchCenter;
   radiusMi: number;
+  /** T044 (B-09/US2, G5): exact permit-number lookup, scoped to the same radius-filtered
+   *  property set as every other permit query here (SC-06) — never a second, unscoped lookup
+   *  path. */
+  permitNumber?: string | undefined;
 }
 
 export interface SearchPermitsResult {
@@ -88,7 +109,12 @@ export async function searchPermits(
   });
   const propertyCids = inRadius.map((p) => p.propertyCid);
 
-  const permits = await leadIndex.searchPermits({ propertyCids, sort: "openDays" });
+  const permits = await leadIndex.searchPermits({
+    propertyCids,
+    // See searchProperties above: exactOptionalPropertyTypes forbids an explicit `undefined`.
+    ...(input.permitNumber === undefined ? {} : { permitNumber: input.permitNumber }),
+    sort: "openDays",
+  });
 
   return {
     permits: permits.map((permit) => ({

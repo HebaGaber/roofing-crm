@@ -20,10 +20,17 @@ export const METRIC_NAMES = {
   LeadsRead: "LeadsRead",
   LeadsListed: "LeadsListed",
   LeadsErrors: "LeadsErrors",
-  // B-09 T035: only the one metric `agent.ask` itself emits this phase — T046 (US2) adds the rest
-  // of the ADR §9 agent metric set (AgentAnswerLatencyMs, AgentModelCallsTotal,
-  // AgentCitationsTotal/Verified, AgentCitationGroundednessRate).
+  // B-09 T046 (US2, contracts/observability.md agent-metrics table): the full agent metric set,
+  // namespace `RoofingCrm`, emitted from apps/api/src/routers/agent.ts and
+  // apps/api/src/agent/composeAnswer.ts per real `agent.ask` call. No per-`property_cid`
+  // dimension anywhere (high-cardinality, unsuitable for a CloudWatch dashboard).
   AgentAsksTotal: "AgentAsksTotal",
+  AgentAnswerLatencyMs: "AgentAnswerLatencyMs",
+  AgentModelCallsTotal: "AgentModelCallsTotal",
+  AgentCitationsTotal: "AgentCitationsTotal",
+  AgentCitationsVerified: "AgentCitationsVerified",
+  AgentCitationGroundednessRate: "AgentCitationGroundednessRate",
+  AgentLeadsProposed: "AgentLeadsProposed",
 } as const;
 export type MetricName = (typeof METRIC_NAMES)[keyof typeof METRIC_NAMES];
 
