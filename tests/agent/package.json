@@ -13,6 +13,7 @@
     "@crm/api": "workspace:*",
     "@crm/api-client": "workspace:*",
     "@crm/domain": "workspace:*",
+    "@crm/observability": "workspace:*",
     "@crm/shared": "workspace:*",
     "amazon-cognito-identity-js": "6.3.12",
     "zod": "3.25.76"

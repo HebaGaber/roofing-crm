@@ -38,7 +38,10 @@ import {
 import { createApiClient, type ApiClient, type ApiFetch } from "@crm/api-client";
 import { requestIdentifierOf } from "@crm/domain";
 import { assertHostedRuntimeUrl } from "../e2e/lib/runtime-url.js";
-import { publishGoldenQueryPassRate } from "./publishGoldenQueryPassRate.js";
+import {
+  publishGoldenQueryPassRate,
+  shouldPublishGoldenQueryPassRate,
+} from "./publishGoldenQueryPassRate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -326,12 +329,14 @@ async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<Rep
   return { passedCount, totalCount };
 }
 
-// T054: an explicit opt-in, separate from `canRun` -- a CI job can run the golden harness itself
-// (gating the merge) without AWS credentials for CloudWatch being present, and this file is run
-// from workspaces/machines (including this one) that never configure them. Publishing is
-// therefore never attempted unless *both* this harness can run for real *and* the caller has
-// explicitly said CloudWatch access is available.
-const PUBLISH_GOLDEN_QUERY_PASS_RATE = process.env.CRM_PUBLISH_GOLDEN_METRIC === "true";
+// T054 (+ B-09 review fix): every real run ends by publishing its GoldenQueryPassRate, so the
+// RoofingCrm dashboard trends real runs. Still skip-guarded: only when this harness can run for
+// real (`canRun`) and AWS credentials are present (a CI job without CloudWatch access still gates
+// the merge; it just adds no datapoint). `CRM_PUBLISH_GOLDEN_METRIC=false` opts out.
+const PUBLISH_GOLDEN_QUERY_PASS_RATE = shouldPublishGoldenQueryPassRate({
+  harnessRan: canRun,
+  env: process.env,
+});
 
 describe.skipIf(!canRun)("golden queries G1-G7 against the deployed agent (RUNTIME_URL)", () => {
   it("runs GOLDEN_REPEATS repeats, each paced under 5 asks/min, grounded/correct/honest", async () => {

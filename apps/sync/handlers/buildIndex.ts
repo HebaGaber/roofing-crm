@@ -19,7 +19,15 @@ import {
 import { contentAddressedKey } from "./fetchPart.js";
 import { downloadS3ObjectToFile, withObservability, type Observability } from "@crm/observability";
 import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
-import { bindManifest } from "@crm/oracle-views";
+import { bindManifest, type BoundRun } from "@crm/oracle-views";
+import {
+  BUILD_INDEX_VIEWS,
+  batchCoverage,
+  manifestTableArtifactNames,
+  type BatchCoverage,
+} from "../src/batchCoverage.js";
+
+export { batchCoverage, manifestTableArtifactNames, type BatchCoverage };
 import type { QueryEngine, Row } from "@crm/oracle-views";
 
 /** One row of the bound v_property view, as DuckDB returns it (snake_case, verbatim column
@@ -237,6 +245,9 @@ export interface BuildIndexOutput {
   /** T020a: true when any part in this run was routed to the DLQ as unverified — Validate holds
    *  the whole run on this signal alone, before evaluating row counts (constitution P0-2). */
   anyPartUnverified: boolean;
+  /** B-09 review fix: which manifest batches were bound and contributed rows — Validate holds on
+   *  any gap (src/batchCoverage.ts). */
+  batchCoverage: BatchCoverage;
 }
 
 const s3 = new S3Client({});
@@ -278,9 +289,9 @@ async function streamViewToNdjson<T>(
   }
 }
 
-/** The two contract views BuildIndex reads — bindManifest binds only the export tables these
- *  need (query-core's ERR-19 view plan), not all 204 full-county parts' tables. */
-const BUILD_INDEX_VIEWS = ["v_property", "v_roofing_permit"] as const;
+// BUILD_INDEX_VIEWS (src/batchCoverage.ts): the two contract views BuildIndex reads —
+// bindManifest binds only the export tables these need (query-core's ERR-19 view plan), not all
+// 204 full-county parts' tables.
 
 export interface BuildIndexFilesInput {
   manifestCid: string;
@@ -297,6 +308,23 @@ export interface BuildIndexFiles {
   permitCount: number;
   propertyFile: string;
   permitFile: string;
+  batchCoverage: BatchCoverage;
+}
+
+/** Row count per `_part` of the bound county.property relation (empty when it was not emitted —
+ *  then there is nothing to count, and every county batch reports empty). */
+async function countyPropertyRowsByPart(
+  engine: QueryEngine,
+  bound: BoundRun,
+): Promise<Map<string, number>> {
+  const property = (bound.tables ?? []).find(
+    (t) => t.group === "county" && t.table === "property" && t.emitted,
+  );
+  if (property === undefined) return new Map();
+  const rows = await engine.all(
+    "SELECT _part AS part, count(*) AS n FROM county.property GROUP BY _part",
+  );
+  return new Map(rows.map((r) => [String(r.part), Number(r.n)]));
 }
 
 /**
@@ -329,10 +357,20 @@ export async function buildIndexFiles(
       },
     };
 
-    await bindManifest(input.manifestBytes, input.workDir, engine, {
+    const bound = await bindManifest(input.manifestBytes, input.workDir, engine, {
       partUrl: ({ name }) => input.partFile(name),
       views: BUILD_INDEX_VIEWS,
     });
+    const coverage = batchCoverage({
+      tableArtifactNames: manifestTableArtifactNames(input.manifestBytes),
+      boundTables: bound.tables ?? [],
+      countyPropertyRowsByPart: await countyPropertyRowsByPart(engine, bound),
+    });
+    if (coverage.unboundBatches.length > 0 || coverage.emptyCountyBatches.length > 0) {
+      obs?.logger.warn("BuildIndex: manifest batches missing from the bound index", {
+        ...coverage,
+      });
+    }
 
     // Write the already-validated CrmProperty/CrmPermit rows (camelCase, index-schema shape) —
     // never the raw view rows — as Parquet, via an NDJSON round-trip DuckDB reads back typed.
@@ -362,7 +400,7 @@ export async function buildIndexFiles(
     );
     rmSync(propertyJson, { force: true });
     rmSync(permitJson, { force: true });
-    return { propertyCount, permitCount, propertyFile, permitFile };
+    return { propertyCount, permitCount, propertyFile, permitFile, batchCoverage: coverage };
   } finally {
     connection.closeSync();
   }
@@ -423,6 +461,7 @@ async function buildIndexCoreFromEvent(
       finishedAt: event.finishedAt,
       startedAt: event.startedAt,
       anyPartUnverified: (event.fetchResults ?? []).some((r) => r.status === "dlq"),
+      batchCoverage: built.batchCoverage,
     };
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });

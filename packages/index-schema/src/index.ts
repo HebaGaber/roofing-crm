@@ -99,6 +99,15 @@ export const IndexMetaHeldReason = z.enum([
   // B-09: crm_permit's row count differs from the manifest's own `coverage.permits_emitted` —
   // exactly Task A's publish gate (v_roofing_permit = permits_emitted), so no tolerance.
   "permit_reconcile_mismatch",
+  // B-09 review fix: full-county manifests publish no parcel count, so on a first run (no
+  // previously promoted count either) these are the property-count checks that still run.
+  // crm_property has no rows at all — never a servable index, whatever the manifest says.
+  "zero_properties",
+  // A manifest batch holding a table the views read was never bound (query-core's bindManifest
+  // skips a batch whose data group it can't resolve rather than guess) — a partial index.
+  "unbound_batch",
+  // A county batch was bound but contributed no county.property rows — a partial index.
+  "empty_county_batch",
 ]);
 export type IndexMetaHeldReason = z.infer<typeof IndexMetaHeldReason>;
 

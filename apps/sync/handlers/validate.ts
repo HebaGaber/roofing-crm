@@ -16,6 +16,7 @@ import {
   type CrmProperty,
   type IndexMetaHeldReason,
 } from "@crm/index-schema";
+import type { BatchCoverage } from "../src/batchCoverage.js";
 import { createInMemoryConnection, duckDbOptionsFromEnv } from "../src/engine/duckdb.js";
 
 /** Constitution §10 / Round 1 decision, 2026-10-23: a reconcile diff over 0.1% of the manifest's
@@ -44,6 +45,9 @@ export interface ValidateInput {
    *  run is never promoted with one unverified part, even if every other part verified and the
    *  row-count drop is within tolerance (constitution P0-2). */
   anyPartUnverified: boolean;
+  /** B-09 review fix: BuildIndex's comparison of what it bound against the manifest's own batch
+   *  list (src/batchCoverage.ts). Absent only on a payload from a BuildIndex that predates it. */
+  batchCoverage?: BatchCoverage | null;
   finishedAt: string;
 }
 
@@ -99,6 +103,22 @@ export function validateCore(input: ValidateInput): IndexMeta {
     );
   }
 
+  // B-09 review fix: with no `coverage.parcels_published` (full-county manifests) and no
+  // previously promoted run, nothing below checks the property count at all — so these run on
+  // every manifest, ahead of the count comparisons. An empty crm_property is never servable.
+  if (propertyCount === 0) {
+    return result("Held", "zero_properties");
+  }
+  // A batch the manifest lists but that never made it into the index (skipped by bindManifest,
+  // or bound with no county.property rows) is a partial county that would otherwise validate.
+  const coverage = input.batchCoverage ?? null;
+  if (coverage !== null && coverage.unboundBatches.length > 0) {
+    return result("Held", "unbound_batch");
+  }
+  if (coverage !== null && coverage.emptyCountyBatches.length > 0) {
+    return result("Held", "empty_county_batch");
+  }
+
   if (
     input.previousPromotedPropertyCount !== null &&
     propertyCount < input.previousPromotedPropertyCount * (1 - DROP_HOLD_FRACTION)
@@ -132,6 +152,7 @@ export interface ValidateEvent {
   coveragePermitsEmitted?: number | null;
   finishedAt: string;
   anyPartUnverified: boolean;
+  batchCoverage?: BatchCoverage | null;
 }
 
 const META_INDEX_PK = "META#index";
@@ -222,6 +243,7 @@ async function validateCoreFromEvent(
         coveragePermitsEmitted: event.coveragePermitsEmitted ?? null,
         previousPromotedPropertyCount,
         anyPartUnverified: event.anyPartUnverified,
+        batchCoverage: event.batchCoverage ?? null,
         finishedAt: event.finishedAt,
       };
       return validateCore(input);

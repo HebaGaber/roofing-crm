@@ -112,4 +112,56 @@ describe("Validate: full-county manifests (B-09)", () => {
     const meta = validateCore(input({ previousPromotedPropertyCount: 500_000 }));
     expect(meta).toMatchObject({ status: "Held", heldReason: "drop_over_5_percent" });
   });
+
+  // --- B-09 review fix: a full-county first run (no parcels_published, no previous promoted
+  // run) used to get no property-count check at all, so 0 rows or a partial bind validated. ---
+
+  const FULL_COVERAGE = { batchesListed: 12, unboundBatches: [], emptyCountyBatches: [] };
+
+  it("always holds a run with zero properties — even with no published count and no previous run", () => {
+    for (const coverageParcelsPublished of [null, 0]) {
+      const meta = validateCore(
+        input({ properties: [], coverageParcelsPublished, batchCoverage: FULL_COVERAGE }),
+      );
+      expect(meta).toMatchObject({
+        status: "Held",
+        heldReason: "zero_properties",
+        propertyCount: 0,
+      });
+    }
+  });
+
+  it("holds a full-county first run when a manifest batch was never bound (bindManifest skipped it)", () => {
+    const meta = validateCore(
+      input({
+        batchCoverage: { ...FULL_COVERAGE, unboundBatches: ["run/county-batched/tables/b07"] },
+      }),
+    );
+    expect(meta).toMatchObject({ status: "Held", heldReason: "unbound_batch" });
+  });
+
+  it("holds a full-county first run when a county batch contributed no property rows", () => {
+    const meta = validateCore(
+      input({
+        batchCoverage: { ...FULL_COVERAGE, emptyCountyBatches: ["run/county-batched/tables/b03"] },
+      }),
+    );
+    expect(meta).toMatchObject({ status: "Held", heldReason: "empty_county_batch" });
+  });
+
+  it("validates a full-county first run whose every batch was bound and contributed rows", () => {
+    const meta = validateCore(input({ batchCoverage: FULL_COVERAGE }));
+    expect(meta).toMatchObject({ status: "Validated", heldReason: null });
+  });
+
+  it("keeps the unverified-part hold ahead of the new holds", () => {
+    const meta = validateCore(
+      input({
+        anyPartUnverified: true,
+        properties: [],
+        batchCoverage: { ...FULL_COVERAGE, unboundBatches: ["x"] },
+      }),
+    );
+    expect(meta).toMatchObject({ status: "Held", heldReason: "unverified_part" });
+  });
 });

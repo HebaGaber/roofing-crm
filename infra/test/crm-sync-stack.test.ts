@@ -20,7 +20,13 @@ const RUN_1_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd
 
 /** `skipBundling` synthesizes without esbuild/Docker (CDK's own `aws:cdk:bundling-stacks`
  *  context) — for the extra comparison builds below, which only read CloudFormation properties. */
-function build(dataManifestCid: string = RUN_2_MANIFEST_CID, skipBundling = false) {
+const DEPLOY_NONCE = "mh2k9x1a";
+
+function build(
+  dataManifestCid: string = RUN_2_MANIFEST_CID,
+  skipBundling = false,
+  deployNonce: string = DEPLOY_NONCE,
+) {
   const app = new App(skipBundling ? { context: { "aws:cdk:bundling-stacks": [] } } : {});
   return Template.fromStack(
     new CrmSyncStack(app, "CrmSync", {
@@ -33,6 +39,7 @@ function build(dataManifestCid: string = RUN_2_MANIFEST_CID, skipBundling = fals
       indexBucketName: "crm-index",
       leadsTableName: "crm-leads",
       dataManifestCid,
+      deployNonce,
     }),
   );
 }
@@ -98,6 +105,22 @@ describe("CrmSync (T038)", () => {
       expect(functionByName(template, name)).toBeDefined();
     }
     template.resourceCountIs("AWS::Lambda::Function", 6);
+  });
+
+  it("runs Powertools on every app Lambda; the one accepted exception is CDK's AwsCustomResource framework Lambda (crm-sync-start-on-deploy), which runs no app code", () => {
+    const fns = template.findResources("AWS::Lambda::Function") as Record<string, CfnResource>;
+    const withoutPowertools = Object.values(fns)
+      .map((fn) => fn.Properties)
+      .filter((props) => {
+        const vars = (props.Environment as { Variables?: Record<string, unknown> } | undefined)
+          ?.Variables;
+        return (
+          vars?.POWERTOOLS_SERVICE_NAME === undefined ||
+          vars.POWERTOOLS_METRICS_NAMESPACE !== "RoofingCrm"
+        );
+      })
+      .map((props) => props.FunctionName);
+    expect(withoutPowertools).toEqual(["crm-sync-start-on-deploy"]);
   });
 
   it("denies Task A's resources on every role the stack creates (constitution P0-1)", () => {
@@ -220,30 +243,41 @@ describe("CrmSync (T038)", () => {
     expect(JSON.stringify(ddbAllow[0]?.Resource)).toContain("table/crm-leads");
   });
 
-  it("starts one crm-sync execution named by the manifest CID on create/update, never on delete", () => {
+  it("starts one crm-sync execution named {manifest CID}-{deploy nonce} on create/update, never on delete", () => {
     const props = startSyncResource(template);
     const create = JSON.stringify(props.Create);
     const update = JSON.stringify(props.Update);
     expect(props.Delete).toBeUndefined();
     for (const call of [create, update]) {
       expect(call).toContain("startExecution");
-      // Execution name = manifest CID (architecture-constitution.md §8): the same run can never
-      // run twice concurrently; a repeat start is ExecutionAlreadyExists, ignored, never a failed
-      // deploy.
-      expect(call).toMatch(new RegExp(`\\\\?"name\\\\?":\\\\?"${RUN_2_MANIFEST_CID}`));
-      expect(call).toContain("ExecutionAlreadyExists");
+      // Unique per deploy: Standard execution names can't be reused for 90 days, so a name of
+      // just the CID would make a failed first sync of a CID, or an A→B→A rollback, never run
+      // again on a redeploy.
+      expect(call).toMatch(
+        new RegExp(String.raw`\\?"name\\?":\\?"${RUN_2_MANIFEST_CID}-${DEPLOY_NONCE}\\?"`),
+      );
       expect(call).toContain(`manifestCidHint`);
     }
   });
 
-  it("re-runs the start call only when DATA_MANIFEST_CID changes (CloudFormation updates a custom resource only when its properties change)", () => {
-    const same = startSyncResource(build(RUN_2_MANIFEST_CID, true));
-    const sameAgain = startSyncResource(build(RUN_2_MANIFEST_CID, true));
-    const switched = startSyncResource(build(RUN_1_MANIFEST_CID, true));
-    expect(JSON.stringify(sameAgain)).toBe(JSON.stringify(same));
-    expect(JSON.stringify(switched)).not.toBe(JSON.stringify(same));
-    expect(JSON.stringify(switched)).toContain(RUN_1_MANIFEST_CID);
+  it("re-runs the start call on every deploy (new nonce), and with a changed DATA_MANIFEST_CID", () => {
+    const deployA = startSyncResource(build(RUN_2_MANIFEST_CID, true, "deploya"));
+    const deployAAgain = startSyncResource(build(RUN_2_MANIFEST_CID, true, "deploya"));
+    const deployB = startSyncResource(build(RUN_2_MANIFEST_CID, true, "deployb"));
+    const switched = startSyncResource(build(RUN_1_MANIFEST_CID, true, "deployc"));
+    // Deterministic for a given nonce (a re-synth of the same deploy changes nothing)...
+    expect(JSON.stringify(deployAAgain)).toBe(JSON.stringify(deployA));
+    // ...but a new deploy changes the custom resource's properties, so CloudFormation re-invokes
+    // it even when DATA_MANIFEST_CID is unchanged (Plan's AlreadyPromoted makes that a no-op).
+    expect(JSON.stringify(deployB)).not.toBe(JSON.stringify(deployA));
+    expect(JSON.stringify(deployB)).toContain(`${RUN_2_MANIFEST_CID}-deployb`);
+    expect(JSON.stringify(switched)).toContain(`${RUN_1_MANIFEST_CID}-deployc`);
   }, 60_000);
+
+  it("refuses a deploy nonce that would make an invalid or over-long execution name", () => {
+    expect(() => build(RUN_2_MANIFEST_CID, true, "has space")).toThrow(/execution name/);
+    expect(() => build(RUN_2_MANIFEST_CID, true, "x".repeat(30))).toThrow(/execution name/);
+  });
 
   it("runs the start call only after the SSM parameter and the state machine are in place", () => {
     const resources = template.findResources("Custom::AWS") as Record<

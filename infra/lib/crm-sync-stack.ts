@@ -56,6 +56,25 @@ export interface CrmSyncStackProps extends StackProps {
    *  manifest this deployment serves. B-09 auto-sync: it is pinned in an SSM parameter Plan treats
    *  as authoritative, and a change to it starts one crm-sync execution during the deploy. */
   readonly dataManifestCid: string;
+  /** `CrmAppConfig.deployNonce` (infra/src/config.ts): changes every deploy, so the deploy-time
+   *  StartExecution below gets a new name and new custom-resource properties each time — every
+   *  deploy re-attempts the sync of `dataManifestCid`. */
+  readonly deployNonce: string;
+}
+
+/** Step Functions execution names: 1–80 chars of [A-Za-z0-9_-]. */
+const EXECUTION_NAME_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
+
+/** `{manifestCid}-{deployNonce}`: still traceable to the run it syncs, and never a name an
+ *  earlier deploy used (Standard execution names can't be reused for 90 days). */
+export function deploySyncExecutionName(manifestCid: string, deployNonce: string): string {
+  const name = `${manifestCid}-${deployNonce}`;
+  if (!EXECUTION_NAME_PATTERN.test(name)) {
+    throw new Error(
+      `CrmSync: "${name}" is not a valid Step Functions execution name (1-80 chars of [A-Za-z0-9_-])`,
+    );
+  }
+  return name;
 }
 
 interface HandlerSizing {
@@ -197,20 +216,16 @@ export class CrmSyncStack extends Stack {
       // `addSubscription` alone never creates one either, so without this explicit statement the
       // topic was left with no policy and `enforceSSL` silently did nothing. This statement is
       // also the real, least-privilege grant CloudWatch alarms need to publish here.
-      alarmTopic.addToResourcePolicy(
-        new iam.PolicyStatement({
-          sid: "AllowCloudWatchAlarmsPublish",
-          actions: ["sns:Publish"],
-          effect: iam.Effect.ALLOW,
-          // Cast: aws-cdk-lib's `ServicePrincipal` doesn't satisfy `IPrincipal` under this repo's
-          // `exactOptionalPropertyTypes` (same pre-existing aws-cdk-lib/TS strictness mismatch as
-          // the dashboard widgets in crm-ops-stack.ts), not a real type-safety issue here.
-          principals: [
-            new iam.ServicePrincipal("cloudwatch.amazonaws.com") as unknown as iam.IPrincipal,
-          ],
-          resources: [alarmTopic.topicArn],
-        }),
-      );
+      const allowCloudWatchPublish = new iam.PolicyStatement({
+        sid: "AllowCloudWatchAlarmsPublish",
+        actions: ["sns:Publish"],
+        effect: iam.Effect.ALLOW,
+        resources: [alarmTopic.topicArn],
+      });
+      // addServicePrincipal, not `principals: [new iam.ServicePrincipal(...)]`: the latter doesn't
+      // type-check as IPrincipal under this repo's exactOptionalPropertyTypes.
+      allowCloudWatchPublish.addServicePrincipal("cloudwatch.amazonaws.com");
+      alarmTopic.addToResourcePolicy(allowCloudWatchPublish);
     }
     this.alarmTopic = alarmTopic;
 
@@ -559,45 +574,43 @@ export class CrmSyncStack extends Stack {
     // --- B-09 auto-sync on deploy ---
     //
     // One states:StartExecution call, made by CloudFormation through a custom resource whose
-    // properties carry the manifest CID (as the execution name and in its input). CloudFormation
-    // only re-invokes a custom resource when its properties change, so a deploy that leaves
-    // DATA_MANIFEST_CID alone never starts a sync; changing it starts exactly one. StartExecution
-    // returns as soon as the execution is accepted, so the deploy never waits on, or fails with,
-    // the sync itself — a failed run is the DLQ alarm's job (constitution P0-12). Execution name
-    // = manifest CID (architecture-constitution.md §8): a repeat start (e.g. a rollback replaying
-    // the previous CID) returns ExecutionAlreadyExists, which is ignored, and Plan's
-    // already-promoted check makes any re-run a no-op.
-    const startSyncRole = new iam.Role(this, "StartSyncOnDeployRole", {
-      // Same aws-cdk-lib/exactOptionalPropertyTypes cast as the SNS topic policy above.
-      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com") as unknown as iam.IPrincipal,
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AWSLambdaBasicExecutionRole"),
-      ],
-    });
-    startSyncRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: ["states:StartExecution"],
-        resources: [this.stateMachine.stateMachineArn],
-      }),
-    );
-    startSyncRole.addToPrincipalPolicy(taskADenyStatement(this));
-
+    // properties carry the manifest CID and this deploy's nonce. CloudFormation re-invokes a
+    // custom resource only when its properties change; the nonce changes every deploy, so every
+    // deploy starts one execution. That is what makes a redeploy retry a failed first sync of a
+    // CID, and an A→B→A rollback re-sync A: the execution is named `{manifestCid}-{deployNonce}`,
+    // never the bare CID, because a Standard execution name can't be reused for 90 days.
+    // Repeats are harmless: Plan ends the run as AlreadyPromoted (one SSM read + one DynamoDB
+    // GetItem, no fetch) when the CID is already META#index.current, and Promote's conditional
+    // write stays the second guard. StartExecution returns once the execution is accepted, so the
+    // deploy never waits on, or fails with, the sync itself — a failed run is the DLQ alarm's job
+    // (constitution P0-12). ExecutionAlreadyExists can now only mean CloudFormation re-sent this
+    // same deploy's request (same name, same input), so it is still safe to ignore.
     const startSyncCall: cr.AwsSdkCall = {
       service: "SFN",
       action: "startExecution",
       parameters: {
         stateMachineArn: this.stateMachine.stateMachineArn,
-        name: props.dataManifestCid,
+        name: deploySyncExecutionName(props.dataManifestCid, props.deployNonce),
         input: JSON.stringify({ manifestCidHint: props.dataManifestCid }),
       },
       physicalResourceId: cr.PhysicalResourceId.of(`crm-sync-${props.dataManifestCid}`),
       ignoreErrorCodesMatching: "ExecutionAlreadyExists",
     };
+    // Accepted exception to "Powertools Logger/Tracer/Metrics on every Lambda" (constitution
+    // Article VIII): this custom resource's Lambda is CDK's own framework handler — it runs no app
+    // code we could instrument, only the one SDK call above. Its CloudWatch log group below is the
+    // observability it gets; infra/test/crm-sync-stack.test.ts names it as the only exception.
     const startSyncOnDeploy = new cr.AwsCustomResource(this, "StartSyncOnManifestChange", {
       functionName: "crm-sync-start-on-deploy",
-      // Same aws-cdk-lib/exactOptionalPropertyTypes mismatch as the principals above
-      // (`Role#principalAccount` is `string | undefined`), not a real type-safety issue.
-      role: startSyncRole as unknown as iam.IRole,
+      // Least privilege: exactly states:StartExecution on this one state machine. The custom
+      // resource creates and owns the role (no hand-made iam.Role, which doesn't type-check as
+      // IRole under exactOptionalPropertyTypes); the Task A Deny is added to it just below.
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ["states:StartExecution"],
+          resources: [this.stateMachine.stateMachineArn],
+        }),
+      ]),
       onCreate: startSyncCall,
       onUpdate: startSyncCall,
       // No onDelete: removing this resource (or the stack) never starts or stops a sync.
@@ -609,6 +622,7 @@ export class CrmSyncStack extends Stack {
         removalPolicy: RemovalPolicy.DESTROY,
       }),
     });
+    startSyncOnDeploy.grantPrincipal.addToPrincipalPolicy(taskADenyStatement(this));
     // The new CID must be in SSM and Plan's new configuration live before the execution starts.
     startSyncOnDeploy.node.addDependency(manifestCidParameter, this.stateMachine, planFn);
     NagSuppressions.addResourceSuppressions(

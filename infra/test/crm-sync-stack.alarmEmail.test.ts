@@ -1,6 +1,6 @@
-// T050 (B-09, Phase 6/US3, AC-6): confirm `CrmSyncStack` is actually instantiated with
-// `alarmEmail: "eng.heba.gaber@gmail.com"` wherever it's composed (infra/src/app.ts's
-// `createCrmStacks`) — per agent-design.md porygon §2/contracts/observability.md, the DLQ +
+// T050 (B-09, Phase 6/US3, AC-6): confirm `CrmSyncStack` is actually instantiated with the
+// configured `alarmEmail` (cdk.json context `crm:alarmEmail`, read by infra/src/config.ts — see
+// test/config.test.ts) wherever it's composed (infra/src/app.ts's `createCrmStacks`) — per agent-design.md porygon §2/contracts/observability.md, the DLQ +
 // alarm + SNS-topic construct already exists (`addFetchPartDlqAndAlarm`,
 // `CrmSyncStackProps.alarmEmail`); the only missing piece, if any, is this one prop value at the
 // call site. This test reads the real app entrypoint (infra/src/app.ts) directly — not a
@@ -21,6 +21,8 @@ const CONFIG: CrmAppConfig = {
   aiProvider: "bedrock",
   agentModelId: "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
   dataManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
+  alarmEmail: "eng.heba.gaber@gmail.com",
+  deployNonce: "alarmtest",
 };
 
 describe("CrmSyncStack composition (T050/T052, AC-6)", () => {

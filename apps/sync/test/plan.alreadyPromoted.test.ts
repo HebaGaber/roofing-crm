@@ -61,6 +61,24 @@ describe("Plan: already-promoted manifest is a no-op (auto-sync idempotency)", (
     });
   });
 
+  it("makes every redeploy's start of an unchanged, already-served CID free: no fetch, no write", async () => {
+    // CrmSync now starts one execution per deploy ({manifestCid}-{deployNonce} names), always with
+    // this same input (infra/lib/crm-sync-stack.ts's startSyncCall).
+    ddbMock
+      .on(GetCommand)
+      .resolves({ Item: { pk: "META#index", sk: "META", current: RUN_2_MANIFEST_CID } });
+    const deployInput = { manifestCidHint: RUN_2_MANIFEST_CID };
+
+    for (let deploy = 0; deploy < 3; deploy += 1) {
+      await expect(planHandler(deployInput)).resolves.toEqual({
+        status: "AlreadyPromoted",
+        manifestCid: RUN_2_MANIFEST_CID,
+      });
+    }
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(s3Mock.commandCalls(PutObjectCommand)).toHaveLength(0);
+  });
+
   it("proceeds to fetch the manifest when a different CID is promoted (a real switch)", async () => {
     ddbMock
       .on(GetCommand)

@@ -254,6 +254,9 @@ importers:
       '@crm/config':
         specifier: workspace:*
         version: link:../packages/config
+      '@crm/observability':
+        specifier: workspace:*
+        version: link:../packages/observability
       aws-cdk-lib:
         specifier: 2.173.4
         version: 2.173.4(constructs@10.4.2)
@@ -555,6 +558,9 @@ importers:
       '@crm/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@crm/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared

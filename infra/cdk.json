@@ -13,6 +13,7 @@
       "feature/roofing-crm"
     ],
     "crm:allowedRegions": ["eu-north-1"],
+    "crm:alarmEmail": "eng.heba.gaber@gmail.com",
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,

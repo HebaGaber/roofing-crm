@@ -35,6 +35,7 @@ function build() {
       indexBucketName: "crm-index",
       leadsTableName: "crm-leads",
       dataManifestCid: "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy",
+      deployNonce: "iamdenytest",
     }),
   );
 }

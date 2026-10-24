@@ -16,15 +16,66 @@ import type * as sns from "aws-cdk-lib/aws-sns";
 import type * as sqs from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
+import {
+  AGENT_CITING_OUTCOMES,
+  AGENT_METRIC_DIMENSIONS,
+  API_SERVICE_NAME,
+  METRIC_NAMES,
+  METRICS_NAMESPACE,
+} from "@crm/observability/metric-names";
 import { taskADenyStatement } from "./task-a-deny.js";
 
-/** B-09 contracts/observability.md: namespace every agent metric is actually published under
- *  (packages/observability/src/index.ts's `METRICS_NAMESPACE`) — this stack has no dependency on
- *  that package (it would pull in Powertools for a CDK app), so the literal is repeated here,
- *  same as `POWERTOOLS_METRICS_NAMESPACE` is repeated as a literal in every stack's Lambda
- *  environment block (crm-sync-stack.ts, this file's LockoutHandler above). */
-const AGENT_METRICS_NAMESPACE = "RoofingCrm";
-const AGENT_PROCEDURE_DIMENSION = { name: "procedure", value: "agent.ask" };
+/** One concrete dashboard widget, wrapped so it satisfies `cloudwatch.IWidget` without a cast.
+ *  aws-cdk-lib's concrete widget classes declare `warnings: string[] | undefined`, which this
+ *  repo's `exactOptionalPropertyTypes` won't accept for `IWidget`'s optional `warnings?:
+ *  string[]`; this adapter forwards every member with the exact interface types instead. */
+class DashboardWidget implements cloudwatch.IWidget {
+  constructor(private readonly inner: cloudwatch.ConcreteWidget) {}
+
+  get width(): number {
+    return this.inner.width;
+  }
+
+  get height(): number {
+    return this.inner.height;
+  }
+
+  get warningsV2(): { [id: string]: string } {
+    return this.inner.warningsV2 ?? {};
+  }
+
+  position(x: number, y: number): void {
+    this.inner.position(x, y);
+  }
+
+  toJson(): unknown[] {
+    return this.inner.toJson();
+  }
+}
+
+const AGENT_METRIC_PERIOD = Duration.minutes(5);
+
+/** CloudWatch SEARCH over the exact dimension set agent metrics are flushed under
+ *  (`AGENT_METRIC_DIMENSIONS`), scoped to the API's `service` value: one series per `outcome`
+ *  value actually emitted, so a new outcome shows up without a dashboard change. */
+function agentMetricSearch(metricName: string, statistic: string): string {
+  const schema = [METRICS_NAMESPACE, ...AGENT_METRIC_DIMENSIONS].join(",");
+  return (
+    `SEARCH('{${schema}} MetricName="${metricName}" service="${API_SERVICE_NAME}"', ` +
+    `'${statistic}', ${AGENT_METRIC_PERIOD.toSeconds()})`
+  );
+}
+
+/** One agent metric for one `outcome` value, with the full emitted dimension set. */
+function agentMetric(metricName: string, outcome: string): cloudwatch.Metric {
+  return new cloudwatch.Metric({
+    namespace: METRICS_NAMESPACE,
+    metricName,
+    dimensionsMap: { service: API_SERVICE_NAME, outcome },
+    statistic: "Sum",
+    period: AGENT_METRIC_PERIOD,
+  });
+}
 
 export interface CrmOpsStackProps extends StackProps {
   /** Path to apps/api/src/auth/lockout-handler.ts, relative to this file. */
@@ -134,6 +185,8 @@ export class CrmOpsStack extends Stack {
       },
     });
 
+    // Accepted exception to "Powertools on every Lambda": AwsCustomResource's Lambda is CDK's own
+    // framework handler (no app code to instrument) — same as CrmSync's deploy-time sync starter.
     const seedAdminUser = new cr.AwsCustomResource(this, "SeedAdminUser", {
       onCreate: {
         service: "CognitoIdentityServiceProvider",
@@ -177,44 +230,76 @@ export class CrmOpsStack extends Stack {
     // continuous groundedness alarm (one of AC-4's three delivery points: CI/golden-harness at
     // merge time, this per-request runtime alarm, and the dashboard's trend widget below). ---
 
-    const agentAnswerLatencyP95 = new cloudwatch.Metric({
-      namespace: AGENT_METRICS_NAMESPACE,
-      metricName: "AgentAnswerLatencyMs",
-      dimensionsMap: { procedure: AGENT_PROCEDURE_DIMENSION.value },
-      statistic: "p95",
-      period: Duration.minutes(5),
+    // B-09 review fix (porygon Critical): every read below names the dimension set the API
+    // really flushes — `[service, outcome]` (packages/observability/test/metricNames.test.ts pins
+    // it against real Powertools output). A CloudWatch metric is its full dimension set, so a
+    // read with no dimensions, or with one never emitted, sees no data and can never alarm.
+
+    const agentAnswerLatencyP95 = new cloudwatch.MathExpression({
+      expression: agentMetricSearch(METRIC_NAMES.AgentAnswerLatencyMs, "p95"),
+      usingMetrics: {},
+      period: AGENT_METRIC_PERIOD,
     });
 
-    const agentCitationGroundednessRate = new cloudwatch.Metric({
-      namespace: AGENT_METRICS_NAMESPACE,
-      metricName: "AgentCitationGroundednessRate",
-      statistic: "Average",
-      period: Duration.minutes(5),
+    const agentAsksByOutcome = new cloudwatch.MathExpression({
+      expression: agentMetricSearch(METRIC_NAMES.AgentAsksTotal, "Sum"),
+      usingMetrics: {},
+      period: AGENT_METRIC_PERIOD,
+    });
+
+    // Groundedness = Sum(verified) / Sum(total) x 100 over every outcome — a ratio of sums, not
+    // an Average of per-answer percentages (which weighs a 1-citation answer like a 20-citation
+    // one, and counts 0-of-0 answers as 100%).
+    const agentCitationGroundednessAll = new cloudwatch.MathExpression({
+      expression:
+        `100 * SUM(${agentMetricSearch(METRIC_NAMES.AgentCitationsVerified, "Sum")}) / ` +
+        `SUM(${agentMetricSearch(METRIC_NAMES.AgentCitationsTotal, "Sum")})`,
+      usingMetrics: {},
+      period: AGENT_METRIC_PERIOD,
+      label: "Verified / total citations (%)",
+    });
+
+    // The alarm can't use SEARCH (CloudWatch rejects it in alarms) and takes at most 10 metrics,
+    // so it reads the outcomes whose path can record citations at all (AGENT_CITING_OUTCOMES);
+    // every other outcome records 0 of 0, which adds nothing to either sum.
+    const citingMetrics: Record<string, cloudwatch.IMetric> = {};
+    const verifiedIds: string[] = [];
+    const totalIds: string[] = [];
+    AGENT_CITING_OUTCOMES.forEach((outcome, index) => {
+      citingMetrics[`verified${index}`] = agentMetric(METRIC_NAMES.AgentCitationsVerified, outcome);
+      citingMetrics[`total${index}`] = agentMetric(METRIC_NAMES.AgentCitationsTotal, outcome);
+      verifiedIds.push(`FILL(verified${index}, 0)`);
+      totalIds.push(`FILL(total${index}, 0)`);
+    });
+    const verifiedSum = verifiedIds.join(" + ");
+    const totalSum = totalIds.join(" + ");
+    const agentCitationGroundednessForAlarm = new cloudwatch.MathExpression({
+      // IF without an else drops the datapoint when nothing was cited, so a quiet or
+      // citation-free period is missing data (not breaching), never a fake 0%.
+      expression: `IF((${totalSum}) > 0, 100 * (${verifiedSum}) / (${totalSum}))`,
+      usingMetrics: citingMetrics,
+      period: AGENT_METRIC_PERIOD,
+      label: "Verified / total citations (%)",
     });
 
     const goldenQueryPassRate = new cloudwatch.Metric({
-      namespace: AGENT_METRICS_NAMESPACE,
-      metricName: "GoldenQueryPassRate",
+      namespace: METRICS_NAMESPACE,
+      metricName: METRIC_NAMES.GoldenQueryPassRate,
       statistic: "Average",
       period: Duration.hours(1),
-      // T054: no live run has published a datapoint yet in any environment this stack
-      // synthesizes for (incl. this CDK-assertions test), so this widget is built to tolerate an
-      // absent metric rather than a dashboard-synthesis failure.
+      // Published by the golden harness after a real hosted run only, so this widget may be
+      // empty until one has run — it tolerates an absent metric.
     });
 
-    // Cast to `IWidget`: aws-cdk-lib's own `GraphWidget`/`AlarmStatusWidget` classes don't satisfy
-    // `IWidget` under this repo's `exactOptionalPropertyTypes` (a pre-existing aws-cdk-lib/TS
-    // strictness mismatch, not a real type-safety issue here — found wiring this dashboard).
-    const asWidget = (
-      widget: cloudwatch.GraphWidget | cloudwatch.AlarmStatusWidget,
-    ): cloudwatch.IWidget => widget as unknown as cloudwatch.IWidget;
+    const widget = (inner: cloudwatch.ConcreteWidget): cloudwatch.IWidget =>
+      new DashboardWidget(inner);
 
     const widgets: cloudwatch.IWidget[][] = [
       [
         ...(props.fetchPartDlq === undefined
           ? []
           : [
-              asWidget(
+              widget(
                 new cloudwatch.GraphWidget({
                   title: "FetchPart DLQ depth",
                   left: [props.fetchPartDlq.metricApproximateNumberOfMessagesVisible()],
@@ -224,7 +309,7 @@ export class CrmOpsStack extends Stack {
         ...(props.fetchPartDlqAlarm === undefined
           ? []
           : [
-              asWidget(
+              widget(
                 new cloudwatch.AlarmStatusWidget({
                   title: "FetchPart DLQ alarm",
                   alarms: [props.fetchPartDlqAlarm],
@@ -233,22 +318,29 @@ export class CrmOpsStack extends Stack {
             ]),
       ],
       [
-        asWidget(
+        widget(
           new cloudwatch.GraphWidget({
-            title: "Agent answer latency (p95)",
-            left: [agentAnswerLatencyP95],
+            title: "Agent asks by outcome",
+            left: [agentAsksByOutcome],
+            stacked: true,
           }),
         ),
-        asWidget(
+        widget(
           new cloudwatch.GraphWidget({
-            title: "Agent citation groundedness rate (target 100)",
-            left: [agentCitationGroundednessRate],
-            leftAnnotations: [{ value: 100, label: "target" }],
+            title: "Agent answer latency p95 (ms), by outcome",
+            left: [agentAnswerLatencyP95],
           }),
         ),
       ],
       [
-        asWidget(
+        widget(
+          new cloudwatch.GraphWidget({
+            title: "Agent citation groundedness, verified / total (target 100)",
+            left: [agentCitationGroundednessAll],
+            leftAnnotations: [{ value: 100, label: "target" }],
+          }),
+        ),
+        widget(
           new cloudwatch.GraphWidget({
             title: "Golden-query pass rate (last real run, not just a CI badge)",
             left: [goldenQueryPassRate],
@@ -270,14 +362,15 @@ export class CrmOpsStack extends Stack {
       {
         alarmName: "crm-agent-citation-groundedness",
         alarmDescription:
-          "AgentCitationGroundednessRate < 100 for 3 consecutive 5-minute periods — a cited " +
+          "Verified / total citations < 100% for 3 consecutive 5-minute periods — a cited " +
           "property_cid or permit_cid failed to resolve against the live index on a real " +
           "agent.ask call (contracts/observability.md's continuous AC-4 check, runtime layer).",
-        metric: agentCitationGroundednessRate,
+        metric: agentCitationGroundednessForAlarm,
         threshold: 100,
         comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
         evaluationPeriods: 3,
-        // No data (no asks in the period) is not a citation-drift signal — never alarm on silence.
+        // No data (no asks, or nothing cited) is not a citation-drift signal — never alarm on
+        // silence.
         treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
       },
     );

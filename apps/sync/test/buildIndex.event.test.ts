@@ -292,6 +292,62 @@ describe("BuildIndex: binds full-county batched parts by explicit local path (B-
   });
 });
 
+describe("BuildIndex: reports manifest batches missing from the bound index (B-09 review fix)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(PutObjectCommand).resolves({});
+  });
+
+  afterEach(() => {
+    s3Mock.restore();
+  });
+
+  it("names a manifest batch bindManifest did not bind, in its output for Validate", async () => {
+    const countyPart = "run/county-batched/tables/b01/property/part-00000.parquet";
+    const permitPart = "run/permits-batched/tables/b01/property_improvement/part-00000.parquet";
+    s3Mock.on(GetObjectCommand).callsFake(() => ({
+      Body: Readable.from([
+        Buffer.from(
+          JSON.stringify({
+            artifacts: [
+              { kind: "table", name: countyPart, cid: "a" },
+              { kind: "table", name: permitPart, cid: "b" },
+            ],
+          }),
+        ),
+      ]),
+    }));
+    const oracleViews = await import("@crm/oracle-views");
+    const bind = vi.mocked(oracleViews.bindManifest);
+    const realStub = bind.getMockImplementation();
+    bind.mockImplementationOnce(async (bytes, dir, engine, options) => {
+      await realStub?.(bytes, dir, engine, options);
+      // The county batch's group "could not be resolved": only the permit batch was bound.
+      return {
+        tables: [
+          {
+            group: "property_improvement",
+            table: "property_improvement",
+            emitted: true,
+            parts: [permitPart],
+          },
+        ],
+      } as never;
+    });
+
+    const result = await buildIndexHandler({
+      ...STREAM_EVENT_BASE,
+      parts: [{ path: countyPart }, { path: permitPart }],
+    } as never);
+
+    expect(result.batchCoverage).toEqual({
+      batchesListed: 2,
+      unboundBatches: ["run/county-batched/tables/b01"],
+      emptyCountyBatches: [],
+    });
+  });
+});
+
 describe("BuildIndex: streams rows to Parquet in chunks (full-county sizing, B-09)", () => {
   beforeEach(() => {
     s3Mock.reset();
