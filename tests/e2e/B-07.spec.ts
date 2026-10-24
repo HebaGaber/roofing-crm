@@ -81,8 +81,8 @@ function factsOf(cid: string): Facts {
 
 async function signIn(page: Page, password: string): Promise<void> {
   await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Email").fill(SEEDED_USERNAME);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
   await expect(page.locator('[data-route="map"]')).toBeVisible();
 }

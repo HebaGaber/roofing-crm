@@ -1,80 +1,200 @@
-/* Atlas tokens only (constitution P0-14) — no raw colors/spacing. */
+/* Sign in (CrmSignIn390/768/1440). Atlas tokens only (constitution P0-14): no raw colours,
+   spacing or radii. Compact (< 600 px): card at the top, 20 px padding; medium and up: card
+   centred, 32 px padding, 24 px bar margins. Component sizes the system fixes in pixels (64 px
+   bar, 48 px fields and targets, 420 px card) are derived from the spacing scale. */
 .page {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  padding: var(--space-6);
+  min-height: 100dvh;
   background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Top app bar: 64 px, surface, 1 px outline-variant edge, title-large. */
+.bar {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  height: var(--space-10);
+  padding: 0 var(--space-4);
+  background: var(--md-sys-color-surface);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.barTitle {
+  margin: 0;
+  font-family: var(--md-sys-typescale-title-large-font);
+  font-size: var(--md-sys-typescale-title-large-size);
+  font-weight: var(--md-sys-typescale-title-large-weight);
+  line-height: var(--md-sys-typescale-title-large-line-height);
+  letter-spacing: var(--md-sys-typescale-title-large-tracking);
+  color: var(--md-sys-color-on-surface);
+}
+
+.main {
+  box-sizing: border-box;
+  flex: 1;
+  display: grid;
+  place-items: start center;
+  padding: var(--space-4);
+}
+
+/* Outlined Atlas card, extra-large corners. */
+.card {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: calc(var(--space-6) * 17.5);
+  padding: var(--space-5);
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-extra-large);
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
 .title {
-  font: var(--md-sys-typescale-headline-medium-weight)
-    var(--md-sys-typescale-headline-medium-size) /
-    var(--md-sys-typescale-headline-medium-line-height) var(--md-ref-typeface-brand);
+  margin: 0;
+  font-family: var(--md-sys-typescale-headline-small-font);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  font-weight: var(--md-sys-typescale-headline-small-weight);
+  line-height: var(--md-sys-typescale-headline-small-line-height);
   color: var(--md-sys-color-on-surface);
-  /* The browser's UA stylesheet default h1 margin-top was never reset, so it fell through as an
-     un-tokened value (found by smeargle's Atlas-token audit, TZ04) — 0 is an allowed value. */
-  margin-top: 0;
-  margin-bottom: var(--space-6);
+}
+
+.lede,
+.note {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  color: var(--md-sys-color-on-surface-variant);
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  width: 100%;
-  max-width: 360px;
-  padding: var(--space-6);
-  background: var(--md-sys-color-surface);
-  border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: var(--md-sys-elevation-level1);
+  gap: var(--space-4);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .label {
-  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
-    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  font-weight: var(--md-sys-typescale-label-medium-weight);
+  line-height: var(--md-sys-typescale-label-medium-line-height);
   color: var(--md-sys-color-on-surface-variant);
 }
 
 .input {
-  padding: var(--space-3);
+  box-sizing: border-box;
+  height: var(--space-9);
+  padding: 0 var(--space-3);
   border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-small);
-  font: var(--md-sys-typescale-body-large-weight) var(--md-sys-typescale-body-large-size) /
-    var(--md-sys-typescale-body-large-line-height) var(--md-ref-typeface-plain);
+  border-radius: var(--md-sys-shape-corner-extra-small);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
   color: var(--md-sys-color-on-surface);
   background: var(--md-sys-color-surface);
 }
 
-.input:focus-visible {
+.input[aria-invalid="true"] {
+  border-color: var(--md-sys-color-error);
+}
+
+.input:focus-visible,
+.toggle:focus-visible,
+.submit:focus-visible {
   outline: 2px solid var(--md-sys-color-primary);
   outline-offset: 2px;
 }
 
-.error {
-  color: var(--status-danger);
-  background: var(--status-danger-container);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: var(--space-3);
-  font: var(--md-sys-typescale-body-medium-weight) var(--md-sys-typescale-body-medium-size) /
-    var(--md-sys-typescale-body-medium-line-height) var(--md-ref-typeface-plain);
+.passwordWrap {
+  position: relative;
+  display: flex;
 }
 
+.passwordInput {
+  flex: 1;
+  min-width: 0;
+  padding-right: calc(var(--space-9) + var(--space-1));
+}
+
+/* Atlas standard icon button: 48 px target, transparent, on-surface-variant glyph. */
+.toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-9);
+  height: var(--space-9);
+  padding: 0;
+  border: none;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  cursor: pointer;
+}
+
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+  color: var(--md-sys-color-error);
+}
+
+/* Atlas filled button, full width. */
 .submit {
-  margin-top: var(--space-3);
-  padding: var(--space-3) var(--space-6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--space-9);
+  padding: 0 var(--space-6);
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-  font: var(--md-sys-typescale-label-large-weight) var(--md-sys-typescale-label-large-size) /
-    var(--md-sys-typescale-label-large-line-height) var(--md-ref-typeface-plain);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  line-height: var(--md-sys-typescale-label-large-line-height);
   cursor: pointer;
 }
 
 .submit:disabled {
   opacity: var(--md-sys-state-disabled-opacity);
   cursor: default;
+}
+
+@media (min-width: 600px) {
+  .bar {
+    padding: 0 var(--space-6);
+  }
+
+  .main {
+    place-items: center;
+  }
+
+  .card {
+    padding: var(--space-7);
+  }
 }

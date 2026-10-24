@@ -15,8 +15,8 @@ async function signIn(
   username: string = SEEDED_USERNAME,
 ): Promise<void> {
   await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Email").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
 }
 
