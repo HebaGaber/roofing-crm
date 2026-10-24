@@ -85,7 +85,7 @@ describe("LeadCreateAction in the PropertyDetail drawer", () => {
     mutationState = {
       isPending: false,
       isSuccess: false,
-      error: { data: { cause: { code: "ALREADY_EXISTS" } }, message: "exists" },
+      error: { data: { appCode: "ALREADY_EXISTS" }, message: "exists" },
     };
     renderDrawer();
     expect(screen.getByText(/already a lead/i)).toBeTruthy();

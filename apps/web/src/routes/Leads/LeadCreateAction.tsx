@@ -13,8 +13,9 @@ export const TRAVIS_FIPS = "48453";
 
 export function isAlreadyExists(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
-  const data = (error as { data?: { cause?: { code?: unknown } } }).data;
-  return data?.cause?.code === "ALREADY_EXISTS";
+  // `data.appCode` is set by the API's errorFormatter (tRPC does not send `cause` over the wire).
+  const data = (error as { data?: { appCode?: unknown } }).data;
+  return data?.appCode === "ALREADY_EXISTS";
 }
 
 /** Builds the `leads.create` input from the drawer's property. This contract publishes no street

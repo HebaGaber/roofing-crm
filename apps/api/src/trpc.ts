@@ -61,7 +61,22 @@ export function requireUserId(ctx: { userId: string | undefined }): string {
   return ctx.userId;
 }
 
-const t = initTRPC.context<TrpcContext>().create();
+/** tRPC drops `cause` from the wire error, so a domain code carried on it (ALREADY_EXISTS,
+ *  STALE_SEQUENCE) is surfaced as `data.appCode`; the web client keys off that, not the message. */
+export function withAppCode<D extends object>(
+  shape: { data: D },
+  cause: unknown,
+): { data: D & { appCode?: string } } {
+  const code = (cause as { code?: unknown } | undefined)?.code;
+  return typeof code === "string" ? { data: { ...shape.data, appCode: code } } : shape;
+}
+
+const t = initTRPC.context<TrpcContext>().create({
+  errorFormatter: ({ shape, error }) => ({
+    ...shape,
+    data: withAppCode(shape, error.cause).data,
+  }),
+});
 
 export const router = t.router;
 export const publicProcedure = t.procedure;
