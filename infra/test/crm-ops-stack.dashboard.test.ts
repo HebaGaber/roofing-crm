@@ -21,7 +21,7 @@ const LOCKOUT_ENTRY = new URL("../../apps/api/src/auth/lockout-handler.ts", impo
   .pathname;
 
 function build(): Template {
-  const app = new App();
+  const app = new App({ context: { "aws:cdk:bundling-stacks": [] } });
   // The DLQ/alarm/topic props are optional; the real wiring (infra/src/app.ts) supplies them.
   const stack = new CrmOpsStack(app, "CrmOps", {
     env: ENV,

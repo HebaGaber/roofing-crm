@@ -30,7 +30,8 @@ describe("CrmSyncStack composition (T050/T052, AC-6)", () => {
     // Building the full app (every stack, including CrmSync/CrmApi's Docker-bundled native
     // DuckDB handlers) is slower than a single-stack fixture — same reason
     // crm-sync-stack.test.ts's own build() is hoisted into beforeAll.
-    const app = new App();
+    // Skip Docker bundling: this test reads CloudFormation only (CI bundles under QEMU, minutes per build).
+    const app = new App({ context: { "aws:cdk:bundling-stacks": [] } });
     createCrmStacks(app, CONFIG);
     const template = Template.fromStack(
       app.node.findChild("CrmSync") as import("aws-cdk-lib").Stack,

@@ -23,7 +23,8 @@ const VALIDATE_ENTRY = new URL("../../apps/sync/handlers/validate.ts", import.me
 const PROMOTE_ENTRY = new URL("../../apps/sync/handlers/promote.ts", import.meta.url).pathname;
 
 function build() {
-  const app = new App();
+  // Skip Docker bundling: IAM statements don't depend on bundled code (CI bundles under QEMU, minutes per build).
+  const app = new App({ context: { "aws:cdk:bundling-stacks": [] } });
   return Template.fromStack(
     new CrmSyncStack(app, "CrmSync", {
       env: ENV,

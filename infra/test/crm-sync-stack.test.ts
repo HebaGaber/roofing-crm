@@ -18,13 +18,13 @@ const PROMOTE_ENTRY = new URL("../../apps/sync/handlers/promote.ts", import.meta
 const RUN_2_MANIFEST_CID = "bafkreihidj4qxsal43nbd3twbobnc4rl3tptu23si3w6wrnwvcn2otkbcy";
 const RUN_1_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
 
-/** `skipBundling` synthesizes without esbuild/Docker (CDK's own `aws:cdk:bundling-stacks`
- *  context) — for the extra comparison builds below, which only read CloudFormation properties. */
+/** `skipBundling` (default on) synthesizes without esbuild/Docker (CDK's own `aws:cdk:bundling-stacks`
+ *  context): these tests only read CloudFormation properties, and CI bundles under QEMU. */
 const DEPLOY_NONCE = "mh2k9x1a";
 
 function build(
   dataManifestCid: string = RUN_2_MANIFEST_CID,
-  skipBundling = false,
+  skipBundling = true,
   deployNonce: string = DEPLOY_NONCE,
 ) {
   const app = new App(skipBundling ? { context: { "aws:cdk:bundling-stacks": [] } } : {});
