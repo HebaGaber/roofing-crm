@@ -1,0 +1,499 @@
+---
+id: QC-TC-B-09
+type: test-cases
+title: "Grounded agent + production hardening + real-data switch + prototype re-audit"
+parent: [FEAT-B09, FEAT-B11]
+story: stories/B-09-agent-hardening.md
+spec: specs/009-agent-hardening/spec.md
+owner: HebaGaber
+status: Draft
+gate: G6
+version: 0.1
+created: 2026-10-24
+runtime_url: "{RUNTIME_URL} = https://crm.{domain} or the 009-agent-hardening Amplify branch preview; never localhost"
+reviewed_code: "d8e9299 (plan/tasks only; no implementation commit yet)"
+qc_signoff: false
+---
+
+# Test Cases: B-09 Grounded agent + production hardening + real-data switch + prototype re-audit
+
+> **v0.1, 2026-10-24.** Drafted with `developmentsupport-testcases` from the story's Given / When /
+> Then ACs (AC-1 … AC-8), its edge cases, its Requirements table and `specs/009-agent-hardening/spec.md`'s
+> FR-001 … FR-008. `tasks.md` was **not** read for this draft, per constitution XXII. Every case
+> starts from `{RUNTIME_URL}` in a private window and logs in as `{TEST_USER}`. Playwright runs
+> against `{RUNTIME_URL}`; `playwright.config.ts` must refuse `localhost`.
+>
+> Confidence bands used below are ADR-06's (`docs/architecture-constitution.md`): auto ≥0.92,
+> clarify 0.80–0.92 or margin<0.05, refuse (`not_found`) <0.80 — the corrected wording already
+> applied to the story's edge cases. Prototype screens referenced are at
+> `design/prototype/CrmAsk*.dc.html`, not the story's earlier stale `design/screens/` path.
+>
+> Playwright test ids below are names only; `tests/e2e/responsive/ask.spec.ts` and
+> `tests/agent/golden.test.ts` are not written yet.
+
+## 1. Feature overview
+
+A sales rep asks a plain-language question about roofing opportunities and gets a grounded,
+cited, map-openable answer that can become a lead through the existing lead-creation path; an
+evaluator can run the seven standard golden questions at scale, check the whole app's layout at
+three widths, see a self-resolving health alert on a dashboard, confirm the data is the real
+full-county publication (not a 35-row sample), and find zero unresolved drift from the approved
+prototype. The value is a trustworthy agent that never invents a property, and a product proven
+production-ready, not just demo-ready.
+
+## 2. Requirement mapping
+
+| Source | Reference | Covered by |
+| --- | --- | --- |
+| Acceptance criterion | B-09-AC-1 (cited, map-openable answer with stated center point) | TC-001, TC-002, TC-003 |
+| Acceptance criterion | B-09-AC-2 (create lead from an answer, via `leads.create`, model never writes directly) | TC-004, TC-005, TC-006 |
+| Acceptance criterion | B-09-AC-3 (out-of-scope ZIP, zero fabricated results) | TC-007, TC-008 |
+| Acceptance criterion | B-09-AC-4 (7 golden queries, p95 < 20s, 100% groundedness) | TC-009…TC-015, TC-NF-01 |
+| Acceptance criterion | B-09-AC-5 (full responsive suite, 390/768/1440, every screen) | TC-016, TC-017, TC-NF-02 |
+| Acceptance criterion | B-09-AC-6 (DLQ alarm fires and self-resolves, visible on dashboard) | TC-018, TC-019 |
+| Acceptance criterion | B-09-AC-7 (data read by Run 1 manifest CID directly, documented deviation) | TC-020, TC-021 |
+| Acceptance criterion | B-09-AC-8 (prototype re-diff, fix or deferred-with-reason) | TC-022, TC-023 |
+| Edge case | model call exceeds 23s server-side abort | TC-024 |
+| Edge case | place-resolution confidence 0.80–0.92 or margin<0.05 → clarify, not a guess | TC-002 |
+| Edge case | place-resolution confidence <0.80 → refuse (`not_found`), not a guess | TC-025 |
+| Edge case | DLQ alert that never recovers stays active | TC-019b |
+| Edge case | a screen-drift fix would reopen approved architecture → deferred with reason, not force-fixed | TC-023b |
+| Functional requirement | FR-001 (cited, real records) | TC-001, TC-003 |
+| Functional requirement | FR-002 (lead only via existing path, never model-direct) | TC-004, TC-005, TC-006 |
+| Functional requirement | FR-003 (honest empty/invalid-scope answer) | TC-007, TC-008 |
+| Functional requirement | FR-004 (7 golden queries, p95<20s, 100% real citations) | TC-009…TC-015, TC-NF-01 |
+| Functional requirement | FR-005 (responsive at phone/tablet/desktop, every screen) | TC-016, TC-017 |
+| Functional requirement | FR-006 (alert + auto-clear, dashboard-visible) | TC-018, TC-019 |
+| Functional requirement | FR-007 (read by manifest CID, documented + reversible) | TC-020, TC-021 |
+| Functional requirement | FR-008 (re-diffed, fixed or deferred with reason) | TC-022, TC-023 |
+| NFR | ≤3 model calls/ask, 5 asks/min/user, $3/day cap, 23s server abort (ARD-B §10) | TC-024, TC-026, TC-027 |
+
+## 3. Assumptions
+
+- **Data source.** Per AC-7, this story's deployed build reads property/permit data directly by
+  Task A's Run 1 full-county manifest CID `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`
+  (441,961 properties / 17,387 permits). Test data below (`{P_...}` tokens) must be filled in from
+  this manifest once it is live — they are placeholders, not fabricated values, consistent with
+  this template's convention. **Do not** substitute B-03/B-07's earlier 35-row-sample fixtures;
+  SC-005 explicitly requires the real publication.
+- **Routes.** Ask screen `/ask` (or wherever `apps/web/src/routes/Ask/` mounts — confirm against
+  the build; `{route}` marks where it may differ), map `/map`, leads list `/leads`.
+- **Login.** `{TEST_USER}` is an environment variable. Each case logs in, then reaches the screen
+  under test.
+- **Place.** "Pflugerville" and "Manor" resolve against the gazetteer
+  (`packages/oracle-views/gazetteer/travis-places@1.0.0`); their exact centers are read from the
+  gazetteer at test time, not hard-coded here, so a gazetteer update doesn't silently stale this
+  file.
+- **Confidence bands are ADR-06's**, not a single 0.80 threshold: auto ≥0.92, clarify 0.80–0.92 or
+  margin<0.05 between the top two candidates, refuse (`not_found`) <0.80.
+- **Golden queries G1–G7** are `checks.md` §7.1's exact prompts, run against the pinned Run 1
+  manifest, not the earlier sample — thresholds in §7.1/§7.2 apply as written.
+- **Copy.** Exact assistant-facing strings are read from `design/prototype/CrmAsk*.dc.html` at test
+  time; where the story/spec state a required phrase ("not in Run {n}"-style honesty), that exact
+  phrase is asserted; otherwise the *behavior* (not an invented exact string) is asserted. See § 10
+  if any copy gap surfaces during build.
+
+## 4. Scope
+
+- **In scope:** asking a plain-language question and getting a cited, map-openable answer;
+  creating a lead from that answer through the existing `leads.create` path; an out-of-scope
+  question's honest empty/invalid-scope response; the 7 golden queries at scale (latency +
+  groundedness); the full responsive suite across every screen (old and new) at 3 widths; the DLQ
+  alarm firing and self-clearing, visible on the `RoofingCrm` dashboard; the data-source switch to
+  the Run 1 manifest CID; the prototype re-diff of every screen.
+- **Out of scope:** vector/semantic search (ARD-08, not in v1); PagerDuty paging (SNS email
+  substitute, already accepted); any new lead-store behavior beyond B-07; waiting for Atlas
+  registration before switching data (the direct-CID read is the point of AC-7); a ground-up
+  prototype rebuild (B-03 already did this; this round is a targeted re-diff of drift since).
+
+## 5. Test data
+
+- **Place A (happy path):** "Pflugerville" — center resolved live from the gazetteer at test time;
+  radius 5 mi (AC-1's exact wording, "within five miles of Pflugerville").
+- **Place B (second golden query, inherited area):** same Pflugerville area as Place A (G2 inherits
+  it), permit "open ≥5 years" ("many years").
+- **Place C (exact-threshold query):** "Manor", radius 5 mi, roof age >5 years (G3).
+- **Place D (ambiguous/low-confidence, edge case):** a deliberate misspelling, e.g. "Pflugervile"
+  (one letter dropped) — expected to land in the 0.80–0.92 fuzzy band or trigger the margin<0.05
+  clarify path per ADR-06; exact score depends on the live gazetteer and is read at test time, not
+  hard-coded.
+- **Place E (refuse, not clarify):** a clearly non-Travis, non-existent place name, e.g. "Zzyzxville" —
+  expected score <0.80 → `not_found`.
+- **Out-of-scope ZIP (AC-3, G6):** `99999` (not a Travis County ZIP).
+- **Real permit number (G5):** `{PM_REAL}` — read from the Run 1 manifest at test setup time (a
+  real open permit number), not invented.
+- **Lakeway combined-filter case (G4):** "Lakeway", tenure ≥10 years, owner mailing address outside
+  the area — exact property set read from the live index at test time.
+- **Data snapshot:** manifest CID `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`
+  (441,961 properties / 17,387 permits). Every agent-created lead must store this CID in
+  `sourceManifestCid`.
+- **Run-scoped values:** every lead created by this suite is created with a note/tag prefixed
+  `B09-{yyyymmddHHMMss}-` so one run can be told apart from another.
+- **Cleanup:** `afterAll` deletes only the leads `{TEST_USER}` created during that run (same
+  cleanup helper B-07's suite established, GAP-3 there) — no other lead is touched.
+- **DLQ trigger (AC-6/TC-018):** the existing forced-failure procedure from B-02's evidence
+  (`docs/evidence/`), re-run here against `FetchPartDlq`.
+
+## 6. Environment, risks and dependencies
+
+- `RUNTIME_URL={RUNTIME_URL}` · test user `{TEST_USER}` (environment variable).
+- B-07 merged (leads live, for the agent's `createLead`/confirm path) — confirmed (`8b13240`).
+- The data-switch (AC-7) must be deployed before TC-001–TC-015, TC-020, TC-021 are meaningful —
+  running them against the 35-row sample instead of the Run 1 manifest would pass for the wrong
+  reason. Confirm `leadIndex.indexInfo().manifestCid` before running this suite.
+- **Known gaps** that become expected-to-fail or blocked cases are listed in § 10 and linked from
+  the rows they affect. None recorded yet — this is the first draft, before implementation.
+
+## 7. Coverage matrix
+
+| TC ID | Title | Priority | Tags | Type | Requirement(s) | Playwright test |
+| --- | --- | --- | --- | --- | --- | --- |
+| B-09-TC-001 | Ask about Pflugerville permits, get cited answer | P1 | `@smoke @demo` | UI | AC-1, FR-001 | `tests/agent/golden.test.ts › "G1"` |
+| B-09-TC-002 | Open a cited result on the map | P1 | `@smoke` | UI | AC-1, FR-001 | `tests/e2e/responsive/ask.spec.ts › "open on map"` |
+| B-09-TC-003 | Follow-up question inherits the area (G2) | P2 | `@demo` | UI | AC-1, FR-001 | `tests/agent/golden.test.ts › "G2"` |
+| B-09-TC-004 | Create a lead from the agent's answer | P1 | `@smoke @demo` | UI | AC-2, FR-002 | `tests/agent/golden.test.ts › "G7"` |
+| B-09-TC-005 | Agent never calls a direct write path | P1 | `@security` | API | AC-2, FR-002 | `apps/api/test/routers/agent.confirmLead.test.ts` |
+| B-09-TC-006 | Lead created from the agent carries `createdFrom:"agent"` and appears in the lead list | P1 | `@smoke` | UI | AC-2, FR-002 | `tests/agent/golden.test.ts › "G7"` |
+| B-09-TC-007 | Out-of-scope ZIP returns zero fabricated results | P1 | `@negative` | UI | AC-3, FR-003 | `tests/agent/golden.test.ts › "G6"` |
+| B-09-TC-008 | Out-of-scope answer states the reason | P2 | `@negative` | UI | AC-3, FR-003 | `tests/agent/golden.test.ts › "G6"` |
+| B-09-TC-009 | G1 passes at scale (groundedness + latency) | P1 | `@perf @smoke` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G1"` |
+| B-09-TC-010 | G2 passes (inherited area, "many years" stated) | P2 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G2"` |
+| B-09-TC-011 | G3 passes (exact thresholds, sorted by open duration) | P2 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G3"` |
+| B-09-TC-012 | G4 passes (combined filters, "outside the area" explained) | P2 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G4"` |
+| B-09-TC-013 | G5 passes (exact permit lookup, BBB cited or "not available") | P2 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G5"` |
+| B-09-TC-014 | G6 passes (zero results, says why) | P1 | `@perf @negative` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G6"` |
+| B-09-TC-015 | G7 passes (lead created, appears in list) | P1 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "G7"` |
+| B-09-TC-NF-01 | All 7 golden queries, p95 < 20s, 100% groundedness | P1 | `@perf` | API | AC-4, FR-004 | `tests/agent/golden.test.ts › "p95 and groundedness"` |
+| B-09-TC-016 | Every screen passes responsive check at 390/768/1440 | P1 | `@responsive @smoke` | UI | AC-5, FR-005 | `tests/e2e/responsive/*.spec.ts` |
+| B-09-TC-017 | Ask screen's 6 states each render correctly at all 3 widths | P1 | `@responsive` | UI | AC-5, FR-005 | `tests/e2e/responsive/ask.spec.ts` |
+| B-09-TC-NF-02 | No horizontal overflow or inaccessible control on any screen | P1 | `@responsive @a11y` | UI | AC-5, FR-005 | `tests/e2e/responsive/*.spec.ts` |
+| B-09-TC-018 | Forced DLQ failure fires the alarm, visible on dashboard | P1 | `@ops @smoke` | Infra | AC-6, FR-006 | manual + CloudWatch screenshot |
+| B-09-TC-019 | Alarm self-resolves once the queue drains | P1 | `@ops` | Infra | AC-6, FR-006 | manual + CloudWatch screenshot |
+| B-09-TC-019b | Alarm stays active if the failure never recovers | P2 | `@ops @negative` | Infra | AC-6, edge case | manual |
+| B-09-TC-020 | CRM/agent data traces to the Run 1 manifest CID | P1 | `@smoke` | API | AC-7, FR-007 | `apps/api/test/leadIndex.manifestCid.test.ts` |
+| B-09-TC-021 | Deviation + swap-back condition documented | P2 | `@docs` | Docs | AC-7, FR-007 | manual review of `docs/architecture-constitution.md` |
+| B-09-TC-022 | Every listed screen re-diffed against current prototype | P1 | `@design` | UI | AC-8, FR-008 | manual + `design/design-review-log.md` |
+| B-09-TC-023 | Every found mismatch fixed or logged with a reason | P1 | `@design` | Docs | AC-8, FR-008 | manual review of `design/design-review-log.md` |
+| B-09-TC-023b | A drift fix that would reopen approved architecture is deferred, not forced | P2 | `@design @negative` | Docs | AC-8, edge case | manual review |
+| B-09-TC-024 | A call exceeding 23s shows "took too long," never a blank/broken screen | P1 | `@negative @perf` | UI | edge case, NFR-001 | `tests/e2e/responsive/ask.spec.ts › "timeout"` |
+| B-09-TC-025 | A clearly non-Travis place name is refused, not guessed | P1 | `@negative` | UI | edge case | `apps/api/test/services/agent/placeResolver.test.ts` |
+| B-09-TC-026 | A 6th ask within one minute is throttled | P2 | `@negative @perf` | API | NFR-001 | `apps/api/test/agent/rateLimiter.test.ts` |
+| B-09-TC-027 | A call estimated to exceed the $3/day cap is paused before the model is called | P2 | `@negative @perf` | API | NFR-001 | `apps/api/test/agent/spendCap.test.ts` |
+
+## 8. Functional test cases
+
+### B-09-TC-001: Ask about Pflugerville permits, get cited answer (happy path)
+
+- **Priority / tags:** P1 · `@smoke @demo`
+- **Maps to:** AC-1, FR-001 · demo line D-7
+- **Preconditions:** logged in; the Run 1 manifest is the live index (TC-020 passed).
+- **Test data:** question "Which properties in Travis County within five miles of Pflugerville
+  have roofs older than 15 years?" (G1, checks.md §7.1).
+- **Steps:**
+  1. **Open** `{RUNTIME_URL}/ask` in a private window. → the Ask screen's empty/idle `data-state`.
+  2. **Log in** as `{TEST_USER}`. → the Ask input is focused and enabled.
+  3. **Type** the G1 question into the question input and submit. → `data-state="working"` appears immediately.
+  4. **Wait** for the answer. → `data-state="answer"` within 20s.
+  5. **Verify** the answer text states the geocoded center point it used for Pflugerville (lat/lon or a named landmark, read from the gazetteer).
+  6. **Verify** every returned result card shows a real `property_cid` and a citation (source URL or "source not available" with a reason — never a blank citation).
+- **Expected result:** the answer names the center point used, every result has a real,
+  verifiable `property_cid` with a citation, and the roof-age filter (>15 years) is reflected in
+  every returned result's shown roof age.
+
+### B-09-TC-002: Open a cited result on the map
+
+- **Priority / tags:** P1 · `@smoke`
+- **Maps to:** AC-1, FR-001
+- **Preconditions:** TC-001 completed, at least one result card is shown.
+- **Steps:**
+  1. **Click** "Open on map" on the first result card. → navigates to `{RUNTIME_URL}/map` (or the
+     map panel opens in place, per the build).
+  2. **Verify** the map centers on that result's exact coordinates and its pin is selected/highlighted.
+  3. **Verify** the property detail shown on the map matches the `property_cid` cited in the Ask answer.
+- **Expected result:** the same property, identified by the same `property_cid`, appears
+  selected on the map — no mismatch between the cited record and the opened one.
+
+### B-09-TC-003: Follow-up question inherits the area (G2)
+
+- **Priority / tags:** P2 · `@demo`
+- **Maps to:** AC-1, FR-001 · checks.md G2
+- **Preconditions:** TC-001 completed in the same `threadId`/conversation.
+- **Test data:** "Which properties near that area have open roofing permits that have been open
+  for many years, and who is the listed contractor?"
+- **Steps:**
+  1. **Type** the G2 follow-up into the same conversation and submit.
+  2. **Verify** the answer does not ask the rep to re-specify the area (area is inherited from G1).
+  3. **Verify** the answer states its meaning of "many years" (e.g. "open ≥5 years").
+  4. **Verify** each result shows a contractor name or "contractor not available" (never a blank or guessed name), and a BBB rating or "BBB rating not available."
+- **Expected result:** area inherited correctly; "many years" threshold stated explicitly;
+  contractor/BBB fields are either real values with citations or an honest "not available."
+
+### B-09-TC-004: Create a lead from the agent's answer (happy path)
+
+- **Priority / tags:** P1 · `@smoke @demo`
+- **Maps to:** AC-2, FR-002 · checks.md G7
+- **Preconditions:** TC-001 completed, at least 3 candidate properties shown.
+- **Test data:** "Create a lead for the first result."
+- **Steps:**
+  1. **Type** "Create a lead for the first result" and submit.
+  2. **Verify** a confirmation card appears naming the first result's property (never an immediate silent write).
+  3. **Click** "Create" / "Confirm" on the card.
+  4. **Verify** the lead appears, with status `new`, within 2s (same latency bar as B-07's AC-1).
+  5. **Navigate** to `{RUNTIME_URL}/leads`. → the new lead is visible at the top of the list.
+- **Expected result:** the lead exists, `createdFrom: "agent"`, `sourceManifestCid` = the pinned
+  Run 1 CID, and it is the same property the agent cited (same `property_cid`/`tcadId`).
+
+### B-09-TC-005: Agent never calls a direct write path (security/regression)
+
+- **Priority / tags:** P1 · `@security`
+- **Maps to:** AC-2, FR-002 — constitution P0 rule
+- **Type:** API/code-inspection, run as an automated check, not a manual UI step.
+- **Steps:**
+  1. **Inspect** the deployed/built `services/agent/tools.ts` module's import graph.
+  2. **Verify** it does not import `LeadService` or `requireLeadService` anywhere.
+  3. **Call** `agent.ask` with a question that would plausibly trigger a `proposeLeads` tool call, without ever calling `agent.confirmLead`.
+  4. **Verify** `leads.list` shows no new lead as a result of step 3 alone.
+- **Expected result:** no lead is created unless the separate, rep-triggered `agent.confirmLead`
+  mutation is called — the model's own tool set has no path to a write.
+
+### B-09-TC-006: Agent-created lead carries correct provenance and appears in the list
+
+- **Priority / tags:** P1 · `@smoke`
+- **Maps to:** AC-2, FR-002
+- **Preconditions:** TC-004 completed.
+- **Steps:**
+  1. **Open** the lead created in TC-004 from `{RUNTIME_URL}/leads`.
+  2. **Verify** its detail view shows `createdFrom: "agent"` and the pinned manifest CID as its source.
+  3. **Verify** its signals (roof age, basis, open permit id, contractor, BBB rating) match what the agent's answer cited.
+- **Expected result:** full provenance matches the agent's cited answer; no field is invented or
+  silently changed between the answer and the stored lead.
+
+### B-09-TC-007: Out-of-scope ZIP returns zero fabricated results (negative/missing-data)
+
+- **Priority / tags:** P1 · `@negative`
+- **Maps to:** AC-3, FR-003 · checks.md G6
+- **Test data:** "How many properties have roofs older than 40 years in ZIP 99999?"
+- **Steps:**
+  1. **Open** `{RUNTIME_URL}/ask`, log in.
+  2. **Type** the G6 question and submit.
+  3. **Verify** `data-state` reaches an out-of-scope/empty state, not "answer" with results.
+  4. **Verify** the result count shown is exactly 0, and the `citations` list is empty.
+- **Expected result:** zero results, zero citations, no invented property.
+
+### B-09-TC-008: Out-of-scope answer states the reason
+
+- **Priority / tags:** P2 · `@negative`
+- **Maps to:** AC-3, FR-003
+- **Preconditions:** TC-007 completed.
+- **Steps:**
+  1. **Verify** the answer text explicitly names ZIP 99999 and states it is not a Travis County ZIP (or equivalent honest reason).
+- **Expected result:** the exact scope checked and rejected is named in the answer text — not a
+  generic "no results" with no explanation.
+
+### B-09-TC-009 … B-09-TC-015: Golden queries G1–G7 pass at scale
+
+- **Priority / tags:** P1/P2 · `@perf`
+- **Maps to:** AC-4, FR-004 · checks.md §7.1/§7.2, one TC per query (G1=TC-009/already covered by
+  TC-001's functional happy path — this group re-runs it under the automated grading harness
+  rather than duplicating the manual steps; G2=TC-010, G3=TC-011, G4=TC-012, G5=TC-013, G6=TC-014,
+  G7=TC-015).
+- **Steps (automated, per query, via `tests/agent/golden.test.ts`):**
+  1. **Call** `agent.ask` with the query's exact prompt from `tests/agent/golden.json`.
+  2. **Verify** groundedness: every returned `property_cid` resolves via `property.get` against
+     the live index, and the answer's `manifestCid` equals the pinned Run 1 CID.
+  3. **Verify** correctness: re-run the equivalent `search.properties`/`search.permits` call with
+     the answer's stated center/thresholds; returned rows must be a subset, recall ≥80% of top-N.
+  4. **Verify** honesty: the answer text states its assumptions (center, thresholds) and flags any
+     missing data.
+  5. **G6 only:** verify zero results and an explicit "scope invalid/empty" statement.
+  6. **G7 only:** verify the proposed lead, once confirmed, appears in `leads.list`.
+- **Expected result:** each of G1–G7 individually passes its grading rule from checks.md §7.2.
+
+### B-09-TC-NF-01: All 7 golden queries, p95 < 20s, 100% groundedness
+
+- **Priority / tags:** P1 · `@perf`
+- **Maps to:** AC-4, FR-004
+- **Steps:**
+  1. **Run** all 7 golden queries, 3 repeats each (21 total asks), paced to stay under 5 asks/min.
+  2. **Measure** "first useful answer" latency for each ask.
+  3. **Compute** p95 across all 21 latencies.
+  4. **Compute** citation groundedness: (cited `property_cid`s that resolve) / (total cited) across all 21 answers.
+- **Expected result:** p95 < 20.000s; groundedness = 100.00%; zero asks hit `rate_limited` or
+  `paused` from the test harness's own pacing.
+
+### B-09-TC-016: Every screen passes the responsive check at 390/768/1440
+
+- **Priority / tags:** P1 · `@responsive @smoke`
+- **Maps to:** AC-5, FR-005
+- **Steps (per screen: CrmMap, FilterSheet, PropertyDetail, ContractorBadge, ResultsPanel,
+  LeadsList, LeadDetail, AppShell/NavRail, Ask):**
+  1. **Open** `{RUNTIME_URL}{route}` at viewport 390×844 (phone). → no horizontal scroll
+     (`document.documentElement.scrollWidth <= clientWidth`); every interactive control is tappable
+     and visible without overlap.
+  2. **Resize** to 768×1024 (tablet). → layout switches to tablet mode per the design tokens; no
+     overflow.
+  3. **Resize** to 1440×900 (desktop). → full rail/desktop layout; no overflow.
+- **Expected result:** all 3 widths pass with zero overflow and zero inaccessible controls, on
+  every listed screen.
+
+### B-09-TC-017: Ask screen's 6 states each render correctly at all 3 widths
+
+- **Priority / tags:** P1 · `@responsive`
+- **Maps to:** AC-5, FR-005
+- **Test data:** working, answer-with-citations, no-results, low-confidence, throttled, paused —
+  each triggered via its deterministic test input (TC-001 for "working"/"answer", TC-007 for
+  "no-results", TC-025 for "low-confidence", TC-026 for "throttled", TC-027 for "paused").
+- **Steps:**
+  1. For each state, trigger it, then repeat TC-016's 3-width check on the Ask screen alone.
+- **Expected result:** each `data-state` renders without overflow or inaccessible controls at all
+  3 widths.
+
+### B-09-TC-018: Forced DLQ failure fires the alarm, visible on the dashboard
+
+- **Priority / tags:** P1 · `@ops @smoke`
+- **Maps to:** AC-6, FR-006
+- **Steps:**
+  1. **Trigger** a sync-job failure that lands a message on `FetchPartDlq` (same forced-failure
+     procedure as B-02's evidence).
+  2. **Open** the CloudWatch `RoofingCrm` dashboard.
+  3. **Verify** the DLQ-depth widget shows depth > 0 and the alarm widget shows `ALARM` within one
+     evaluation period.
+- **Expected result:** the alarm visibly transitions to `ALARM` on the dashboard, with a nonzero
+  DLQ depth shown.
+
+### B-09-TC-019: Alarm self-resolves once the queue drains
+
+- **Priority / tags:** P1 · `@ops`
+- **Maps to:** AC-6, FR-006
+- **Preconditions:** TC-018 completed (alarm is in `ALARM`).
+- **Steps:**
+  1. **Let** the queue's existing redrive/retry drain the message (or manually drain it for the test).
+  2. **Verify** the dashboard's DLQ-depth widget returns to 0.
+  3. **Verify** the alarm widget transitions back to `OK`, with no manual reset action taken.
+- **Expected result:** alarm clears automatically once the queue is empty — no human intervention
+  needed to clear it.
+
+### B-09-TC-019b: Alarm stays active if the failure never recovers (edge case)
+
+- **Priority / tags:** P2 · `@ops @negative`
+- **Maps to:** AC-6, edge case
+- **Steps:**
+  1. **Trigger** a DLQ message that is designed not to drain (e.g. a permanently malformed part).
+  2. **Wait** past the normal drain window.
+  3. **Verify** the alarm remains `ALARM`, never silently clearing while depth stays > 0.
+- **Expected result:** the alarm never clears while the underlying failure is unresolved.
+
+### B-09-TC-020: CRM/agent data traces to the Run 1 manifest CID
+
+- **Priority / tags:** P1 · `@smoke`
+- **Maps to:** AC-7, FR-007
+- **Steps:**
+  1. **Call** the deployed API's index-info endpoint (or equivalent) and read `manifestCid`.
+  2. **Verify** it equals `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu`.
+  3. **Open** `{RUNTIME_URL}/map` and verify the property count shown is consistent with 441,961
+     properties in scope (not the earlier 35-row sample's count).
+- **Expected result:** both the API and the UI trace to the real Run 1 publication.
+
+### B-09-TC-021: Deviation and swap-back condition documented
+
+- **Priority / tags:** P2 · `@docs`
+- **Maps to:** AC-7, FR-007
+- **Steps:**
+  1. **Open** `docs/architecture-constitution.md`.
+  2. **Verify** it records the direct-CID-read deviation (instead of the Elephant MCP/
+     `listPublishedCounties` lookup) and a named swap-back condition: "once the user confirms Atlas
+     registration for Travis County is complete."
+- **Expected result:** the deviation and its reversal condition are both explicitly written down,
+  not implied.
+
+### B-09-TC-022: Every listed screen re-diffed against current prototype
+
+- **Priority / tags:** P1 · `@design`
+- **Maps to:** AC-8, FR-008
+- **Steps:**
+  1. **Open** `design/design-review-log.md`.
+  2. **Verify** it has a row for each of: CrmMap, FilterSheet, PropertyDetail, ContractorBadge,
+     ResultsPanel, LeadsList, LeadDetail, AppShell/NavRail, and each new Ask state.
+  3. **Verify** each row is no longer "Not yet re-checked" — it is either "Incorporated" or
+     explicitly "Deferred: {reason}".
+- **Expected result:** every row has a terminal status; none are left unresolved.
+
+### B-09-TC-023: Every found mismatch fixed or logged with a reason
+
+- **Priority / tags:** P1 · `@design`
+- **Maps to:** AC-8, FR-008
+- **Preconditions:** TC-022 completed.
+- **Steps:**
+  1. **For** each "Incorporated" row, **verify** the referenced fix is present in the live build
+     (spot-check spacing/token/copy against `design/prototype/CrmAsk*.dc.html` and the matching
+     existing-screen prototype file).
+  2. **For** each "Deferred" row, **verify** it states a concrete reason, not a placeholder.
+- **Expected result:** zero rows with a vague or missing reason; fixed rows are verifiably fixed
+  in the live build.
+
+### B-09-TC-023b: A drift fix that would reopen approved architecture is deferred, not forced (edge case)
+
+- **Priority / tags:** P2 · `@design @negative`
+- **Maps to:** AC-8, edge case
+- **Steps:**
+  1. **Identify** (from `design/design-review-log.md`) any mismatch whose fix would require
+     changing an already-approved architecture decision (e.g. ADR-06's confidence bands, a G3-
+     approved data shape).
+  2. **Verify** it is marked "Deferred" with that exact reason, not silently force-fixed.
+- **Expected result:** no architecture decision is reopened under this story's time pressure
+  without an explicit, separate decision.
+
+### B-09-TC-024: A call exceeding 23s shows "took too long," never a blank/broken screen
+
+- **Priority / tags:** P1 · `@negative @perf`
+- **Maps to:** edge case, NFR-001
+- **Steps:**
+  1. **Trigger** an ask under a test-only injected-delay condition (staging flag) that exceeds 23s.
+  2. **Verify** the Ask screen reaches `data-state="timed_out"` with a clear "this took too long,
+     try again" message — never a spinner forever, never a blank page, never an unhandled error.
+- **Expected result:** a typed, visible timeout state, with a retry affordance.
+
+### B-09-TC-025: A clearly non-Travis place name is refused, not guessed
+
+- **Priority / tags:** P1 · `@negative`
+- **Maps to:** edge case (place-resolution <0.80)
+- **Test data:** "Zzyzxville" (place name not in the gazetteer, no plausible fuzzy match).
+- **Steps:**
+  1. **Ask** "roofs older than 15 years near Zzyzxville."
+  2. **Verify** the answer refuses (`not_found`) rather than picking an arbitrary center point.
+  3. **Verify** the refusal offers to rephrase, and makes no tool calls that return property rows.
+- **Expected result:** `outcome: "not_found"`, zero results, no guessed center point.
+
+### B-09-TC-026: A 6th ask within one minute is throttled
+
+- **Priority / tags:** P2 · `@negative @perf`
+- **Maps to:** NFR-001
+- **Steps:**
+  1. **Send** 5 asks for `{TEST_USER}` within the same 60-second window.
+  2. **Send** a 6th ask immediately after.
+  3. **Verify** the 6th returns `outcome: "rate_limited"` with a `retryAfterSec` value, not a 500
+     and not a silent model call.
+- **Expected result:** exactly 5 asks succeed per rolling minute per user; the 6th is cleanly
+  throttled.
+
+### B-09-TC-027: A call estimated to exceed the $3/day cap is paused before the model is called
+
+- **Priority / tags:** P2 · `@negative @perf`
+- **Maps to:** NFR-001
+- **Steps:**
+  1. **Simulate** (via test-only seeded usage record) `{TEST_USER}`'s daily spend at the $3 cap.
+  2. **Send** one more ask.
+  3. **Verify** the response is `outcome: "paused"` and that no Bedrock/Gateway model call was made
+     (checked via the `AgentModelCallsTotal` metric / mock call count — zero increment).
+- **Expected result:** the spend cap is enforced *before* any model call, never after.
+
+## 9. Edge cases
+
+(Captured above as TC-024, TC-025, TC-019b, TC-023b — the story's 4 edge cases, each with its own
+case rather than folded into a happy-path case, since each needs its own deterministic trigger.)
+
+## 10. Gap-linked cases (expected to fail until fixed)
+
+| TC ID | Asserts | Gap | Defect |
+| --- | --- | --- | --- |
+| — | — | — | None recorded yet — this is the pre-implementation draft. Populate this table during/after `/speckit-implement` as defects are found (constitution XXIII). |
