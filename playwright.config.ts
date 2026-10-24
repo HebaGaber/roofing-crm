@@ -1,5 +1,6 @@
 import { defineConfig, devices, type Project } from "@playwright/test";
 import { assertHostedRuntimeUrl } from "./tests/e2e/lib/runtime-url.js";
+import { onboardingDismissedState } from "./tests/e2e/lib/onboarding.js";
 
 // RUNTIME_URL: the Amplify preview for this branch (tasks.md) — never localhost in Phase Z. When
 // it IS set, it must be a real hosted URL (constitution Article I "localhost is never evidence",
@@ -89,6 +90,9 @@ export default defineConfig({
   use: {
     baseURL,
     screenshot: "only-on-failure",
+    // Every context starts with the first-visit card dismissed (tests/e2e/lib/onboarding.ts);
+    // the saved sign-in session is taken from a context that has this too, so it carries over.
+    storageState: onboardingDismissedState(baseURL),
   },
   projects: [
     // Signs the seeded admin in once per invocation and saves the session to
