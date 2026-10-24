@@ -13,6 +13,7 @@ import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
@@ -113,6 +114,14 @@ export function addFetchPartDlqAndAlarm(
 export class CrmSyncStack extends Stack {
   public readonly stateMachine: sfn.StateMachine;
   public readonly fetchPartDlq: sqs.Queue;
+  /** B-09 T053: exported so `CrmOpsStack`'s `RoofingCrm` dashboard can build an `AlarmStatusWidget`
+   *  for this exact alarm — no second alarm definition, no duplicated threshold. */
+  public readonly fetchPartDlqAlarm: cloudwatch.Alarm;
+  /** B-09 T055: exported so `CrmOpsStack`'s `AgentCitationGroundednessRate` alarm can fan out to
+   *  the same SNS topic as the DLQ alarm (contracts/observability.md: "subscribed to the same SNS
+   *  topic as the DLQ alarm"), not a second topic with its own, easy-to-miss email subscription.
+   *  Undefined when `alarmEmail` is omitted — same optionality as the DLQ alarm's own action. */
+  public readonly alarmTopic: sns.ITopic | undefined;
 
   constructor(scope: Construct, id: string, props: CrmSyncStackProps) {
     super(scope, id, props);
@@ -121,10 +130,32 @@ export class CrmSyncStack extends Stack {
     const leadsTable = dynamodb.Table.fromTableName(this, "LeadsTable", props.leadsTableName);
 
     const alarmTopic =
-      props.alarmEmail === undefined ? undefined : new sns.Topic(this, "SyncAlarmsTopic");
+      props.alarmEmail === undefined
+        ? undefined
+        : new sns.Topic(this, "SyncAlarmsTopic", { enforceSSL: true });
     if (alarmTopic !== undefined && props.alarmEmail !== undefined) {
       alarmTopic.addSubscription(new snsSubscriptions.EmailSubscription(props.alarmEmail));
+      // `enforceSSL: true` alone only takes effect once a resource (topic) policy actually
+      // exists (aws-cdk-lib's TopicBase#addToResourcePolicy appends the SSL-only deny statement
+      // the first time any statement is added) — found live via cdk-nag's AwsSolutions-SNS3:
+      // CloudWatch's own alarm->SNS publish needs no resource policy at all, and
+      // `addSubscription` alone never creates one either, so without this explicit statement the
+      // topic was left with no policy and `enforceSSL` silently did nothing. This statement is
+      // also the real, least-privilege grant CloudWatch alarms need to publish here.
+      alarmTopic.addToResourcePolicy(
+        new iam.PolicyStatement({
+          sid: "AllowCloudWatchAlarmsPublish",
+          actions: ["sns:Publish"],
+          effect: iam.Effect.ALLOW,
+          // Cast: aws-cdk-lib's `ServicePrincipal` doesn't satisfy `IPrincipal` under this repo's
+          // `exactOptionalPropertyTypes` (same pre-existing aws-cdk-lib/TS strictness mismatch as
+          // the dashboard widgets in crm-ops-stack.ts), not a real type-safety issue here.
+          principals: [new iam.ServicePrincipal("cloudwatch.amazonaws.com") as unknown as iam.IPrincipal],
+          resources: [alarmTopic.topicArn],
+        }),
+      );
     }
+    this.alarmTopic = alarmTopic;
 
     const makeHandler = (
       id: string,
@@ -276,8 +307,11 @@ export class CrmSyncStack extends Stack {
     leadsTable.grantReadData(validateFn);
     leadsTable.grantReadWriteData(promoteFn);
 
-    const { queue: fetchPartDlq } = addFetchPartDlqAndAlarm(this, { alarmTopic });
+    const { queue: fetchPartDlq, alarm: fetchPartDlqAlarm } = addFetchPartDlqAndAlarm(this, {
+      alarmTopic,
+    });
     this.fetchPartDlq = fetchPartDlq;
+    this.fetchPartDlqAlarm = fetchPartDlqAlarm;
     fetchPartDlq.grantSendMessages(fetchPartFn);
 
     // --- Step Functions definition (architecture-constitution.md §2.3) ---

@@ -53,13 +53,26 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     promoteHandlerEntry: new URL(PROMOTE_HANDLER_ENTRY, import.meta.url).pathname,
     indexBucketName: dataStack.indexBucket.bucketName,
     leadsTableName: CRM_LEADS_TABLE_NAME,
+    // B-09 T050/T052 (AC-6): the FetchPart DLQ alarm's SNS topic was already wired to accept an
+    // email subscriber (ARD-B §13's accepted SNS-instead-of-PagerDuty deviation) but this app
+    // entrypoint never actually supplied one, so no subscription — and no alarm email — was ever
+    // created. This is the whole AC-6 DLQ fix per agent-design.md porygon §2: one prop value, no
+    // new construct.
+    alarmEmail: "eng.heba.gaber@gmail.com",
   });
   syncStack.addDependency(dataStack);
 
   const opsStack = new CrmOpsStack(app, "CrmOps", {
     env,
     lockoutHandlerEntry: new URL(LOCKOUT_HANDLER_ENTRY, import.meta.url).pathname,
+    // B-09 T053: the `RoofingCrm` dashboard's DLQ-depth/alarm-status widgets read these straight
+    // from CrmSyncStack's own public queue/alarm references (no second DLQ, no duplicated alarm
+    // definition).
+    fetchPartDlq: syncStack.fetchPartDlq,
+    fetchPartDlqAlarm: syncStack.fetchPartDlqAlarm,
+    alarmTopic: syncStack.alarmTopic,
   });
+  opsStack.addDependency(syncStack);
 
   const apiStack = new CrmApiStack(app, "CrmApi", {
     env,

@@ -1,0 +1,46 @@
+// T050 (B-09, Phase 6/US3, AC-6): confirm `CrmSyncStack` is actually instantiated with
+// `alarmEmail: "eng.heba.gaber@gmail.com"` wherever it's composed (infra/src/app.ts's
+// `createCrmStacks`) — per agent-design.md porygon §2/contracts/observability.md, the DLQ +
+// alarm + SNS-topic construct already exists (`addFetchPartDlqAndAlarm`,
+// `CrmSyncStackProps.alarmEmail`); the only missing piece, if any, is this one prop value at the
+// call site. This test reads the real app entrypoint (infra/src/app.ts) directly — not a
+// locally-constructed CrmSyncStack fixture — so a regression at the call site is actually caught,
+// not just the construct's own capability (already covered by crm-sync-stack.test.ts).
+import { App } from "aws-cdk-lib";
+import { Template } from "aws-cdk-lib/assertions";
+import { describe, expect, it } from "vitest";
+import { createCrmStacks } from "../src/app.js";
+import type { CrmAppConfig } from "../src/config.js";
+
+const CONFIG: CrmAppConfig = {
+  region: "eu-north-1",
+  account: "515618610572",
+  githubRepository: "prismteam-ai/roofing-crm",
+  githubRef: "feature/roofing-crm",
+  additionalBranches: [],
+  aiProvider: "bedrock",
+  agentModelId: "eu.anthropic.claude-sonnet-4-5-20250929-v1:0",
+  dataManifestCid: "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu",
+};
+
+describe("CrmSyncStack composition (T050/T052, AC-6)", () => {
+  it(
+    "is instantiated with the SNS alarm-email subscriber wired to an actual email",
+    () => {
+      // Building the full app (every stack, including CrmSync/CrmApi's Docker-bundled native
+      // DuckDB handlers) is slower than a single-stack fixture — same reason
+      // crm-sync-stack.test.ts's own build() is hoisted into beforeAll.
+      const app = new App();
+      createCrmStacks(app, CONFIG);
+      const template = Template.fromStack(
+        app.node.findChild("CrmSync") as import("aws-cdk-lib").Stack,
+      );
+
+      template.hasResourceProperties("AWS::SNS::Subscription", {
+        Protocol: "email",
+        Endpoint: "eng.heba.gaber@gmail.com",
+      });
+    },
+    240_000,
+  );
+});

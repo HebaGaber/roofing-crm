@@ -3,6 +3,8 @@
 // a CDK custom resource seeding one admin test user with its password written only to Secrets
 // Manager (Round 1 decision D-1; constitution Article XII — never in git, logs or the PR body).
 import { Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cloudwatchActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -10,13 +12,36 @@ import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as cr from "aws-cdk-lib/custom-resources";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import type * as sns from "aws-cdk-lib/aws-sns";
+import type * as sqs from "aws-cdk-lib/aws-sqs";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
 
+/** B-09 contracts/observability.md: namespace every agent metric is actually published under
+ *  (packages/observability/src/index.ts's `METRICS_NAMESPACE`) — this stack has no dependency on
+ *  that package (it would pull in Powertools for a CDK app), so the literal is repeated here,
+ *  same as `POWERTOOLS_METRICS_NAMESPACE` is repeated as a literal in every stack's Lambda
+ *  environment block (crm-sync-stack.ts, this file's LockoutHandler above). */
+const AGENT_METRICS_NAMESPACE = "RoofingCrm";
+const AGENT_PROCEDURE_DIMENSION = { name: "procedure", value: "agent.ask" };
+
 export interface CrmOpsStackProps extends StackProps {
   /** Path to apps/api/src/auth/lockout-handler.ts, relative to this file. */
   readonly lockoutHandlerEntry: string;
+  /** B-09 T053: `CrmSyncStack.fetchPartDlq` — read-only (`metricApproximateNumberOfMessagesVisible`),
+   *  never granted write here. Dashboard's DLQ-depth widget is omitted when not supplied (e.g. the
+   *  standalone test fixture in infra/test/crm-ops-stack.dashboard.test.ts). */
+  readonly fetchPartDlq?: sqs.IQueue;
+  /** B-09 T053: `CrmSyncStack.fetchPartDlqAlarm` — reused directly in an `AlarmStatusWidget`, never
+   *  a second alarm definition. */
+  readonly fetchPartDlqAlarm?: cloudwatch.IAlarm;
+  /** B-09 T055: `CrmSyncStack.alarmTopic` — the groundedness alarm fans out to the same SNS topic
+   *  as the DLQ alarm (contracts/observability.md), not a second topic/subscription. Explicitly
+   *  `| undefined` (not just optional): `CrmSyncStack.alarmTopic` is itself `ITopic | undefined`
+   *  (undefined when no `alarmEmail` was configured), and this repo's `exactOptionalPropertyTypes`
+   *  requires that union spelled out rather than relying on `?` alone. */
+  readonly alarmTopic?: sns.ITopic | undefined;
 }
 
 export class CrmOpsStack extends Stack {
@@ -147,6 +172,120 @@ export class CrmOpsStack extends Stack {
     });
     setAdminPassword.node.addDependency(seedAdminUser);
     this.adminSecret.grantRead(setAdminPassword);
+
+    // --- B-09 T053/T055 (AC-6, contracts/observability.md): the RoofingCrm dashboard + the
+    // continuous groundedness alarm (one of AC-4's three delivery points: CI/golden-harness at
+    // merge time, this per-request runtime alarm, and the dashboard's trend widget below). ---
+
+    const agentAnswerLatencyP95 = new cloudwatch.Metric({
+      namespace: AGENT_METRICS_NAMESPACE,
+      metricName: "AgentAnswerLatencyMs",
+      dimensionsMap: { procedure: AGENT_PROCEDURE_DIMENSION.value },
+      statistic: "p95",
+      period: Duration.minutes(5),
+    });
+
+    const agentCitationGroundednessRate = new cloudwatch.Metric({
+      namespace: AGENT_METRICS_NAMESPACE,
+      metricName: "AgentCitationGroundednessRate",
+      statistic: "Average",
+      period: Duration.minutes(5),
+    });
+
+    const goldenQueryPassRate = new cloudwatch.Metric({
+      namespace: AGENT_METRICS_NAMESPACE,
+      metricName: "GoldenQueryPassRate",
+      statistic: "Average",
+      period: Duration.hours(1),
+      // T054: no live run has published a datapoint yet in any environment this stack
+      // synthesizes for (incl. this CDK-assertions test), so this widget is built to tolerate an
+      // absent metric rather than a dashboard-synthesis failure.
+    });
+
+    // Cast to `IWidget`: aws-cdk-lib's own `GraphWidget`/`AlarmStatusWidget` classes don't satisfy
+    // `IWidget` under this repo's `exactOptionalPropertyTypes` (a pre-existing aws-cdk-lib/TS
+    // strictness mismatch, not a real type-safety issue here — found wiring this dashboard).
+    const asWidget = (widget: cloudwatch.GraphWidget | cloudwatch.AlarmStatusWidget): cloudwatch.IWidget =>
+      widget as unknown as cloudwatch.IWidget;
+
+    const widgets: cloudwatch.IWidget[][] = [
+      [
+        ...(props.fetchPartDlq === undefined
+          ? []
+          : [
+              asWidget(
+                new cloudwatch.GraphWidget({
+                  title: "FetchPart DLQ depth",
+                  left: [props.fetchPartDlq.metricApproximateNumberOfMessagesVisible()],
+                }),
+              ),
+            ]),
+        ...(props.fetchPartDlqAlarm === undefined
+          ? []
+          : [
+              asWidget(
+                new cloudwatch.AlarmStatusWidget({
+                  title: "FetchPart DLQ alarm",
+                  alarms: [props.fetchPartDlqAlarm],
+                }),
+              ),
+            ]),
+      ],
+      [
+        asWidget(
+          new cloudwatch.GraphWidget({
+            title: "Agent answer latency (p95)",
+            left: [agentAnswerLatencyP95],
+          }),
+        ),
+        asWidget(
+          new cloudwatch.GraphWidget({
+            title: "Agent citation groundedness rate (target 100)",
+            left: [agentCitationGroundednessRate],
+            leftAnnotations: [{ value: 100, label: "target" }],
+          }),
+        ),
+      ],
+      [
+        asWidget(
+          new cloudwatch.GraphWidget({
+            title: "Golden-query pass rate (last real run, not just a CI badge)",
+            left: [goldenQueryPassRate],
+          }),
+        ),
+      ],
+    ];
+
+    new cloudwatch.Dashboard(this, "RoofingCrmDashboard", {
+      dashboardName: "RoofingCrm",
+      widgets,
+    });
+
+    // T055: citation drift pages the same SNS topic as the DLQ alarm (contracts/observability.md
+    // "Continuous AC-4 check" layer 2) — never a silently-failing nightly test as the only signal.
+    const agentCitationGroundednessAlarm = new cloudwatch.Alarm(
+      this,
+      "AgentCitationGroundednessAlarm",
+      {
+        alarmName: "crm-agent-citation-groundedness",
+        alarmDescription:
+          "AgentCitationGroundednessRate < 100 for 3 consecutive 5-minute periods — a cited " +
+          "property_cid or permit_cid failed to resolve against the live index on a real " +
+          "agent.ask call (contracts/observability.md's continuous AC-4 check, runtime layer).",
+        metric: agentCitationGroundednessRate,
+        threshold: 100,
+        comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+        evaluationPeriods: 3,
+        // No data (no asks in the period) is not a citation-drift signal — never alarm on silence.
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      },
+    );
+    if (props.alarmTopic !== undefined) {
+      agentCitationGroundednessAlarm.addAlarmAction(
+        new cloudwatchActions.SnsAction(props.alarmTopic),
+      );
+      agentCitationGroundednessAlarm.addOkAction(new cloudwatchActions.SnsAction(props.alarmTopic));
+    }
 
     NagSuppressions.addResourceSuppressions(
       this,

@@ -9,6 +9,7 @@
     "type-check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch": "3.709.0",
     "@crm/api": "workspace:*",
     "@crm/api-client": "workspace:*",
     "@crm/domain": "workspace:*",

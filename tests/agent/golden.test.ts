@@ -38,6 +38,7 @@ import {
 import { createApiClient, type ApiClient, type ApiFetch } from "@crm/api-client";
 import { requestIdentifierOf } from "@crm/domain";
 import { assertHostedRuntimeUrl } from "../e2e/lib/runtime-url.js";
+import { publishGoldenQueryPassRate } from "./publishGoldenQueryPassRate.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -232,76 +233,134 @@ async function assertG6ZeroFabrication(answer: AskResult["answer"]): Promise<voi
   expect(answer.counts.matched).toBe(0);
 }
 
-async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<void> {
+interface RepeatTally {
+  readonly passedCount: number;
+  readonly totalCount: number;
+}
+
+/** T054: per-query pass/fail tally for this repeat, so the caller can accumulate a
+ *  `GoldenQueryPassRate` across every repeat in the run -- a single query's transient failure
+ *  (one timeout, one bad golden-query assertion) moves the rate, it does not zero the whole run's
+ *  reported rate the way an uncaught `expect()` throw would. The *test's* own pass/fail semantics
+ *  (CI gating) are unchanged below: this function still rethrows the first failure after tallying
+ *  it, exactly as it did before T054. */
+async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<RepeatTally> {
   const threadId = `golden-${Date.now()}-${repeatIndex}`;
   const latencies: number[] = [];
   let firstResultTcadId: string | undefined;
+  let passedCount = 0;
+  let totalCount = 0;
+  let firstFailure: unknown;
 
   for (const query of golden.queries) {
     if (query.id === "G5" && !nonEmpty(G5_REAL_PERMIT_NUMBER)) continue;
+    totalCount += 1;
 
     const prompt =
       query.id === "G5"
         ? query.prompt.replace("{real permit number}", G5_REAL_PERMIT_NUMBER as string)
         : query.prompt;
 
-    if (query.id === "G7") {
-      // T042 (G7 lead round-trip): confirmLead is a separate, non-model-invoked mutation
-      // (constitution P0, contracts/agent-api.md) -- the golden harness drives it the same way
-      // the real Ask UI does, never by asking the model to "create" anything itself.
-      expect(firstResultTcadId, "G1 must have returned a result to create a lead from").toBeDefined();
-      const lead = await client.agent.confirmLead.mutate({
-        threadId,
-        tcadId: firstResultTcadId as string,
-      });
-      expect(lead.createdFrom).toBe("agent");
-      const list = await client.leads.list.query({});
-      const found = list.leads.find(
-        (l) => requestIdentifierOf(l.leadKey) === firstResultTcadId && l.createdFrom === "agent",
-      );
-      expect(found, "the G7 lead must appear in leads.list").toBeDefined();
-      await sleep(golden.grading.pacingSeconds * 1000);
-      continue;
-    }
+    try {
+      if (query.id === "G7") {
+        // T042 (G7 lead round-trip): confirmLead is a separate, non-model-invoked mutation
+        // (constitution P0, contracts/agent-api.md) -- the golden harness drives it the same way
+        // the real Ask UI does, never by asking the model to "create" anything itself.
+        expect(
+          firstResultTcadId,
+          "G1 must have returned a result to create a lead from",
+        ).toBeDefined();
+        const lead = await client.agent.confirmLead.mutate({
+          threadId,
+          tcadId: firstResultTcadId as string,
+        });
+        expect(lead.createdFrom).toBe("agent");
+        const list = await client.leads.list.query({});
+        const found = list.leads.find(
+          (l) => requestIdentifierOf(l.leadKey) === firstResultTcadId && l.createdFrom === "agent",
+        );
+        expect(found, "the G7 lead must appear in leads.list").toBeDefined();
+        passedCount += 1;
+      } else {
+        const { answer, latencyMs } = await timedAsk(client, prompt, threadId);
+        latencies.push(latencyMs);
 
-    const { answer, latencyMs } = await timedAsk(client, prompt, threadId);
-    latencies.push(latencyMs);
+        if (query.id === "G6") {
+          await assertG6ZeroFabrication(answer);
+        } else {
+          expect(answer.outcome).toBe("answered");
+          assertGroundedness(answer);
+          assertHonesty(answer);
+          await assertCorrectness(
+            client,
+            answer,
+            query.prompt.toLowerCase().includes("permit") ? "permits" : "properties",
+          );
+        }
 
-    if (query.id === "G6") {
-      await assertG6ZeroFabrication(answer);
-    } else {
-      expect(answer.outcome).toBe("answered");
-      assertGroundedness(answer);
-      assertHonesty(answer);
-      await assertCorrectness(
-        client,
-        answer,
-        query.prompt.toLowerCase().includes("permit") ? "permits" : "properties",
-      );
-    }
-
-    if (query.id === "G1") {
-      firstResultTcadId = answer.citations.find((c) => c.tcadId !== undefined)?.tcadId;
+        if (query.id === "G1") {
+          firstResultTcadId = answer.citations.find((c) => c.tcadId !== undefined)?.tcadId;
+        }
+        passedCount += 1;
+      }
+    } catch (error) {
+      firstFailure ??= error;
     }
 
     await sleep(golden.grading.pacingSeconds * 1000);
   }
 
   // Latency (checks.md §7.1/quickstart.md step 3): p95 < 20s, max < 23.5s, per repeat.
-  const sorted = [...latencies].sort((a, b) => a - b);
-  const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
-  expect(sorted[p95Index]).toBeLessThan(golden.grading.latencyP95Ms);
-  expect(Math.max(...sorted)).toBeLessThan(golden.grading.latencyMaxMs);
+  if (latencies.length > 0) {
+    const sorted = [...latencies].sort((a, b) => a - b);
+    const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+    try {
+      expect(sorted[p95Index]).toBeLessThan(golden.grading.latencyP95Ms);
+      expect(Math.max(...sorted)).toBeLessThan(golden.grading.latencyMaxMs);
+    } catch (error) {
+      firstFailure ??= error;
+    }
+  }
+
+  if (firstFailure !== undefined) throw firstFailure;
+  return { passedCount, totalCount };
 }
+
+// T054: an explicit opt-in, separate from `canRun` -- a CI job can run the golden harness itself
+// (gating the merge) without AWS credentials for CloudWatch being present, and this file is run
+// from workspaces/machines (including this one) that never configure them. Publishing is
+// therefore never attempted unless *both* this harness can run for real *and* the caller has
+// explicitly said CloudWatch access is available.
+const PUBLISH_GOLDEN_QUERY_PASS_RATE = process.env.CRM_PUBLISH_GOLDEN_METRIC === "true";
 
 describe.skipIf(!canRun)(
   "golden queries G1-G7 against the deployed agent (RUNTIME_URL)",
   () => {
     it("runs GOLDEN_REPEATS repeats, each paced under 5 asks/min, grounded/correct/honest", async () => {
       const client = await makeClient();
-      for (let repeatIndex = 0; repeatIndex < golden.grading.repeats; repeatIndex += 1) {
-        await runOneRepeat(client, repeatIndex);
+      let passedCount = 0;
+      let totalCount = 0;
+      let firstFailure: unknown;
+      try {
+        for (let repeatIndex = 0; repeatIndex < golden.grading.repeats; repeatIndex += 1) {
+          try {
+            const tally = await runOneRepeat(client, repeatIndex);
+            passedCount += tally.passedCount;
+            totalCount += tally.totalCount;
+          } catch (error) {
+            // runOneRepeat already tallied its own queries before rethrowing its first failure;
+            // this file has no per-query count on that path, so count the whole repeat's worth
+            // of queries as attempted-and-failed rather than silently omitting it from the rate.
+            totalCount += golden.queries.length;
+            firstFailure ??= error;
+          }
+        }
+      } finally {
+        if (PUBLISH_GOLDEN_QUERY_PASS_RATE && totalCount > 0) {
+          await publishGoldenQueryPassRate({ passedCount, totalCount });
+        }
       }
+      if (firstFailure !== undefined) throw firstFailure;
     });
   },
 );
