@@ -409,6 +409,14 @@ test.describe("B-07 leads", () => {
     const status = page.getByRole("combobox", { name: "Status" });
     await status.selectOption("contacted");
     await expect(status).toHaveValue("contacted");
+    // Wait until the status is SAVED (the header pill reflects the server state), as a person
+    // would: firing the note 40 ms after the status races the two refetches in the browser.
+    await expect(
+      page
+        .locator("header")
+        .filter({ has: page.locator("#lead-title") })
+        .getByText("contacted"),
+    ).toBeVisible();
 
     await page.getByLabel("Add a note").fill(note);
     await page.getByRole("button", { name: "Add note" }).click();
@@ -438,6 +446,10 @@ test.describe("B-07 leads", () => {
     );
 
     await page.reload();
+    // The notes load after the page does; wait for this note before reading the whole text.
+    await expect(page.getByRole("region", { name: "Notes" })).toContainText(
+      `${RUN_TAG} "quoted" & 'single'`,
+    );
     const text = await page.getByRole("region", { name: "Notes" }).textContent();
     // textContent keeps the line break and every character, so a plain includes() is exact.
     expect(text ?? "").toContain(note);

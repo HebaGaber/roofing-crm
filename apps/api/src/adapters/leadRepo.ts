@@ -58,9 +58,9 @@ export interface LeadRepo {
   updateStatus(input: WriteBase & { status: LeadStatus }): Promise<StoredLead>;
   addNote(input: WriteBase & { text: string }): Promise<StoredLead>;
   get(leadKey: string): Promise<LeadDetailRecord | null>;
-  /** GSI1 (assignee), newest first order is not guaranteed: sorted by createdAt ascending. */
+  /** GSI1 (assignee), newest first (createdAt descending). */
   listByAssignee(assignee: string): Promise<StoredLead[]>;
-  /** GSI2 (status). */
+  /** GSI2 (status), newest first (createdAt descending). */
   listByStatus(status: LeadStatus): Promise<StoredLead[]>;
 }
 
@@ -155,6 +155,7 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
           KeyConditionExpression: "#k = :v",
           ExpressionAttributeNames: { "#k": attr },
           ExpressionAttributeValues: { ":v": value },
+          ScanIndexForward: false, // sort key is createdAt: newest lead first (AC-1)
           ExclusiveStartKey: startKey,
         }),
       );
