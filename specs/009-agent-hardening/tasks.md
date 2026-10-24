@@ -218,6 +218,18 @@ is fixed or logged with an explicit reason.
 
 ---
 
+## Phase N: Polish & Cross-Cutting Concerns
+
+**Purpose**: cleanup and a local sanity pass, after all 5 stories are implementation-complete and
+before the hosted-runtime proof in Phase Z (same ordering B-07 used: `specs/007-leads/tasks.md`'s
+Phase N runs before its Phase Z).
+
+- [ ] TN01 [P] Run `/simplify` over the diff (release fold-in R1, per `stories/B-09-agent-hardening.md`'s "Release fold-in" section)
+- [ ] TN02 Run `pnpm --filter @crm/shared --filter @crm/domain --filter @crm/api --filter @crm/web test` full suite; fix any regression
+- [ ] TN03 Run `quickstart.md`'s steps 1 locally as a final sanity pass before deploying (steps 2–5 are the hosted-runtime proof, done in Phase Z below, not duplicated here)
+
+---
+
 ## Phase Z: Prove on the hosted runtime (mandatory, always last)
 
 **Purpose**: constitution I, XVI, XXII. The story is not done until these pass.
@@ -228,15 +240,7 @@ is fixed or logged with an explicit reason.
 - [ ] TZ04 Run the full `smeargle` suite (`tests/e2e/responsive/*.spec.ts`) at 390/768/1440 on the hosted URL
 - [ ] TZ05 Run the story's `agents.verify` check: golden queries G1–G7 (T042/T047) + `RoofingCrm` dashboard check (T057)
 - [ ] TZ06 Write `docs/reports/TR-B-09.md`, `docs/evidence/B-09.md`, the `docs/traceability.md` row, and one `docs/kit-usage.md` line per agent used
-
----
-
-## Phase N: Polish & Cross-Cutting Concerns
-
-- [ ] TN01 [P] Run `/simplify` over the diff (release fold-in R1, per `stories/B-09-agent-hardening.md`'s "Release fold-in" section)
-- [ ] TN02 Run `pnpm --filter @crm/shared --filter @crm/domain --filter @crm/api --filter @crm/web test` full suite; fix any regression
-- [ ] TN03 Run `quickstart.md`'s 5 validation steps end to end as a final sanity pass before G7
-- [ ] TN04 [P] Update `docs/progress.md` via `bash scripts/progress.sh` (after merge, not before — constitution XX)
+- [ ] TZ07 Update `docs/progress.md` via `bash scripts/progress.sh` — only after the user approves G7 and the branch is merged `--no-ff` into `feature/roofing-crm` (constitution XX); not part of the pre-merge build
 
 ---
 
@@ -257,8 +261,8 @@ is fixed or logged with an explicit reason.
 - **US5 (Phase 7)**: depends on US1 (Ask screen must exist to re-diff) + US3 (re-diff fixes land in
   the same CSS modules US3's responsive suite asserts against, so it runs last and US3's suite
   re-runs once after).
-- **Phase Z**: depends on all of the above.
-- **Phase N**: depends on Phase Z.
+- **Phase N**: depends on all 5 story phases being implementation-complete.
+- **Phase Z**: depends on Phase N (mandatory, always last).
 
 ### Parallel Opportunities
 
@@ -300,4 +304,5 @@ Task: "Write failing unit test for the crm-agent-usage spend-cap conditional wri
    in parallel with US2 once US1 is done.
 4. Add US5 (prototype re-audit) → zero unresolved visual drift; runs last since it re-diffs US1's
    and US3's output.
-5. Phase Z (hosted proof, reviewer scores) → Phase N (polish, `/simplify`, progress.md).
+5. Phase N (polish, `/simplify`, full local test suite) → Phase Z (deploy, reviewer scores, hosted
+   proof, evidence) — always the final phase.

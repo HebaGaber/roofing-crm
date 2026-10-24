@@ -54,7 +54,7 @@ production-ready, not just demo-ready.
 | Acceptance criterion | B-09-AC-7 (data read by Run 1 manifest CID directly, documented deviation) | TC-020, TC-021 |
 | Acceptance criterion | B-09-AC-8 (prototype re-diff, fix or deferred-with-reason) | TC-022, TC-023 |
 | Edge case | model call exceeds 23s server-side abort | TC-024 |
-| Edge case | place-resolution confidence 0.80–0.92 or margin<0.05 → clarify, not a guess | TC-002 |
+| Edge case | place-resolution confidence 0.80–0.92 or margin<0.05 → clarify, not a guess | TC-025b |
 | Edge case | place-resolution confidence <0.80 → refuse (`not_found`), not a guess | TC-025 |
 | Edge case | DLQ alert that never recovers stays active | TC-019b |
 | Edge case | a screen-drift fix would reopen approved architecture → deferred with reason, not force-fixed | TC-023b |
@@ -78,8 +78,13 @@ production-ready, not just demo-ready.
   SC-005 explicitly requires the real publication.
 - **Routes.** Ask screen `/ask` (or wherever `apps/web/src/routes/Ask/` mounts — confirm against
   the build; `{route}` marks where it may differ), map `/map`, leads list `/leads`.
-- **Login.** `{TEST_USER}` is an environment variable. Each case logs in, then reaches the screen
-  under test.
+- **Login.** `{TEST_USER}` is an environment variable. Each UI case (Type = UI in § 7) opens
+  `{RUNTIME_URL}{route}` in a private window and logs in as `{TEST_USER}` as its first step, before
+  any other action. Cases typed API, Infra, or Docs in § 7 are not browser journeys — "opening the
+  hosted URL" for them means an authenticated call against `{RUNTIME_URL}`'s deployed API (API
+  cases), a CDK-assertions or CloudWatch check against the deployed stack (Infra cases), or a
+  reviewed-document check (Docs cases); each such case's steps say explicitly what it opens or
+  calls instead of a browser page.
 - **Place.** "Pflugerville" and "Manor" resolve against the gazetteer
   (`packages/oracle-views/gazetteer/travis-places@1.0.0`); their exact centers are read from the
   gazetteer at test time, not hard-coded here, so a gazetteer update doesn't silently stale this
@@ -167,16 +172,17 @@ production-ready, not just demo-ready.
 | B-09-TC-016 | Every screen passes responsive check at 390/768/1440 | P1 | `@responsive @smoke` | UI | AC-5, FR-005 | `tests/e2e/responsive/*.spec.ts` |
 | B-09-TC-017 | Ask screen's 6 states each render correctly at all 3 widths | P1 | `@responsive` | UI | AC-5, FR-005 | `tests/e2e/responsive/ask.spec.ts` |
 | B-09-TC-NF-02 | No horizontal overflow or inaccessible control on any screen | P1 | `@responsive @a11y` | UI | AC-5, FR-005 | `tests/e2e/responsive/*.spec.ts` |
-| B-09-TC-018 | Forced DLQ failure fires the alarm, visible on dashboard | P1 | `@ops @smoke` | Infra | AC-6, FR-006 | manual + CloudWatch screenshot |
-| B-09-TC-019 | Alarm self-resolves once the queue drains | P1 | `@ops` | Infra | AC-6, FR-006 | manual + CloudWatch screenshot |
-| B-09-TC-019b | Alarm stays active if the failure never recovers | P2 | `@ops @negative` | Infra | AC-6, edge case | manual |
+| B-09-TC-018 | Forced DLQ failure fires the alarm, visible on dashboard | P1 | `@ops @smoke` | Infra | AC-6, FR-006 | `infra/test/crm-sync-stack.alarmEmail.test.ts` + `infra/test/crm-ops-stack.dashboard.test.ts` (construct exists) backs the wiring; the live ALARM transition itself has no automated test — manual, forced failure + CloudWatch screenshot |
+| B-09-TC-019 | Alarm self-resolves once the queue drains | P1 | `@ops` | Infra | AC-6, FR-006 | same backing as TC-018; the live OK transition is manual, no automated test — CloudWatch screenshot |
+| B-09-TC-019b | Alarm stays active if the failure never recovers | P2 | `@ops @negative` | Infra | AC-6, edge case | no automated test — relies on the self-resolving alarm's own `treatMissingData: NOT_BREACHING` config (`infra/lib/crm-sync-stack.ts`); manual, forced non-recovering failure + CloudWatch screenshot |
 | B-09-TC-020 | CRM/agent data traces to the Run 1 manifest CID | P1 | `@smoke` | API | AC-7, FR-007 | `apps/api/test/leadIndex.manifestCid.test.ts` |
-| B-09-TC-021 | Deviation + swap-back condition documented | P2 | `@docs` | Docs | AC-7, FR-007 | manual review of `docs/architecture-constitution.md` |
-| B-09-TC-022 | Every listed screen re-diffed against current prototype | P1 | `@design` | UI | AC-8, FR-008 | manual + `design/design-review-log.md` |
-| B-09-TC-023 | Every found mismatch fixed or logged with a reason | P1 | `@design` | Docs | AC-8, FR-008 | manual review of `design/design-review-log.md` |
-| B-09-TC-023b | A drift fix that would reopen approved architecture is deferred, not forced | P2 | `@design @negative` | Docs | AC-8, edge case | manual review |
+| B-09-TC-021 | Deviation + swap-back condition documented | P2 | `@docs` | Docs | AC-7, FR-007 | no automated test — documentation review of `docs/architecture-constitution.md`, signed off by the QC Lead |
+| B-09-TC-022 | Every listed screen re-diffed against current prototype | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
+| B-09-TC-023 | Every found mismatch fixed or logged with a reason | P1 | `@design` | Docs | AC-8, FR-008 | no automated test — visual design review against `design/design-review-log.md`, signed off by `audino` + the QC Lead |
+| B-09-TC-023b | A drift fix that would reopen approved architecture is deferred, not forced | P2 | `@design @negative` | Docs | AC-8, edge case | no automated test — review of `design/design-review-log.md`'s deferral reasons, signed off by the QC Lead |
 | B-09-TC-024 | A call exceeding 23s shows "took too long," never a blank/broken screen | P1 | `@negative @perf` | UI | edge case, NFR-001 | `tests/e2e/responsive/ask.spec.ts › "timeout"` |
 | B-09-TC-025 | A clearly non-Travis place name is refused, not guessed | P1 | `@negative` | UI | edge case | `apps/api/test/services/agent/placeResolver.test.ts` |
+| B-09-TC-025b | A misspelled/ambiguous place name triggers a clarifying question, not a guess | P1 | `@negative` | UI | edge case | `apps/api/test/services/agent/placeResolver.test.ts` |
 | B-09-TC-026 | A 6th ask within one minute is throttled | P2 | `@negative @perf` | API | NFR-001 | `apps/api/test/agent/rateLimiter.test.ts` |
 | B-09-TC-027 | A call estimated to exceed the $3/day cap is paused before the model is called | P2 | `@negative @perf` | API | NFR-001 | `apps/api/test/agent/spendCap.test.ts` |
 
@@ -464,6 +470,23 @@ production-ready, not just demo-ready.
   3. **Verify** the refusal offers to rephrase, and makes no tool calls that return property rows.
 - **Expected result:** `outcome: "not_found"`, zero results, no guessed center point.
 
+### B-09-TC-025b: A misspelled/ambiguous place name triggers a clarifying question, not a guess
+
+- **Priority / tags:** P1 · `@negative`
+- **Maps to:** edge case (place-resolution 0.80–0.92, or margin<0.05 between top-2 candidates — ADR-06)
+- **Test data:** Place D, "Pflugervile" (one letter dropped from "Pflugerville").
+- **Steps:**
+  1. **Ask** "roofs older than 15 years near Pflugervile."
+  2. **Verify** the place-resolution score for this question (read from the `agent.ask` response's
+     trace/debug field, or from `apps/api/test/services/agent/placeResolver.test.ts`'s equivalent
+     unit assertion) falls in 0.80–0.92, or the top two candidates are within 0.05 of each other.
+  3. **Verify** the answer's `outcome` is `needs_clarification`, offering the top 3 place candidates
+     as options — never silently auto-accepting the misspelling and never refusing outright.
+  4. **Verify** no `searchProperties`/`searchPermits` tool call was made before the rep picks a
+     candidate (no results shown alongside the clarifying question).
+- **Expected result:** `outcome: "needs_clarification"`, top-3 candidates shown (including
+  "Pflugerville"), zero property results returned until the rep disambiguates.
+
 ### B-09-TC-026: A 6th ask within one minute is throttled
 
 - **Priority / tags:** P2 · `@negative @perf`
@@ -489,7 +512,9 @@ production-ready, not just demo-ready.
 
 ## 9. Edge cases
 
-(Captured above as TC-024, TC-025, TC-019b, TC-023b — the story's 4 edge cases, each with its own
+(Captured above as TC-024, TC-025/TC-025b, TC-019b, TC-023b — the spec's 4 edge cases (the
+place-confidence edge case needs two cases, one per ADR-06 band: refuse below 0.80, clarify
+0.80–0.92), each with its own
 case rather than folded into a happy-path case, since each needs its own deterministic trigger.)
 
 ## 10. Gap-linked cases (expected to fail until fixed)
