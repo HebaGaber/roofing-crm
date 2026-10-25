@@ -63,12 +63,15 @@ import {
   clarifyQuestion,
   composerNote,
   confirmErrorCopy,
+  coverageNote,
   emptyExplanation,
   exclusionNotes,
   fieldNotPublishedText,
   hasModelPlan,
   matchesEmptyText,
   missingText,
+  nextRadius,
+  offersWiden,
   pausedText,
   pinsNote,
   placeOf,
@@ -80,6 +83,7 @@ import {
   SUGGESTIONS,
   throttleText,
   timedOutText,
+  widenQuestion,
 } from "./askCopy.js";
 import styles from "./Ask.module.css";
 
@@ -539,14 +543,58 @@ interface PanelCtxFull extends PanelCtx {
   readonly addBulkCreated: (tcadIds: readonly string[]) => void;
 }
 
+/** "Widen to {n} mi" (CrmAsk768): re-asks the same question with the next radius step. The server's
+ *  `agent.ask` takes text only (a structured plan edit, `area.radiusMi`, is a deferred API change),
+ *  so this composes a follow-up question and reruns the model on that new text. */
+function WidenChip({
+  answer,
+  onWiden,
+  inline = false,
+}: {
+  readonly answer: AgentAnswer;
+  readonly onWiden: ((miles: number) => void) | undefined;
+  /** In the action row beside Create leads / Show on map, instead of a row of its own. */
+  readonly inline?: boolean;
+}): ReactElement | null {
+  const miles = nextRadius(answer.plan.area.radiusMi);
+  if (miles === undefined || !offersWiden(answer)) return null;
+  const chip = (
+    <button
+      type="button"
+      className={styles.chip}
+      disabled={onWiden === undefined}
+      onClick={() => onWiden?.(miles)}
+    >
+      <Icon name="zoom_out_map" size="medium" />
+      {`Widen to ${String(miles)} mi`}
+    </button>
+  );
+  return inline ? chip : <div className={styles.chips}>{chip}</div>;
+}
+
+/** The yellow coverage note (CrmAsk768), weaker than the board's: the answer carries no
+ *  jurisdiction list, so it says where the permits come from and that coverage is not stated. */
+function CoverageNote({ text }: { readonly text: string }): ReactElement {
+  return (
+    <div role="note" aria-label="Permit coverage" className={`${styles.banner} ${styles.warning}`}>
+      <Icon name="info" size="medium" />
+      <p className={styles.bannerBody}>{text}</p>
+    </div>
+  );
+}
+
 function AnsweredBody({
   answer,
   ctx,
   onShowOnMap,
+  onWiden,
+  runId,
 }: {
   readonly answer: AgentAnswer;
   readonly ctx: PanelCtxFull;
   readonly onShowOnMap: () => void;
+  readonly onWiden: ((miles: number) => void) | undefined;
+  readonly runId: string | null | undefined;
 }): ReactElement {
   const { threadId } = ctx;
   const ids = claimIds(answer.claims);
@@ -571,6 +619,7 @@ function AnsweredBody({
   const undoCreated = useUndoCreatedLeads();
   const pins = answerPins(answer);
   const pinText = pinsNote(answer.citations, pins.length);
+  const coverage = coverageNote(answer, runId);
 
   // A proposal shows its Create lead on the source row it was cited in (CrmAsk1440 rows; E-59);
   // a proposal no claim cites still gets its own row below. Never a Create lead on a cited row
@@ -716,6 +765,7 @@ function AnsweredBody({
           )
         ) : (
           <>
+            <PlanBlock answer={answer} />
             {answer.claims.length === 0 ? (
               <p className={styles.notice}>
                 {`${answer.counts.matched} match${answer.counts.matched === 1 ? "" : "es"}, but none ` +
@@ -739,7 +789,11 @@ function AnsweredBody({
           </>
         )}
       </div>
-      <div className={styles.actionRow} role="group" aria-label="Answer actions">
+      <div
+        className={`${styles.actionRow} ${styles.answerActions}`}
+        role="group"
+        aria-label="Answer actions"
+      >
         {proposals.length === 0 ? null : (
           <button
             type="button"
@@ -762,7 +816,9 @@ function AnsweredBody({
           <Icon name="location_on" size="medium" />
           Show on map
         </button>
+        <WidenChip answer={answer} onWiden={onWiden} inline />
       </div>
+      {coverage === undefined || tab !== "answer" ? null : <CoverageNote text={coverage} />}
       {undoRow === null ? null : (
         <UndoStatusRow
           count={undoRow.leads.length}
@@ -858,6 +914,8 @@ interface BodyProps {
   readonly keptAnswer: boolean;
   readonly onPickPlace: (name: string) => void;
   readonly onRetry: () => void;
+  readonly onWiden: ((miles: number) => void) | undefined;
+  readonly runId: string | null | undefined;
 }
 
 function AnswerBody({
@@ -868,14 +926,25 @@ function AnswerBody({
   keptAnswer,
   onPickPlace,
   onRetry,
+  onWiden,
+  runId,
 }: BodyProps): ReactElement {
   switch (answer.outcome) {
     case "answered":
-      return <AnsweredBody answer={answer} ctx={ctx} onShowOnMap={onShowOnMap} />;
+      return (
+        <AnsweredBody
+          answer={answer}
+          ctx={ctx}
+          onShowOnMap={onShowOnMap}
+          onWiden={onWiden}
+          runId={runId}
+        />
+      );
     case "empty_in_scope":
       return (
         <div className={styles.answer}>
           <p className={styles.lead}>{emptyExplanation(answer)}</p>
+          <WidenChip answer={answer} onWiden={onWiden} />
           <Notes notes={exclusionNotes(answer)} />
           <MissingList missing={answer.missing} />
         </div>
@@ -1080,6 +1149,8 @@ export function AskPanel({
 }: AskPanelProps): ReactElement {
   const [question, setQuestion] = useState(() => prefillFrom(initialQuestion ?? null));
   const [asked, setAsked] = useState("");
+  // "Edit" on the one-line question header brings the composer back (K1).
+  const [editing, setEditing] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [kept, setKept] = useState<Kept | undefined>(undefined);
   const [bulkCreated, setBulkCreated] = useState<ReadonlySet<string>>(new Set());
@@ -1103,6 +1174,7 @@ export function AskPanel({
     threadRef.current = threadId;
     setKept(undefined);
     setAsked("");
+    setEditing(false);
     setBulkCreated(new Set());
     ask.reset();
   }, [threadId, ask]);
@@ -1143,6 +1215,7 @@ export function AskPanel({
     const trimmed = text.trim();
     if (trimmed === "") return;
     setAsked(trimmed);
+    setEditing(false);
     ask.mutate(
       { question: trimmed, threadId },
       {
@@ -1174,6 +1247,13 @@ export function AskPanel({
     send(next);
   };
 
+  // Widen to {n} mi: the same question plus the wider radius, asked through the existing path.
+  const widen = (miles: number): void => {
+    const next = widenQuestion(asked !== "" ? asked : question, miles);
+    setQuestion(next);
+    send(next);
+  };
+
   const retry = (): void => send(asked !== "" ? asked : question);
 
   // The answer the map draws pins for: the current one, or the last real one under a budget banner.
@@ -1195,9 +1275,20 @@ export function AskPanel({
     addBulkCreated: (ids) => setBulkCreated((prev) => new Set([...prev, ...ids])),
   };
 
+  // Once there is an answer the composer folds into a one-line question header, so the tabs, the
+  // answer and its actions start at the top of the panel (CrmAsk768). Any other state keeps the
+  // full composer so the rep can rephrase.
+  const collapsed = state === "answer" && !editing;
+  const headerText = asked !== "" ? asked : question.trim();
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
   const announcement = ask.isPending ? "Working on your question…" : (heading ?? "");
   const showKept = !ask.isPending && data !== undefined && KEEPS_LAST.has(data.outcome);
   const keptAnswer = showKept && kept !== undefined;
+  const onWiden = ask.isPending || blocked ? undefined : widen;
+  const runId = runInfo.data?.runId;
 
   return (
     <section
@@ -1205,64 +1296,82 @@ export function AskPanel({
       data-panel="ask"
       data-layout={layout}
       data-state={state}
+      data-composer={collapsed ? "collapsed" : "open"}
       className={styles.page}
     >
       <div className={styles.composerPane}>
-        <h2 className={styles.title}>
+        <h2 className={collapsed ? styles.srOnly : styles.title}>
           <Icon name="auto_awesome" size="large" />
           Ask the agent
         </h2>
-        <form className={styles.form} onSubmit={submit}>
-          <label htmlFor="ask-question" className={styles.label}>
-            Ask your question in plain English
-          </label>
-          <div className={styles.composer}>
-            <textarea
-              id="ask-question"
-              ref={inputRef}
-              className={styles.input}
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="e.g. open roofing permits older than five years within five miles of Pflugerville"
-              maxLength={500}
-              rows={3}
-              readOnly={ask.isPending}
-              aria-busy={ask.isPending}
-            />
-            <div className={styles.composerFooter}>
-              <span className={styles.composerNote}>{composerNote(runInfo.data?.runId)}</span>
-              <button
-                type="submit"
-                className={styles.action}
-                disabled={ask.isPending || blocked || question.trim() === ""}
-              >
-                <Icon name="auto_awesome" size="medium" />
-                Ask
-              </button>
-            </div>
+        {collapsed ? (
+          <div className={styles.questionHeader} data-testid="ask-question-header">
+            <Icon name="smart_toy" size="medium" />
+            <span className={styles.questionText} title={headerText}>
+              {headerText}
+            </span>
+            <button type="button" className={styles.textButton} onClick={() => setEditing(true)}>
+              <Icon name="edit" size="medium" />
+              Edit
+            </button>
           </div>
-        </form>
-        <div className={styles.suggestions}>
-          <span className={styles.label} id="ask-suggestions">
-            Suggestions
-          </span>
-          <ul className={styles.suggestionList} aria-labelledby="ask-suggestions">
-            {SUGGESTIONS.map((text) => (
-              <li key={text}>
-                <button
-                  type="button"
-                  className={styles.suggestion}
-                  disabled={ask.isPending}
-                  onClick={() => setQuestion(text)}
-                >
-                  <Icon name="lightbulb" size="medium" />
-                  <span className={styles.suggestionText}>{text}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
+        ) : (
+          <>
+            <form className={styles.form} onSubmit={submit}>
+              <label htmlFor="ask-question" className={styles.label}>
+                Ask your question in plain English
+              </label>
+              <div className={styles.composer}>
+                <textarea
+                  id="ask-question"
+                  ref={inputRef}
+                  className={styles.input}
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="e.g. open roofing permits older than five years within five miles of Pflugerville"
+                  maxLength={500}
+                  rows={3}
+                  readOnly={ask.isPending}
+                  aria-busy={ask.isPending}
+                />
+                <div className={styles.composerFooter}>
+                  <span className={styles.composerNote}>{composerNote(runInfo.data?.runId)}</span>
+                  <button
+                    type="submit"
+                    className={styles.action}
+                    disabled={ask.isPending || blocked || question.trim() === ""}
+                  >
+                    <Icon name="auto_awesome" size="medium" />
+                    Ask
+                  </button>
+                </div>
+              </div>
+            </form>
+            {state !== "idle" ? null : (
+              <div className={styles.suggestions}>
+                <span className={styles.label} id="ask-suggestions">
+                  Suggestions
+                </span>
+                <ul className={styles.suggestionList} aria-labelledby="ask-suggestions">
+                  {SUGGESTIONS.map((text) => (
+                    <li key={text}>
+                      <button
+                        type="button"
+                        className={styles.suggestion}
+                        disabled={ask.isPending}
+                        onClick={() => setQuestion(text)}
+                      >
+                        <Icon name="lightbulb" size="medium" />
+                        <span className={styles.suggestionText}>{text}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className={styles.resultPane}>
@@ -1283,7 +1392,7 @@ export function AskPanel({
               id="ask-result-heading"
               ref={headingRef}
               tabIndex={-1}
-              className={styles.resultHeading}
+              className={data?.outcome === "answered" ? styles.srOnly : styles.resultHeading}
             >
               {heading}
             </h3>
@@ -1296,8 +1405,10 @@ export function AskPanel({
               </>
             ) : (
               <>
-                {showKept ? null : asked === "" ? null : <AskedLine text={asked} />}
-                <PlanBlock answer={data} />
+                {showKept || data.outcome === "answered" || asked === "" ? null : (
+                  <AskedLine text={asked} />
+                )}
+                {data.outcome === "answered" ? null : <PlanBlock answer={data} />}
                 <AnswerBody
                   answer={data}
                   ctx={ctx}
@@ -1306,6 +1417,8 @@ export function AskPanel({
                   keptAnswer={keptAnswer}
                   onPickPlace={pickPlace}
                   onRetry={retry}
+                  onWiden={onWiden}
+                  runId={runId}
                 />
               </>
             )}
@@ -1315,7 +1428,6 @@ export function AskPanel({
         {showKept && kept !== undefined ? (
           <section className={styles.result} aria-label="Your last answer">
             <AskedLine text={kept.asked} />
-            <PlanBlock answer={kept.answer} />
             <AnswerBody
               answer={kept.answer}
               ctx={ctx}
@@ -1324,6 +1436,8 @@ export function AskPanel({
               keptAnswer={false}
               onPickPlace={pickPlace}
               onRetry={retry}
+              onWiden={undefined}
+              runId={runId}
             />
           </section>
         ) : null}

@@ -596,7 +596,6 @@ describe("Ask screen", () => {
       askMutate.mockImplementation((_vars, options?: { onSuccess?: (a: AgentAnswer) => void }) =>
         options?.onSuccess?.(first),
       );
-      askState = { ...askState, data: first };
       const view = renderAsk();
       fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: "first" } });
       fireEvent.click(screen.getByRole("button", { name: "Ask" }));
@@ -955,6 +954,176 @@ describe("Ask screen", () => {
       </MemoryRouter>,
     );
     expect(askReset).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("composer collapses once there is an answer (K1, CrmAsk768)", () => {
+  /** Types and sends a question, then lets the mocked mutation return `data`. */
+  function askThenAnswer(data: AgentAnswer, text = "roofs near Pflugerville"): void {
+    const view = renderAsk();
+    fireEvent.change(screen.getByLabelText(QUESTION_LABEL), { target: { value: text } });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    askState = { ...askState, data };
+    view.rerender(
+      <MemoryRouter>
+        <AskPanel threadId="thread-1" focusedCitation={null} layout="sheet" {...panelCallbacks} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("idle shows the composer and the Suggestions", () => {
+    renderAsk();
+    expect(askRoot().getAttribute("data-composer")).toBe("open");
+    expect(screen.getByLabelText(QUESTION_LABEL)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Suggestions" })).toBeTruthy();
+  });
+
+  it("an answer collapses the composer into a one-line question header and drops Suggestions", () => {
+    askThenAnswer(answeredFixture());
+    expect(askRoot().getAttribute("data-state")).toBe("answer");
+    expect(askRoot().getAttribute("data-composer")).toBe("collapsed");
+    expect(screen.queryByLabelText(QUESTION_LABEL)).toBeNull();
+    expect(screen.queryByRole("list", { name: "Suggestions" })).toBeNull();
+    const header = screen.getByTestId("ask-question-header");
+    expect(header.textContent).toContain("roofs near Pflugerville");
+    expect(within(header).getByRole("button", { name: "Edit" })).toBeTruthy();
+  });
+
+  it("puts the Answer | Matches tabs first, above How I read this and the answer", () => {
+    askThenAnswer(answeredFixture());
+    const tabs = screen.getByRole("tablist", { name: "Answer views" });
+    const plan = screen.getByText(/How I read this/);
+    const claim = screen.getByText(/3 properties near Pflugerville/);
+    const buttons = screen.getByRole("group", { name: "Answer actions" });
+    const before = (a: Node, b: Node): boolean =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(screen.getByTestId("ask-question-header"), tabs)).toBe(true);
+    expect(before(tabs, plan)).toBe(true);
+    expect(before(plan, claim)).toBe(true);
+    expect(before(claim, buttons)).toBe(true);
+    expect(within(buttons).getByRole("button", { name: "Create leads for all 1" })).toBeTruthy();
+    expect(within(buttons).getByRole("button", { name: "Show on map" })).toBeTruthy();
+  });
+
+  it("keeps the result heading (focused, announced) and the data-state value", () => {
+    askThenAnswer(answeredFixture());
+    const heading = document.getElementById("ask-result-heading");
+    expect(heading?.textContent).toBe("Answer");
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it("Edit brings the composer back with the question and focus", () => {
+    askThenAnswer(answeredFixture());
+    fireEvent.click(
+      within(screen.getByTestId("ask-question-header")).getByRole("button", { name: "Edit" }),
+    );
+    const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
+    expect(box.value).toBe("roofs near Pflugerville");
+    expect(document.activeElement).toBe(box);
+    expect(askRoot().getAttribute("data-composer")).toBe("open");
+    expect(screen.queryByTestId("ask-question-header")).toBeNull();
+  });
+
+  it("asking again from the restored composer collapses it again when the answer returns", () => {
+    askThenAnswer(answeredFixture());
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText(QUESTION_LABEL), {
+      target: { value: "roofs near Manor" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    expect(askMutate).toHaveBeenCalledTimes(2);
+    expect(askRoot().getAttribute("data-composer")).toBe("collapsed");
+    expect(screen.getByTestId("ask-question-header").textContent).toContain("roofs near Manor");
+  });
+
+  it("other states keep the full composer so the rep can rephrase", () => {
+    askState = { ...askState, data: blockedFixture({ outcome: "out_of_scope" }) };
+    renderAsk();
+    expect(askRoot().getAttribute("data-composer")).toBe("open");
+    expect(screen.getByLabelText(QUESTION_LABEL)).toBeTruthy();
+  });
+
+  it("the Matches tab stays reachable under the collapsed header", () => {
+    askThenAnswer(answeredFixture());
+    fireEvent.click(screen.getByRole("tab", { name: /^Matches/ }));
+    expect(screen.getByRole("tab", { name: /^Matches/ }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+  });
+});
+
+describe("Widen to n mi (K6)", () => {
+  const emptyAt = (radiusMi: number): AgentAnswer =>
+    blockedFixture({
+      outcome: "empty_in_scope",
+      plan: { ...PLAN, area: { ...PLAN.area, radiusMi } },
+    });
+
+  it("re-asks the same question with the next radius step, in the same thread", () => {
+    askState = { ...askState, data: emptyAt(5) };
+    renderAsk();
+    fireEvent.change(screen.getByLabelText(QUESTION_LABEL), {
+      target: { value: "roofs near Pflugerville" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Widen to 10 mi" }));
+    expect(askMutate).toHaveBeenCalledTimes(1);
+    const [arg] = askMutate.mock.calls[0] as [{ question: string; threadId: string }];
+    expect(arg.question).toBe("roofs near Pflugerville (use a radius of 10 miles instead)");
+    expect(arg.threadId).toBe("thread-1");
+  });
+
+  it("steps 10 to 25 and is absent at the 25 mi cap", () => {
+    askState = { ...askState, data: emptyAt(10) };
+    renderAsk();
+    expect(screen.getByRole("button", { name: "Widen to 25 mi" })).toBeTruthy();
+    cleanup();
+    askState = { ...askState, data: emptyAt(25) };
+    renderAsk();
+    expect(screen.queryByRole("button", { name: /^Widen to/ })).toBeNull();
+  });
+
+  it("shows under an answer with few matches, not under one with many", () => {
+    askState = {
+      ...askState,
+      data: answeredFixture({ counts: { ...answeredFixture().counts, matched: 4 } }),
+    };
+    renderAsk();
+    expect(screen.getByRole("button", { name: "Widen to 10 mi" })).toBeTruthy();
+    cleanup();
+    askState = {
+      ...askState,
+      data: answeredFixture({ counts: { ...answeredFixture().counts, matched: 57 } }),
+    };
+    renderAsk();
+    expect(screen.queryByRole("button", { name: /^Widen to/ })).toBeNull();
+  });
+});
+
+describe("coverage note (K7)", () => {
+  it("shows under an answer that carries permits, naming the run and claiming no area", () => {
+    askState = {
+      ...askState,
+      data: answeredFixture({
+        rows: [
+          {
+            propertyCid: "bafyproperty0000000000000000000000000000000000000000000001",
+            tcadId: "0201885122",
+            permit: { permitCid: "p1", number: "1", statusClass: "open" },
+            missing: [],
+          },
+        ],
+      }),
+    };
+    renderAsk();
+    const note = screen.getByRole("note", { name: "Permit coverage" });
+    expect(note.textContent).toMatch(/CountyLens run 3, as published/);
+    expect(note.textContent).toMatch(/no jurisdiction list/);
+  });
+
+  it("is absent when the answer carries no permit", () => {
+    askState = { ...askState, data: answeredFixture() };
+    renderAsk();
+    expect(screen.queryByRole("note", { name: "Permit coverage" })).toBeNull();
   });
 });
 

@@ -24,6 +24,10 @@ import {
   rowPermitText,
   rowRoofText,
   rowSignal,
+  coverageNote,
+  nextRadius,
+  offersWiden,
+  widenQuestion,
 } from "../../src/routes/Ask/askCopy";
 
 type Row = NonNullable<AgentAnswer["rows"]>[number];
@@ -426,5 +430,97 @@ describe("rowSignal (the confirmation sheet's main signal)", () => {
     expect(rowSignal(row({ roofAgeYears: 31 }))).toBe("Roof 31 yrs");
     expect(rowSignal(row())).toBe("No roof or permit signal published");
     expect(rowSignal(undefined)).toBe("No roof or permit signal published");
+  });
+});
+
+const withRadius = (radiusMi: number, kind: Plan["area"]["kind"] = "place"): Plan => ({
+  ...PERMIT_PLAN,
+  area: { ...PERMIT_PLAN.area, radiusMi, kind },
+});
+const matched = (n: number): AgentAnswer["counts"] => ({
+  matched: n,
+  shown: n,
+  excludedNoCoordinates: 0,
+  excludedNoRoofDate: 0,
+  truncated: false,
+});
+
+describe("nextRadius (K6: the next step above the current radius, never past the 25 mi cap)", () => {
+  it.each([
+    [0.5, 1],
+    [1, 2],
+    [3, 5],
+    [5, 10],
+    [10, 25],
+    [12.5, 25],
+  ])("%s mi widens to %s mi", (from, to) => {
+    expect(nextRadius(from)).toBe(to);
+  });
+  it("offers nothing at or above the cap", () => {
+    expect(nextRadius(25)).toBeUndefined();
+  });
+});
+
+describe("offersWiden (K6: only a radius search with no or few matches, below the cap)", () => {
+  it("is on for an empty radius search and for a few matches", () => {
+    expect(offersWiden(answer({ plan: withRadius(5) }))).toBe(true);
+    expect(
+      offersWiden(answer({ outcome: "answered", plan: withRadius(5), counts: matched(4) })),
+    ).toBe(true);
+  });
+  it("is off with many matches, at the cap, for a county, and for other outcomes", () => {
+    expect(
+      offersWiden(answer({ outcome: "answered", plan: withRadius(5), counts: matched(40) })),
+    ).toBe(false);
+    expect(offersWiden(answer({ plan: withRadius(25) }))).toBe(false);
+    expect(offersWiden(answer({ plan: withRadius(5, "county") }))).toBe(false);
+    expect(offersWiden(answer({ outcome: "out_of_scope", plan: withRadius(5) }))).toBe(false);
+    expect(offersWiden(answer({ outcome: "needs_clarification", plan: withRadius(5) }))).toBe(
+      false,
+    );
+  });
+});
+
+describe("widenQuestion (K6: a follow-up text, because agent.ask has no structured plan edit)", () => {
+  it("keeps the rep's question and names the wider radius", () => {
+    expect(widenQuestion("open permits near Manor", 10)).toBe(
+      "open permits near Manor (use a radius of 10 miles instead)",
+    );
+  });
+  it("never exceeds the 500 character limit", () => {
+    const long = "x".repeat(500);
+    const text = widenQuestion(long, 25);
+    expect(text.length).toBeLessThanOrEqual(500);
+    expect(text.endsWith("(use a radius of 25 miles instead)")).toBe(true);
+  });
+});
+
+describe("coverageNote (K7: honest, says only what the answer carries)", () => {
+  const permitRow = row({
+    permit: { permitCid: "p1", number: "1", statusClass: "stalled", openDays: 100 },
+  });
+  it("is absent when the answer carries no permit", () => {
+    expect(coverageNote(answer({ rows: [row()] }), "3")).toBeUndefined();
+  });
+  it("names the run, says no jurisdiction list came with the answer, claims nothing about areas", () => {
+    const text = coverageNote(answer({ rows: [permitRow] }), "3") ?? "";
+    expect(text).toMatch(/CountyLens run 3/);
+    expect(text).toMatch(/no jurisdiction/i);
+    expect(text).not.toMatch(/Austin|Pflugerville|Manor|unpublished/);
+  });
+  it("also applies when only a citation is a permit, and without a run id", () => {
+    const base = answer();
+    const citation = {
+      id: 1,
+      kind: "permit" as const,
+      sourceUrl: null,
+      capturedAt: "2026-10-20T00:00:00Z",
+      tableCid: "t",
+      manifestCid: "m",
+      asOf: "2026-10-20",
+    };
+    expect(coverageNote({ ...base, citations: [citation] }, null)).toMatch(
+      /published CountyLens run/,
+    );
   });
 });

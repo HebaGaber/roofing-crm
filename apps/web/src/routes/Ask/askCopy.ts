@@ -360,3 +360,57 @@ export function pinsNote(citations: readonly Citation[], pinCount: number): stri
     without === 1 ? "has" : "have"
   } no published coordinates, so ${without === 1 ? "it has" : "they have"} no pin.`;
 }
+
+// ---- Widen chip (CrmAsk768 "Widen to 10 mi") ----------------------------------------------------
+
+/** The radii a rep can widen through; the last is the plan's 25 mi cap (queryPlan `radiusMi`). */
+const RADIUS_STEPS_MI: readonly number[] = [1, 2, 5, 10, 25];
+
+/** "Few" matches: at or below this the chip is offered next to an answer (the board shows it at 4). */
+const WIDEN_FEW_MATCHES = 5;
+
+/** The next radius step above `radiusMi`, or undefined at the 25 mi cap. */
+export function nextRadius(radiusMi: number): number | undefined {
+  return RADIUS_STEPS_MI.find((step) => step > radiusMi);
+}
+
+/** The chip is offered only for a radius search (not a county) that found nothing or few, while a
+ *  wider radius still exists. */
+export function offersWiden(answer: AgentAnswer): boolean {
+  if (answer.outcome !== "answered" && answer.outcome !== "empty_in_scope") return false;
+  const { area, intent } = answer.plan;
+  if (area.kind === "county" || intent === "lookup_permit" || intent === "lookup_property") {
+    return false;
+  }
+  return nextRadius(area.radiusMi) !== undefined && answer.counts.matched <= WIDEN_FEW_MATCHES;
+}
+
+/** The follow-up question for "Widen to {n} mi". `agent.ask` takes text only; a structured plan
+ *  edit (set `area.radiusMi`) is a deferred API change, so this reruns the model on new text. */
+export function widenQuestion(original: string, miles: number): string {
+  const suffix = ` (use a radius of ${String(miles)} miles instead)`;
+  return `${original.trim().slice(0, MAX_QUESTION - suffix.length)}${suffix}`;
+}
+
+// ---- Coverage note (CrmAsk768 yellow note, weaker: no jurisdiction is on the wire) ---------------
+
+/** A note under an answer that carries permits. The answer has no jurisdiction or area list (rows and
+ *  citations carry a source URL and CIDs only), so it states what is true: where the permits come
+ *  from and that the answer cannot say what they cover. Never names an area. */
+export function coverageNote(
+  answer: AgentAnswer,
+  runId: string | null | undefined,
+): string | undefined {
+  const hasPermits =
+    (answer.rows ?? []).some((r) => r.permit !== undefined) ||
+    answer.citations.some((c) => c.kind === "permit");
+  if (!hasPermits) return undefined;
+  const run =
+    runId === null || runId === undefined || runId === ""
+      ? "the published CountyLens run"
+      : `CountyLens run ${runId}`;
+  return (
+    `Permits here come only from ${run}, as published. This answer has no jurisdiction list, ` +
+    "so it can't say which areas those permits cover."
+  );
+}
