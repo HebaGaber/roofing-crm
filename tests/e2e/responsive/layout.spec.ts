@@ -532,7 +532,7 @@ async function expectNoSideScroll(page: Page, what: string): Promise<void> {
 }
 
 test.describe("Layout: no horizontal scroll at 360, 600 and 1280 px", () => {
-  test.beforeEach(async ({}, testInfo) => {
+  test.beforeEach((_fixtures, testInfo) => {
     test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     test.skip(testInfo.project.name !== "desktop-1440", "viewport is set per case; run once");
   });
