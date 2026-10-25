@@ -44,6 +44,7 @@ function property(sourceManifestCid: string = RUN_2_MANIFEST_CID): Provenanced<C
     roofAgeConfidence: "medium",
     isLongTenure: null,
     tenureBasis: null,
+    ownerName: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

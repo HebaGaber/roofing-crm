@@ -45,13 +45,15 @@ export const CrmProperty = z
     isLongTenure: z.boolean().nullable(),
     // contract v1.1 (Run 3): how tenure was dated — a TCAD sale, a TCAD transfer deed, or neither.
     tenureBasis: z.enum(["sale_date", "deed_date", "unknown"]).nullable(),
+    // Owner display name from contract v1.1 (owners parsed into people and companies). ADR-03 was
+    // amended 2026-10-25 (PO): shown on the property screen, still never sent to the model. Null
+    // carries its missing reason (owner_unparsed, owner_confidential, no_owner_record, ...).
+    ownerName: z.string().nullable(),
     ownerKind: z.enum(["person", "company", "unknown"]).nullable(),
     ownerAreaClass: z.enum(["in_county", "regional", "out_of_area", "unknown"]).nullable(),
     ownerIsOutOfArea: z.boolean().nullable(),
     ...ProvenanceFields,
   })
-  // No ownerName field exists at all (ADR-03): .strict() rejects any extra key, including one
-  // named ownerName, rather than silently dropping it — the absence is enforced, not incidental.
   .strict();
 export type CrmProperty = z.infer<typeof CrmProperty>;
 

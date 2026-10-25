@@ -18,6 +18,7 @@ function baseProperty(overrides: Record<string, unknown> = {}) {
     roofAgeConfidence: "high",
     isLongTenure: true,
     tenureBasis: "sale_date",
+    ownerName: null,
     ownerKind: "person",
     ownerAreaClass: "in_county",
     ownerIsOutOfArea: false,
@@ -54,11 +55,10 @@ describe("CrmProperty", () => {
     }
   });
 
-  it("has no ownerName field at all (ADR-03, enforced at the schema level)", () => {
-    const row = { ...baseProperty(), ownerName: "Jane Doe" };
-    // .strict() rejects the whole row rather than silently stripping an owner-name key — the
-    // absence of an ownerName field is enforced, not incidental.
-    expect(CrmProperty.safeParse(row).success).toBe(false);
+  it("accepts an owner name or null, and still rejects any other extra key", () => {
+    expect(CrmProperty.parse(baseProperty({ ownerName: "DOE, JANE" })).ownerName).toBe("DOE, JANE");
+    expect(CrmProperty.parse(baseProperty({ ownerName: null })).ownerName).toBeNull();
+    expect(CrmProperty.safeParse(baseProperty({ ownerPhone: "555" })).success).toBe(false);
   });
 });
 

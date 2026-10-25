@@ -54,6 +54,7 @@ function makeRow(overrides: Partial<Provenanced<CrmProperty>> = {}): Provenanced
     roofAgeConfidence: "high",
     isLongTenure: null,
     tenureBasis: null,
+    ownerName: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

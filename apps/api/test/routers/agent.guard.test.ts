@@ -42,6 +42,7 @@ function property(): Provenanced<CrmProperty> {
     roofAgeConfidence: "medium",
     isLongTenure: null,
     tenureBasis: null,
+    ownerName: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

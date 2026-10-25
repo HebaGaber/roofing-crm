@@ -52,6 +52,7 @@ vi.mock("@crm/oracle-views", async (importOriginal) => {
           'low' AS roof_age_confidence,
           CAST(NULL AS BOOLEAN) AS is_long_tenure,
           CAST(NULL AS VARCHAR) AS tenure_basis,
+          CAST(NULL AS VARCHAR) AS owner_name,
           CAST(NULL AS VARCHAR) AS owner_kind,
           'unknown' AS owner_area_class,
           CAST(NULL AS BOOLEAN) AS owner_is_out_of_area,

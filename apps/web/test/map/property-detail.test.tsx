@@ -193,6 +193,43 @@ describe("PropertyDetail drawer", () => {
     expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
   });
 
+  it("shows the owner: name, kind, tenure with its basis, and the reason when owner area is unknown", () => {
+    const owned = {
+      ...property,
+      ownerName: "DOE, JANE",
+      ownerKind: "person",
+      isLongTenure: true,
+      tenureBasis: "deed_date",
+      ownerAreaClass: "unknown",
+      missingReasons: [{ field: "owner_area_class", reason: "not_in_export" }],
+    } as unknown as Provenanced<CrmProperty>;
+    const drawer = renderDrawer({ ...data, property: owned });
+    expect(drawer.querySelector("[data-field='owner_name']")?.textContent).toBe("DOE, JANE");
+    expect(drawer.querySelector("[data-field='owner_kind']")?.textContent).toBe("Person");
+    expect(drawer.querySelector("[data-field='is_long_tenure']")?.textContent).toBe(
+      "10+ years · from Deed date",
+    );
+    expect(drawer.querySelector("[data-field='owner_area_class']")?.textContent).not.toBe("");
+    expect(drawer.querySelector("[data-field='owner_area_class']")?.textContent).toContain(
+      "published tables",
+    );
+  });
+
+  it("says why when the owner name is missing, including on a Run 2 row with no such column", () => {
+    const none = {
+      ...property,
+      ownerName: null,
+      missingReasons: [{ field: "owner_name", reason: "owner_confidential" }],
+    } as unknown as Provenanced<CrmProperty>;
+    const drawer = renderDrawer({ ...data, property: none });
+    expect(drawer.querySelector("[data-field='owner_name']")?.textContent).toContain(
+      "confidential",
+    );
+    cleanup();
+    const old = renderDrawer();
+    expect(old.querySelector("[data-field='owner_name']")?.textContent).not.toBe("");
+  });
+
   it("keeps provenance visible: run id and captured time for the property and each permit", () => {
     renderDrawer();
     expect(screen.getAllByText(/run travis-202609-permits-20261021t103516z/).length).toBe(2);

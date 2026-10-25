@@ -95,7 +95,7 @@ function ContractorName({ permit }: { readonly permit: Provenanced<CrmPermit> })
     );
   }
   const reason =
-    permit.missingReasons.find((m) => m.field === "contractor_name_as_printed")?.reason ??
+    (permit.missingReasons ?? []).find((m) => m.field === "contractor_name_as_printed")?.reason ??
     "contractor_unresolved";
   return (
     <span data-field="contractor_name_as_printed" data-reason={reason}>
@@ -200,6 +200,86 @@ function RoofAgeMissing({
   );
   if (entry === undefined) return <>Roof age not published (no reason recorded)</>;
   return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+}
+
+/** A value the row left empty, with the reason from its own `missing` entry (never blank). */
+function MissingValue({
+  property,
+  field,
+  what,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly field: string;
+  readonly what: string;
+}): ReactElement {
+  const entry = (property.missingReasons ?? []).find((m) => m.field === field);
+  if (entry === undefined) return <>{what} not published (no reason recorded)</>;
+  return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+}
+
+/** Owner data (ADR-03, amended 2026-10-25): the name as Task A parses it from the TCAD roll,
+ *  kind, tenure with how it was dated, and owner area — each with its stated reason when empty.
+ *  `!= null`: until a Run 3 index is promoted, rows have no ownerName/tenureBasis column. */
+function OwnerSection({
+  property,
+  titleId,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly titleId: string;
+}): ReactElement {
+  const tenure =
+    property.isLongTenure === null || property.isLongTenure === undefined
+      ? null
+      : property.isLongTenure
+        ? "10+ years"
+        : "Under 10 years";
+  return (
+    <section className={styles.section} aria-labelledby={`${titleId}-owner`}>
+      <h4 id={`${titleId}-owner`} className={styles.sectionTitle}>
+        Owner
+      </h4>
+      <dl className={styles.permitFields}>
+        <div className={styles.permitField}>
+          <dt>Name</dt>
+          <dd data-field="owner_name">
+            {property.ownerName != null ? (
+              property.ownerName
+            ) : (
+              <MissingValue property={property} field="owner_name" what="Owner name" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Kind</dt>
+          <dd data-field="owner_kind">
+            {property.ownerKind == null
+              ? "Owner kind not published"
+              : humanizeCode(property.ownerKind)}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Owned for</dt>
+          <dd data-field="is_long_tenure">
+            {tenure === null ? (
+              <MissingValue property={property} field="is_long_tenure" what="Tenure" />
+            ) : (
+              `${tenure}${property.tenureBasis != null && property.tenureBasis !== "unknown" ? ` · from ${humanizeCode(property.tenureBasis)}` : ""}`
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Owner area</dt>
+          <dd data-field="owner_area_class">
+            {property.ownerAreaClass == null || property.ownerAreaClass === "unknown" ? (
+              <MissingValue property={property} field="owner_area_class" what="Owner area" />
+            ) : (
+              humanizeCode(property.ownerAreaClass)
+            )}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
 }
 
 /** "near {place}" with the gazetteer as its provenance on hover. The gazetteer holds centroid
@@ -381,6 +461,8 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           </div>
         </dl>
       </section>
+
+      <OwnerSection property={property} titleId={titleId} />
 
       <section className={styles.section} aria-labelledby={`${titleId}-permits`}>
         <h4 id={`${titleId}-permits`} className={styles.sectionTitle}>

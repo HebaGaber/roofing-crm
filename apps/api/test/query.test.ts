@@ -63,6 +63,7 @@ const PROPERTY_TYPES: Record<string, string> = {
   roofAgeConfidence: "VARCHAR",
   isLongTenure: "BOOLEAN",
   tenureBasis: "VARCHAR",
+  ownerName: "VARCHAR",
   ownerKind: "VARCHAR",
   ownerAreaClass: "VARCHAR",
   ownerIsOutOfArea: "BOOLEAN",
@@ -122,6 +123,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeConfidence: "high",
     isLongTenure: true,
     tenureBasis: "sale_date",
+    ownerName: null,
     ownerKind: "person",
     ownerAreaClass: "in_county",
     ownerIsOutOfArea: false,
@@ -142,6 +144,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeConfidence: "medium",
     isLongTenure: false,
     tenureBasis: "sale_date",
+    ownerName: null,
     ownerKind: "company",
     ownerAreaClass: "regional",
     ownerIsOutOfArea: true,
@@ -162,6 +165,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeConfidence: "none",
     isLongTenure: null,
     tenureBasis: "sale_date",
+    ownerName: null,
     ownerKind: "unknown",
     ownerAreaClass: "unknown",
     ownerIsOutOfArea: null,
@@ -529,7 +533,7 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       "{propertyCid: 'VARCHAR', requestIdentifier: 'VARCHAR', latitude: 'DOUBLE', " +
       "longitude: 'DOUBLE', coordinateSource: 'VARCHAR', propertyType: 'VARCHAR', " +
       "propertyUsageType: 'VARCHAR', roofAgeYears: 'INTEGER', roofAgeBasis: 'VARCHAR', " +
-      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', tenureBasis: 'VARCHAR', ownerKind: 'VARCHAR', " +
+      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', tenureBasis: 'VARCHAR', ownerName: 'VARCHAR', ownerKind: 'VARCHAR', " +
       "ownerAreaClass: 'VARCHAR', ownerIsOutOfArea: 'BOOLEAN', sourceManifestCid: 'VARCHAR', " +
       `missingReasons: '${MISSING_STRUCT_LIST}', capturedAt: 'VARCHAR', cid: 'VARCHAR', runId: 'VARCHAR'}`;
     const permitColumns =

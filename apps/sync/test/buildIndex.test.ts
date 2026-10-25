@@ -29,6 +29,7 @@ function propertyRow(overrides: Partial<ViewRow> = {}): ViewRow {
     roof_age_confidence: "low",
     is_long_tenure: null,
     tenure_basis: "sale_date",
+    owner_name: null,
     owner_kind: null,
     owner_area_class: "unknown",
     owner_is_out_of_area: null,
@@ -107,10 +108,18 @@ describe("BuildIndex", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("never invents an ownerName field (ADR-03) even though the schema is strict", async () => {
-    const engine = fakeEngine([propertyRow()], []);
-    const result = await buildIndexCore(engine, MANIFEST_CID);
-    expect(result.properties[0]).not.toHaveProperty("ownerName");
+  it("carries the owner name verbatim, or null with its reason, never an invented name (ADR-03 as amended)", async () => {
+    const named = propertyRow({ owner_name: "DOE, JANE", owner_kind: "person" });
+    const unnamed = propertyRow({
+      owner_name: null,
+      missing: [{ field: "owner_name", reason: "owner_confidential" }],
+    });
+    const result = await buildIndexCore(fakeEngine([named, unnamed], []), MANIFEST_CID);
+    expect(result.properties[0]?.ownerName).toBe("DOE, JANE");
+    expect(result.properties[1]?.ownerName).toBeNull();
+    expect(result.properties[1]?.missingReasons).toEqual([
+      { field: "owner_name", reason: "owner_confidential" },
+    ]);
   });
 
   // Found live (ZodError on the first real run, against the deployed state machine): DuckDB

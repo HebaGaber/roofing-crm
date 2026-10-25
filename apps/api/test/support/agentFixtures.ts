@@ -32,6 +32,7 @@ export function property(
     roofAgeConfidence: "medium",
     isLongTenure: null,
     tenureBasis: null,
+    ownerName: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

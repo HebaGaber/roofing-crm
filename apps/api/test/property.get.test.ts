@@ -28,6 +28,7 @@ function property(overrides: Partial<Provenanced<CrmProperty>> = {}): Provenance
     roofAgeConfidence: "medium",
     isLongTenure: null,
     tenureBasis: null,
+    ownerName: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

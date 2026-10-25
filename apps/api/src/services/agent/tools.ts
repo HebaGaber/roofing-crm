@@ -167,10 +167,12 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
 
     const detail = await propertyDetail(leadIndex, cid);
     if (detail.property === null) return { found: false as const };
+    // ADR-03 (amended 2026-10-25): the owner name is shown on screen but never sent to the model.
+    const propertyForModel = { ...detail.property, ownerName: null };
     return {
       found: true as const,
       manifestCid: detail.manifestCid,
-      property: detail.property,
+      property: propertyForModel,
       permits: detail.permits,
       bbbStatus: detail.bbbStatus,
       bbbStatusReason: detail.bbbStatusReason,
