@@ -11,7 +11,7 @@
    responsive config (breakpoints, `tablet.css`/`compact.css`) natively inside roofing-crm instead, reusing
    B-01/B-03's existing responsive baseline where it already exists. **Swap-back condition:** when the user
    says A-13 and/or A-14 have merged, re-diff roofing-crm's native version against theirs and reconcile.
-2. **Data source: Task A's Run 1 manifest by direct CID, not the Elephant MCP.** CID
+2. **Data source: Task A's manifest by CID, not the Elephant MCP.** *(Superseded 2026-10-25: Run 1 failed; the story closes on Run 2, manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`, 441,961 properties / 15,025 permits. The Run 1 figures below are history. See `docs/pending-items.md`.)** CID
    `bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu` (441,961 properties / 17,387 permits) is pinned
    and real, but Atlas registration (the catalog step that makes it discoverable by county name through the
    MCP) hasn't happened yet. Read property/permit data directly by this CID. **2026-10-24, user decision: not

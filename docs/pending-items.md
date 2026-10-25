@@ -10,7 +10,7 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no `#
 | --- | --- |
 | Data the app serves | Task A Run 2, run `travis-full-run2-20261024`, manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` |
 | Index size | 441,961 properties, 15,025 roofing permits (equal to Task A's `permits_emitted`), 130 of 225 table parts fetched (about 322 MB) |
-| Where Run 2 specifics live | `tests/e2e/lib/run2-fixtures.ts` (with `fixtures-valid.spec.ts` and `refresh-fixtures.md`), `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, the pinned CID in tests and specs |
+| Where Run 2 specifics live | `tests/e2e/lib/run-fixtures.ts` (with `fixtures-valid.spec.ts` and `refresh-fixtures.md`), `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, the pinned CID in tests and specs |
 | How a new run is picked up | Change `DATA_MANIFEST_CID`; a deploy writes it to the SSM parameter `/crm/sync/data-manifest-cid` and starts one sync (execution name `{cid}-{deployNonce}`); an already promoted CID is a no-op |
 | Deploy method | Clean checkout of the commit, `aws configure export-credentials --profile assess --format env`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. Docker must be running (the three DuckDB Lambdas bundle in a container). |
 | CI | Green path: `workspace` (about 2 min, arm64 runner) and `e2e-hosted` (two phases; waits for `/build.json` to name its own commit). CI uses the scoped `crm-ci` IAM user via two repository secrets. |
