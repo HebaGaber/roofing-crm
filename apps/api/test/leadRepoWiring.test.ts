@@ -22,3 +22,19 @@ describe("tryLeadRepo", () => {
     expect(tryLeadRepo()).toBe(first);
   });
 });
+
+describe("tryLeadService", () => {
+  const saved = process.env.CRM_LEADS_TABLE_NAME;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.CRM_LEADS_TABLE_NAME;
+    else process.env.CRM_LEADS_TABLE_NAME = saved;
+  });
+
+  it("builds the lead service once from the shared repo when the table name is set", async () => {
+    const { tryLeadService } = await import("../src/leadService.js");
+    process.env.CRM_LEADS_TABLE_NAME = "crm-leads";
+    const first = tryLeadService();
+    expect(first).toBeDefined();
+    expect(tryLeadService()).toBe(first);
+  });
+});
