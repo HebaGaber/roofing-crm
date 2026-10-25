@@ -114,9 +114,9 @@ No `[NEEDS CLARIFICATION]` remaining.
 - A full ground-up prototype rebuild (that already happened in B-03); this round is a targeted re-diff of drift since then (AC-8).
 - **Deferred:** Following Task A's incremental runs (Run 3 onward). Task A publishes only the data groups that changed in a later run and links each manifest to the one before (`previousManifestCid`); the sync reads one manifest, so a delta-only run is held by Validate's row-drop check and the CRM stays on the last good run. Chain-following (and reusing parts already downloaded, keyed by part CID) is deferred by the PO until Tasks A and B are complete, to ship as a post-release update alongside the "coming soon" sections. It cannot be tested before Task A publishes a real incremental run.
 
-## Release fold-in (this is the last Task B story)
+## Release (moved out of this story)
 
-Because this is the final story before Release, its close-out (Phase F) also executes PLAYBOOK-B Part 4's R1–R6 release steps before handing off: R1 golden-path conformance sweep + `/simplify`, R2 every kit agent reviews the whole repo, R3 `/code-review ultra`, R4 G8 pre-check + `release.md` + login proof + git tag, R5 draft PR against `prismteam-ai/roofing-crm:main`. R6 (self-score with `slowking` in a fresh session) runs to confirm every checkpoint passes except the two intentionally deferred: R7 (record demo video) and the final "mark PR ready to publish" step — both stay undone until the user explicitly asks for them.
+**PO decision, 2026-10-25:** this story closes and merges on Task A's Run 2. The release steps R1 to R7 (PLAYBOOK-B Part 4), the handling of Task A's Run 3 and the other follow-up work are **not** part of B-09; they are listed with their steps in [`docs/pending-items.md`](../docs/pending-items.md) for the follow-up branch. This story still includes its own `/simplify` and `/code-review medium` rounds, the five reviewer scores (`docs/reviews/CR-B-09.md`), the hosted proof and a non-recorded demo rehearsal on the branch preview.
 
 ## Evidence to capture
 
