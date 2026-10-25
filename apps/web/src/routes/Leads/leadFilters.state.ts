@@ -5,13 +5,20 @@
 //
 // URL keys: `roof` (roofAgeMinYears), `permit` (open|stalled; no "closed": design-review-log row 6,
 // the CRM's permit filter is Open / Stalled / Any), `lat`,`lng` (the area center) with `r`
-// (radiusMi), `status`, `assignee`, `cursor` (opaque page cursor from leads.list). Example:
-// /leads?status=new&assignee=rep%40example.com&roof=20&permit=open&lat=30.5&lng=-97.6&r=10
+// (radiusMi), `status`, `assignee`, `permitOpen` (years the permit has been open at least: 1, 3, 5
+// or 10; sent as days = years x 365), `page` (1-based; the list's cursor is the numeric offset, so
+// page n asks for offset (n - 1) x 25). A legacy `cursor=<offset>` link opens the page it falls in.
+// Example: /leads?status=new&assignee=rep%40example.com&roof=20&permit=open&lat=30.5&lng=-97.6&r=10&page=2
 import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 import { LEAD_STATUSES, type LeadFilters, type LeadStatus } from "@crm/shared";
 
 export const DEFAULT_LEAD_RADIUS_MI = 5;
 export const LEAD_PAGE_SIZE = 25;
+/** `leads.list` reads at most this many leads (MAX_LISTED_LEADS on the API): the total is capped. */
+export const LEAD_LIST_CAP = 1000;
+/** "Permit open >= " presets in years (board CrmLeads768): Any, 1 yr, 3 yrs, 5 yrs, 10 yrs. */
+export const PERMIT_OPEN_YEARS = [1, 3, 5, 10] as const;
+export type LeadPermitOpenYears = (typeof PERMIT_OPEN_YEARS)[number];
 /** The permit filters the CRM offers (design-review-log row 6). `leads.list` also accepts "closed";
  *  the CRM never asks for it, and a `permit=closed` link is read as no permit filter. */
 export const PERMIT_STATUSES = ["open", "stalled"] as const;
@@ -27,11 +34,13 @@ export interface LeadCenter {
 export interface LeadQuery {
   readonly roofAgeMinYears: number | undefined;
   readonly permitStatus: LeadPermitStatus | undefined;
+  readonly permitOpenYears: LeadPermitOpenYears | undefined;
   readonly center: LeadCenter | null;
   readonly radiusMi: number;
   readonly status: LeadStatus | undefined;
   readonly assignee: string | undefined;
-  readonly cursor: string | undefined;
+  /** 1-based page number. */
+  readonly page: number;
 }
 
 const inRange = (value: number, min: number, max: number): boolean =>
@@ -51,10 +60,13 @@ export function parseLeadQuery(params: URLSearchParams): LeadQuery {
   const permit = params.get("permit");
   const status = params.get("status");
   const assignee = params.get("assignee");
-  const cursor = params.get("cursor");
+  const permitOpen = parseNumber(params.get("permitOpen"));
+  const page = parseNumber(params.get("page"));
+  const legacyCursor = parseNumber(params.get("cursor"));
   return {
     roofAgeMinYears: roof !== undefined && Number.isInteger(roof) && roof >= 0 ? roof : undefined,
     permitStatus: PERMIT_STATUSES.find((s) => s === permit),
+    permitOpenYears: PERMIT_OPEN_YEARS.find((y) => y === permitOpen),
     center:
       lat !== undefined && lng !== undefined && inRange(lat, -90, 90) && inRange(lng, -180, 180)
         ? { lat, lng }
@@ -65,29 +77,37 @@ export function parseLeadQuery(params: URLSearchParams): LeadQuery {
         : DEFAULT_LEAD_RADIUS_MI,
     status: LEAD_STATUSES.find((s) => s === status),
     assignee: assignee === null || assignee.trim() === "" ? undefined : assignee,
-    cursor: cursor === null || cursor === "" ? undefined : cursor,
+    page:
+      page !== undefined && Number.isInteger(page) && page >= 1
+        ? page
+        : legacyCursor !== undefined && Number.isInteger(legacyCursor) && legacyCursor > 0
+          ? Math.floor(legacyCursor / LEAD_PAGE_SIZE) + 1
+          : 1,
   };
 }
 
 export type LeadQueryPatch = Partial<{
   roof: number | null;
   permit: LeadPermitStatus | null;
+  permitOpen: LeadPermitOpenYears | null;
   lat: number | null;
   lng: number | null;
   r: number | null;
   status: LeadStatus | null;
   assignee: string | null;
-  cursor: string | null;
+  page: number | null;
 }>;
 
-/** Applies a patch (undefined/null removes the key). Any change other than the cursor itself
- *  starts again from the first page, so a stale cursor never outlives the filters it belongs to. */
+/** Applies a patch (undefined/null removes the key). Any change other than the page itself starts
+ *  again from the first page, so a stale page never outlives the filters it belongs to. Page 1 is
+ *  the default and leaves no key; an older `cursor` key never survives a patch. */
 export function patchLeadParams(params: URLSearchParams, patch: LeadQueryPatch): URLSearchParams {
   const next = new URLSearchParams(params);
-  const changesFilters = Object.keys(patch).some((key) => key !== "cursor");
-  if (changesFilters) next.delete("cursor");
+  const changesFilters = Object.keys(patch).some((key) => key !== "page");
+  if (changesFilters) next.delete("page");
+  next.delete("cursor");
   for (const [key, value] of Object.entries(patch)) {
-    if (value === undefined || value === null) next.delete(key);
+    if (value === undefined || value === null || (key === "page" && value === 1)) next.delete(key);
     else next.set(key, String(value));
   }
   return next;
@@ -107,6 +127,9 @@ export function toLeadsListInput(query: LeadQuery): LeadsListInput {
   const filters: LeadFilters = {
     ...(query.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: query.roofAgeMinYears }),
     ...(query.permitStatus === undefined ? {} : { permitStatus: query.permitStatus }),
+    ...(query.permitOpenYears === undefined
+      ? {}
+      : { permitOpenDaysMin: query.permitOpenYears * 365 }),
     ...(query.center === null
       ? {}
       : { radiusMi: query.radiusMi, centerLat: query.center.lat, centerLon: query.center.lng }),
@@ -115,7 +138,7 @@ export function toLeadsListInput(query: LeadQuery): LeadsListInput {
     ...(Object.keys(filters).length === 0 ? {} : { filters }),
     ...(query.status === undefined ? {} : { status: query.status }),
     ...(query.assignee === undefined ? {} : { assignee: query.assignee }),
-    ...(query.cursor === undefined ? {} : { cursor: query.cursor }),
+    ...(query.page <= 1 ? {} : { cursor: String((query.page - 1) * LEAD_PAGE_SIZE) }),
     limit: LEAD_PAGE_SIZE,
   };
 }
@@ -124,6 +147,7 @@ export function hasActiveFilters(query: LeadQuery): boolean {
   return (
     query.roofAgeMinYears !== undefined ||
     query.permitStatus !== undefined ||
+    query.permitOpenYears !== undefined ||
     query.center !== null ||
     query.status !== undefined ||
     query.assignee !== undefined
@@ -137,6 +161,7 @@ export function activeFilterCount(query: LeadQuery): number {
     query.assignee !== undefined,
     query.roofAgeMinYears !== undefined,
     query.permitStatus !== undefined,
+    query.permitOpenYears !== undefined,
     query.center !== null,
   ].filter(Boolean).length;
 }

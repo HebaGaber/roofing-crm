@@ -7,8 +7,10 @@
 //   (design-review-log row 17, `users.list`), so there is no Me / All reps menu; the hint says so.
 // - Roof age ≥ Any / 15 / 20 / 25, Permit status Open / Stalled / Any (no Closed:
 //   design-review-log row 6; the API takes one value, so Open and Stalled do not combine).
-// - Within {radius preset} mi of {Area}: the Area is Anywhere, a point (latitude, longitude) or
-//   the device location. There is no place picker: the gazetteer is not bundled into the web app.
+// - Permit open >= Any / 1 yr / 3 yrs / 5 yrs / 10 yrs (sent as days: years x 365).
+// - Within {radius preset} mi of {Area}: one select line (the area is Anywhere, a point or the
+//   device location; the radius waits for an area). There is no place picker: the gazetteer is
+//   not bundled into the web app.
 // - Copy link (the URL already holds every filter) and Show on map (the map's own URL keys).
 // Below 600 px the controls sit in a bottom sheet behind "Filters" with the active count.
 import { Icon, IconButton } from "@crm/ui";
@@ -16,6 +18,7 @@ import { LEAD_STATUSES, type LeadStatus } from "@crm/shared";
 import { useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import {
+  PERMIT_OPEN_YEARS,
   PERMIT_STATUSES,
   RADIUS_PRESETS_MI,
   activeFilterCount,
@@ -38,9 +41,13 @@ export const LEAD_ROOF_AGE_CHIPS: readonly number[] = [15, 20, 25];
 
 const PERMIT_LABEL = { open: "Open", stalled: "Stalled" } as const;
 
+/** "1 yr", "3 yrs" (the Permit open >= chips and the sentence). */
+export const permitOpenText = (years: number): string => `${years} ${years === 1 ? "yr" : "yrs"}`;
+
 const CLEARED: LeadQueryPatch = {
   roof: null,
   permit: null,
+  permitOpen: null,
   lat: null,
   lng: null,
   r: null,
@@ -61,6 +68,9 @@ export function filterSummary(query: LeadQuery): string | null {
     query.assignee === undefined ? null : `assigned to ${query.assignee}`,
     query.roofAgeMinYears === undefined ? null : `roof ≥ ${query.roofAgeMinYears} yrs`,
     query.permitStatus === undefined ? null : `${query.permitStatus} permit`,
+    query.permitOpenYears === undefined
+      ? null
+      : `permit open ≥ ${permitOpenText(query.permitOpenYears)}`,
     query.center === null
       ? null
       : `within ${query.radiusMi} mi of ${query.center.lat.toFixed(4)}, ${query.center.lng.toFixed(4)}`,
@@ -225,9 +235,9 @@ function AreaControls({
         Within
       </span>
       <div className={styles.groupBody}>
-        <div className={styles.row}>
+        <div className={styles.withinRow}>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${id}-radius`}>
+            <label className={styles.srOnly} htmlFor={`${id}-radius`}>
               Radius, mi
             </label>
             <select
@@ -235,7 +245,7 @@ function AreaControls({
               className={styles.select}
               value={String(query.radiusMi)}
               disabled={noArea}
-              aria-describedby={noArea ? `${id}-radius-hint` : undefined}
+              aria-describedby={noArea ? `${id}-hint` : undefined}
               onChange={(e) => onPatch({ r: committedNumber(e.target.value) })}
             >
               {radiusOptions.map((mi) => (
@@ -247,7 +257,7 @@ function AreaControls({
           </div>
           <span className={styles.unit}>of</span>
           <div className={styles.field}>
-            <label className={styles.label} htmlFor={`${id}-area`}>
+            <label className={styles.srOnly} htmlFor={`${id}-area`}>
               Area
             </label>
             <select
@@ -272,11 +282,6 @@ function AreaControls({
             Use my location
           </button>
         </div>
-        {noArea ? (
-          <p id={`${id}-radius-hint`} className={styles.hint}>
-            Choose an area to search within a radius.
-          </p>
-        ) : null}
         {locating === null ? null : (
           <p className={styles.hint} role="status">
             {locating}
@@ -349,6 +354,9 @@ export function activeFilterChips(query: LeadQuery): readonly string[] {
     query.assignee === undefined ? null : query.assignee,
     query.roofAgeMinYears === undefined ? null : `Roof ≥ ${query.roofAgeMinYears} yrs`,
     query.permitStatus === undefined ? null : `${PERMIT_LABEL[query.permitStatus]} permit`,
+    query.permitOpenYears === undefined
+      ? null
+      : `Permit open ≥ ${permitOpenText(query.permitOpenYears)}`,
     query.center === null ? null : `Within ${query.radiusMi} mi`,
   ].filter((chip): chip is string => chip !== null);
 }
@@ -522,7 +530,33 @@ export function LeadFilters({
                 </Chip>
               </div>
             </div>
+            <div className={styles.group}>
+              <span className={styles.groupLabel}>Permit open ≥</span>
+              <div className={styles.chips} role="group" aria-label="Permit open at least">
+                <Chip
+                  pressed={query.permitOpenYears === undefined}
+                  onClick={() => onPatch({ permitOpen: null })}
+                >
+                  Any
+                </Chip>
+                {PERMIT_OPEN_YEARS.map((years) => (
+                  <Chip
+                    key={years}
+                    pressed={query.permitOpenYears === years}
+                    onClick={() =>
+                      onPatch({ permitOpen: query.permitOpenYears === years ? null : years })
+                    }
+                  >
+                    {permitOpenText(years)}
+                  </Chip>
+                ))}
+              </div>
+            </div>
             <AreaControls id={id} query={query} params={params} onPatch={onPatch} />
+            <p id={`${id}-hint`} className={styles.hint}>
+              Filters combine. Status is one choice at a time; the radius applies once an area is
+              chosen.
+            </p>
             {count === 0 || noMatch ? null : (
               <div className={styles.wideFooter}>
                 <button type="button" className={styles.clear} onClick={() => onPatch(CLEARED)}>

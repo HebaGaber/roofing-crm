@@ -96,3 +96,18 @@ Changed text that `tests/e2e/B-07.spec.ts` reads (coordinator to update, not edi
 - G-11 named place: a place index in the web app or `places.search` for the Within picker.
 - G-12 numbered pages: `leads.list` returns `pageCount` and accepts `page` (the cursor is an offset today); a page size the screen can choose (8 and 3 on the boards).
 - G-13 assignee change: `leads.assign({ leadKey, assignee, expectedSequence })`.
+
+## Design alignment pass (2026-10-25, web side; CrmLeads390 / CrmLeads768 / CrmLeads1440)
+
+Gap list: scratchpad `tablet-gap/GAPS.md` section 2 (L1 to L10). The prototype's own state panel (Prototype state, Add a team's leads, Reset sample leads, Open this link signed out) is tooling and was not built.
+
+| Gap | Result |
+| --- | --- |
+| L7 columns | Lead (TCAD id link, Address not published with coordinates, From Map), Status (pill, assignee under it), Roof, Main permit, Last activity. Assignee, From and Created columns are gone (merged). The 390 card stacks the same fields with their labels. Needs `signals` and `lastActivity` on `leads.list`; without them each cell says Signals not saved for this lead (Last activity falls back to Created with the stored creation time). Confidence and permit class are read only if the snapshot stores them (it does not today), so no Stalled, no High/Low is drawn. |
+| L2 Permit open | Chips Any, 1 yr, 3 yrs, 5 yrs, 10 yrs (URL `permitOpen=1|3|5|10`, sent as `filters.permitOpenDaysMin` = years x 365). Needs the API field; an older API ignores it and the count would not change. |
+| L3 Within | One line: radius select, of, area select, Use my location (wraps below on a narrow card). Labels are spoken only. Named places stay deferred. |
+| L4 hint | Filters combine. Status is one choice at a time; the radius applies once an area is chosen. No any-mix claim (L5 is not built). |
+| L8 stale run | The pill stays on the row; the full-width banner is now one clause in the count line. |
+| L9 pager | Showing x-y of N, numbered pages with previous and next, `page=` in the URL (offset (n - 1) x 25), first 1,000 shown when N reaches the cap, a page past the end says so. |
+| L10 spacing | Panel rows 8 px apart, 12 px frame. Card is about 458 px at 768 (was about 470): every control keeps a 48 px target, so the board's 315 px (40 px chips, no assignee hint) is not reachable without shrinking targets or hiding controls. Title sits 20 px below the board's: 12 px of that is the shell's 24 px main padding (not this page). |
+| L1, L5, L6 | Unchanged: All reps, multi-status and Sort need API work (no client-side sort of one page). |

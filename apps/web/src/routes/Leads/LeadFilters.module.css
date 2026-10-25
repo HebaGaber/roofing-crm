@@ -318,6 +318,30 @@
   background: var(--md-sys-color-surface-container-highest);
 }
 
+/* Visible to a screen reader only: the Within selects carry no drawn label (CrmLeads768 shows one
+   select line); the "Within" row label and the word "of" name them. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The Within row: radius, "of", area and Use my location on one line (wraps on a narrow card). */
+.withinRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.withinRow .select {
+  width: auto;
+}
+
 .unit {
   align-self: center;
   color: var(--md-sys-color-on-surface-variant);
@@ -364,6 +388,13 @@
 
   /* One row per control: the label in a fixed column, the chips or fields beside it
      (CrmLeads768/1440). */
+  /* Tighter than the sheet: rows 8 px apart, a 12 px frame (the board's card is about 315 px at
+     768 px; every control keeps its 48 px target, so the card is as short as they allow). */
+  .panel {
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
   .panel .group {
     grid-template-columns: calc(var(--space-10) * 2) minmax(0, 1fr);
     align-items: center;

@@ -13,8 +13,20 @@ import type { LeadListItem, LeadsListOutput } from "./leadsApi.js";
 /** How long a created (or undone) lead is held against a refetch that has not caught up. */
 export const OPTIMISTIC_WINDOW_MS = 15_000;
 
-/** What `leads.create` returns: the stored lead. */
-export type CreatedLead = Omit<LeadListItem, "notInCurrentRun">;
+/** What `leads.create` returns: the stored lead (no snapshot or activity: the list adds those). */
+export type CreatedLead = Omit<LeadListItem, "notInCurrentRun" | "signals" | "lastActivity"> &
+  Partial<Pick<LeadListItem, "signals" | "lastActivity">>;
+
+/** A created lead shaped like a listed one. Its snapshot is not in the create response, so it is
+ *  null until the background refetch brings the stored one; its only activity is the creation. */
+function listed(lead: CreatedLead): LeadListItem {
+  return {
+    ...lead,
+    notInCurrentRun: false,
+    signals: lead.signals ?? null,
+    lastActivity: lead.lastActivity ?? { at: lead.createdAt, kind: "created" },
+  };
+}
 
 interface Registry {
   readonly added: Map<string, { lead: CreatedLead; at: number }>;
@@ -80,7 +92,7 @@ export function addCreatedLead(
   const registry = registryOf(client);
   registry.removed.delete(lead.leadKey);
   registry.added.set(lead.leadKey, { lead, at: now });
-  const item: LeadListItem = { ...lead, notInCurrentRun: false };
+  const item = listed(lead);
   for (const query of client.getQueryCache().findAll({ queryKey: listKey })) {
     const data = query.state.data as LeadsListOutput | undefined;
     if (data === undefined || !belongs(inputOf(query.queryKey), lead)) continue;
@@ -150,7 +162,7 @@ export function overlayLeadsList(
       continue;
     }
     if (!belongs(input, lead) || leads.some((l) => l.leadKey === key)) continue;
-    leads = insertSorted(leads, { ...lead, notInCurrentRun: false });
+    leads = insertSorted(leads, listed(lead));
     total += 1;
   }
   return leads === data.leads ? data : { ...data, leads, totalCount: total };

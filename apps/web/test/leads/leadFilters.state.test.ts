@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LEAD_RADIUS_MI,
   activeFilterCount,
+  hasActiveFilters,
   leadsMapHref,
   parseLeadQuery,
   patchLeadParams,
@@ -54,10 +55,47 @@ describe("leadFilters.state", () => {
     expect(next.has("cursor")).toBe(false);
   });
 
-  it("keeps the cursor when only the cursor changes", () => {
-    const next = patchLeadParams(new URLSearchParams("roof=15"), { cursor: "abc" });
-    expect(next.get("cursor")).toBe("abc");
+  it("keeps the page when only the page changes, and a filter change returns to page 1", () => {
+    const next = patchLeadParams(new URLSearchParams("roof=15"), { page: 3 });
+    expect(next.get("page")).toBe("3");
     expect(next.get("roof")).toBe("15");
+    expect(patchLeadParams(next, { status: "new" }).has("page")).toBe(false);
+    expect(patchLeadParams(next, { page: 1 }).has("page")).toBe(false);
+  });
+
+  it("reads page= as a 1-based page and sends the offset ((n - 1) x 25) as the cursor", () => {
+    expect(parseLeadQuery(new URLSearchParams()).page).toBe(1);
+    expect(parseLeadQuery(new URLSearchParams("page=3")).page).toBe(3);
+    expect(parseLeadQuery(new URLSearchParams("page=0")).page).toBe(1);
+    expect(parseLeadQuery(new URLSearchParams("page=abc")).page).toBe(1);
+    expect(parseLeadQuery(new URLSearchParams("page=2.5")).page).toBe(1);
+    expect(toLeadsListInput(parseLeadQuery(new URLSearchParams())).cursor).toBeUndefined();
+    expect(toLeadsListInput(parseLeadQuery(new URLSearchParams("page=3"))).cursor).toBe("50");
+  });
+
+  it("still opens an older ?cursor=<offset> link on the page that offset falls in", () => {
+    expect(parseLeadQuery(new URLSearchParams("cursor=50")).page).toBe(3);
+    expect(parseLeadQuery(new URLSearchParams("cursor=abc")).page).toBe(1);
+    expect(parseLeadQuery(new URLSearchParams("cursor=50&page=2")).page).toBe(2);
+  });
+
+  it("Permit open >= : permitOpen years (1, 3, 5, 10) become filters.permitOpenDaysMin = years x 365", () => {
+    for (const years of [1, 3, 5, 10]) {
+      const q = parseLeadQuery(new URLSearchParams(`permitOpen=${years}`));
+      expect(q.permitOpenYears).toBe(years);
+      expect(toLeadsListInput(q).filters).toEqual({ permitOpenDaysMin: years * 365 });
+    }
+    expect(parseLeadQuery(new URLSearchParams("permitOpen=2")).permitOpenYears).toBeUndefined();
+    expect(parseLeadQuery(new URLSearchParams("permitOpen=x")).permitOpenYears).toBeUndefined();
+    const next = patchLeadParams(new URLSearchParams(), { permitOpen: 5 });
+    expect(next.get("permitOpen")).toBe("5");
+    expect(patchLeadParams(next, { permitOpen: null }).has("permitOpen")).toBe(false);
+  });
+
+  it("counts Permit open >= as a filter", () => {
+    expect(activeFilterCount(parseLeadQuery(new URLSearchParams("permitOpen=3")))).toBe(1);
+    expect(hasActiveFilters(parseLeadQuery(new URLSearchParams("permitOpen=3")))).toBe(true);
+    expect(hasActiveFilters(parseLeadQuery(new URLSearchParams("page=2")))).toBe(false);
   });
 
   it("builds the leads.list input: radius is only sent together with a center", () => {

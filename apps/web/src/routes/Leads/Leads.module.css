@@ -53,6 +53,10 @@
   line-height: var(--md-sys-typescale-headline-small-line-height);
 }
 
+.countNote {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
 .count {
   margin: 0;
   color: var(--md-sys-color-on-surface);
@@ -138,31 +142,53 @@
 
 .cellStatus {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
   gap: var(--space-1);
-  justify-content: flex-end;
+  min-width: 0;
 }
 
-.cell {
+/* The assignee under the status pill ("Me", or the name as stored). */
+.assigneeName {
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line-height);
+  overflow-wrap: anywhere;
 }
 
-/* On the card the facts share a line, separated by a middle dot. */
-.cell + .cell::before {
-  content: "· ";
-}
-
+/* Roof, Main permit and Last activity: on the card they stack under the title with their label;
+   in the table each is a column and the label is spoken only. */
 .facts {
+  display: grid;
+  flex-basis: 100%;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.fact {
   display: flex;
   flex-wrap: wrap;
-  flex-basis: 100%;
-  gap: var(--space-1) var(--space-2);
+  align-items: baseline;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  line-height: var(--md-sys-typescale-body-small-line-height);
+  overflow-wrap: anywhere;
 }
 
-/* The label before a value ("From Map") is spoken always and drawn on the card only; the table
+.factMain {
+  color: var(--md-sys-color-on-surface);
+}
+
+/* A missing value: the reason, quieter than a value (never drawn like data). */
+.reason {
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* The label before a value ("Roof 23 yrs") is spoken always and drawn on the card only; the table
    has the column heading instead. */
 .pre {
   color: var(--md-sys-color-on-surface-variant);
@@ -183,11 +209,11 @@
   .thead,
   .row {
     display: grid;
-    grid-template-columns: minmax(0, 2.4fr) minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(
         0,
-        1.2fr
+        1.5fr
       );
-    align-items: center;
+    align-items: start;
     gap: var(--space-4);
   }
 
@@ -217,21 +243,26 @@
   }
 
   .cellStatus {
-    justify-content: flex-start;
-  }
-
-  .cell {
-    color: var(--md-sys-color-on-surface);
-    font-family: var(--md-sys-typescale-body-medium-font);
-    font-size: var(--md-sys-typescale-body-medium-size);
-  }
-
-  .cell + .cell::before {
-    content: none;
+    align-items: flex-start;
   }
 
   .facts {
     display: contents;
+  }
+
+  .fact {
+    display: grid;
+    align-content: start;
+    gap: var(--space-1);
+    font-family: var(--md-sys-typescale-body-medium-font);
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+  }
+
+  .assigneeName {
+    font-size: var(--md-sys-typescale-body-medium-size);
+    line-height: var(--md-sys-typescale-body-medium-line-height);
+    color: var(--md-sys-color-on-surface);
   }
 
   .pre {
@@ -358,12 +389,41 @@
 
 .pagerButtons {
   display: flex;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.pagerOf {
+  margin-right: var(--space-2);
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+}
+
+.pagerGap {
+  padding: 0 var(--space-1);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+/* The current page: tonal, like the board's selected page. */
+.pageCurrent {
+  border-color: transparent;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.pageBtn:disabled {
+  border-color: var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-outline);
+  cursor: not-allowed;
 }
 
 .pageBtn,
 .action {
   box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
   min-width: var(--space-9);
   min-height: var(--space-9);
   padding: 0 var(--space-4);

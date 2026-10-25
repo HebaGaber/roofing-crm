@@ -82,13 +82,14 @@ describe("LeadsList loading and retry", () => {
 });
 
 describe("LeadsList rows", () => {
-  it("renders status, assignee and created time, and a singular count", () => {
+  it("renders the status pill with the assignee under it, the coordinates and the source, and a singular count", () => {
     withLeads();
     renderAt("/leads");
     expect(screen.getByText("1 lead")).toBeTruthy();
-    expect(within(screen.getByRole("listitem")).getByText("Contacted")).toBeTruthy();
-    expect(within(screen.getByRole("listitem")).getByText("rep@example.com")).toBeTruthy();
-    expect(within(screen.getByRole("listitem")).getByText("Oct 20, 09:14 UTC")).toBeTruthy();
+    const row = screen.getByRole("listitem");
+    expect(within(row).getByText("Contacted")).toBeTruthy();
+    expect(within(row).getByText("rep@example.com")).toBeTruthy();
+    expect(within(row).getByText("From Map")).toBeTruthy();
     expect(screen.getByText("Address not published · 30.27000, −97.74000")).toBeTruthy();
     expect(screen.getByRole("link", { name: "TCAD 0201885122" }).getAttribute("href")).toBe(
       `/leads/${encodeURIComponent(lead.leadKey)}`,
@@ -136,6 +137,42 @@ describe("LeadsList filters write the URL", () => {
     expect(within(group).getByRole("button", { name: "Any" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
+  });
+
+  it("Permit open >= offers Any, 1 yr, 3 yrs, 5 yrs, 10 yrs, writes permitOpen and sends days", () => {
+    withLeads();
+    renderOpen("/leads");
+    const group = screen.getByRole("group", { name: "Permit open at least" });
+    expect(
+      within(group)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Any", "1 yr", "3 yrs", "5 yrs", "10 yrs"]);
+    expect(within(group).getByRole("button", { name: "Any" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    fireEvent.click(within(group).getByRole("button", { name: "5 yrs" }));
+    expect(params().get("permitOpen")).toBe("5");
+    expect(useLeadsList).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({ permitOpenDaysMin: 5 * 365 }),
+      }),
+    );
+    expect(within(group).getByRole("button", { name: "5 yrs" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    fireEvent.click(within(group).getByRole("button", { name: "5 yrs" }));
+    expect(params().has("permitOpen")).toBe(false);
+    fireEvent.click(within(group).getByRole("button", { name: "10 yrs" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Any" }));
+    expect(params().has("permitOpen")).toBe(false);
+  });
+
+  it("the footer hint says Filters combine and makes no any-mix claim", () => {
+    withLeads();
+    renderOpen("/leads");
+    const hint = screen.getByText(/^Filters combine\./);
+    expect(hint.textContent).not.toMatch(/any mix|all reps/i);
   });
 
   it("Status chips list every lead status; one is chosen at a time and pressing it again clears it", () => {
@@ -254,32 +291,76 @@ describe("LeadsList filters write the URL", () => {
     expect(screen.queryByRole("button", { name: "Reset" })).toBeNull();
   });
 
-  it("a filter change drops a stale page cursor", () => {
+  it("a filter change returns to page 1", () => {
     withLeads();
-    renderOpen("/leads?cursor=abc");
+    renderOpen("/leads?page=3");
     fireEvent.click(screen.getByRole("button", { name: "25" }));
     expect(params().get("roof")).toBe("25");
+    expect(params().has("page")).toBe(false);
     expect(params().has("cursor")).toBe(false);
   });
 });
 
 describe("LeadsList pagination", () => {
-  it("offers Next page only when the server returned a cursor, and writes it to the URL", () => {
-    withLeads({ nextCursor: "CUR2" }, 40);
+  it("shows Showing 1-25 of N, numbered pages and Next; page n asks for offset (n - 1) x 25", () => {
+    withLeads({}, 60);
     renderAt("/leads");
-    expect(screen.queryByRole("button", { name: "First page" })).toBeNull();
+    expect(screen.getByText(/^Showing 1–1 of 60/)).toBeTruthy();
+    const nav = screen.getByRole("navigation", { name: "Lead pages" });
+    expect(
+      within(nav)
+        .getAllByRole("button")
+        .map((b) => b.getAttribute("aria-label") ?? b.textContent),
+    ).toEqual(["Previous page", "1", "2", "3", "Next page"]);
+    expect(within(nav).getByRole("button", { name: "Previous page" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(within(nav).getByRole("button", { name: "1" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    fireEvent.click(within(nav).getByRole("button", { name: "3" }));
+    expect(params().get("page")).toBe("3");
+    expect(useLeadsList).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "50" }));
+    fireEvent.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(params().get("page")).toBe("2");
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
-    expect(params().get("cursor")).toBe("CUR2");
-    expect(useLeadsList).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "CUR2" }));
+    expect(params().get("page")).toBe("3");
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
   });
 
-  it("First page clears the cursor; no Next page on the last page", () => {
-    withLeads();
-    renderAt("/leads?cursor=CUR2");
+  it("page 1 leaves the URL clean, and the range follows the page", () => {
+    withLeads({}, 60);
+    renderAt("/leads?page=2");
+    expect(screen.getByText(/^Showing 26–26 of 60/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "1" }));
+    expect(params().has("page")).toBe(false);
+  });
+
+  it("no pager buttons for a single page, and the text still says Showing", () => {
+    withLeads({}, 1);
+    renderAt("/leads");
+    expect(screen.getByText(/^Showing 1–1 of 1/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "First page" }));
-    expect(params().has("cursor")).toBe(false);
-    expect(screen.queryByRole("button", { name: "First page" })).toBeNull();
+  });
+
+  it("is honest when the total is the 1,000 the list can reach", () => {
+    withLeads({}, 1000);
+    renderAt("/leads");
+    expect(screen.getByText(/of 1,000 · first 1,000 shown/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "40" })).toBeTruthy();
+  });
+
+  it("a page past the end says so and links back to page 1 (never No leads yet)", () => {
+    useLeadsList.mockReturnValue({
+      status: "success",
+      data: { leads: [], totalCount: 30 },
+      refetch: vi.fn(),
+    });
+    renderAt("/leads?page=9");
+    expect(screen.queryByRole("heading", { name: "No leads yet" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Go to page 1" }));
+    expect(params().has("page")).toBe(false);
   });
 });
 
@@ -349,5 +430,12 @@ describe("LeadsList list actions and the compact Filters sheet", () => {
         "New · assigned to sam · roof ≥ 20 yrs · stalled permit · within 10 mi of 30.2000, -97.7000",
       ),
     ).toBeTruthy();
+  });
+
+  it("names Permit open >= in the sentence and in its own chip", () => {
+    withLeads();
+    renderAt("/leads?permitOpen=3");
+    expect(screen.getByText("permit open ≥ 3 yrs")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change filter, Permit open ≥ 3 yrs" })).toBeTruthy();
   });
 });

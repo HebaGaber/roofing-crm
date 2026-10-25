@@ -60,6 +60,8 @@ const stored = (n: number, over: Record<string, unknown> = {}) => ({
 const item = (n: number, over: Record<string, unknown> = {}) => ({
   ...stored(n, over),
   notInCurrentRun: false,
+  signals: null,
+  lastActivity: null,
 });
 
 let queryClient: QueryClient;
@@ -98,7 +100,12 @@ describe("addCreatedLead", () => {
       item(5).leadKey,
       item(4).leadKey,
     ]);
-    expect(data?.leads[0]).toEqual({ ...created, notInCurrentRun: false });
+    expect(data?.leads[0]).toEqual({
+      ...created,
+      notInCurrentRun: false,
+      signals: null,
+      lastActivity: { at: created.createdAt, kind: "created" },
+    });
     expect(data?.totalCount).toBe(3);
   });
 
@@ -156,6 +163,12 @@ describe("overlayLeadsList (a refetch that lacks the new lead)", () => {
     const merged = overlayLeadsList(queryClient, UNFILTERED, refetched, NOW + 5_000);
     expect(merged.leads.map((l) => l.leadKey)).toEqual([stored(9).leadKey, item(5).leadKey]);
     expect(merged.totalCount).toBe(2);
+    // The created lead is shaped like a listed one: no snapshot yet, its only activity the creation.
+    expect(merged.leads[0]).toMatchObject({
+      signals: null,
+      lastActivity: { at: new Date(NOW).toISOString(), kind: "created" },
+      notInCurrentRun: false,
+    });
   });
 
   it("drops it once the window has passed, or once a refetch contains it", () => {

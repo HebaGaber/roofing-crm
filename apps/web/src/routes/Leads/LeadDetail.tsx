@@ -10,8 +10,6 @@ import { LEAD_STATUSES, type LeadEvent, type LeadStatus } from "@crm/shared";
 import { useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 import { Skeleton } from "../../components/Skeleton.js";
-import { roofAgeBasisLabel } from "../../format/index.js";
-import { humanizeCode } from "../../format/labels.js";
 import { isNotFoundError, isStaleError } from "./leadErrors.js";
 import { LeadBanner } from "./LeadBanner.js";
 import { LeadCid } from "./LeadCid.js";
@@ -25,12 +23,12 @@ import {
 } from "./LeadsList.js";
 import { LeadsPane } from "./LeadsPane.js";
 import { leadTime, myIds, originLabel, personLabel } from "./leadFormat.js";
+import { openYearsText as yearsOf, roofBasisText as basisText } from "./leadRowFacts.js";
 import { useAddLeadNote, useLead, useUpdateLeadStatus, type LeadDetailData } from "./leadsApi.js";
 import { useWide } from "./useWide.js";
 import styles from "./Leads.module.css";
 
 const NOTE_MAX_CHARS = 4000; // contracts/leads.md, constitution §6 validation boundary.
-const ROOF_BASIS_CODES = ["permit", "new_construction", "built_year", "unknown"] as const;
 
 function Field({
   label,
@@ -51,18 +49,6 @@ function missing(reason: string): ReactElement {
   return <StatusPill status="unavailable" text={reason} />;
 }
 
-/** The roof-age basis as words ("Last reroof permit"); an unknown code is humanized, never raw. */
-function basisText(code: string): string {
-  const known = ROOF_BASIS_CODES.find((c) => c === code);
-  return known === undefined ? humanizeCode(code) : roofAgeBasisLabel(known);
-}
-
-/** `6.4 yrs` from a day count (the age of an open permit). */
-function yearsOf(days: number): string {
-  return `${(days / 365).toFixed(1)} yrs`;
-}
-
-/** The snapshot taken when the lead was created. Missing fields say why (never blank/0). */
 function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
   if (lead.notInCurrentRun) {
     return (
