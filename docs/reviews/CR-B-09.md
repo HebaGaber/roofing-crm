@@ -102,3 +102,19 @@ After the ask-in-map rebuild, the SQL search, Run 2 and the day's fixes, the sam
 | Minor | `crm:alarmEmail` committed; CI key available to any 0* branch push; static `crm-ci` key | metagross | follow-up (retire `crm-ci` after the final CI run) |
 
 Defects found while verifying on the deployed API (not by reviewers): the lead repo was missing from the Lambda context (agent could not check or propose leads), and `leads.undoCreate` failed on the real table because `sequence` is a DynamoDB reserved word. Both fixed and deployed (`86029e9`, `7b925eb`); the golden run G7 now passes end to end including undo.
+
+### `/code-review medium` on the final head (`33f2573`, 2026-10-25)
+
+Run once after the five kit re-scores, on `feature/roofing-crm...HEAD`. Eight findings, none rated Critical. No fixer round was run; by the PO's decision on 2026-10-25 (G7 approved with exceptions) they are recorded as follow-ups in `docs/pending-items.md` section 5.
+
+| Severity | Finding | Disposition |
+| --- | --- | --- |
+| Major | `runBounded` calls `connection.interrupt()` on the one shared DuckDB connection, so a query that reaches its 10 s budget can abort an unrelated query running at the same time; the timer also starts at call time, not at execution time (`duckDbParquet.ts:523`) | follow-up: one connection per concurrent query, or a queue, then start the timer at execution |
+| Major | `countyOverview`, `getProperty`, `getPropertyByRequestIdentifier` and `presentRequestIdentifiers` run without the query budget (`duckDbParquet.ts:960, 864, 890, 905`) | follow-up: bound them with `runBounded` |
+| Minor | `verifyCitations` runs twice per turn when compose claims are all dropped and re-fetches every cited property (`composeAnswer.ts:1557`) | follow-up: reuse the first fetch |
+| Minor | Lockout counter key changed from the Cognito sub to the lower-cased email: counters stored under the old key are orphaned, and a sign-in with an alias could still split the key (`lockout-handler.ts:127`) | follow-up; the shared admin signs in with the email, ERR-21 is closed |
+| Minor | `proposedTcadIds` accumulates over the whole thread (7 days), so a confirm accepts a proposal from an earlier turn (`threadStore.ts:77`) | accepted for now: the guard is "proposed to this user in this thread", as designed; tighten to the latest answer if the PO wants it |
+| Minor | `permitNumber` lookup ignores the radius although the tool comment says it is scoped (`tools.ts:99`) | follow-up: fix the comment or add a "not narrowed by area" note |
+| Minor | A timed-out turn is billed at the full conservative estimate and reports `modelCalls: 0` (`usageMeter.ts:35`) | follow-up |
+| Minor | `ThreadOwnedByAnotherUserError` is shown as "proposals couldn't be saved" (`agent.ts:128`) | follow-up: distinct non-retryable outcome |
+

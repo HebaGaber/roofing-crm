@@ -90,6 +90,8 @@ Re-check after each new run with the commands in section 1.1 and the counts in `
 - Every deploy starts one (no-op) sync because of the deploy nonce; a deploy while a sync of the same CID is running starts a second concurrent run (parts are content-addressed and Promote is conditional, so it is safe).
 - If `getModel()` fails after the spend reservation, over-counting is possible only on misconfiguration (fixed by reordering; keep the test).
 
+- Final `/code-review medium` (2026-10-25) left eight follow-ups, listed with file and line in `docs/reviews/CR-B-09.md`: the 10 s query interrupt shares one DuckDB connection, four index methods run without the query budget, a duplicate citation fetch, the lockout key change, thread-wide proposal scope, the permit-number lookup ignoring the radius, timed-out turns billed at the estimate, and the thread-owner error message.
+
 ## 6. Cleanup and hygiene
 
 - Retire the CI AWS access when the assessment is over: remove the `crm-ci` user from `infra/lib/crm-ci-user.ts`, redeploy, delete the repository secrets `CRM_CI_AWS_ACCESS_KEY_ID` and `CRM_CI_AWS_SECRET_ACCESS_KEY`.
