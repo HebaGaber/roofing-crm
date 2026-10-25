@@ -93,7 +93,7 @@ manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`, not the 
 
 ### Implementation for User Story 4
 
-- [ ] T021 [US4] Make `DATA_MANIFEST_CID` the authoritative manifest for the sync and start one sync automatically on a deploy that changes it (auto-sync, PO decision); size the sync Lambdas (memory, `/tmp`, timeout) for the full county (~556 MB of parts); replace the hard-coded manifest CID in `apps/api/src/routers/agent.ts` with the promoted run's; then deploy with the Run 2 CID so T020 passes (builder: metagross)
+- [x] T021 [US4] Make `DATA_MANIFEST_CID` the authoritative manifest for the sync and start one sync automatically on a deploy that changes it (auto-sync, PO decision); size the sync Lambdas (memory, `/tmp`, timeout) for the full county (~556 MB of parts); replace the hard-coded manifest CID in `apps/api/src/routers/agent.ts` with the promoted run's; then deploy with the Run 2 CID so T020 passes (builder: metagross)
 
 **Deferred (PO):** following Task A's incremental-run chain (`previousManifestCid`, Run 3+) — see the story's Out of scope. Not built in this story.
 - [x] T022 [US4] Confirm constitution B1 and `docs/architecture-constitution.md` §7 describe the data path as built: the CRM reads Task A's published manifest and parts directly by CID, manifest set by `DATA_MANIFEST_CID` — per AC-7/FR-007 (builder: alakazam)
@@ -163,7 +163,7 @@ and citation accuracy for each.
 - [x] T044 [US2] Add `permitNumber` optional field to `SearchPermitsQuery` in `apps/api/src/adapters/duckDbParquet.ts` (needed for G5's exact-permit lookup); extend `searchPermits` tool input accordingly (depends on T032) (builder: alakazam)
 - [x] T045 [US2] Add Bedrock prompt caching (cache points on the system prompt and the last non-system message, per ADR-06 §6.1) to `apps/api/src/agent/runAgent.ts`'s Bedrock path, logging cache read/write token counts in the trace; keeps p95 under budget at the 442k-row scale (depends on T034) (builder: ash)
 - [x] T046 [US2] Add the `AgentAsksTotal`, `AgentAnswerLatencyMs`, `AgentModelCallsTotal`, `AgentCitationsTotal`, `AgentCitationsVerified`, `AgentCitationGroundednessRate` metric constants to `packages/observability/src/index.ts`'s `METRIC_NAMES`, and emit them from `apps/api/src/routers/agent.ts` per request via the existing `obs.metrics.addMetric(...)` pattern used in `apps/api/src/routers/leads.ts` (contracts/observability.md) (builder: metagross)
-- [ ] T047 [US2] Run T042 against the deployed agent; commit results to `docs/evidence/B-09.md` (depends on Phase 4 deploy, T042) (builder: alakazam)
+- [x] T047 [US2] Run T042 against the deployed agent; commit results to `docs/evidence/B-09.md` (depends on Phase 4 deploy, T042) (builder: alakazam)
 
 **Checkpoint**: all 7 golden queries pass on the hosted endpoint with evidence recorded.
 
@@ -214,7 +214,7 @@ is fixed or logged with an explicit reason.
 ### Implementation for User Story 5
 
 - [x] T059 [US5] Re-diff every screen in T058's checklist against `design/prototype/CrmAsk*.dc.html` (corrected path, per `agent-design.md` correction #2) and the existing screen prototypes; fix spacing/token/copy/missing-state mismatches directly in the relevant `.module.css`/`.tsx` files, or mark deferred with a reason in `design/design-review-log.md` (depends on T039, T056, T058) (builder: metagross, consult: audino)
-- [ ] T060 [US5] Re-run T048/T049 (and `tests/e2e/responsive/map-shell.spec.ts`, `leads-shell.spec.ts`) once, after T059's fixes land — not before, per `agent-design.md` smeargle §4 ("avoid proving a stale layout") (depends on T059) (builder: metagross)
+- [x] T060 [US5] Re-run T048/T049 (and `tests/e2e/responsive/map-shell.spec.ts`, `leads-shell.spec.ts`) once, after T059's fixes land — not before, per `agent-design.md` smeargle §4 ("avoid proving a stale layout") (depends on T059) (builder: metagross)
 
 **Checkpoint**: zero unresolved visual mismatches other than ones explicitly logged as deferred.
 
@@ -236,11 +236,11 @@ Phase N runs before its Phase Z).
 
 **Purpose**: constitution I, XVI, XXII. The story is not done until these pass.
 
-- [ ] TZ01 Run the reviewer agents (`alakazam`, `ash`, `metagross`, `audino`, `porygon`) read-only against the final branch; record scores in `docs/reviews/CR-B-09.md` (each ≥75 or justified)
-- [ ] TZ02 Deploy to the hosted runtime (`npx cdk deploy` + Amplify branch push); record the preview URL
-- [ ] TZ03 Run the Playwright scenario tests (one per TC in `testplans/B-09-test-cases.md`, tagged `@scenario:B-09-TC-nnn`) against `RUNTIME_URL`; screenshots to `docs/evidence/img/`
-- [ ] TZ04 Run the full `smeargle` suite (`tests/e2e/responsive/*.spec.ts`) at 390/768/1440 on the hosted URL
-- [ ] TZ05 Run the story's `agents.verify` check: golden queries G1–G7 (T042/T047) + `RoofingCrm` dashboard check (T057)
+- [x] TZ01 Run the reviewer agents (`alakazam`, `ash`, `metagross`, `audino`, `porygon`) read-only against the final branch; record scores in `docs/reviews/CR-B-09.md` (each ≥75 or justified)
+- [x] TZ02 Deploy to the hosted runtime (`npx cdk deploy` + Amplify branch push); record the preview URL
+- [x] TZ03 Run the Playwright scenario tests (one per TC in `testplans/B-09-test-cases.md`, tagged `@scenario:B-09-TC-nnn`) against `RUNTIME_URL`; screenshots to `docs/evidence/img/`
+- [x] TZ04 Run the full `smeargle` suite (`tests/e2e/responsive/*.spec.ts`) at 390/768/1440 on the hosted URL
+- [x] TZ05 Run the story's `agents.verify` check: golden queries G1–G7 (T042/T047) + `RoofingCrm` dashboard check (T057)
 - [ ] TZ06 Write `docs/reports/TR-B-09.md`, `docs/evidence/B-09.md`, the `docs/traceability.md` row, and one `docs/kit-usage.md` line per agent used
 - [ ] TZ07 Update `docs/progress.md` via `bash scripts/progress.sh` — only after the user approves G7 and the branch is merged `--no-ff` into `feature/roofing-crm` (constitution XX); not part of the pre-merge build
 
@@ -313,6 +313,6 @@ Task: "Write failing unit test for the crm-agent-usage spend-cap conditional wri
 
 ## Phase 9: Convergence
 
-- [ ] T061 Add a "Run 2 sync" section to `docs/evidence/B-09.md`: the `index_meta` values (propertyCount 441961, permitCount 15025, permit reconcile result), parts fetched versus listed (130 of 225 and why), and the source of the 2,362 excluded trade sub-permits, each with the commands that reproduce it per SC-005 (partial)
-- [ ] T062 Add 360, 600 and 1280 px no-horizontal-scroll checks (`scrollWidth <= innerWidth`) on the map, the phone Filters sheet, the AI panel and the list view to `tests/e2e/responsive/layout.spec.ts`, then run them on the hosted URL per FR responsive and Constitution responsive article (partial)
-- [ ] T063 Re-measure B-07-TC-NF-01 (lead create to list, p95 at most 2,000 ms) on the hosted URL with the keep-warm rule active and record the three viewport samples in `docs/evidence/B-07.md`; the last CI sample was 1.75 s, 1.84 s and 2.03 s with the browser, not the API, as the main cost (partial)
+- [x] T061 Add a "Run 2 sync" section to `docs/evidence/B-09.md`: the `index_meta` values (propertyCount 441961, permitCount 15025, permit reconcile result), parts fetched versus listed (130 of 225 and why), and the source of the 2,362 excluded trade sub-permits, each with the commands that reproduce it per SC-005 (partial)
+- [x] T062 Add 360, 600 and 1280 px no-horizontal-scroll checks (`scrollWidth <= innerWidth`) on the map, the phone Filters sheet, the AI panel and the list view to `tests/e2e/responsive/layout.spec.ts`, then run them on the hosted URL per FR responsive and Constitution responsive article (partial)
+- [x] T063 Re-measure B-07-TC-NF-01 (lead create to list, p95 at most 2,000 ms) on the hosted URL with the keep-warm rule active and record the three viewport samples in `docs/evidence/B-07.md`; the last CI sample was 1.75 s, 1.84 s and 2.03 s with the browser, not the API, as the main cost (partial)

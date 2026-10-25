@@ -510,3 +510,79 @@ test.describe("Layout: top bar below 840 px and the open Coming-soon page", () =
     }
   });
 });
+
+// ---- No horizontal scroll at the narrowest widths a person meets -----------------------------
+// The page must never scroll sideways: scrollWidth of the document stays within the window width.
+// One project is enough (the viewport is set per case); each case waits for its own content first.
+const NO_SCROLL_WIDTHS = [360, 600, 1280] as const;
+const SHEET_WIDTHS = [360, 600] as const;
+const AI_WIDTHS = [1280, 360] as const;
+const SEARCH_QUERY = SEARCH_PATH.slice(1); // "?lat=...&lng=...&r=3"
+
+async function expectNoSideScroll(page: Page, what: string): Promise<void> {
+  await ready(page);
+  const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(
+    scrollWidth,
+    `${what}: scrollWidth ${scrollWidth} within window ${innerWidth}`,
+  ).toBeLessThanOrEqual(innerWidth);
+}
+
+test.describe("Layout: no horizontal scroll at 360, 600 and 1280 px", () => {
+  test.beforeEach(async ({}, testInfo) => {
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    test.skip(testInfo.project.name !== "desktop-1440", "viewport is set per case; run once");
+  });
+
+  for (const width of NO_SCROLL_WIDTHS) {
+    test(`${width}: the map at the east pin`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openMapSearch(page);
+      await expectNoSideScroll(page, `map at ${width}`);
+    });
+
+    test(`${width}: the list view`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(`/?${SEARCH_QUERY}&view=list`);
+      await expect(mapScreen(page).region).toBeVisible();
+      await expect(
+        page.locator("[data-result-row], [data-state^='CrmCandidates']").first(),
+      ).toBeAttached({
+        timeout: 30_000,
+      });
+      await expectNoSideScroll(page, `list view at ${width}`);
+    });
+
+    test(`${width}: /leads`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/leads");
+      await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
+      await expectNoSideScroll(page, `leads at ${width}`);
+    });
+  }
+
+  for (const width of SHEET_WIDTHS) {
+    test(`${width}: the phone Filters sheet open`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await openMapSearch(page);
+      await page
+        .locator('[data-route="map"]')
+        .getByRole("button", { name: /^Filters/ })
+        .click();
+      await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
+      await expectNoSideScroll(page, `Filters sheet at ${width}`);
+    });
+  }
+
+  for (const width of AI_WIDTHS) {
+    test(`${width}: the AI panel`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/?mode=ai");
+      await expect(page.locator('[data-panel="ask"]')).toBeVisible();
+      await expectNoSideScroll(page, `AI panel at ${width}`);
+    });
+  }
+});
