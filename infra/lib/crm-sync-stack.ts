@@ -97,8 +97,12 @@ const DEFAULT_SIZING: HandlerSizing = { memoryMb: 1024, timeout: Duration.minute
  * - memory 3008 MB: the largest size proven to run in this (new, Free-plan) account — another
  *   function here already runs at 3008 MB; new accounts can be capped there, so nothing above it
  *   is assumed. ~1.7 vCPU at this size.
- * - DuckDB memory_limit 1800 MB (~60%), spilling to /tmp beyond it, leaving ~1.2 GB for Node,
- *   the native module and the S3 upload buffers. JS-side rows are streamed per DuckDB chunk.
+ * - DuckDB memory_limit 2400 MB, spilling to /tmp beyond it. Run 3 (owners parsed into persons,
+ *   address-point coordinates, deed-dated tenure) failed the hosted build at 1800 MB with
+ *   "failed to pin block (1.6 GiB/1.6 GiB used)"; reproduced locally, it passes from 2200 MB with
+ *   a 1.2 GB peak resident size (1.8 GB at 2600 MB), so 2400 MB leaves headroom and ~600 MB of
+ *   the 3008 MB for Node, the native module and the S3 upload buffers. JS-side rows are streamed
+ *   per DuckDB chunk.
  * - /tmp 4096 MB: ~556 MB parts + ~0.5 GB NDJSON + Parquet output + DuckDB spill, ~2.5x headroom.
  * - timeout 15 min (Lambda's maximum): architecture-constitution.md §10 budgets the build step at
  *   < 12 min (else switch to Fargate); 15 min leaves margin above that budget, not a new target.
@@ -107,7 +111,7 @@ const BUILD_INDEX_SIZING: HandlerSizing = {
   memoryMb: 3008,
   timeout: Duration.minutes(15),
   ephemeralStorageMb: 4096,
-  duckDbMemoryLimit: "1800MB",
+  duckDbMemoryLimit: "2400MB",
 };
 
 /** Validate downloads BuildIndex's two full-county Parquet files and reads every row's
