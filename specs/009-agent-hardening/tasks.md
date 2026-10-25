@@ -308,3 +308,11 @@ Task: "Write failing unit test for the crm-agent-usage spend-cap conditional wri
    and US3's output.
 5. Phase N (polish, `/simplify`, full local test suite) → Phase Z (deploy, reviewer scores, hosted
    proof, evidence) — always the final phase.
+
+---
+
+## Phase 9: Convergence
+
+- [ ] T061 Add a "Run 2 sync" section to `docs/evidence/B-09.md`: the `index_meta` values (propertyCount 441961, permitCount 15025, permit reconcile result), parts fetched versus listed (130 of 225 and why), and the source of the 2,362 excluded trade sub-permits, each with the commands that reproduce it per SC-005 (partial)
+- [ ] T062 Add 360, 600 and 1280 px no-horizontal-scroll checks (`scrollWidth <= innerWidth`) on the map, the phone Filters sheet, the AI panel and the list view to `tests/e2e/responsive/layout.spec.ts`, then run them on the hosted URL per FR responsive and Constitution responsive article (partial)
+- [ ] T063 Re-measure B-07-TC-NF-01 (lead create to list, p95 at most 2,000 ms) on the hosted URL with the keep-warm rule active and record the three viewport samples in `docs/evidence/B-07.md`; the last CI sample was 1.75 s, 1.84 s and 2.03 s with the browser, not the API, as the main cost (partial)
