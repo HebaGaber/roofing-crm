@@ -18,7 +18,7 @@ import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } fr
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
 test.use({ storageState: AUTH_STATE_PATH });
 
-// Data-dependent points live in lib/run-fixtures.ts (read from the real Run 2 index).
+// Data-dependent points live in lib/run-fixtures.ts (read from the real served index, see lib/run-fixtures.ts).
 
 /** Drops the pin at the given lat/lng by firing the live MapLibre instance's own click event
  *  (window.__crmMap, CrmMap.tsx's test-only hook) at that point. A real pointer click is not used
@@ -28,13 +28,15 @@ async function clickMapAt(
   page: import("@playwright/test").Page,
   point: { lat: number; lng: number },
 ): Promise<void> {
-  const fired = await page.evaluate((p) => {
+  const fired = await page.evaluate(async (p) => {
     const map = (
       window as unknown as {
         __crmMap?: {
           project(lngLat: [number, number]): { x: number; y: number };
           jumpTo(options: { center: [number, number]; zoom: number }): void;
           fire(type: string, data: unknown): void;
+          queryRenderedFeatures(point: { x: number; y: number }, options: unknown): unknown[];
+          getLayer(id: string): unknown;
         };
       }
     ).__crmMap;
@@ -43,6 +45,18 @@ async function clickMapAt(
     // the point and a click on a cluster expands it instead of dropping a pin.
     map.jumpTo({ center: [p.lng, p.lat], zoom: 12 });
     const projected = map.project([p.lng, p.lat]);
+    // The county-overview hexagons hide once the zoom state catches up, a moment after jumpTo.
+    // While one is still drawn under the point the app leaves the click to the hexagon handler,
+    // which a synthetic map click never reaches, so wait for it to go (a person clicking at this
+    // zoom never meets a hexagon). Run 3's overview loads fast enough to be there at this moment.
+    for (let i = 0; i < 50; i += 1) {
+      const hexes =
+        map.getLayer("crm-hex-fill") === undefined
+          ? []
+          : map.queryRenderedFeatures(projected, { layers: ["crm-hex-fill"] });
+      if (hexes.length === 0) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     map.fire("click", {
       lngLat: { lng: p.lng, lat: p.lat },
       point: { x: projected.x, y: projected.y },

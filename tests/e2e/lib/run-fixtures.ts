@@ -4,9 +4,11 @@
 // Provenance (all entries unless a line says otherwise):
 //   source   the API Lambda `crm-api-trpc` (account profile `assess`, region eu-north-1), invoked
 //            with an API Gateway v2 event: `search.properties`, `search.permits`, `property.get`
-//   read on  2026-10-25
-//   run      travis-full-run2-20261024 (Task A Run 2: 441,961 properties, 15,025 Austin permits)
-//   manifest bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute
+//   read on  2026-10-25 (after the Run 3 promotion at 20:27Z)
+//   run      travis-full-run3-20261025 (Task A Run 3, contract v1.1: 441,961 properties, 15,025 Austin permits)
+//   manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm
+//   history  Run 2 (travis-full-run2-20261024, bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute)
+//            was refreshed to Run 3 the same day; the pins and the open-permit lead survived unchanged
 //
 // Honest data facts behind the choices (measured on that index with the map's own default query:
 // `search.properties` with NO roof age filter, which is what the Map opens with):
@@ -17,16 +19,17 @@
 //    in Central Austin did not answer inside the 28 s Lambda limit. That is a PRODUCT finding (NFR-001
 //    is p95 under 3 s); these fixtures therefore use mid-density pins with small radii so the
 //    layout and search specs test layout and search, not the Lambda timeout.
-//  - only about 2 percent of properties have a roof age (a closed reroof permit), so a roof age
-//    filter, when a spec sets one, empties most areas.
+//  - Run 3 gives 389,528 of 441,961 properties a roof age (88 percent; 380,018 of them are the
+//    year built, confidence low, only 9,510 come from a permit). Run 2 had about 2 percent. A roof
+//    age filter therefore no longer empties most areas.
 //  - open permits are rare: 15 within 2 mi of the Central Austin pin below.
 //
 // A new Task A run can move any of these. Specs therefore assert RELATIONS (results exist, widening
 // never loses results, every row is inside the ring), and where a fixed property is needed, the B-07
 // suite re-reads it from the live index and fails with a clear message when it drifted.
 
-export const FIXTURES_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
-export const FIXTURES_RUN_ID = "travis-full-run2-20261024";
+export const FIXTURES_MANIFEST_CID = "bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm";
+export const FIXTURES_RUN_ID = "travis-full-run3-20261025";
 
 export interface LatLng {
   readonly lat: number;
@@ -39,8 +42,8 @@ export interface LatLng {
 export const CENTRAL_AUSTIN: LatLng = { lat: 30.3539, lng: -97.7382 };
 
 /** East Travis County pin used for pin-drop and radius specs.
- *  `search.properties`, no roof filter: 0.5 mi gives 13 properties, 1 mi 81, 3 mi 1,006
- *  (answered in 1.9 s), 5 mi 10,869 (3.9 s). Rows exist at every radius from 1 mi up. */
+ *  `search.properties`, no roof filter, Run 3: 0.5 mi gives 13 properties, 1 mi 81, 3 mi 1,006
+ *  (answered in 0.4 s), 5 mi 11,095 (0.8 s). Rows exist at every radius from 1 mi up. */
 export const EAST_TRAVIS: LatLng = { lat: 30.4, lng: -97.45 };
 
 /** The pin the layout suite opens through the URL (`/?lat&lng&r`): EAST_TRAVIS at 3 mi, 1,006
@@ -49,7 +52,7 @@ export const LAYOUT_SEARCH_PATH = `/?lat=${EAST_TRAVIS.lat}&lng=${EAST_TRAVIS.ln
 
 /** A pocket in north-east Travis County that is honestly empty at 0.5 mi and has results one
  *  +1 mi step wider.
- *  `search.properties`, no roof filter: 0.5 mi gives afterRadius 0; 1.5 mi gives afterRadius 1,225.
+ *  `search.properties`, no roof filter: 0.5 mi gives afterRadius 0; 1.5 mi gives afterRadius 1,227 (Run 3; 1,225 in Run 2).
  *  It is opened through the URL, not a map click: at county zoom one pixel is about 260 m, so a
  *  click would shift the centre by more than a 0.5 mi ring tolerates. */
 export const ZERO_THEN_WIDEN: LatLng & {
@@ -107,8 +110,8 @@ export const OPEN_PERMIT_NUMBER = "2026-121002 BP";
  *  open-permit one is about 1 mi from it. */
 export const LEADS_AREA: LatLng = CENTRAL_AUSTIN;
 
-/** A real published manifest that is NOT the served one (carried over unchanged from the earlier
- *  fixture; the served run is FIXTURES_MANIFEST_CID). The request identifier below is absent from the
+/** A real published manifest that is NOT the served one: the previous run, Task A Run 2 (the
+ *  served run is FIXTURES_MANIFEST_CID). The request identifier below is absent from the
  *  served index by construction, which is exactly "not in the current run". */
-export const OLD_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
+export const OLD_MANIFEST_CID = "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute";
 export const STALE_REQUEST_ID = "B07STALE";
