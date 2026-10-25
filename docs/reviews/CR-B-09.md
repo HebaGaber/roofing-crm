@@ -3,7 +3,7 @@ id: CR-B-09
 type: code-review-log
 story: B-09
 branch: 009-agent-hardening
-reviewed_commit: a769cc4 (re-scored at d78de40)
+reviewed_commit: a769cc4 (re-scored at d78de40; final re-score at 9fc1c08, fixer round at cbb548e)
 tools: [/code-review medium, soofi-xyz-team-kit:alakazam, soofi-xyz-team-kit:ash, soofi-xyz-team-kit:metagross, soofi-xyz-team-kit:audino, soofi-xyz-team-kit:porygon]
 created: 2026-10-24
 ---
@@ -69,3 +69,36 @@ Remaining Minor / Low notes (not blocking G7):
 | The alarm's citing-outcome list must track any new citing path | porygon | noted in code |
 | Every deploy starts one (no-op) sync because of the deploy nonce | metagross | by design |
 | Three `as unknown as` casts remain outside B-09's files (`leadsApi.ts`, `CrmMap.tsx`, `auth/config.ts`) | metagross | follow-up |
+
+
+## Final re-score on Run 2 (`9fc1c08`, 2026-10-25)
+
+After the ask-in-map rebuild, the SQL search, Run 2 and the day's fixes, the same five reviewers re-read `git diff a769cc4..HEAD` (read-only, in parallel). No Critical finding, nothing blocks merge.
+
+| Reviewer | Lens | Score | Pass mark |
+| --- | --- | --- | --- |
+| `alakazam` | retrieval, grounding, place recognition, golden queries | **84 / 100** | 75 |
+| `ash` | agent runtime, confirm flows, spend guard, keep-warm, reserved words | **87 / 100** | 75 |
+| `metagross` | infra, CDK, CI, data path | **88 / 100** | 75 |
+| `audino` | design fidelity, Atlas, states, accessibility | **82 / 100** | 75 |
+| `porygon` | metrics, alarms, count reconciliation | **84 / 100** | 75 |
+
+### Findings and disposition
+
+| Severity | Finding | Raised by | Disposition |
+| --- | --- | --- | --- |
+| Major | Answer text said "showing the top N" with the cited-row count, not the shown-row count | porygon | fixed (`71b6e8a`), unit tests |
+| Major | Lead marks silently disappear when more than 1,000 properties are in the ring or the presence read fails | audino | fixed (`cbb548e`), notice `CrmCandidatesLeadsUnavailable` in list and triage |
+| Major (evidence) | G1, G2, G6 not re-run after the agent changes; pass 1 did not record resolved areas | alakazam | closed by pass 6 (`fa023a1`) |
+| Minor | Empty-answer "states a reason" check was vacuous | alakazam | fixed (`71b6e8a`) |
+| Minor | Tenure other than 10 years answered silently at the 10-year cutoff | alakazam | fixed: honest note |
+| Minor | 15-year roof default applied to non-roof questions | alakazam | fixed: roof questions only, plus a code backstop |
+| Minor | FilterSheet `aria-modal` without a Tab trap; first-visit Escape listener document-wide; pins named only "Source N"; stale board text | audino | fixed (`cbb548e`) |
+| Minor | Fixture path in `pending-items.md`; Run 1 figures in the run log | metagross, porygon | fixed (`3345f06`) |
+| Minor | Evidence lacks a Run 2 sync section (2,362 sub-permits excluded, 130 of 225 parts) | porygon | follow-up |
+| Minor | G3 empty because "open" excludes stalled permits | alakazam | product decision, recorded in the PR |
+| Minor | No automated no-horizontal-scroll check at 360, 600, 1280 px (CSS-rule test added; e2e widths listed) | audino | follow-up |
+| Minor | Gateway key never refreshed after rotation; plain Error for a missing gateway key; thread ids client-supplied; reservation kept if a Lambda times out mid-turn | ash | follow-up |
+| Minor | `crm:alarmEmail` committed; CI key available to any 0* branch push; static `crm-ci` key | metagross | follow-up (retire `crm-ci` after the final CI run) |
+
+Defects found while verifying on the deployed API (not by reviewers): the lead repo was missing from the Lambda context (agent could not check or propose leads), and `leads.undoCreate` failed on the real table because `sequence` is a DynamoDB reserved word. Both fixed and deployed (`86029e9`, `7b925eb`); the golden run G7 now passes end to end including undo.
