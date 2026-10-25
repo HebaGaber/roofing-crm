@@ -169,11 +169,27 @@ describe("property.get", () => {
     expect(result.bbbStatusReason).not.toBeNull();
   });
 
-  it("returns a lineageUrl that carries the propertyCid, resolving to Task A's Explorer (B-03-TC-020)", async () => {
-    const caller = makeCaller([{ ...property(), permits: [permit({})] }]);
+  it("returns a lineageUrl that opens Task A's Explorer at the property: /tx/travis/explore with at, r and sel (B-03-TC-020)", async () => {
+    const caller = makeCaller([
+      { ...property({ latitude: 30.3597374, longitude: -97.751527 }), permits: [] },
+    ]);
     const result = await caller.property.get({ propertyCid: PROPERTY_CID });
-    expect(result.lineageUrl).toContain(PROPERTY_CID);
-    expect(result.lineageUrl).toMatch(/^https:\/\//);
+    const url = new URL(result.lineageUrl);
+    expect(url.protocol).toBe("https:");
+    // The old `/explore` path answers 404 on Task A's site since A-13.
+    expect(url.pathname).toBe("/tx/travis/explore");
+    expect(url.searchParams.get("sel")).toBe(PROPERTY_CID);
+    expect(url.searchParams.get("at")).toBe("30.3597374,-97.751527");
+    expect(url.searchParams.get("r")).toBe("1");
+  });
+
+  it("a property with no coordinates still links to the Explorer by sel only", async () => {
+    const caller = makeCaller([{ ...property({ latitude: null, longitude: null }), permits: [] }]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    const url = new URL(result.lineageUrl);
+    expect(url.pathname).toBe("/tx/travis/explore");
+    expect(url.searchParams.get("sel")).toBe(PROPERTY_CID);
+    expect(url.searchParams.has("at")).toBe(false);
   });
 
   it("returns permits joined by propertyCid, read verbatim (never recomputed)", async () => {

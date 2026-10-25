@@ -32,13 +32,26 @@ export function bbbFor(
   };
 }
 
-/** Task A ships as CountyLens at `countylens.aldarraj.com` (docs/02-design.md); its Explorer
- *  route opens a property's drawer via the `sel` URL param (the A-13 `ExploreFilters.state.ts`
- *  pattern this story's own copy still carries). `EXPLORER_BASE_URL` overrides the host for a
- *  non-default deploy; this never falls back to a placeholder — the path is fixed by Task A's
- *  own route shape, not invented here. */
-export function lineageUrl(propertyCid: string): string {
-  return `${countyLensBaseUrl()}/explore?sel=${encodeURIComponent(propertyCid)}`;
+/** Task A ships as CountyLens at `countylens.aldarraj.com` (docs/02-design.md). Since A-13 its
+ *  Explorer lives at `/tx/travis/explore` (the earlier `/explore` answers 404 — that was this
+ *  link's defect). The Explorer opens a property's panel from `sel` only when the property is
+ *  among the search results, and it searches the default place (Austin, 5 mi) unless told
+ *  otherwise, so the link also centres the search on the property (`at=lat,lon`, `r=1`, nearest
+ *  first): the property is then always the first row. Without coordinates (a property the index
+ *  holds no point for) only `sel` can be sent. `EXPLORER_BASE_URL` overrides the host for a
+ *  non-default deploy; this never falls back to a placeholder — the path and parameters are
+ *  fixed by Task A's own route (contracts/ui-routes.md: `at`, `r`, `sel`). */
+export function lineageUrl(
+  propertyCid: string,
+  at?: { readonly lat: number | null; readonly lng: number | null },
+): string {
+  const params = new URLSearchParams();
+  if (at?.lat != null && at.lng != null) {
+    params.set("at", `${String(at.lat)},${String(at.lng)}`);
+    params.set("r", "1");
+  }
+  params.set("sel", propertyCid);
+  return `${countyLensBaseUrl()}/tx/travis/explore?${params.toString().replace(/%2C/g, ",")}`;
 }
 
 /** CountyLens's origin (no trailing slash): the one config read shared by the lineage link and
@@ -100,7 +113,10 @@ export async function propertyDetail(
     permits,
     bbbStatus,
     bbbStatusReason,
-    lineageUrl: lineageUrl(propertyCid),
+    lineageUrl: lineageUrl(propertyCid, {
+      lat: property.latitude,
+      lng: property.longitude,
+    }),
     manifestCid,
     ...(near === undefined ? {} : { nearPlace: near }),
   };
