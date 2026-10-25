@@ -74,6 +74,7 @@ Rows: AC-n = acceptance criteria, R-n = requirements stated only in Context or D
 | G7 (B-07) | docs/gates/G7-B-07-precheck.md | | FAIL on C-04 only, a PO-deferred scope (A-11 data); every fixable finding fixed (coverage, commit prefixes, defect records, test report, re-scores 85 and 86, CI green) | Approved with exceptions (see `stories/B-07-leads.md` Gate G7) | 2026-10-24 |
 | G4 (B-09) | stories/B-09-agent-hardening.md | | PASS (native-build deviation documented) | Ready | 2026-10-24 |
 | G5 (B-09) | specs/009-agent-hardening/{plan,tasks}.md | | PASS, 0 FAIL (fixed Phase N/Z ordering + 2 /speckit-analyze findings) | Approved (implementation proceeding) | 2026-10-24 |
-| G6 (B-09) | testplans/B-09-test-cases.md | | FAIL, 1 FAIL (C-07: real test data — Run-1-manifest values left as placeholder tokens pending the data switch) | **Held** — user explicitly deferred approval until data readiness (US4 deploy) and A-13/A-14 upstream status are resolved; implementation proceeds under a recorded exception to constitution XVIII in the meantime (run-log.md 2026-10-24) | 2026-10-24 |
+| G6 (B-09) | testplans/B-09-test-cases.md | | FAIL, 1 FAIL (C-07: real test data — Run-1-manifest values left as placeholder tokens pending the data switch) | Approved with exceptions (real Run 2 test data in place; PO decision 2026-10-25; this replaces the earlier Held status) | 2026-10-25 |
+| G7 (B-09) | docs/gates/G7-B-09-precheck.md | | FAIL on C-04 only (9 deferred or not-proven test cases, listed in `docs/reports/TR-B-09.md`); all other checks PASS, with caveats on C-03 and C-09 | Approved with exceptions (see `stories/B-09-agent-hardening.md` Gate G7) | 2026-10-25 |
 | G4–G7 (other stories) | per story; see `docs/progress.md` | | | | |
 | G8 | docs/release.md | | | | |

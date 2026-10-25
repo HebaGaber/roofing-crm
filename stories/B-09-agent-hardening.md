@@ -23,8 +23,8 @@ agents:
   verify: "golden queries G1–G7 (checks.md §7) · full smeargle suite at 390/768/1440 · CloudWatch RoofingCrm dashboard"
 skills: [build-rag-systems, build-ai-agents, use-elephant-mcp, responsive-design-tests, unify-metrics, build-frontend-backends, apply-engineering-guidelines]
 ui: true
-status: Ready
-gate: G4
+status: Done
+gate: G7
 qc_testability_signoff: false
 created: 2026-10-23
 reuses:
@@ -141,3 +141,23 @@ No `[NEEDS CLARIFICATION]` remaining.
 | G4-10 | AI pre-check (`developmentsupport-g4-precheck`): PASS | ☑ |
 
 **Decision:** ☑ Ready ☐ Returned, reason: {…} · 2026-10-24
+
+## Gate G7: Validated build
+
+| # | Criterion | Status |
+| --- | --- | --- |
+| C-01 | Every task in `tasks.md` is done | ☑ (all but TZ07, which runs only after the merge) |
+| C-02 | Unit and integration tests pass; coverage of new code at least 80 % | ☑ (1,743 passed; `docs/reports/UT-B-09.md`) |
+| C-03 | Code review: every reviewer at least 75, no open Critical | ☑ (alakazam 84, ash 87, metagross 88, audino 82, porygon 84; `/code-review medium` on the final head: 8 follow-ups, none Critical; `docs/reviews/CR-B-09.md`) |
+| C-04 | Test cases pass on the hosted URL | ☑ with PO exception (24 of 33 pass, none fail, 9 deferred or not proven; `docs/reports/TR-B-09.md`) |
+| C-05 | Every defect closed | ☑ (ERR-21 closed; GAP-1 to GAP-5 documented) |
+| C-06 | No open Critical defect | ☑ |
+| C-07 | Evidence complete | ☑ (`docs/evidence/B-09.md`; only one B-09 screenshot, noted in the pre-check) |
+| C-08 | Traceability and kit usage complete | ☑ |
+| C-09 | Commits start with the story ID; no secrets | ☑ (four commits carry finding numbers with a hash sign, which cannot be undone) |
+| C-10 | Story status Done after approval | ☑ |
+
+**Decision:** ☑ Approved with exceptions ☐ Returned · HebaGaber (PO) · 2026-10-25
+
+**Exceptions granted by the PO:** the 9 deferred or not-proven test cases in `docs/reports/TR-B-09.md` (TC-002, TC-017, TC-019b, TC-024, TC-NF-01 as specified, and the design sign-offs TC-021, TC-022, TC-023, TC-023b); the eight `/code-review medium` follow-ups in `docs/reviews/CR-B-09.md`; Run 3 handling and release steps R1 to R7, which move to the follow-up branch (`docs/pending-items.md`).
+
