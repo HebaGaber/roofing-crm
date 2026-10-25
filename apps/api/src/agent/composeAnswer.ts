@@ -124,7 +124,7 @@ export const PLAN_SYSTEM_PROMPT =
   "no area. Default radiusMi to 5 and roofAgeMinYears to 15 when the rep didn't state them, and " +
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
-  'area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; ' +
+  "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
   "the radius goes in radiusMi and everything else in filters. Examples (question -> plan " +
   "fields): " +
   '"Show me open roofing permits older than five years within five miles of Manor" -> ' +
@@ -989,7 +989,10 @@ export function repairPlanFromQuestion(
   if (!REPAIR_INTENTS.has(plan.intent)) return { plan, repairs };
   let next = plan;
 
-  if (plan.slotSources.area !== "inherited" && (plan.area.kind === "place" || plan.area.kind === "zip")) {
+  if (
+    plan.slotSources.area !== "inherited" &&
+    (plan.area.kind === "place" || plan.area.kind === "zip")
+  ) {
     const q = plan.area.query.trim();
     const found = q === "" ? undefined : gazetteer.lookup(q);
     const usable =
@@ -1000,7 +1003,10 @@ export function repairPlanFromQuestion(
       const scanned = scanQuestionForArea(question);
       // A typo'd or narrowed name the model kept ("Pflugervile", "downtown Austin") is left for
       // the resolver's confidence bands; only a blank or non-name query is replaced.
-      const looksLikeName = q !== "" && q.length <= 40 && !/\b(show|which|what|how|permits?|roofs?|homes?|properties)\b/i.test(q);
+      const looksLikeName =
+        q !== "" &&
+        q.length <= 40 &&
+        !/\b(show|which|what|how|permits?|roofs?|homes?|properties)\b/i.test(q);
       if (scanned !== undefined && !looksLikeName) {
         repairs.push(`area "${q.slice(0, 40)}" -> ${scanned.kind} "${scanned.query}"`);
         next = {

@@ -44,42 +44,66 @@ export interface SearchPropertiesResult {
   manifestCid: string;
 }
 
-/** contracts/search-api.md step 4: both counts run over the full radius-matching set, with no
- *  SQL LIMIT applied (`limit` is applied only to the final exact-circle-cut result). */
+/** Hard ceiling on `search.properties` rows (architecture-constitution.md section 6 page limit). */
+export const MAX_PROPERTY_ROWS = 100;
+/** `search.permits` page: default and ceiling (a permit row is about 0.7 KB, so even the ceiling
+ *  keeps the response far below 1 MB). */
+export const MAX_PERMIT_ROWS = 500;
+
+/** contracts/search-api.md step 4: the counts run over the full radius-matching set and `limit`
+ *  applies only to the returned page. With the DuckDB adapter all of it happens inside SQL (counts
+ *  plus the nearest `limit` rows), so a county-sized radius never reaches JavaScript; a test
+ *  double without `searchPropertiesPage` takes the legacy in-memory path below. */
 export async function searchProperties(
   leadIndex: LeadIndex,
   input: SearchPropertiesInput,
 ): Promise<SearchPropertiesResult> {
   const { manifestCid } = await leadIndex.indexInfo();
+  const limit = Math.min(input.limit ?? MAX_PROPERTY_ROWS, MAX_PROPERTY_ROWS);
+  // T043 (B-09/US2): ownerAreaClass/tenureYearsMin are additional filters over the same
+  // radius-matching set, applied together with roofAgeMinYears in one query — never a
+  // separately-derived radius (SC-06's same rule, extended to these two new filters).
+  // Conditional spreads, not literal `field: input.field` — exactOptionalPropertyTypes forbids
+  // assigning an explicit `| undefined` to SearchPropertiesQuery's plain-optional fields.
+  const filters = {
+    ...(input.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: input.roofAgeMinYears }),
+    ...(input.ownerAreaClass === undefined ? {} : { ownerAreaClass: input.ownerAreaClass }),
+    ...(input.tenureYearsMin === undefined ? {} : { tenureYearsMin: input.tenureYearsMin }),
+  };
+
+  if (leadIndex.searchPropertiesPage !== undefined) {
+    const page = await leadIndex.searchPropertiesPage({
+      center: input.center,
+      radiusMi: input.radiusMi,
+      limit,
+      ...filters,
+    });
+    return {
+      properties: page.rows,
+      counts: {
+        afterRadius: page.afterRadius,
+        afterRoofAge: page.afterFilters,
+        excludedNoRoofDate: input.roofAgeMinYears === undefined ? 0 : page.noRoofDate,
+      },
+      manifestCid,
+    };
+  }
 
   const afterRadius = await leadIndex.searchProperties({
     center: input.center,
     radiusMi: input.radiusMi,
   });
-  // T043 (B-09/US2): ownerAreaClass/tenureYearsMin are additional filters over the same
-  // radius-matching set, applied together with roofAgeMinYears in one query — never a
-  // separately-derived radius (SC-06's same rule, extended to these two new filters).
-  const hasFilter =
-    input.roofAgeMinYears !== undefined ||
-    input.ownerAreaClass !== undefined ||
-    input.tenureYearsMin !== undefined;
+  const hasFilter = Object.keys(filters).length > 0;
   const afterRoofAge = !hasFilter
     ? afterRadius
     : await leadIndex.searchProperties({
         center: input.center,
         radiusMi: input.radiusMi,
-        // Conditional spreads, not literal `field: input.field` — exactOptionalPropertyTypes
-        // forbids assigning an explicit `| undefined` to SearchPropertiesQuery's plain-optional
-        // fields, so an unset filter must be omitted entirely, not passed as undefined.
-        ...(input.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: input.roofAgeMinYears }),
-        ...(input.ownerAreaClass === undefined ? {} : { ownerAreaClass: input.ownerAreaClass }),
-        ...(input.tenureYearsMin === undefined ? {} : { tenureYearsMin: input.tenureYearsMin }),
+        ...filters,
       });
 
-  const properties = afterRoofAge.slice(0, input.limit ?? 100);
-
   return {
-    properties,
+    properties: afterRoofAge.slice(0, limit),
     counts: {
       afterRadius: afterRadius.length,
       afterRoofAge: afterRoofAge.length,
@@ -93,47 +117,86 @@ export async function searchProperties(
 }
 
 export interface SearchPermitsInput {
+  /** Scope of a radius search; ignored when `permitNumber` is given (an exact lookup). */
   center: SearchCenter;
   radiusMi: number;
-  /** T044 (B-09/US2, G5): exact permit-number lookup, scoped to the same radius-filtered
-   *  property set as every other permit query here (SC-06) — never a second, unscoped lookup
-   *  path. */
+  /** T044 (B-09/US2, G5): exact permit-number lookup. It reads `crm_permit` by that key alone and
+   *  ignores the radius entirely (the permit number is the scope), so it costs the same wherever
+   *  the permit sits. */
   permitNumber?: string | undefined;
+  /** Keep only these `statusClass` values (SQL filter). */
+  statusClass?: readonly string[] | undefined;
+  /** Keep only permits open at least this many days (SQL filter). */
+  openDaysMin?: number | undefined;
+  /** Page size, clamped to `MAX_PERMIT_ROWS`. */
+  limit?: number | undefined;
 }
 
 export interface SearchPermitsResult {
   permits: (PermitResult & { isLongOpen: boolean })[];
+  /** Exact number of matching permits, before the page limit. */
+  total: number;
+  /** True when `total` exceeds the rows returned. */
+  truncated: boolean;
   manifestCid: string;
 }
 
-/** contracts/search-api.md step 2: joins through the same radius-filtered property set
- *  `searchProperties` above computes (via one extra `searchProperties` call, not a
- *  separately-derived radius — SC-06), then attaches `isLongOpen` (packages/domain) as a
- *  display-layer flag, never stored or re-derived from `issueDate` (data-model.md). */
+/** contracts/search-api.md step 2: the permits of the properties inside the exact circle, longest
+ *  open first. With the DuckDB adapter the join to `crm_property` (bbox plus exact distance), the
+ *  status / open-days filters, the sort, the page and the total all run in one SQL statement — the
+ *  list of properties in the radius is never built in JavaScript and no `IN (...)` list is sent
+ *  (GAP-1). Attaches `isLongOpen` (packages/domain) as a display-layer flag, never stored. */
 export async function searchPermits(
   leadIndex: LeadIndex,
   input: SearchPermitsInput,
 ): Promise<SearchPermitsResult> {
   const { manifestCid } = await leadIndex.indexInfo();
+  const limit = Math.min(Math.max(1, input.limit ?? MAX_PERMIT_ROWS), MAX_PERMIT_ROWS);
+  const lookup = input.permitNumber !== undefined;
+  const common = {
+    ...(lookup ? { permitNumber: input.permitNumber as string } : {}),
+    ...(input.statusClass === undefined ? {} : { statusClass: input.statusClass }),
+    ...(input.openDaysMin === undefined ? {} : { openDaysMinimum: input.openDaysMin }),
+    sort: "openDays" as const,
+  };
 
-  const inRadius = await leadIndex.searchProperties({
-    center: input.center,
-    radiusMi: input.radiusMi,
-  });
-  const propertyCids = inRadius.map((p) => p.propertyCid);
-
-  const permits = await leadIndex.searchPermits({
-    propertyCids,
-    // See searchProperties above: exactOptionalPropertyTypes forbids an explicit `undefined`.
-    ...(input.permitNumber === undefined ? {} : { permitNumber: input.permitNumber }),
-    sort: "openDays",
-  });
+  let rows: PermitResult[];
+  let total: number;
+  if (leadIndex.searchPermitsPage !== undefined) {
+    const page = await leadIndex.searchPermitsPage({
+      ...common,
+      ...(lookup ? {} : { center: input.center, radiusMi: input.radiusMi }),
+      limit,
+    });
+    rows = page.rows;
+    total = page.total;
+  } else {
+    // Test doubles only: the legacy two-step join through the radius property set.
+    const propertyCids = lookup
+      ? undefined
+      : (await leadIndex.searchProperties({ center: input.center, radiusMi: input.radiusMi })).map(
+          (p) => p.propertyCid,
+        );
+    let all = await leadIndex.searchPermits({
+      ...common,
+      ...(propertyCids === undefined ? {} : { propertyCids }),
+    });
+    if (input.statusClass !== undefined) {
+      const allowed = new Set<string>(input.statusClass);
+      all = all.filter((p) => p.statusClass !== null && allowed.has(p.statusClass));
+    }
+    if (input.openDaysMin !== undefined) {
+      const minDays = input.openDaysMin;
+      all = all.filter((p) => (p.openDays ?? -1) >= minDays);
+    }
+    total = all.length;
+    rows = all.slice(0, limit);
+  }
 
   return {
-    permits: permits.map((permit) => ({
-      ...permit,
-      isLongOpen: isLongOpen(permit.openDays),
-    })),
+    permits: rows.map((permit) => ({ ...permit, isLongOpen: isLongOpen(permit.openDays) })),
+    total,
+    truncated: total > rows.length,
     manifestCid,
   };
 }

@@ -25,6 +25,8 @@ import { taskADenyStatement } from "./task-a-deny.js";
  *  `@crm/shared`'s `AGENT_TURN_LIMIT_MS`; infra/test/crm-api-stack.agent.test.ts asserts this
  *  value nests around it (limit + margin <= Lambda <= HTTP API). */
 export const TRPC_LAMBDA_TIMEOUT_SECONDS = 28;
+/** Memory of the `crm-api-trpc` function; the reason is at its use below. */
+export const TRPC_LAMBDA_MEMORY_MB = 2048;
 
 /** Destination regions a system-defined *geographic* Bedrock cross-region inference profile
  *  (`<geo>.<model id>`) may route a request to. Source: `bedrock:GetInferenceProfile` for
@@ -97,12 +99,15 @@ export class CrmApiStack extends Stack {
       // at the real monorepo root so esbuild can still resolve `entry` relative to it.
       projectRoot: new URL("../../", import.meta.url).pathname,
       handler: "handler",
-      // 1024 MB reduces cold-init without a standing provisioned-concurrency cost
-      // (plan.md "Cold-start risk decision" — measure via TZ03's X-Ray trace, then decide). The
-      // agent path adds no large in-memory state (≤25 compact rows to the model, a lazily-built
-      // AI SDK client); the DuckDB index is the dominant footprint and is the same one
-      // search/property already serve from this function.
-      memorySize: 1024,
+      // 2048 MB (was 1024). Run 2's index is 441,961 properties (about 58 MB of Parquet) read by
+      // an in-process DuckDB. At 1024 MB a permit search over a county-sized radius ran the
+      // function out of memory (Runtime.OutOfMemory, GAP-1 in docs/evidence/B-09.md). The search
+      // paths now count and page inside DuckDB (services/search.ts), which removes the cause;
+      // the extra memory is headroom for DuckDB's buffer pool (capped at 60 percent of this size
+      // by the adapter, spilling to /tmp) plus the Parquet footprint, and Lambda gives CPU in
+      // proportion to memory, so a cold load and the scans also run faster. Cost: GB-seconds scale
+      // with memory, a few cents a month at this demo's traffic. Still no provisioned concurrency.
+      memorySize: TRPC_LAMBDA_MEMORY_MB,
       // ADR-06 §6.1 / architecture-constitution.md §8 nested timeouts: the agent aborts server-side
       // at 23 s (apps/api/src/agent/runAgent.ts RUN_AGENT_TIMEOUT_MS), this Lambda at 28 s, the
       // HTTP API at 30 s — so the rep sees a typed `timed_out` answer, never a 500/504.

@@ -20,7 +20,7 @@
 import { leadKey } from "@crm/domain";
 import { gazetteer } from "@crm/oracle-views";
 import type { PlaceResolver } from "@crm/shared";
-import type { LeadIndex, PermitResult, PropertyResult } from "../../adapters/duckDbParquet.js";
+import type { LeadIndex, PropertyResult } from "../../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../../adapters/leadRepo.js";
 import { searchPermits, searchProperties } from "../search.js";
 import { propertyDetail } from "../propertyDetail.js";
@@ -140,25 +140,22 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
     openYearsMin,
     permitNumber,
   }: SearchPermitsArgs) {
+    // Filters, sort, page and total all run in SQL (services/search.ts): at most
+    // MAX_COMPACT_ROWS rows and an exact count reach the model, whatever the radius. An exact
+    // permit-number lookup ignores the radius (a county-wide circle is never built for it).
     const result = await searchPermits(leadIndex, {
       center: { lat, lng: lon },
       radiusMi,
       ...(permitNumber === undefined ? {} : { permitNumber }),
+      ...(statusClass === undefined ? {} : { statusClass }),
+      ...(openYearsMin === undefined ? {} : { openDaysMin: Math.ceil(openYearsMin * 365) }),
+      limit: MAX_COMPACT_ROWS,
     });
-    let permits: (PermitResult & { isLongOpen: boolean })[] = result.permits;
-    if (statusClass !== undefined) {
-      const allowed = new Set<string>(statusClass);
-      permits = permits.filter((p) => p.statusClass !== null && allowed.has(p.statusClass));
-    }
-    if (openYearsMin !== undefined) {
-      const minDays = openYearsMin * 365;
-      permits = permits.filter((p) => (p.openDays ?? -1) >= minDays);
-    }
     return {
       manifestCid: result.manifestCid,
       // B-09 review (CR finding 10): the full matching count, before the compact-row cap.
-      matched: permits.length,
-      permits: permits.slice(0, MAX_COMPACT_ROWS),
+      matched: result.total,
+      permits: result.permits.slice(0, MAX_COMPACT_ROWS),
     };
   }
 

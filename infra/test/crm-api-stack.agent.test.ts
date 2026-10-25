@@ -56,7 +56,7 @@ function bedrockStatements(template: Template): Statement[] {
 }
 
 describe("CrmApi tRPC Lambda — agent runtime limits (CR finding 1)", () => {
-  it("times out at 28 s (inside the 30 s HTTP API, outside the 23 s server abort) with >= 1024 MB", () => {
+  it("times out at 28 s (inside the 30 s HTTP API, outside the 23 s server abort) with 2048 MB (GAP-1 headroom)", () => {
     const { template } = build("bedrock", "eu.anthropic.claude-sonnet-4-6");
     template.hasResourceProperties("AWS::Lambda::Function", {
       FunctionName: "crm-api-trpc",
@@ -66,7 +66,7 @@ describe("CrmApi tRPC Lambda — agent runtime limits (CR finding 1)", () => {
     const fn = Object.values(template.findResources("AWS::Lambda::Function")).find(
       (r) => r.Properties.FunctionName === "crm-api-trpc",
     );
-    expect(fn?.Properties.MemorySize).toBeGreaterThanOrEqual(1024);
+    expect(fn?.Properties.MemorySize).toBe(2048);
   });
 
   it("nests the shared 23 s agent turn limit inside the Lambda timeout, itself inside the 30 s HTTP API", () => {

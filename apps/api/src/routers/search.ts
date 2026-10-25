@@ -59,12 +59,22 @@ export const searchRouter = router({
         center: LatLngInput,
         radiusMi: z.number().min(MIN_RADIUS_MI).max(MAX_RADIUS_MI),
         sort: z.literal("openDays"),
+        // Page size (default and ceiling 500: a permit row is about 0.7 KB). The response carries
+        // `total` and `truncated`, so a clipped page is never presented as the whole set.
+        limit: z.number().int().positive().max(500).optional(),
+        // Server-side filters (previously applied by the client over every permit in the radius).
+        statusClass: z
+          .array(z.enum(["open", "stalled", "closed"]))
+          .min(1)
+          .optional(),
+        openDaysMin: z.number().int().min(0).max(36_500).optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
       const leadIndex = requireLeadIndex(ctx);
       try {
-        const result = await searchPermitsService(leadIndex, input);
+        const { sort: _sort, ...rest } = input;
+        const result = await searchPermitsService(leadIndex, rest);
         return { ...result, traceId: ctx.requestId };
       } catch (error) {
         mapIndexNotReady(error);

@@ -122,7 +122,11 @@ export function scanQuestionForArea(question: string): AreaMatch | undefined {
     if (NARROWING.has(wordBefore(question, start))) continue; // "downtown Austin" is not Austin
     taken.push([start, end]);
     const before = wordBefore(question, start);
-    hits.push({ index: start, name, anchored: ["of", "near", "around", "in", "from"].includes(before) });
+    hits.push({
+      index: start,
+      name,
+      anchored: ["of", "near", "around", "in", "from"].includes(before),
+    });
   }
   if (hits.length === 0) return undefined;
   hits.sort((a, b) => Number(b.anchored) - Number(a.anchored) || a.index - b.index);
@@ -135,10 +139,9 @@ export function scanQuestionForRadius(question: string): RadiusMatch | undefined
   const word = Object.keys(NUMBER_WORDS)
     .sort((a, b) => b.length - a.length)
     .join("|");
-  const m = new RegExp(
-    `\\b(\\d+(?:\\.\\d+)?|${word})[\\s-]*(?:mi\\b|miles?\\b)`,
-    "i",
-  ).exec(question);
+  const m = new RegExp(`\\b(\\d+(?:\\.\\d+)?|${word})[\\s-]*(?:mi\\b|miles?\\b)`, "i").exec(
+    question,
+  );
   if (m?.[1] === undefined) return undefined;
   const raw = m[1].toLowerCase();
   const value = NUMBER_WORDS[raw] ?? Number(raw);

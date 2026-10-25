@@ -7,11 +7,7 @@
 // cause that outcome, not copies.
 import { describe, expect, it } from "vitest";
 import { createObservability } from "@crm/observability";
-import {
-  repairPlanFromQuestion,
-  runAsk,
-  type RunAskInput,
-} from "../../src/agent/composeAnswer.js";
+import { repairPlanFromQuestion, runAsk, type RunAskInput } from "../../src/agent/composeAnswer.js";
 import {
   extractJsonObject,
   narrowedPlace,
@@ -35,7 +31,8 @@ const obs = createObservability("crm-api-test");
 const NOT_JSON = "not json";
 
 const G3 = "Show me open roofing permits older than five years within five miles of Manor";
-const G4 = "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?";
+const G4 =
+  "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?";
 
 function ask(question: string, texts: readonly string[], extra: Partial<RunAskInput> = {}) {
   const model = scriptedModel(texts);
@@ -61,26 +58,35 @@ describe("scanQuestionForArea", () => {
       kind: "place",
       query: "Pflugerville",
     });
-    expect(scanQuestionForArea("Which properties in Travis County have roofs older than 15 years?")).toBeUndefined();
+    expect(
+      scanQuestionForArea("Which properties in Travis County have roofs older than 15 years?"),
+    ).toBeUndefined();
     expect(scanQuestionForArea("the manorial estates")).toBeUndefined();
   });
 
   it("prefers the longest name and the one after 'of' or 'near'", () => {
     expect(scanQuestionForArea("homes near West Lake Hills")?.query).toBe("West Lake Hills");
-    expect(scanQuestionForArea("compare Austin with roofs within 3 miles of Round Rock")?.query).toBe(
-      "Round Rock",
-    );
+    expect(
+      scanQuestionForArea("compare Austin with roofs within 3 miles of Round Rock")?.query,
+    ).toBe("Round Rock");
   });
 
   it("reads ZIP codes: labelled, bare Travis codes, and an out-of-county code after 'ZIP'", () => {
-    expect(scanQuestionForArea("How many roofs older than 20 years in ZIP 78701?")).toEqual({ kind: "zip", query: "78701" });
+    expect(scanQuestionForArea("How many roofs older than 20 years in ZIP 78701?")).toEqual({
+      kind: "zip",
+      query: "78701",
+    });
     expect(scanQuestionForArea("roofs in 78701")).toEqual({ kind: "zip", query: "78701" });
-    expect(scanQuestionForArea("How many properties have roofs older than 40 years in ZIP 99999?")).toEqual({ kind: "zip", query: "99999" });
+    expect(
+      scanQuestionForArea("How many properties have roofs older than 40 years in ZIP 99999?"),
+    ).toEqual({ kind: "zip", query: "99999" });
     expect(scanQuestionForArea("permit 12345 is stalled")).toBeUndefined();
   });
 
   it("does not match a narrowed place: 'downtown Austin' is not Austin", () => {
-    expect(scanQuestionForArea("roofs older than 20 years within 3 miles of downtown Austin")).toBeUndefined();
+    expect(
+      scanQuestionForArea("roofs older than 20 years within 3 miles of downtown Austin"),
+    ).toBeUndefined();
     expect(narrowedPlace("downtown Austin")).toBe("Austin");
     expect(narrowedPlace("Austin")).toBeUndefined();
     expect(narrowedPlace("downtown Atlantis")).toBeUndefined();
@@ -120,14 +126,20 @@ describe("repairPlanFromQuestion", () => {
   });
 
   it("replaces an area.query that is the sentence, but leaves a real place alone", () => {
-    expect(repairPlanFromQuestion({ ...base, area: { ...base.area, query: G3.slice(0, 40) } }, G3).plan.area.query).toBe("Manor");
+    expect(
+      repairPlanFromQuestion({ ...base, area: { ...base.area, query: G3.slice(0, 40) } }, G3).plan
+        .area.query,
+    ).toBe("Manor");
     const kept = repairPlanFromQuestion({ ...base, area: { ...base.area, query: "Lakeway" } }, G3);
     expect(kept.plan.area.query).toBe("Lakeway");
     expect(kept.repairs).toEqual([]);
   });
 
   it("leaves a typo or a narrowed place to the resolver's confidence bands", () => {
-    const typo = repairPlanFromQuestion({ ...base, area: { ...base.area, query: "Pflugervile" } }, "roofs near Pflugervile and Manor");
+    const typo = repairPlanFromQuestion(
+      { ...base, area: { ...base.area, query: "Pflugervile" } },
+      "roofs near Pflugervile and Manor",
+    );
     expect(typo.plan.area.query).toBe("Pflugervile");
     const downtown = repairPlanFromQuestion(
       { ...base, area: { ...base.area, query: "downtown Austin" } },
@@ -144,7 +156,11 @@ describe("repairPlanFromQuestion", () => {
 
   it("takes a radius the rep stated when the plan did not mark one stated", () => {
     const { plan } = repairPlanFromQuestion(
-      { ...base, area: { kind: "place", query: "Manor", radiusMi: 5 }, slotSources: { radiusMi: "default" } },
+      {
+        ...base,
+        area: { kind: "place", query: "Manor", radiusMi: 5 },
+        slotSources: { radiusMi: "default" },
+      },
       "permits within 3 miles of Manor",
     );
     expect(plan.area.radiusMi).toBe(3);
@@ -153,12 +169,19 @@ describe("repairPlanFromQuestion", () => {
 });
 
 describe("runAsk with the bad plans the harness hit (GAP-2)", () => {
-  const goodTail = { filters: { statusClass: ["open"], openYearsMin: 5 }, slotSources: { statusClass: "stated" } };
+  const goodTail = {
+    filters: { statusClass: ["open"], openYearsMin: 5 },
+    slotSources: { statusClass: "stated" },
+  };
 
   it("G3: area.query holding the whole question (over 80 characters) is repaired to Manor with no plan repair call", async () => {
     const sentence = `${G3} -- please include everything you can find for this area`;
     const { run, model } = ask(G3, [
-      planText({ intent: "find_permits", area: { kind: "place", query: sentence, radiusMi: 5 }, ...goodTail }),
+      planText({
+        intent: "find_permits",
+        area: { kind: "place", query: sentence, radiusMi: 5 },
+        ...goodTail,
+      }),
       NOT_JSON,
     ]);
     const answer = await run;
@@ -190,7 +213,11 @@ describe("runAsk with the bad plans the harness hit (GAP-2)", () => {
   it("prose around the JSON still parses", async () => {
     const wrapped =
       "Sure! Here is the plan:\n" +
-      planText({ intent: "find_permits", area: { kind: "place", query: "Manor", radiusMi: 5 }, ...goodTail }) +
+      planText({
+        intent: "find_permits",
+        area: { kind: "place", query: "Manor", radiusMi: 5 },
+        ...goodTail,
+      }) +
       "\nLet me know if you need more.";
     const { run } = ask(G3, [wrapped, NOT_JSON]);
     expect((await run).plan.area.resolved?.name).toBe("Manor city");
@@ -263,7 +290,10 @@ describe("GAP-4: a ZIP is a radius around the ZCTA centre, and says so", () => {
       intent: "find_properties",
       area: { kind: "zip", query: "78701", radiusMi: 5 },
       filters: { roofAgeMinYears: 20 },
-      slotSources: { roofAgeMinYears: "stated", ...(radiusSource ? { radiusMi: radiusSource } : {}) },
+      slotSources: {
+        roofAgeMinYears: "stated",
+        ...(radiusSource ? { radiusMi: radiusSource } : {}),
+      },
     });
 
   it("defaults an unstated ZIP radius to 2 mi (marked default) and flags postal_code as not published", async () => {

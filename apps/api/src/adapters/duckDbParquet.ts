@@ -20,13 +20,16 @@ import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import {
   bboxFor,
   DEFAULT_ROOF_AGE_YEARS,
-  distanceMeters,
   HEX_RADIUS_PX,
   hexCellCenter,
   hexWorldSize,
   milesToMeters,
   type LatLng,
 } from "@crm/domain";
+
+/** Same constant as `@crm/domain`'s `distanceMeters` (3,958.8 mi); pinned by test/search.sql.test.ts
+ *  against `distanceMeters` itself so the two cannot drift. */
+const EARTH_RADIUS_METERS = 6_371_008.8;
 
 /** DuckDB's own single-quote escaping (double the quote) — the one rule every string literal
  *  interpolated into a SQL string in this adapter must follow consistently (CR-B-02 finding #4:
@@ -60,6 +63,16 @@ export class IndexColdLoadStaleAttemptError extends Error {
     super(
       `LeadIndex: cold-load attempt ${attemptId} for manifest ${manifestCid} was superseded by a newer attempt; discarded`,
     );
+  }
+}
+
+/** Thrown when one index query outlives its per-call budget (DuckDB is interrupted, so the
+ *  sandbox's single connection is free again). A bounded, typed failure instead of a Lambda
+ *  timeout the caller can only see as "Unable to transform response from server". */
+export class IndexQueryBudgetExceededError extends Error {
+  readonly code = "INDEX_QUERY_BUDGET_EXCEEDED" as const;
+  constructor(budgetMs: number) {
+    super(`LeadIndex: query exceeded its ${budgetMs}ms budget and was interrupted`);
   }
 }
 
@@ -108,8 +121,26 @@ export interface SearchPropertiesQuery {
   limit?: number;
 }
 
+/** Hard ceiling on rows one call may return (bytes follow: a permit row is about 0.7 KB, so 500
+ *  rows stay far below 1 MB). The page `limit` is clamped to this and to at least 1. */
+export const MAX_PAGE_ROWS = 500;
+/** Page size when a caller gives no `limit`. */
+export const DEFAULT_PAGE_ROWS = 100;
+/** Per-query wall-clock budget (ms): well inside the 23 s agent abort and the 28 s Lambda. */
+export const DEFAULT_QUERY_BUDGET_MS = 10_000;
+
 export interface SearchPermitsQuery {
   propertyCid?: string;
+  /** Radius scope, evaluated in SQL as a semi-join to `crm_property` (bbox superset, then the
+   *  exact haversine cut that equals `@crm/domain`'s `distanceMeters`). Ignored when
+   *  `propertyCid`/`propertyCids` or `permitNumber` is given. */
+  center?: LatLng;
+  radiusMi?: number;
+  /** Exact `statusClass` values to keep (`open|stalled|closed`), in SQL. */
+  statusClass?: readonly string[];
+  /** Page size; clamped to `MAX_PAGE_ROWS`. Without it the legacy array method returns every
+   *  match, so callers on a county-sized scope must always pass one. */
+  limit?: number;
   /** B-03 `search.permits` (contracts/search-api.md step 2): joins through the same
    *  radius-filtered property set as `search.properties`, so the two procedures never disagree
    *  on which properties are in scope (SC-06). Ignored when `propertyCid` is also given. */
@@ -123,6 +154,28 @@ export interface SearchPermitsQuery {
   sort?: "openDays" | "issueDate";
 }
 
+/** One page of a radius property search plus the exact counts over the whole matching set. */
+export interface PropertiesPage {
+  rows: PropertyResult[];
+  /** Properties inside the exact circle (no other filter). */
+  afterRadius: number;
+  /** Inside the circle and passing every filter. */
+  afterFilters: number;
+  /** Inside the circle with no roof date (counted whether or not a roof-age filter was given). */
+  noRoofDate: number;
+}
+
+export interface PermitsPage {
+  rows: PermitResult[];
+  /** Exact number of matching permits before the page limit. */
+  total: number;
+}
+
+export type SearchPropertiesPageQuery = SearchPropertiesQuery & {
+  center: LatLng;
+  radiusMi: number;
+};
+
 export type PropertyResult = Provenanced<CrmProperty>;
 export type PermitResult = Provenanced<CrmPermit>;
 
@@ -130,6 +183,12 @@ export interface LeadIndex {
   indexInfo(): Promise<IndexInfo>;
   searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]>;
   searchPermits(query: SearchPermitsQuery): Promise<PermitResult[]>;
+  /** Bounded radius search: counts in SQL, only `limit` rows fetched (never the whole radius).
+   *  Optional on the port so single-purpose test doubles need no stub; the service falls back to
+   *  `searchProperties` when an index lacks it. */
+  searchPropertiesPage?(query: SearchPropertiesPageQuery): Promise<PropertiesPage>;
+  /** Bounded permit search joined to `crm_property` in SQL: one page plus the exact total. */
+  searchPermitsPage?(query: SearchPermitsQuery): Promise<PermitsPage>;
   getProperty(propertyCid: string): Promise<(PropertyResult & { permits: PermitResult[] }) | null>;
   /** One property by its `requestIdentifier` (tcadId) — an indexed `WHERE` filter, not a
    *  full-table scan (CR finding: `services/agent/tools.ts`'s `propertyCidForTcadId` and
@@ -257,6 +316,122 @@ function hexCellSql(zoom: number, source: string): string {
     )`;
 }
 
+/** A number safe to interpolate into SQL: finite, printed the way JavaScript round-trips it. */
+function sqlNumber(value: number): string {
+  if (!Number.isFinite(value)) throw new RangeError(`LeadIndex: non-finite number in a query`);
+  return String(value);
+}
+
+/** The radius predicate, in SQL: the `bboxFor` rectangle (a superset the Parquet min/max
+ *  statistics can prune on) AND the exact haversine cut that is `@crm/domain`'s `distanceMeters`
+ *  `< milesToMeters(radiusMi)` written out term for term (same earth radius, same operation order,
+ *  ADR-07). Rows without coordinates never pass (BETWEEN on NULL is NULL). `dist` is the distance
+ *  expression, usable as the nearest-first sort key. */
+function radiusSql(
+  center: LatLng,
+  radiusMi: number,
+  col: (name: "latitude" | "longitude") => string,
+): { where: string; dist: string } {
+  const box = bboxFor(center, radiusMi);
+  const toRad = (deg: number): number => (deg * Math.PI) / 180;
+  const lat = col("latitude");
+  const lng = col("longitude");
+  const dLat = `((${lat} - ${sqlNumber(center.lat)}) * pi() / 180)`;
+  const dLng = `((${lng} - ${sqlNumber(center.lng)}) * pi() / 180)`;
+  const h =
+    `(sin(${dLat} / 2) * sin(${dLat} / 2) + ${sqlNumber(Math.cos(toRad(center.lat)))} * ` +
+    `cos(${lat} * pi() / 180) * sin(${dLng} / 2) * sin(${dLng} / 2))`;
+  const dist = `(${sqlNumber(EARTH_RADIUS_METERS)} * 2 * atan2(sqrt(${h}), sqrt(1 - ${h})))`;
+  return {
+    where:
+      `${lat} BETWEEN ${sqlNumber(box.south)} AND ${sqlNumber(box.north)} ` +
+      `AND ${lng} BETWEEN ${sqlNumber(box.west)} AND ${sqlNumber(box.east)} ` +
+      `AND ${dist} < ${sqlNumber(milesToMeters(radiusMi))}`,
+    dist,
+  };
+}
+
+/** The non-spatial property filters, shared by the legacy array method and the page method. */
+function propertyFilterConditions(query: SearchPropertiesQuery): string[] {
+  const conditions: string[] = [];
+  if (query.roofAgeMinYears !== undefined)
+    conditions.push(`"roofAgeYears" >= ${sqlNumber(query.roofAgeMinYears)}`);
+  if (query.propertyUsageType !== undefined) {
+    conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
+  }
+  if (query.ownerAreaClass !== undefined) {
+    const values = Array.isArray(query.ownerAreaClass)
+      ? query.ownerAreaClass
+      : [query.ownerAreaClass as string];
+    conditions.push(
+      `"ownerAreaClass" IN (${values.map((v) => `'${sqlEscapeString(v)}'`).join(", ")})`,
+    );
+  }
+  if (query.tenureYearsMin !== undefined) {
+    // See the SearchPropertiesQuery.tenureYearsMin doc comment above: isLongTenure is the
+    // only tenure granularity this table stores, so every tenureYearsMin value is answered
+    // at that one fixed (>10 years) cutoff.
+    conditions.push(`"isLongTenure" = TRUE`);
+  }
+  return conditions;
+}
+
+function pageLimit(limit: number | undefined): number {
+  const n = limit === undefined ? DEFAULT_PAGE_ROWS : Math.floor(limit);
+  return Math.min(MAX_PAGE_ROWS, Math.max(1, n));
+}
+
+/** WHERE conditions for a permit query (alias `pm`), the radius scope as a semi-join to
+ *  `crm_property` evaluated inside DuckDB: no property list ever reaches JavaScript and no giant
+ *  `IN (...)` list is built. A `permitNumber` lookup is exact and ignores the radius entirely. */
+function permitConditions(query: SearchPermitsQuery): string[] {
+  const conditions: string[] = [];
+  if (query.permitNumber !== undefined) {
+    conditions.push(`pm."permitNumber" = '${sqlEscapeString(query.permitNumber)}'`);
+  }
+  if (query.propertyCid !== undefined) {
+    conditions.push(`pm."propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
+  } else if (query.propertyCids !== undefined) {
+    const cids = query.propertyCids;
+    conditions.push(
+      cids.length === 0
+        ? "FALSE"
+        : `pm."propertyCid" IN (${cids.map((cid) => `'${sqlEscapeString(cid)}'`).join(", ")})`,
+    );
+  } else if (
+    query.permitNumber === undefined &&
+    query.center !== undefined &&
+    query.radiusMi !== undefined
+  ) {
+    const { where } = radiusSql(query.center, query.radiusMi, (n) => `p."${n}"`);
+    conditions.push(
+      `pm."propertyCid" IN (SELECT p."propertyCid" FROM crm_property p WHERE ${where})`,
+    );
+  }
+  // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
+  // recomputed here (contracts/lead-index-port.md).
+  if (query.isOpen !== undefined)
+    conditions.push(`pm."statusClass" ${query.isOpen ? "=" : "<>"} 'open'`);
+  if (query.statusClass !== undefined) {
+    conditions.push(
+      query.statusClass.length === 0
+        ? "FALSE"
+        : `pm."statusClass" IN (${query.statusClass.map((v) => `'${sqlEscapeString(v)}'`).join(", ")})`,
+    );
+  }
+  if (query.openDaysMinimum !== undefined)
+    conditions.push(`pm."openDays" >= ${sqlNumber(query.openDaysMinimum)}`);
+  return conditions;
+}
+
+function permitOrderBy(query: SearchPermitsQuery): string {
+  // AC-5/data-model.md: longest-open first, nulls (not open) last, pinned explicitly because
+  // DuckDB's default NULL order is engine-dependent; permitCid makes pages deterministic.
+  return query.sort === "issueDate"
+    ? `ORDER BY pm."issueDate" NULLS LAST, pm."permitCid"`
+    : `ORDER BY pm."openDays" DESC NULLS LAST, pm."permitCid"`;
+}
+
 interface BoundIndex {
   connection: DuckDBConnection;
 }
@@ -275,6 +450,8 @@ export interface DuckDbParquetDeps {
   /** Default 3s per architecture-constitution.md §10's index-cold-load NFR. */
   coldLoadTimeoutMs?: number;
   tmpDir?: string;
+  /** Per-query budget in ms (default `DEFAULT_QUERY_BUDGET_MS`). */
+  queryBudgetMs?: number;
 }
 
 const DEFAULT_COLD_LOAD_TIMEOUT_MS = 3_000;
@@ -290,6 +467,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   private readonly obs: Observability;
   private readonly coldLoadTimeoutMs: number;
   private readonly tmpDir: string;
+  private readonly queryBudgetMs: number;
   /** CR-B-02 finding #8: one monotonically increasing attempt id per manifestCid. A timed-out
    *  `coldLoad` never cancels the in-flight `load()` it raced against (Promise.race doesn't
    *  cancel its loser) — without this, that abandoned load could still be mid-write to the same
@@ -307,6 +485,25 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     this.obs = deps.obs;
     this.coldLoadTimeoutMs = deps.coldLoadTimeoutMs ?? DEFAULT_COLD_LOAD_TIMEOUT_MS;
     this.tmpDir = deps.tmpDir ?? "/tmp/crm-index";
+    this.queryBudgetMs = deps.queryBudgetMs ?? DEFAULT_QUERY_BUDGET_MS;
+  }
+
+  /** Runs one query under the per-call budget: past it DuckDB is interrupted and a typed error
+   *  is thrown, so a runaway query can never hold the connection until the Lambda times out. */
+  private async runBounded(connection: DuckDBConnection, sql: string) {
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      connection.interrupt();
+    }, this.queryBudgetMs);
+    try {
+      return await connection.runAndReadAll(sql);
+    } catch (error) {
+      if (expired) throw new IndexQueryBudgetExceededError(this.queryBudgetMs);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // T048 (Phase 6 convergence, CRITICAL): every public LeadIndex method is wrapped with the
@@ -386,6 +583,15 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       await this.downloadToFile(`index/${manifestCid}/crm_permit.parquet`, permitFile);
 
       const connection = await openParquetConnection(propertyFile, permitFile);
+      // DuckDB sizes its buffer pool from the host's RAM, which on Lambda is far above the
+      // function's own memory: cap it at 60 percent of the configured size and let it spill to
+      // /tmp, so a heavy query fails (or spills) inside DuckDB instead of the runtime being killed
+      // with Runtime.OutOfMemory (GAP-1).
+      const lambdaMb = Number(process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE);
+      if (Number.isFinite(lambdaMb) && lambdaMb > 0) {
+        await connection.run(`SET memory_limit='${Math.floor(lambdaMb * 0.6)}MB'`);
+        await connection.run(`SET temp_directory='${sqlEscapeString(join(dir, "spill"))}'`);
+      }
 
       // This attempt lost the race to the timeout (a newer attemptId was already recorded while
       // this load() was still in flight) — never return or cache a stale connection; close it and
@@ -424,70 +630,69 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const { manifestCid } = await this.indexInfo();
       const { connection } = await this.ensureLoaded(manifestCid);
       const conditions: string[] = [];
-      // Center/radius wins over an explicit bbox (contracts/search-api.md step 1): the bbox is
-      // the DuckDB-side superset prefilter, computed from the real search shape via
-      // packages/domain's bboxFor — never a second, independently-derived box.
-      const effectiveBbox =
-        query.center && query.radiusMi !== undefined
-          ? bboxFor(query.center, query.radiusMi)
-          : query.bbox;
-      if (effectiveBbox) {
-        conditions.push(
-          `latitude BETWEEN ${effectiveBbox.south} AND ${effectiveBbox.north} AND longitude BETWEEN ${effectiveBbox.west} AND ${effectiveBbox.east}`,
-        );
-      }
-      if (query.roofAgeMinYears !== undefined)
-        conditions.push(`"roofAgeYears" >= ${query.roofAgeMinYears}`);
-      if (query.propertyUsageType !== undefined) {
-        conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
-      }
-      if (query.ownerAreaClass !== undefined) {
-        const values = Array.isArray(query.ownerAreaClass)
-          ? query.ownerAreaClass
-          : [query.ownerAreaClass as string];
-        conditions.push(
-          `"ownerAreaClass" IN (${values.map((v) => `'${sqlEscapeString(v)}'`).join(", ")})`,
-        );
-      }
-      if (query.tenureYearsMin !== undefined) {
-        // See the SearchPropertiesQuery.tenureYearsMin doc comment above: isLongTenure is the
-        // only tenure granularity this table stores, so every tenureYearsMin value is answered
-        // at that one fixed (>10 years) cutoff.
-        conditions.push(`"isLongTenure" = TRUE`);
-      }
-      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-      // No SQL LIMIT when an exact-circle cut still has to run client-side below (T012) — a
-      // bbox-only limit could otherwise discard rows the circle cut would have kept out anyway,
-      // undercounting `counts.afterRadius` (AC-4/FR-004 requires every count to run over the
-      // full matching set, not a truncated one).
-      const sqlLimit =
-        query.center && query.radiusMi !== undefined ? undefined : (query.limit ?? 100);
-      const reader = await connection.runAndReadAll(
-        `SELECT * FROM crm_property ${where}${sqlLimit === undefined ? "" : ` LIMIT ${sqlLimit}`}`,
-      );
-      let rows = reader.getRowObjectsJS() as unknown as PropertyResult[];
-
-      // The exact-circle cut (contracts/search-api.md step 3): the bbox above is a rectangular
-      // superset, so rows outside the true radiusMi circle must still be dropped here, sorted
-      // nearest first — the same two-step shape as the vendored radiusSql (research.md).
+      let order = "";
+      // Center/radius wins over an explicit bbox (contracts/search-api.md step 1). The exact
+      // circle cut and the nearest-first sort now run inside DuckDB (radiusSql), so a caller that
+      // gives a `limit` fetches only that many rows instead of the whole radius.
       if (query.center && query.radiusMi !== undefined) {
-        const center = query.center;
-        const radiusMeters = milesToMeters(query.radiusMi);
-        rows = rows
-          .map((row) => {
-            const r = row as unknown as { latitude: number | null; longitude: number | null };
-            const distance =
-              r.latitude === null || r.longitude === null
-                ? Number.POSITIVE_INFINITY
-                : distanceMeters(center, { lat: r.latitude, lng: r.longitude });
-            return { row, distance };
-          })
-          .filter(({ distance }) => distance < radiusMeters)
-          .sort((a, b) => a.distance - b.distance)
-          .map(({ row }) => row);
-        if (query.limit !== undefined) rows = rows.slice(0, query.limit);
+        const { where, dist } = radiusSql(query.center, query.radiusMi, (n) => `"${n}"`);
+        conditions.push(where);
+        order = ` ORDER BY ${dist}, "propertyCid"`;
+      } else if (query.bbox) {
+        const box = query.bbox;
+        conditions.push(
+          `latitude BETWEEN ${sqlNumber(box.south)} AND ${sqlNumber(box.north)} AND longitude BETWEEN ${sqlNumber(box.west)} AND ${sqlNumber(box.east)}`,
+        );
       }
-      return rows;
+      conditions.push(...propertyFilterConditions(query));
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const limit =
+        query.limit !== undefined
+          ? ` LIMIT ${String(Math.max(0, Math.floor(query.limit)))}`
+          : query.center && query.radiusMi !== undefined
+            ? ""
+            : ` LIMIT ${String(DEFAULT_PAGE_ROWS)}`;
+      const reader = await this.runBounded(
+        connection,
+        `SELECT * FROM crm_property ${where}${order}${limit}`,
+      );
+      return reader.getRowObjectsJS() as unknown as PropertyResult[];
+    });
+  }
+
+  /** Radius property search for the API and the agent: three exact counts over the whole circle and
+   *  one page of at most `limit` rows, all computed in DuckDB. Counts keep today's definitions:
+   *  `afterRadius` has no other filter, `afterFilters` has all of them, `noRoofDate` is the
+   *  circle's rows with a null `roofAgeYears`. */
+  async searchPropertiesPage(query: SearchPropertiesPageQuery): Promise<PropertiesPage> {
+    return withObservabilityOperation(this.obs, "LeadIndex.searchPropertiesPage", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const { where, dist } = radiusSql(query.center, query.radiusMi, (n) => `"${n}"`);
+      const filters = propertyFilterConditions(query);
+      const filterSql = filters.length === 0 ? "TRUE" : filters.map((f) => `(${f})`).join(" AND ");
+      const countsReader = await this.runBounded(
+        connection,
+        `SELECT count(*)::INTEGER AS "afterRadius",
+           (count(*) FILTER (WHERE ${filterSql}))::INTEGER AS "afterFilters",
+           (count(*) FILTER (WHERE "roofAgeYears" IS NULL))::INTEGER AS "noRoofDate"
+         FROM crm_property WHERE ${where}`,
+      );
+      const counts = countsReader.getRowObjectsJS()[0] as unknown as {
+        afterRadius: number;
+        afterFilters: number;
+        noRoofDate: number;
+      };
+      let rows: PropertyResult[] = [];
+      if (counts.afterFilters > 0) {
+        const pageReader = await this.runBounded(
+          connection,
+          `SELECT * FROM crm_property WHERE ${where} AND ${filterSql}
+           ORDER BY ${dist}, "propertyCid" LIMIT ${String(pageLimit(query.limit))}`,
+        );
+        rows = pageReader.getRowObjectsJS() as unknown as PropertyResult[];
+      }
+      return { rows, ...counts };
     });
   }
 
@@ -495,41 +700,36 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     return withObservabilityOperation(this.obs, "LeadIndex.searchPermits", async () => {
       const { manifestCid } = await this.indexInfo();
       const { connection } = await this.ensureLoaded(manifestCid);
-      const conditions: string[] = [];
-      if (query.propertyCid !== undefined) {
-        conditions.push(`"propertyCid" = '${sqlEscapeString(query.propertyCid)}'`);
-      } else if (query.propertyCids !== undefined) {
-        // B-03 search.permits (contracts/search-api.md step 2): join through the same
-        // radius-filtered property set search.properties computed — never a separately-derived
-        // radius. An empty set means "no properties in radius", not "no filter" (contrast with
-        // SQL's own `IN ()` syntax error), so it short-circuits to an explicit always-false
-        // condition instead.
-        const cids = query.propertyCids;
-        conditions.push(
-          cids.length === 0
-            ? "FALSE"
-            : `"propertyCid" IN (${cids.map((cid) => `'${sqlEscapeString(cid)}'`).join(", ")})`,
-        );
-      }
-      if (query.permitNumber !== undefined) {
-        conditions.push(`"permitNumber" = '${sqlEscapeString(query.permitNumber)}'`);
-      }
-      // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
-      // recomputed here (contracts/lead-index-port.md): "isOpen" filters on the already-stored
-      // statusClass column, it does not re-derive it from raw dates.
-      if (query.isOpen !== undefined)
-        conditions.push(`"statusClass" ${query.isOpen ? "=" : "<>"} 'open'`);
-      if (query.openDaysMinimum !== undefined)
-        conditions.push(`"openDays" >= ${query.openDaysMinimum}`);
+      const conditions = permitConditions(query);
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-      // AC-5/data-model.md: longest-open first, nulls (not open) last — DuckDB's default NULL
-      // order is engine-dependent, so it is pinned explicitly rather than left implicit.
-      const orderBy =
-        query.sort === "issueDate"
-          ? `ORDER BY "issueDate" NULLS LAST`
-          : `ORDER BY "openDays" DESC NULLS LAST`;
-      const reader = await connection.runAndReadAll(`SELECT * FROM crm_permit ${where} ${orderBy}`);
+      const limit =
+        query.limit === undefined ? "" : ` LIMIT ${String(Math.max(0, Math.floor(query.limit)))}`;
+      const reader = await this.runBounded(
+        connection,
+        `SELECT pm.* FROM crm_permit pm ${where} ${permitOrderBy(query)}${limit}`,
+      );
       return reader.getRowObjectsJS() as unknown as PermitResult[];
+    });
+  }
+
+  /** One page of permits (at most `limit`, never more than `MAX_PAGE_ROWS`) plus the exact total of
+   *  matches, in a single DuckDB pass: the radius is a semi-join to `crm_property` inside SQL and a
+   *  `permitNumber` lookup ignores the radius altogether. */
+  async searchPermitsPage(query: SearchPermitsQuery): Promise<PermitsPage> {
+    return withObservabilityOperation(this.obs, "LeadIndex.searchPermitsPage", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const conditions = permitConditions(query);
+      const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+      const reader = await this.runBounded(
+        connection,
+        `SELECT pm.*, (count(*) OVER ())::INTEGER AS "__total" FROM crm_permit pm ${where}
+         ${permitOrderBy(query)} LIMIT ${String(pageLimit(query.limit))}`,
+      );
+      const raw = reader.getRowObjectsJS() as unknown as (PermitResult & { __total: number })[];
+      const total = raw[0]?.__total ?? 0;
+      const rows = raw.map(({ __total: _total, ...row }) => row as unknown as PermitResult);
+      return { rows, total };
     });
   }
 
