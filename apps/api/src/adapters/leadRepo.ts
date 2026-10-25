@@ -373,8 +373,9 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
                 TableName: tableName,
                 Key: { pk: key, sk: evtSortKey(0) },
                 ConditionExpression:
-                  "attribute_exists(pk) AND #kind = :create AND sequence = :zero",
-                ExpressionAttributeNames: { "#kind": "kind" },
+                  "attribute_exists(pk) AND #kind = :create AND #seq = :zero",
+                // "sequence" is a DynamoDB reserved word: it must go through a name placeholder.
+                ExpressionAttributeNames: { "#kind": "kind", "#seq": "sequence" },
                 ExpressionAttributeValues: { ":create": "create", ":zero": 0 },
               },
             },

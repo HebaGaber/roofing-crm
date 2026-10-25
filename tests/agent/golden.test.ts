@@ -202,7 +202,10 @@ interface G7Client {
       mutate(input: { question: string; threadId: string }): Promise<AskResult["answer"]>;
     };
     readonly confirmLead: {
-      mutate(input: { threadId: string; tcadId: string }): Promise<{ createdFrom: string }>;
+      mutate(input: {
+        threadId: string;
+        tcadId: string;
+      }): Promise<{ createdFrom: string; leadKey?: string; leadId?: string }>;
     };
   };
   readonly leads: {
@@ -225,7 +228,12 @@ async function runG7LeadRoundTrip(
   client: G7Client,
   threadId: string,
   pause: () => Promise<void>,
-): Promise<{ tcadId: string; latencies: number[] }> {
+): Promise<{
+  tcadId: string;
+  latencies: number[];
+  created?: { leadKey: string; leadId: string };
+  otherProposed: string[];
+}> {
   const latencies: number[] = [];
   const timed = async (question: string): Promise<AskResult["answer"]> => {
     const startedAt = Date.now();
@@ -243,16 +251,23 @@ async function runG7LeadRoundTrip(
   const first = proposal.proposals?.[0];
   expect(first, "G7 must propose at least one lead").toBeDefined();
   const tcadId = (first as NonNullable<typeof first>).tcadId;
+  const otherProposed = (proposal.proposals ?? [])
+    .filter((p) => p.tcadId !== tcadId && !p.alreadyLead)
+    .map((p) => p.tcadId);
 
+  let created: { leadKey: string; leadId: string } | undefined;
   if (first?.alreadyLead !== true) {
     const lead = await client.agent.confirmLead.mutate({ threadId, tcadId });
     expect(lead.createdFrom).toBe("agent");
+    if (lead.leadKey !== undefined && lead.leadId !== undefined) {
+      created = { leadKey: lead.leadKey, leadId: lead.leadId };
+    }
   }
   const list = await client.leads.list.query({});
   const found = list.leads.find((l) => requestIdentifierOf(l.leadKey) === tcadId);
   expect(found, "the G7 lead must appear in leads.list").toBeDefined();
   if (first?.alreadyLead !== true) expect(found?.createdFrom).toBe("agent");
-  return { tcadId, latencies };
+  return { tcadId, latencies, ...(created === undefined ? {} : { created }), otherProposed };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -499,10 +514,41 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
     intent: "propose_leads",
     modelCalls: undefined,
   };
+  const g7Thread = `${threadId}-g7`;
+  const createdKeys: { leadKey: string; leadId: string }[] = [];
+  const notes: string[] = [];
   try {
-    const g7 = await runG7LeadRoundTrip(client, `${threadId}-g7`, () =>
+    const g7 = await runG7LeadRoundTrip(client, g7Thread, () =>
       sleep(golden.grading.pacingSeconds * 1000),
     );
+    if (g7.created !== undefined) createdKeys.push(g7.created);
+    notes.push(`confirmLead created ${g7.created === undefined ? "nothing (already a lead)" : g7.created.leadKey}`);
+
+    // confirmLeads (batch) on up to two more proposals from the same thread.
+    const batchIds = g7.otherProposed.slice(0, 2);
+    if (batchIds.length > 0) {
+      const batch = await client.agent.confirmLeads.mutate({ threadId: g7Thread, tcadIds: batchIds });
+      expect(batch.failed, "confirmLeads must not fail proposed ids").toEqual([]);
+      createdKeys.push(...batch.created.map((c) => ({ leadKey: c.leadKey, leadId: c.leadId })));
+      notes.push(`confirmLeads created ${batch.created.length}, already ${batch.alreadyLeads.length}`);
+    } else {
+      notes.push("confirmLeads not exercised: no further proposals");
+    }
+
+    // The created leads are real; remove exactly those this run created, via undo, and check.
+    const before = await client.leads.list.query({});
+    for (const c of createdKeys) {
+      expect(before.leads.some((l) => l.leadKey === c.leadKey), "created lead is listed").toBe(true);
+    }
+    for (const c of createdKeys) {
+      const undone = await client.leads.undoCreate.mutate({ leadKey: c.leadKey, leadId: c.leadId });
+      expect(undone.deleted, `undo of ${c.leadKey}`).toBe(true);
+    }
+    const after = await client.leads.list.query({});
+    for (const c of createdKeys) {
+      expect(after.leads.some((l) => l.leadKey === c.leadKey), "undone lead is gone").toBe(false);
+    }
+    notes.push(`undo removed ${createdKeys.length} lead(s); none remain in leads.list`);
     return {
       ...base,
       outcome: "lead_created",
@@ -510,8 +556,13 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
       pass: true,
       latencyMs: g7.latencies,
       failures: [],
+      emptyReason: notes.join("; "),
     };
   } catch (error) {
+    // Best effort: never leave this run's leads behind.
+    for (const c of createdKeys) {
+      await client.leads.undoCreate.mutate({ leadKey: c.leadKey, leadId: c.leadId }).catch(() => undefined);
+    }
     return {
       ...base,
       outcome: "failed",
@@ -519,6 +570,7 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
       pass: false,
       latencyMs: [],
       failures: [error instanceof Error ? error.message.slice(0, 300) : "error"],
+      emptyReason: notes.join("; "),
     };
   }
 }
