@@ -40,7 +40,7 @@
       "mustDo": "Combined filters; explain \"outside the area\"",
       "expectedOutcome": "answered_or_field_flagged",
       "check": "groundedness+correctness+honesty",
-      "truth": "Run 2: owner_is_out_of_area and owner_area_class are not_in_export for every property (owner mailing address not published), so the owner-outside-the-area half cannot be answered. Expected field_not_published, or an answer that flags the constraint as unsupported with reason not_in_export and never asserts an owner is outside the area."
+      "truth": "Run 2: owner_is_out_of_area and owner_area_class are not_in_export for every property (owner mailing address not published), so the owner-outside-the-area half cannot be answered. Expected field_not_published, or an answer that flags the constraint as unsupported with reason not_in_export and never asserts an owner is outside the area. Since the server drops the unpublished filter (dropUnpublishedFilters), the expected result is an answered list for Lakeway with tenure 10+ years, labelled as not narrowed by owner location, with the owner constraint in unsupported (not_in_export)."
     },
     {
       "id": "G5",

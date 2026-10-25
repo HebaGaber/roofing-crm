@@ -125,7 +125,9 @@ export const PLAN_SYSTEM_PROMPT =
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
   "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
-  "the radius goes in radiusMi and everything else in filters. Examples (question -> plan " +
+  "the radius goes in radiusMi and everything else in filters. Owner location (owners outside the " +
+  "area, out-of-state owners, owner mailing address) is never published: put it in unsupported with " +
+  'reason "not_in_export", not in filters. Examples (question -> plan ' +
   "fields): " +
   '"Show me open roofing permits older than five years within five miles of Manor" -> ' +
   '{"intent":"find_permits","area":{"kind":"place","query":"Manor","radiusMi":5},' +
@@ -133,8 +135,8 @@ export const PLAN_SYSTEM_PROMPT =
   '"openYearsMin":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
   '"Which homes near Lakeway haven\'t changed owners in 10+ years and have owners outside the area?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Lakeway","radiusMi":5},' +
-  '"filters":{"tenureYearsMin":10,"ownerAreaClass":["out_of_area"]},"slotSources":{"tenureYearsMin":"stated",' +
-  '"ownerAreaClass":"stated","radiusMi":"default"},"unsupported":[]}; ' +
+  '"filters":{"tenureYearsMin":10},"slotSources":{"tenureYearsMin":"stated","radiusMi":"default"},' +
+  '"unsupported":[{"constraint":"owners outside the area","reason":"not_in_export"}]}; ' +
   '"How many properties have roofs older than 20 years in ZIP 78701?" -> ' +
   '{"intent":"find_properties","area":{"kind":"zip","query":"78701","radiusMi":5},' +
   '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"default"},"unsupported":[]}; ' +
@@ -171,8 +173,8 @@ const COMPOSE_SYSTEM_PROMPT =
   "permit, address, contractor name, rating or number. Reply with ONLY a single JSON object: " +
   '{"claims":[{"text":"<=400 chars","citationIds":[<citationId>,...]}]}. ' +
   "Each claim cites the citationId of every DATA row it relies on, and every number in a claim " +
-  "must be one of that row's values or one of the DATA counts. When DATA.area.note is present, " +
-  "your first claim states it in your own words.";
+  "must be one of that row's values or one of the DATA counts. When DATA.area.note or " +
+  "DATA.area.notApplied is present, your first claim states it in your own words.";
 
 /** ADR §4 governance: source text is untrusted data — control characters stripped, capped. */
 function sourceText(value: string | null): string | null {
@@ -220,6 +222,7 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
     area: {
       name: plan.area.resolved?.name ?? plan.area.query,
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
+      ...(unpublishedNote(plan) === "" ? {} : { notApplied: unpublishedNote(plan) }),
       ...(plan.area.kind === "zip" && !gathered.countyWide
         ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
         : {}),
@@ -868,8 +871,12 @@ function plural(n: number, one: string, many: string): string {
 /** The deterministic answer used when rows matched but no model claim verified (or compose
  *  output didn't parse). Built from server-computed counts and rows only. */
 function zipSuffix(plan: QueryPlan, gathered: Gathered): string {
-  if (plan.area.kind !== "zip" || gathered.countyWide) return "";
-  return ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
+  const zip =
+    plan.area.kind !== "zip" || gathered.countyWide
+      ? ""
+      : ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
+  const note = unpublishedNote(plan);
+  return note === "" ? zip : `${zip} ${note}`;
 }
 
 function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly EvidenceRow[]): string {
@@ -960,6 +967,62 @@ function tryParsePlan(text: string): { ok: true; plan: QueryPlan } | { ok: false
     return { ok: false, error: parsed.error.message };
   }
   return { ok: true, plan: parsed.data };
+}
+
+/** Filters on fields the Run 2 index does not publish. Owner location (`owner_area_class`,
+ *  `owner_is_out_of_area`) is `not_in_export` for every property, so a filter on it can only ever
+ *  return "none" for the wrong reason. This is the one place that Run 2 fact lives: a later run
+ *  that publishes owner location removes the entry. */
+const UNPUBLISHED_FILTERS = [
+  {
+    key: "ownerAreaClass",
+    constraint: "owners outside the area",
+    plain: "owner location is not published in this data",
+  },
+] as const satisfies readonly {
+  key: keyof QueryPlan["filters"];
+  constraint: string;
+  plain: string;
+}[];
+
+const OWNER_CONSTRAINT = /owner/i;
+
+/** Code-enforced: a filter the index cannot honour is never applied. The filter and its slot
+ *  source are removed, and one `not_in_export` entry is recorded in `unsupported` (not duplicated
+ *  when the model already made it), so the answer says what was not applied instead of returning
+ *  a bare empty result. */
+export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
+  let next = plan;
+  for (const gap of UNPUBLISHED_FILTERS) {
+    if (next.filters[gap.key] === undefined) continue;
+    const { [gap.key]: _dropped, ...filters } = next.filters;
+    const { [gap.key]: _source, ...slotSources } = next.slotSources;
+    const has = next.unsupported.some(
+      (u) => u.reason === "not_in_export" && OWNER_CONSTRAINT.test(u.constraint),
+    );
+    next = {
+      ...next,
+      filters,
+      slotSources,
+      unsupported: has
+        ? next.unsupported
+        : [...next.unsupported, { constraint: gap.constraint, reason: "not_in_export" }],
+    };
+  }
+  return next;
+}
+
+/** The plain-words label for an answer that was not narrowed by an unpublished field, or "". */
+function unpublishedNote(plan: QueryPlan): string {
+  const gaps = UNPUBLISHED_FILTERS.filter((gap) =>
+    plan.unsupported.some(
+      (u) => u.reason === "not_in_export" && OWNER_CONSTRAINT.test(u.constraint),
+    ),
+  );
+  if (gaps.length === 0) return "";
+  return (
+    "These matches are not narrowed by owner location; " + `${gaps.map((g) => g.plain).join("; ")}.`
+  );
 }
 
 /** A ZIP is answered as a radius around the ZCTA's centre (Run 2 has no postal codes), and a ZIP
@@ -1321,7 +1384,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
         slotSources: { ...repaired.plan.slotSources, radiusMi: "default" },
       };
     }
-    let plan = applyInheritance(repaired.plan, input.previousPlan);
+    let plan = dropUnpublishedFilters(applyInheritance(repaired.plan, input.previousPlan));
     const blocked = (
       outcome: "out_of_scope" | "not_found" | "needs_clarification" | "field_not_published",
       toolSteps: number,
@@ -1510,6 +1573,17 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       claims = template.claims;
       citations = templateCitations;
     }
+  }
+
+  // Code-enforced label: an answer that could not apply a filter says so, whatever the model wrote.
+  const gapNote = unpublishedNote(plan);
+  const first = claims[0];
+  if (
+    gapNote !== "" &&
+    first !== undefined &&
+    !/not narrowed by owner location/i.test(first.text)
+  ) {
+    claims = [{ ...first, text: `${first.text} ${gapNote}`.slice(0, 400) }, ...claims.slice(1)];
   }
 
   emitCitationMetrics(obs, {
