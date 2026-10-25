@@ -4,16 +4,19 @@ Created 2026-10-25 at the PO's request. B-09 closes and merges on Task A's **Run
 
 Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no `#` followed by a number in commits, PR text or comments (the fork links it to other candidates' PRs; write `F-8` or "finding 8"); commit messages start with the story ID; no secrets in git or logs; AWS profile `assess`, region `eu-north-1`.
 
-## 0. State at B-09 close
+## 0. State now (updated 2026-10-26)
 
 | Item | Value |
 | --- | --- |
-| Data the app serves | Task A Run 2, run `travis-full-run2-20261024`, manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` |
-| Index size | 441,961 properties, 15,025 roofing permits (equal to Task A's `permits_emitted`), 130 of 225 table parts fetched (about 322 MB) |
-| Where Run 2 specifics live | `tests/e2e/lib/run-fixtures.ts` (with `fixtures-valid.spec.ts` and `refresh-fixtures.md`), `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, the pinned CID in tests and specs |
-| How a new run is picked up | Change `DATA_MANIFEST_CID`; a deploy writes it to the SSM parameter `/crm/sync/data-manifest-cid` and starts one sync (execution name `{cid}-{deployNonce}`); an already promoted CID is a no-op |
-| Deploy method | Clean checkout of the commit, `aws configure export-credentials --profile assess --format env`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. Docker must be running (the three DuckDB Lambdas bundle in a container). |
-| CI | Green path: `workspace` (about 2 min, arm64 runner) and `e2e-hosted` (two phases; waits for `/build.json` to name its own commit). CI uses the scoped `crm-ci` IAM user via two repository secrets. |
+| Data the app serves | Task A **Run 3**, run `travis-full-run3-20261025`, manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`, promoted 2026-10-25 20:27Z. Run 2 (`bafkreife3vk3c...`) is `previous`. |
+| Index size | 441,961 properties, 15,025 Austin roofing permits; 190 of 255 table parts fetched (0.92 GB) |
+| Done for Run 3 | contract v1.1 and views vendored (`docs/reuse-log.md`); index carries tenure basis, address-point coordinates, owner name (ADR-03 amended: shown, never sent to the model), printed contractor, BBB state and link; cost-gate document limit 1,000,000; BuildIndex DuckDB limit 2,400 MB (first sync ran out of memory at 1,800 MB); e2e fixtures refreshed; lineage link fixed (`/tx/travis/explore`) |
+| Still Run 2 | `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, golden queries (about $1 of Bedrock) and the real-data perf test (`CRM_PERF=1`) have not been re-run on Run 3 |
+| Waiting on Task A | **Run 3.1** (manifest `bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu`, built, not published; do not vendor or sync until Task A sends the published CID and the commit). It adds street address and owner ZIP columns (contract v1.2), 413 more printed contractors. Task A's answers to the 13 gap questions: `docs/task-a-questions-run3.md` |
+| To do when Run 3.1 arrives | vendor contract v1.2 and views; carry `unnormalized_address`, `owner_mailing_postal_code`, `owner_mailing_state_code` into the index; show the address and owner area; re-check cost gate and BuildIndex memory; set `DATA_MANIFEST_CID`, deploy, read the sync; refresh fixtures; a working search box (today it is decorative) |
+| How a new run is picked up | Change `DATA_MANIFEST_CID` (GitHub repository variable and the deploy shell); a deploy writes it to the SSM parameter `/crm/sync/data-manifest-cid` and starts one sync (execution name `{cid}-{deployNonce}`); an already promoted CID is a no-op |
+| Deploy method | Clean checkout of the commit, `aws configure export-credentials --profile assess --format env`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. Docker must be running. |
+| CI | `workspace`, `gitleaks` and `e2e-hosted` (two phases). The hosted phase waits for `/build.json` to name its own commit. |
 
 ## 1. Run 3 handling (the main follow-up)
 

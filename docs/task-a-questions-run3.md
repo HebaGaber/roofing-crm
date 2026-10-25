@@ -33,3 +33,17 @@ Written 2026-10-25 by the CRM side. Source: Run 3 manifest `bafkreifndsdibdllvgp
 12. **CloudFront returns 403 (not 404)** for files not copied yet. When will the CloudFront copy be complete for Run 3, so the CRM does not depend on the Filebase fallback?
 13. **Contract versioning:** columns are now 58 (v1.1) but the folder is still `contract/v1`. Will the next additive change be called v1.2 in the same folder, and will you announce it? The CRM re-vendors from your branch by commit.
 14. **A stable link to one property in the Explorer.** Since A-13 the Explorer lives at `/tx/travis/explore`; the old `/explore` answers 404, which broke the CRM's "View lineage in Explorer" link. The Explorer opens a property from `sel` only when that property is among the current search results, so the CRM now sends `at=<lat>,<lon>&r=1&sel=<cid>`. Can you publish a route that opens a property by CID alone (for example `/tx/travis/property/{cid}`) and keep it stable? Also, the Explorer's server search answered "could not run on the server" on the first try and worked on retry (2026-10-26): is a cold start expected?
+
+## Task A's answers (2026-10-26) and what the CRM does with them
+
+| Q | Answer in short | CRM action |
+| --- | --- | --- |
+| 1, 2 | The export tool drops the address text from the table; Run 3.1 re-exports with a patch: `unnormalized_address`, `owner_mailing_postal_code`, `owner_mailing_state_code` (contract v1.2). The CAR-reader idea was withdrawn. | Wait for Run 3.1; no CAR reader. Situs city and ZIP stay gaps (not parsed). |
+| 3, 4 | 4,139 permits print a company; 416 only a person; 10,470 print none (10,436 are pre-2000). Run 3.1 adds 413 (4,552). Nothing is verified. | Show every contractor as printed, unverified. |
+| 5 | No BBB rating will be published. Link without `find_type` (PO checked by hand). | Done (`fab427a`, and stripped on screen). |
+| 6 | Built year (confidence Low) is a stand-in they keep. | "estimated from year built" shown. |
+| 7, 8 | Open (80) and stalled (1,674) permits are published; no other jurisdictions are planned; 1,974 decided roofing permits unlinked. | Demo and docs say permits are Austin only. |
+| 9, 10 | R accounts only. 32,572 no-owner properties are 15,410 confidential plus 17,160 unparsed names. | Label: "Owner not published (confidential or name not parsed)". |
+| 11, 12, 13 | Every run is a full snapshot. CloudFront now holds all 255 table parts and the manifest. Additive columns stay in contract/v1 (named v1.2). | No chain-following needed. |
+| 14 | Open. | Lineage link uses `at`, `r` and `sel` meanwhile. |
+
