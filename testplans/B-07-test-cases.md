@@ -88,8 +88,8 @@ Coverage includes: happy path, negative, edge, validation or permission, integra
 | B-07-TC-002 | Create a lead from a permit row (`{PM_28}`) | P2 | @smoke | UI | AC-1, FR-001 | `B-07.spec.ts › "B-07-TC-002 create lead from permit row"` |
 | B-07-TC-003 | Lead detail shows the signals snapshot and source manifest CID | P1 | @smoke | UI | AC-1, FR-001 | `B-07.spec.ts › "B-07-TC-003 signals snapshot and source CID"` |
 | B-07-TC-004 | Lead with no resolved contractor shows the reason, not an invented name | P2 | @missing-data | UI | AC-1, FR-001 | `B-07.spec.ts › "B-07-TC-004 no contractor shows reason"` |
-| B-07-TC-005 | Second create on `{P_5_52}` shows "Already a lead" | P1 | @negative @demo | UI | AC-2, FR-002 | `B-07.spec.ts › "B-07-TC-005 duplicate shows Already a lead"` |
-| B-07-TC-006 | Duplicate attempt writes no row (list count unchanged) | P1 | @negative | UI+API | AC-2, FR-002 | `B-07.spec.ts › "B-07-TC-006 duplicate writes no row"` |
+| B-07-TC-005 | Drawer of `{P_5_52}` shows "Already a lead" and no Create button | P1 | @negative @demo | UI | AC-2, FR-002 | `B-07.spec.ts › "B-07-TC-005 duplicate shows Already a lead"` |
+| B-07-TC-006 | Opening the drawer of an existing lead writes no row (list count unchanged) | P1 | @negative | UI+API | AC-2, FR-002 | `B-07.spec.ts › "B-07-TC-006 duplicate writes no row"` |
 | B-07-TC-007 | 20 concurrent creates on `{P_AGE48}` → exactly 1 lead, 19 "Already a lead" | P1 | @edge @nfr | UI+API | AC-2, NFR-001 | `B-07.spec.ts › "B-07-TC-007 20 concurrent creates"` |
 | B-07-TC-008 | Change status to `contacted` and add the note; reload keeps both | P1 | @smoke @demo | UI | AC-3, FR-003 | `B-07.spec.ts › "B-07-TC-008 status and note persist"` |
 | B-07-TC-009 | Failed status save is undone and reported, never silently lost | P2 | @negative | UI | AC-3, FR-003 | `B-07.spec.ts › "B-07-TC-009 failed save undone"` |
@@ -162,16 +162,16 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
   5. **Verify** the contractor field.
 - **Expected result:** the field shows a "contractor not available" state naming the reason from the index (`contractorResolution = unresolved`; exact copy TBD at build time, GAP-2 — assert the reason code is surfaced, not a specific literal string). No contractor name or BBB rating is shown.
 
-### B-07-TC-005: Second create on `{P_5_52}` is refused with "Already a lead" (negative)
+### B-07-TC-005: A property that is already a lead shows "Already a lead" instead of a Create button (negative)
 
 - **Priority / tags:** P1 · `@negative @demo`
 - **Maps to:** AC-2, FR-002
 - **Preconditions:** TC-001 has created the lead for `{P_5_52}`.
 - **Steps:**
   1. **Open** `{RUNTIME_URL}/map` and **log in** as `{TEST_USER}`.
-  2. **Tap** the result row for `{P_5_52}` and **tap** "Create lead".
-  3. **Verify** the message "Already a lead" is shown in the drawer, with a link to the existing lead.
-- **Expected result:** the exact text "Already a lead" is visible; the link opens `/leads/{leadId}` of the existing lead. The drawer does not show a success state.
+  2. **Open** the drawer for `{P_5_52}` (result row, or the `sel` link). The drawer first shows a disabled "Checking Leads…" button while it looks the property up.
+  3. **Verify** the pill "Already a lead · {status}" is shown with an "Open lead" link, and that no enabled "Create lead" button exists (permit rows show nothing).
+- **Expected result:** the text "Already a lead" is visible; the "Open lead" link opens `/leads/{leadKey}` of the existing lead. There is no button to tap and no success state. If the lookup itself fails, the normal "Create lead" button shows and the server's refusal (HTTP 409) still maps to "Already a lead"; that server path is proven by TC-007.
 
 ### B-07-TC-006: Duplicate attempt writes no row (negative, data integrity)
 
@@ -181,11 +181,11 @@ Each case is a complete, ordered sequence that starts from `{RUNTIME_URL}`. Use 
 - **Steps:**
   1. **Open** `{RUNTIME_URL}/leads` and **note** the total row count (N) and the row count for `{P_5_52}` (1).
   2. **Open** `{RUNTIME_URL}/map` and **log in** as `{TEST_USER}` (new tab/context).
-  3. **Tap** the result row for `{P_5_52}` and **tap** "Create lead". → "Already a lead" is shown (TC-005's outcome).
+  3. **Open** the drawer for `{P_5_52}` and **do not tap anything**. → "Already a lead" is shown and there is no "Create lead" button (TC-005's outcome).
   4. **Open** `{RUNTIME_URL}/leads` and **reload** the page.
   5. **Verify** the count of rows for `{P_5_52}` in the list.
   6. **Verify** the total row count.
-- **Expected result:** exactly 1 row for `{P_5_52}`. Total count is N, unchanged. The DynamoDB conditional write was refused, so no second item exists under the key `48453:tcad:{request_identifier}`.
+- **Expected result:** exactly 1 row for `{P_5_52}`. Total count is N, unchanged. Opening the drawer wrote nothing, so no second item exists under the key `48453:tcad:{request_identifier}`. (The refused conditional write itself is TC-007's job.)
 
 ### B-07-TC-007: 20 concurrent creates on the same property resolve to exactly one lead (edge, NFR-001)
 

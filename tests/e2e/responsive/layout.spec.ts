@@ -315,7 +315,8 @@ test.describe("Layout: Map screen", () => {
     } else {
       expect(drawer.width, "side sheet stays narrow").toBeLessThanOrEqual(DESIGN.drawerMaxWidth);
       const createLead = screen.drawer.getByRole("button", { name: "Create lead", exact: true });
-      await expect(createLead).toBeVisible();
+      // The drawer checks Leads first, so the button appears once that lookup answers.
+      await expect(createLead).toBeVisible({ timeout: 15_000 });
       const action = await ensureBox(createLead);
       expectInsideViewport(action, page, "Create lead");
       expect(action.y, "Create lead is inside the drawer").toBeGreaterThanOrEqual(drawer.y);

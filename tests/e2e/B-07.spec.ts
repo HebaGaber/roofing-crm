@@ -233,6 +233,23 @@ async function createFromDrawer(drawer: Locator): Promise<Locator> {
   return state;
 }
 
+/** The drawer checks Leads first: for a property that is already a lead it shows the pill
+ *  "Already a lead" (true here). When the lookup is unavailable the normal "Create lead" button
+ *  shows instead (false), and the server's refusal still reads "Already a lead"; that fallback is
+ *  recorded as an annotation so a build without the lookup is visible in the report, not hidden. */
+async function showsExistingLead(drawer: Locator): Promise<boolean> {
+  const pill = drawer.getByText(/^Already a lead/).first();
+  const button = drawer.getByRole("button", { name: "Create lead", exact: true });
+  await expect(pill.or(button)).toBeVisible({ timeout: 15_000 });
+  if ((await pill.count()) > 0) return true;
+  test.info().annotations.push({
+    type: "presence-lookup-unavailable",
+    description:
+      "The drawer offered Create lead for an existing lead: the lead lookup did not answer or this build has none. The server's refusal is asserted instead.",
+  });
+  return false;
+}
+
 const leadCount = (page: Page): Locator => page.getByText(/^\d+ leads?$/);
 /** Below 600 px the lead filters sit in a sheet behind "Filters"; from 600 px they are inline. */
 async function openLeadFilters(page: Page): Promise<void> {
@@ -367,9 +384,18 @@ test.describe("B-07 leads", () => {
     const card = drawer
       .locator("article[data-permit-cid]")
       .filter({ hasText: permit.permitNumber });
-    await button.click();
-    // The key is per property, so TC-001's lead already exists: the permit row just says so.
-    await expect(card.getByRole("status")).toContainText(/Lead created|Already a lead/);
+    // The drawer checks Leads first. The key is per property, so TC-001's lead usually exists
+    // already: then the permit row offers no create button and the drawer header says so.
+    // Otherwise the button is there and the click creates the lead.
+    const alreadyLead = drawer.getByText(/Already a lead/).first();
+    await expect(button.or(alreadyLead)).toBeVisible({ timeout: 15_000 });
+    if ((await button.count()) > 0) {
+      await button.click();
+      await expect(card.getByRole("status")).toContainText(/Lead created|Already a lead/);
+    } else {
+      await expect(alreadyLead).toBeVisible();
+      await expect(button).toHaveCount(0);
+    }
     await shot(page, "002", "permit-row");
 
     await page.goto("/leads");
@@ -417,12 +443,24 @@ test.describe("B-07 leads", () => {
   // ---- AC-2: duplicates --------------------------------------------------------------------
 
   test("B-07-TC-005 duplicate shows Already a lead", async ({ page }) => {
+    const f = factsOf(P_5_52);
     const drawer = await openDrawer(page, P_5_52);
-    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
-    const state = drawer.getByRole("status");
-    await expect(state).toContainText("Already a lead");
-    await expect(state).not.toContainText("Lead created");
-    await expect(state.getByRole("link", { name: "View leads" })).toHaveAttribute("href", "/leads");
+    // The drawer checks Leads first and shows the state instead of a button that would be refused.
+    if (await showsExistingLead(drawer)) {
+      const pill = drawer.getByText(/^Already a lead/).first();
+      await expect(pill).not.toContainText("Lead created");
+      await expect(drawer.getByRole("button", { name: "Create lead", exact: true })).toHaveCount(0);
+      await expect(drawer.getByRole("button", { name: /^Checking Leads/ })).toHaveCount(0);
+      await expect(drawer.getByRole("link", { name: "Open lead" })).toHaveAttribute(
+        "href",
+        leadPath(f.requestIdentifier),
+      );
+    } else {
+      await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
+      const state = drawer.getByRole("status");
+      await expect(state).toContainText("Already a lead");
+      await expect(state).not.toContainText("Lead created");
+    }
     await shot(page, "005", "already-a-lead");
   });
 
@@ -432,9 +470,12 @@ test.describe("B-07 leads", () => {
     await expect(leadLink(page, f)).toHaveCount(1);
     const before = (await leadCount(page).textContent()) ?? "";
 
+    // Opening the drawer only shows the state and writes nothing; no tap is needed.
     const drawer = await openDrawer(page, P_5_52);
-    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
-    await expect(drawer.getByRole("status")).toContainText("Already a lead");
+    if (!(await showsExistingLead(drawer))) {
+      await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
+      await expect(drawer.getByRole("status")).toContainText("Already a lead");
+    }
 
     await page.goto("/leads");
     await page.reload();
@@ -586,8 +627,13 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-011 combined filters agree with map", async ({ page }) => {
     // Third lead for the count; "Already a lead" is fine when a previous run left it behind.
     const drawer = await openDrawer(page, P_5_89);
-    await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
-    await expect(drawer.getByRole("status")).toContainText(/Lead created|Already a lead/);
+    const createButton = drawer.getByRole("button", { name: "Create lead", exact: true });
+    const alreadyLead = drawer.getByText(/^Already a lead/).first();
+    await expect(createButton.or(alreadyLead)).toBeVisible({ timeout: 15_000 });
+    if ((await createButton.count()) > 0) {
+      await createButton.click();
+      await expect(drawer.getByRole("status")).toContainText(/Lead created|Already a lead/);
+    }
 
     // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of the Central Austin area centre).
     const expected = [P_5_52, P_AGE48, P_5_89]
