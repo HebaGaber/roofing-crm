@@ -1,31 +1,35 @@
 // T042 (B-09/US2): the golden-query evaluation harness (checks.md §7.1/§7.2, quickstart.md step
 // 3, agent-design.md alakazam §1). Calls `agent.ask`/`agent.confirmLead` over the DEPLOYED agent
 // (RUNTIME_URL, never localhost -- constitution Article I "localhost is never evidence", the
-// same guard `playwright.config.ts` already loads from `../e2e/lib/runtime-url.js`), 3 repeats
-// paced 13s apart (8 asks per repeat incl. G7's seed, 24 total; stays under 5 asks/min).
+// same guard `playwright.config.ts` already loads from `../e2e/lib/runtime-url.js`), paced
+// `pacingSeconds` apart (stays under 5 asks/min).
 //
-// This test is expected to fail until Phase 4 (US1) is deployed and the Run 2 manifest is the
-// promoted run (tasks.md T047) -- it cannot run in this development session at all: there is no
-// deployed RUNTIME_URL yet, and no Cognito eval-user credentials to hand it. It is skip-guarded
-// the same way `apps/api/test/leadIndex.manifestCid.test.ts` (T020) is: a real, assertion-bearing
-// `describe` that only runs when every env var it needs is present, and an `it.todo` stub in the
-// opposite case, so this file is never silently vacuous (an unconditional skip would hide a
-// config mistake) and never breaks the local `pnpm test` CI gate (it has nothing to do with
-// `@crm/api`'s own test run; `tests-agent` is its own workspace package, run only explicitly via
-// `pnpm --filter tests-agent test`, same as `tests/e2e` is only ever run via the root `e2e`
-// script).
+// Real-data pass (Run 2, manifest bafkreife3...pcute): the G1-G7 prompts are the assessment's and
+// unchanged, but only ~2 percent of properties have a roof age, so each query's pass rule is the
+// truth of the data (passRules.ts): answered with verified rows, or an HONEST EMPTY with zero
+// fabricated rows. A1-A5 are Austin variants that must be answered with real rows. A failing
+// honest answer is reported, never tuned away.
+//
+// Every cited row is re-checked against the live index (property.get): it exists, lies within the
+// stated radius of the stated centre, meets the stated roof-age / permit-status / open-duration
+// filters. For property questions the answer's matched count must also equal the index's own
+// count for the same centre, radius and roof age (search.properties counts). Results are written to
+// GOLDEN_RESULTS_PATH (json) when set; no token or password is ever written.
+//
+// This block is skip-guarded like `apps/api/test/leadIndex.manifestCid.test.ts` (T020): a real,
+// assertion-bearing `describe` that only runs when every env var it needs is present, and an
+// `it.todo` stub in the opposite case. The pass-rule and G7 logic below are covered by always-on
+// unit tests.
 //
 // Required env, beyond RUNTIME_URL:
-//  - CRM_COGNITO_USER_POOL_ID / CRM_COGNITO_USER_POOL_CLIENT_ID: the deployed pool (infra output,
-//    `infra/lib/crm-web-stack.ts`'s VITE_COGNITO_* build-time pair, read here from plain env
-//    since this harness is a Node script, not a Vite build). The app client only allows SRP
-//    (`infra/lib/crm-ops-stack.ts`: `authFlows: { userSrp: true }`), so this harness signs in the
-//    same way the browser does (`amazon-cognito-identity-js`, apps/web/src/auth/signIn.ts's own
-//    dependency), not via a USER_PASSWORD_AUTH shortcut the app client doesn't permit.
-//  - CRM_TEST_USERNAME (defaults to "admin@roofing-crm.test", the same seeded account every
-//    Playwright spec in tests/e2e signs in as) / CRM_TEST_PASSWORD (never hard-coded --
-//    constitution Article XII).
-import { readFileSync } from "node:fs";
+//  - CRM_COGNITO_USER_POOL_ID / CRM_COGNITO_USER_POOL_CLIENT_ID: the deployed pool (infra output).
+//    The app client only allows SRP, so this harness signs in the way the browser does
+//    (`amazon-cognito-identity-js`).
+//  - CRM_TEST_USERNAME (defaults to "admin@roofing-crm.test") / CRM_TEST_PASSWORD (never
+//    hard-coded or logged -- constitution Article XII).
+//  - Optional: GOLDEN_REPEATS (overrides golden.json), GOLDEN_ONLY (comma-separated ids),
+//    GOLDEN_RESULTS_PATH.
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -42,6 +46,16 @@ import {
   publishGoldenQueryPassRate,
   shouldPublishGoldenQueryPassRate,
 } from "./publishGoldenQueryPassRate.js";
+import {
+  assertsContractorOrBbb,
+  evaluateQuery,
+  haversineMi,
+  honestEmptyFailures,
+  percentile,
+  type AnswerLike,
+  type QuerySpec,
+  type RuleContext,
+} from "./passRules.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -49,14 +63,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // golden.json (T041)
 // ---------------------------------------------------------------------------------------------
 
-interface GoldenQuery {
-  readonly id: string;
+interface GoldenQuery extends QuerySpec {
   readonly prompt: string;
   readonly mustDo: string;
-  readonly expectedOutcome: string;
   readonly check: string;
   readonly inheritsAreaFrom?: string;
-  readonly requiresRealPermitNumber?: boolean;
+  /** G5: the real permit number substituted for `{real permit number}`. */
+  readonly permitNumber?: string;
   /** G7: the query whose prompt seeds G7's own thread before G7's prompt is asked there. */
   readonly seedsThreadWith?: string;
   /** G7: the plan intent the server must read (ADR-06 `propose_leads`). */
@@ -65,6 +78,7 @@ interface GoldenQuery {
 
 interface GoldenFile {
   readonly manifestCid: string;
+  readonly runId: string;
   readonly queries: readonly GoldenQuery[];
   readonly grading: {
     readonly repeats: number;
@@ -100,20 +114,21 @@ const COGNITO_USER_POOL_ID = process.env.CRM_COGNITO_USER_POOL_ID;
 const COGNITO_USER_POOL_CLIENT_ID = process.env.CRM_COGNITO_USER_POOL_CLIENT_ID;
 const CRM_TEST_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const CRM_TEST_PASSWORD = process.env.CRM_TEST_PASSWORD;
-// G5 needs a real, currently-open permit number from the deployed index; there is no way to
-// discover one without first querying the deployed agent, so it is supplied, not derived, same
-// spirit as the fixed TCAD request identifiers tests/e2e/B-07.spec.ts hard-codes from a real run.
-const G5_REAL_PERMIT_NUMBER = process.env.CRM_GOLDEN_G5_PERMIT_NUMBER;
+const GOLDEN_REPEATS = Number(process.env.GOLDEN_REPEATS ?? golden.grading.repeats);
+const GOLDEN_ONLY = nonEmpty(process.env.GOLDEN_ONLY)
+  ? new Set((process.env.GOLDEN_ONLY as string).split(",").map((s) => s.trim()))
+  : undefined;
+const GOLDEN_RESULTS_PATH = process.env.GOLDEN_RESULTS_PATH;
 
 const canRun =
   RUNTIME_URL !== undefined &&
   nonEmpty(COGNITO_USER_POOL_ID) &&
   nonEmpty(COGNITO_USER_POOL_CLIENT_ID) &&
-  nonEmpty(CRM_TEST_PASSWORD) &&
-  nonEmpty(G5_REAL_PERMIT_NUMBER);
+  nonEmpty(CRM_TEST_PASSWORD);
 
 // ---------------------------------------------------------------------------------------------
-// Auth (SRP, matching the app client's allowed flow) + API client
+// Auth (SRP, matching the app client's allowed flow) + API client. One sign-in per run: the admin
+// account locks after repeated wrong passwords, so the session is reused for every call.
 // ---------------------------------------------------------------------------------------------
 
 function signIn(username: string, password: string): Promise<CognitoUserSession> {
@@ -141,16 +156,12 @@ async function makeClient(): Promise<ApiClient> {
   });
 }
 
-/** Sequential pacing: never more than `maxAsksPerMinute`, enforced by sleeping
- *  `pacingSeconds` between asks (agent-design.md alakazam §1: "paced 13s apart"). */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------------------------
-// Per-query checks (T042). AgentAnswer's real shape (packages/shared/src/agent/answer.ts), not
-// checks.md's informal "property_cid" phrasing: citations carry `propertyCid`/`permitCid`,
-// claims carry numeric `citationIds` that index into `citations`.
+// Per-query checks. AgentAnswer's real shape (packages/shared/src/agent/answer.ts).
 // ---------------------------------------------------------------------------------------------
 
 interface AskResult {
@@ -158,16 +169,17 @@ interface AskResult {
   readonly latencyMs: number;
 }
 
-async function timedAsk(client: ApiClient, question: string, threadId: string): Promise<AskResult> {
-  const startedAt = Date.now();
-  const answer = await client.agent.ask.mutate({ question, threadId });
-  return { answer, latencyMs: Date.now() - startedAt };
+function queryById(id: string): GoldenQuery {
+  const query = golden.queries.find((q) => q.id === id);
+  if (query === undefined) throw new Error(`golden.json has no ${id}`);
+  return query;
 }
 
 function promptOf(id: string): string {
-  const query = golden.queries.find((q) => q.id === id);
-  if (query === undefined) throw new Error(`golden.json has no ${id}`);
-  return query.prompt;
+  const query = queryById(id);
+  return query.permitNumber === undefined
+    ? query.prompt
+    : query.prompt.replace("{real permit number}", query.permitNumber);
 }
 
 const G7 = golden.queries.find((q) => q.id === "G7");
@@ -176,6 +188,7 @@ function g7Prompt(): string {
   return promptOf("G7");
 }
 
+/** The question that seeds G7's thread (golden.json `seedsThreadWith`; A1 on Run 2). */
 function g1Prompt(): string {
   return promptOf(G7?.seedsThreadWith ?? "G1");
 }
@@ -201,7 +214,7 @@ interface G7Client {
 }
 
 /** G7 (checks.md §7.1 "Create a lead for the first result"), the real Ask flow in one thread:
- *  1. seed the thread with G1's question (gives the follow-up an area to inherit);
+ *  1. seed the thread with the seed question (gives the follow-up an area to inherit);
  *  2. ask G7's prompt there — the plan must be `propose_leads`, which records its proposals
  *     (threadStore.recordTurn) so confirmLead's NOT_PROPOSED check accepts them;
  *  3. confirm the first proposed tcadId (a separate, rep-style mutation — never the model), or,
@@ -241,206 +254,349 @@ async function runG7LeadRoundTrip(
   return { tcadId, latencies };
 }
 
-/** Groundedness (checks.md §7.2 step 2): every citation resolves against the pinned manifest and
- *  the claim it backs. Never a fabricated propertyCid/permitCid. */
-function assertGroundedness(answer: AskResult["answer"]): void {
-  for (const citation of answer.citations) {
-    expect(citation.manifestCid).toBe(golden.manifestCid);
-  }
-  for (const claim of answer.claims) {
-    for (const citationId of claim.citationIds) {
-      expect(answer.citations.some((c) => c.id === citationId)).toBe(true);
-    }
-  }
+// ---------------------------------------------------------------------------------------------
+// Live verification of an answer's rows against the index (groundedness + correctness).
+// ---------------------------------------------------------------------------------------------
+
+interface RowVerification {
+  readonly checked: number;
+  readonly verified: number;
+  readonly failures: string[];
+  readonly countCheck: string;
 }
 
-/** Correctness (checks.md §7.2 step 3): re-run the equivalent search.properties/search.permits
- *  call with the answer's own stated center/thresholds (plan.area.resolved / plan.filters --
- *  never a second, independently-guessed center), and check the cited CIDs are a subset of that
- *  real result set at >= the configured recall. */
-async function assertCorrectness(
+async function verifyAnswerRows(
   client: ApiClient,
   answer: AskResult["answer"],
-  kind: "properties" | "permits",
-): Promise<void> {
+): Promise<RowVerification> {
+  const failures: string[] = [];
+  const cids = new Set<string>();
+  for (const row of answer.rows ?? []) cids.add(row.propertyCid);
+  for (const c of answer.citations) if (c.propertyCid !== undefined) cids.add(c.propertyCid);
   const resolved = answer.plan.area.resolved;
-  if (resolved === undefined) return; // ambiguous/out-of-scope answers have nothing to re-check
-  const center = { lat: resolved.lat, lng: resolved.lon };
-  const citedCids =
-    kind === "properties"
-      ? answer.citations
-          .filter((c) => c.propertyCid !== undefined)
-          .map((c) => c.propertyCid as string)
-      : answer.citations.filter((c) => c.permitCid !== undefined).map((c) => c.permitCid as string);
-  if (citedCids.length === 0) return; // nothing cited to check recall over
-
-  let realCids: string[];
-  if (kind === "properties") {
-    const real = await client.search.properties.query({
-      center,
-      radiusMi: answer.plan.area.radiusMi,
-      ...(answer.plan.filters.roofAgeMinYears === undefined
-        ? {}
-        : { roofAgeMinYears: answer.plan.filters.roofAgeMinYears }),
-    });
-    realCids = real.properties.map((p) => p.propertyCid);
-  } else {
-    const real = await client.search.permits.query({
-      center,
-      radiusMi: answer.plan.area.radiusMi,
-      sort: "openDays",
-    });
-    realCids = real.permits.map((p) => p.permitCid);
-  }
-
-  const matched = citedCids.filter((cid) => realCids.includes(cid));
-  const recallPct = (matched.length / citedCids.length) * 100;
-  expect(recallPct).toBeGreaterThanOrEqual(golden.grading.correctnessRecallTargetPct);
-}
-
-/** Honesty (checks.md §7.2 step 4): the stated center/thresholds and missing-data flags are
- *  present in the structured plan/missing fields -- never only "trust me" free text, since the
- *  UI/golden harness both read the structured answer, not model prose. */
-function assertHonesty(answer: AskResult["answer"]): void {
-  expect(answer.plan.area.radiusMi).toBeGreaterThan(0);
-  // Every declared-missing field carries a reason, never a silent drop (constitution XI).
-  for (const missing of answer.missing) {
-    expect(missing.reason.length).toBeGreaterThan(0);
-  }
-}
-
-async function assertG6ZeroFabrication(answer: AskResult["answer"]): Promise<void> {
-  expect(["out_of_scope", "empty_in_scope", "not_found"]).toContain(answer.outcome);
-  expect(answer.claims).toHaveLength(0);
-  expect(answer.citations).toHaveLength(0);
-  expect(answer.counts.matched).toBe(0);
-}
-
-interface RepeatTally {
-  readonly passedCount: number;
-  readonly totalCount: number;
-}
-
-/** T054: per-query pass/fail tally for this repeat, so the caller can accumulate a
- *  `GoldenQueryPassRate` across every repeat in the run -- a single query's transient failure
- *  (one timeout, one bad golden-query assertion) moves the rate, it does not zero the whole run's
- *  reported rate the way an uncaught `expect()` throw would. The *test's* own pass/fail semantics
- *  (CI gating) are unchanged below: this function still rethrows the first failure after tallying
- *  it, exactly as it did before T054. */
-async function runOneRepeat(client: ApiClient, repeatIndex: number): Promise<RepeatTally> {
-  const threadId = `golden-${Date.now()}-${repeatIndex}`;
-  const latencies: number[] = [];
-  let passedCount = 0;
-  let totalCount = 0;
-  let firstFailure: unknown;
-
-  for (const query of golden.queries) {
-    if (query.id === "G5" && !nonEmpty(G5_REAL_PERMIT_NUMBER)) continue;
-    totalCount += 1;
-
-    const prompt =
-      query.id === "G5"
-        ? query.prompt.replace("{real permit number}", G5_REAL_PERMIT_NUMBER as string)
-        : query.prompt;
-
+  const countyWide = answer.plan.area.kind === "county";
+  const minRoof = answer.plan.filters.roofAgeMinYears;
+  let verified = 0;
+  for (const cid of cids) {
+    let ok = true;
     try {
-      if (query.id === "G7") {
-        // G7 runs in its own thread (`-g7`): this thread's last plan is G6's out-of-scope ZIP,
-        // which "the first result" must not inherit. confirmLead stays a separate,
-        // non-model-invoked mutation (constitution P0, contracts/agent-api.md).
-        const g7 = await runG7LeadRoundTrip(client, `${threadId}-g7`, () =>
-          sleep(golden.grading.pacingSeconds * 1000),
-        );
-        latencies.push(...g7.latencies);
-        passedCount += 1;
+      const got = await client.property.get.query({ propertyCid: cid });
+      const property = got.property;
+      if (property === null || property === undefined) {
+        failures.push(`property ${cid} is not in the index`);
+        ok = false;
       } else {
-        const { answer, latencyMs } = await timedAsk(client, prompt, threadId);
-        latencies.push(latencyMs);
-
-        if (query.id === "G6") {
-          await assertG6ZeroFabrication(answer);
-        } else {
-          expect(answer.outcome).toBe("answered");
-          assertGroundedness(answer);
-          assertHonesty(answer);
-          await assertCorrectness(
-            client,
-            answer,
-            query.prompt.toLowerCase().includes("permit") ? "permits" : "properties",
-          );
+        if (got.manifestCid !== golden.manifestCid) {
+          failures.push(`property ${cid} was read from ${got.manifestCid}`);
+          ok = false;
         }
-
-        passedCount += 1;
+        if (
+          !countyWide &&
+          resolved !== undefined &&
+          typeof property.latitude === "number" &&
+          typeof property.longitude === "number" &&
+          haversineMi(
+            { lat: resolved.lat, lon: resolved.lon },
+            { lat: property.latitude, lon: property.longitude },
+          ) >
+            answer.plan.area.radiusMi + 0.05
+        ) {
+          failures.push(`property ${cid} lies outside the stated ${answer.plan.area.radiusMi} mi`);
+          ok = false;
+        }
+        if (minRoof !== undefined && (property.roofAgeYears ?? -1) < minRoof) {
+          failures.push(`property ${cid} roof age ${property.roofAgeYears} is below ${minRoof}`);
+          ok = false;
+        }
+        for (const row of (answer.rows ?? []).filter((r) => r.propertyCid === cid)) {
+          if (row.permit !== undefined) {
+            const permit = got.permits.find((p) => p.permitCid === row.permit?.permitCid);
+            if (permit === undefined) {
+              failures.push(`permit ${row.permit.permitCid} is not on property ${cid}`);
+              ok = false;
+            } else if (permit.statusClass !== row.permit.statusClass) {
+              failures.push(`permit ${row.permit.number} status differs from the index`);
+              ok = false;
+            }
+          }
+        }
       }
     } catch (error) {
-      firstFailure ??= error;
+      failures.push(`property.get ${cid} failed: ${error instanceof Error ? error.message : "error"}`);
+      ok = false;
     }
+    if (ok) verified += 1;
+  }
 
+  // Exact count cross-check for property questions: the index's own count for the same centre,
+  // radius and roof age (the router supports only these filters).
+  let countCheck = "not applicable";
+  const f = answer.plan.filters as Record<string, unknown>;
+  const onlyRoof = Object.keys(f).every((k) => k === "roofAgeMinYears" || f[k] === undefined);
+  if (
+    answer.plan.intent === "find_properties" &&
+    resolved !== undefined &&
+    !countyWide &&
+    onlyRoof &&
+    ["answered", "empty_in_scope"].includes(answer.outcome)
+  ) {
+    try {
+      const real = await client.search.properties.query({
+        center: { lat: resolved.lat, lng: resolved.lon },
+        radiusMi: answer.plan.area.radiusMi,
+        limit: 1,
+        ...(minRoof === undefined ? {} : { roofAgeMinYears: minRoof }),
+      });
+      const expected = real.counts.afterRoofAge;
+      if (expected === answer.counts.matched) {
+        countCheck = `matched ${answer.counts.matched} equals the index count`;
+      } else {
+        countCheck = `MISMATCH answer ${answer.counts.matched} vs index ${expected}`;
+        failures.push(countCheck);
+      }
+    } catch (error) {
+      countCheck = `unavailable (${error instanceof Error ? error.message.slice(0, 80) : "error"})`;
+    }
+  }
+  return { checked: cids.size, verified, failures, countCheck };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Running the queries
+// ---------------------------------------------------------------------------------------------
+
+export interface QueryRecord {
+  readonly repeat: number;
+  readonly id: string;
+  readonly outcome: string;
+  readonly mode: string;
+  readonly pass: boolean;
+  readonly latencyMs: number[];
+  readonly citations: number;
+  readonly rowsChecked: number;
+  readonly rowsVerified: number;
+  readonly matched: number | undefined;
+  readonly shown: number | undefined;
+  readonly excludedNoRoofDate: number | undefined;
+  readonly excludedNoCoordinates: number | undefined;
+  readonly countCheck: string;
+  readonly intent: string | undefined;
+  readonly modelCalls: number | undefined;
+  readonly failures: string[];
+  /** What the agent said it did, so a failure can be read without re-asking (no secrets). */
+  readonly detail?: {
+    readonly area: string;
+    readonly filters: Record<string, unknown>;
+    readonly unsupported: readonly { constraint: string; reason: string }[];
+    readonly missing: readonly { field: string; reason: string; count?: number | undefined }[];
+    readonly claims: readonly string[];
+    readonly candidates?: readonly { name: string; score: number }[];
+  };
+}
+
+class PausedError extends Error {}
+
+async function runPlainQuery(
+  client: ApiClient,
+  query: GoldenQuery,
+  threadId: string,
+  repeat: number,
+): Promise<QueryRecord> {
+  const startedAt = Date.now();
+  let answer: AskResult["answer"];
+  try {
+    answer = await client.agent.ask.mutate({ question: promptOf(query.id), threadId });
+  } catch (error) {
+    return {
+      repeat,
+      id: query.id,
+      outcome: "error",
+      mode: "fail",
+      pass: false,
+      latencyMs: [Date.now() - startedAt],
+      citations: 0,
+      rowsChecked: 0,
+      rowsVerified: 0,
+      matched: undefined,
+      shown: undefined,
+      excludedNoRoofDate: undefined,
+      excludedNoCoordinates: undefined,
+      countCheck: "not applicable",
+      intent: undefined,
+      modelCalls: undefined,
+      failures: [`ask failed: ${error instanceof Error ? error.message.slice(0, 200) : "error"}`],
+    };
+  }
+  const latencyMs = Date.now() - startedAt;
+  if (answer.outcome === "rate_limited" || answer.outcome === "paused") {
+    throw new PausedError(`${query.id}: agent answered ${answer.outcome}; stopping, not retrying`);
+  }
+  const verification = await verifyAnswerRows(client, answer);
+  const ctx: RuleContext = {
+    manifestCid: golden.manifestCid,
+    verification: { checked: verification.checked, verified: verification.verified },
+  };
+  const rule = evaluateQuery(query, answer as unknown as AnswerLike, ctx);
+  const failures = [...rule.failures];
+  for (const f of verification.failures) if (!failures.includes(f)) failures.push(f);
+  return {
+    repeat,
+    id: query.id,
+    outcome: answer.outcome,
+    mode: rule.mode,
+    pass: failures.length === 0,
+    latencyMs: [latencyMs],
+    citations: answer.citations.length,
+    rowsChecked: verification.checked,
+    rowsVerified: verification.verified,
+    matched: answer.counts.matched,
+    shown: answer.counts.shown,
+    excludedNoRoofDate: answer.counts.excludedNoRoofDate,
+    excludedNoCoordinates: answer.counts.excludedNoCoordinates,
+    countCheck: verification.countCheck,
+    intent: answer.plan.intent,
+    modelCalls: answer.trace.modelCalls,
+    failures,
+    detail: {
+      area: `${answer.plan.area.kind} "${answer.plan.area.query}" -> ${answer.plan.area.resolved?.name ?? "unresolved"} (${answer.plan.area.resolved?.lat}, ${answer.plan.area.resolved?.lon}) radius ${answer.plan.area.radiusMi} mi`,
+      filters: answer.plan.filters as Record<string, unknown>,
+      unsupported: answer.plan.unsupported,
+      missing: answer.missing,
+      claims: answer.claims.slice(0, 3).map((c) => c.text),
+      ...(answer.candidates === undefined ? {} : { candidates: answer.candidates }),
+    },
+  };
+}
+
+async function runG7Record(client: ApiClient, threadId: string, repeat: number): Promise<QueryRecord> {
+  const base = {
+    repeat,
+    id: "G7",
+    citations: 0,
+    rowsChecked: 0,
+    rowsVerified: 0,
+    matched: undefined,
+    shown: undefined,
+    excludedNoRoofDate: undefined,
+    excludedNoCoordinates: undefined,
+    countCheck: "not applicable",
+    intent: "propose_leads",
+    modelCalls: undefined,
+  };
+  try {
+    const g7 = await runG7LeadRoundTrip(client, `${threadId}-g7`, () =>
+      sleep(golden.grading.pacingSeconds * 1000),
+    );
+    return {
+      ...base,
+      outcome: "lead_created",
+      mode: "answered",
+      pass: true,
+      latencyMs: g7.latencies,
+      failures: [],
+    };
+  } catch (error) {
+    return {
+      ...base,
+      outcome: "failed",
+      mode: "fail",
+      pass: false,
+      latencyMs: [],
+      failures: [error instanceof Error ? error.message.slice(0, 300) : "error"],
+    };
+  }
+}
+
+/** Main thread: G1-G6 (G2 inherits G1's area). Austin thread: A-variants. G7 has its own. */
+async function runOneRepeat(client: ApiClient, repeat: number): Promise<QueryRecord[]> {
+  const stamp = Date.now();
+  const records: QueryRecord[] = [];
+  for (const query of golden.queries) {
+    if (GOLDEN_ONLY !== undefined && !GOLDEN_ONLY.has(query.id)) continue;
+    if (query.id === "G7") {
+      records.push(await runG7Record(client, `golden-${stamp}-${repeat}`, repeat));
+    } else {
+      const thread = query.id.startsWith("A") ? `golden-${stamp}-${repeat}-austin` : `golden-${stamp}-${repeat}`;
+      records.push(await runPlainQuery(client, query, thread, repeat));
+    }
     await sleep(golden.grading.pacingSeconds * 1000);
   }
+  return records;
+}
 
-  // Latency (checks.md §7.1/quickstart.md step 3): p95 < 20s, max < 23.5s, per repeat.
-  if (latencies.length > 0) {
-    const sorted = [...latencies].sort((a, b) => a - b);
-    const p95Index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
-    try {
-      expect(sorted[p95Index]).toBeLessThan(golden.grading.latencyP95Ms);
-      expect(Math.max(...sorted)).toBeLessThan(golden.grading.latencyMaxMs);
-    } catch (error) {
-      firstFailure ??= error;
-    }
-  }
-
-  if (firstFailure !== undefined) throw firstFailure;
-  return { passedCount, totalCount };
+export function summarize(records: readonly QueryRecord[]): {
+  passed: number;
+  total: number;
+  groundednessPct: number;
+  p95Ms: number | undefined;
+  maxMs: number | undefined;
+  n: number;
+} {
+  const latencies = records.flatMap((r) => r.latencyMs);
+  const checked = records.reduce((s, r) => s + r.rowsChecked, 0);
+  const verified = records.reduce((s, r) => s + r.rowsVerified, 0);
+  return {
+    passed: records.filter((r) => r.pass).length,
+    total: records.length,
+    groundednessPct: checked === 0 ? 100 : (verified / checked) * 100,
+    p95Ms: percentile(latencies, 0.95),
+    maxMs: latencies.length === 0 ? undefined : Math.max(...latencies),
+    n: latencies.length,
+  };
 }
 
 // T054 (+ B-09 review fix): every real run ends by publishing its GoldenQueryPassRate, so the
 // RoofingCrm dashboard trends real runs. Still skip-guarded: only when this harness can run for
-// real (`canRun`) and AWS credentials are present (a CI job without CloudWatch access still gates
-// the merge; it just adds no datapoint). `CRM_PUBLISH_GOLDEN_METRIC=false` opts out.
+// real (`canRun`) and AWS credentials are present. `CRM_PUBLISH_GOLDEN_METRIC=false` opts out.
 const PUBLISH_GOLDEN_QUERY_PASS_RATE = shouldPublishGoldenQueryPassRate({
   harnessRan: canRun,
   env: process.env,
 });
 
-describe.skipIf(!canRun)("golden queries G1-G7 against the deployed agent (RUNTIME_URL)", () => {
-  it("runs GOLDEN_REPEATS repeats, each paced under 5 asks/min, grounded/correct/honest", async () => {
+describe.skipIf(!canRun)("golden queries against the deployed agent (RUNTIME_URL)", () => {
+  it("runs the repeats paced under 5 asks/min; every query meets its pass rule", async () => {
     const client = await makeClient();
-    let passedCount = 0;
-    let totalCount = 0;
-    let firstFailure: unknown;
+    const records: QueryRecord[] = [];
+    let stopped: string | undefined;
     try {
-      for (let repeatIndex = 0; repeatIndex < golden.grading.repeats; repeatIndex += 1) {
-        try {
-          const tally = await runOneRepeat(client, repeatIndex);
-          passedCount += tally.passedCount;
-          totalCount += tally.totalCount;
-        } catch (error) {
-          // runOneRepeat already tallied its own queries before rethrowing its first failure;
-          // this file has no per-query count on that path, so count the whole repeat's worth
-          // of queries as attempted-and-failed rather than silently omitting it from the rate.
-          totalCount += golden.queries.length;
-          firstFailure ??= error;
-        }
+      for (let repeat = 0; repeat < GOLDEN_REPEATS; repeat += 1) {
+        records.push(...(await runOneRepeat(client, repeat)));
       }
+    } catch (error) {
+      if (error instanceof PausedError) stopped = error.message;
+      else throw error;
     } finally {
-      if (PUBLISH_GOLDEN_QUERY_PASS_RATE && totalCount > 0) {
-        await publishGoldenQueryPassRate({ passedCount, totalCount });
+      const summary = summarize(records);
+      if (GOLDEN_RESULTS_PATH !== undefined) {
+        writeFileSync(
+          GOLDEN_RESULTS_PATH,
+          JSON.stringify({ manifestCid: golden.manifestCid, runId: golden.runId, stopped, summary, records }, null, 2),
+        );
+      }
+      if (PUBLISH_GOLDEN_QUERY_PASS_RATE && summary.total > 0) {
+        await publishGoldenQueryPassRate({ passedCount: summary.passed, totalCount: summary.total });
       }
     }
-    if (firstFailure !== undefined) throw firstFailure;
+    expect(stopped, "the run was stopped early").toBeUndefined();
+    const failed = records.filter((r) => !r.pass);
+    expect(
+      failed.map((r) => `${r.id}#${r.repeat}: ${r.failures.join("; ")}`),
+      "queries that failed their pass rule",
+    ).toEqual([]);
+    const summary = summarize(records);
+    expect(summary.groundednessPct).toBeGreaterThanOrEqual(golden.grading.groundednessTargetPct);
+    if (summary.p95Ms !== undefined) expect(summary.p95Ms).toBeLessThan(golden.grading.latencyP95Ms);
+    if (summary.maxMs !== undefined) expect(summary.maxMs).toBeLessThan(golden.grading.latencyMaxMs);
   });
 });
 
 describe.skipIf(canRun)(
-  "golden queries G1-G7 against the deployed agent (local run, no deployed env)",
+  "golden queries against the deployed agent (local run, no deployed env)",
   () => {
     it.todo(
       "skipped locally -- set RUNTIME_URL (hosted, never localhost), CRM_COGNITO_USER_POOL_ID, " +
-        "CRM_COGNITO_USER_POOL_CLIENT_ID, CRM_TEST_PASSWORD and CRM_GOLDEN_G5_PERMIT_NUMBER to " +
-        "the deployed stack's values to run this for real (quickstart.md step 3 / tasks.md T047), " +
-        "once Phase 4 (US1) is deployed and the Run 2 manifest is promoted",
+        "CRM_COGNITO_USER_POOL_CLIENT_ID and CRM_TEST_PASSWORD to the deployed stack's values to " +
+        "run this for real (quickstart.md step 3 / tasks.md T047)",
     );
   },
 );
@@ -556,5 +712,204 @@ describe("G7 lead round trip (local, fake client)", () => {
   it("fails when G7's plan is not propose_leads (nothing was proposed)", async () => {
     const { client } = fakeClient({ alreadyLead: false, intent: "find_properties" });
     await expect(runG7LeadRoundTrip(client, "thread-g7", noPause)).rejects.toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Pass-rule logic (always runs, no network): the honest-empty path must pass only when nothing is
+// fabricated, and every fabrication or ungrounded answer must fail.
+// ---------------------------------------------------------------------------------------------
+
+const MANIFEST = golden.manifestCid;
+const okCtx: RuleContext = { manifestCid: MANIFEST, verification: { checked: 0, verified: 0 } };
+
+function answerLike(overrides: Partial<AnswerLike> & { outcome: string }): AnswerLike {
+  return {
+    claims: [],
+    citations: [],
+    plan: {
+      intent: "find_properties",
+      area: { radiusMi: 5, kind: "place" },
+      filters: { roofAgeMinYears: 15 },
+      unsupported: [],
+    },
+    counts: { matched: 0, shown: 0, excludedNoCoordinates: 0, excludedNoRoofDate: 47269 },
+    missing: [],
+    ...overrides,
+  };
+}
+
+const citedAnswer = answerLike({
+  outcome: "answered",
+  claims: [{ text: "Property 194401 has a 33 year old roof.", citationIds: [1] }],
+  citations: [{ id: 1, kind: "property", propertyCid: "baguqeeranjr5", manifestCid: MANIFEST }],
+  counts: { matched: 1, shown: 1, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+});
+
+/** Evaluate with the answer's resolved area defaulted to the query's own expected place, so a
+ *  test about contractors or sorting is not also a test about geocoding (the wrong-place test
+ *  below overrides it explicitly). */
+function check(query: GoldenQuery, answer: AnswerLike, ctx: RuleContext) {
+  const named =
+    answer.plan.area.resolved !== undefined || query.expectedAreaPattern === undefined
+      ? answer
+      : {
+          ...answer,
+          plan: {
+            ...answer.plan,
+            area: { ...answer.plan.area, resolved: { name: `${query.expectedAreaPattern} city` } },
+          },
+        };
+  return evaluateQuery(query, named, ctx);
+}
+
+describe("golden pass rules (local)", () => {
+  const g1 = queryById("G1");
+
+  it("keeps the assessment's G1-G7 prompts and adds Austin variants", () => {
+    expect(golden.queries.slice(0, 7).map((q) => q.id)).toEqual(["G1", "G2", "G3", "G4", "G5", "G6", "G7"]);
+    expect(promptOf("G1")).toBe(
+      "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
+    );
+    expect(promptOf("G5")).toBe("What's the BBB rating of the contractor on permit 1981-001776 BP?");
+    expect(golden.queries.filter((q) => q.id.startsWith("A")).length).toBeGreaterThanOrEqual(4);
+    expect(golden.queries.filter((q) => q.id.startsWith("A")).every((q) => q.expectedOutcome !== "answered_or_honest_empty")).toBe(true);
+  });
+
+  it("accepts an honest empty that states why and carries nothing", () => {
+    const r = check(g1, answerLike({ outcome: "empty_in_scope" }), okCtx);
+    expect(r).toMatchObject({ pass: true, mode: "honest_empty" });
+  });
+
+  it("rejects an 'empty' answer that still carries a claim, citation, row or count", () => {
+    for (const bad of [
+      answerLike({ outcome: "empty_in_scope", claims: [{ text: "x", citationIds: [1] }] }),
+      answerLike({ outcome: "empty_in_scope", citations: citedAnswer.citations as AnswerLike["citations"] }),
+      answerLike({ outcome: "empty_in_scope", rows: [{ propertyCid: "c" }] }),
+      answerLike({
+        outcome: "empty_in_scope",
+        counts: { matched: 3, shown: 0, excludedNoCoordinates: 0, excludedNoRoofDate: 9 },
+      }),
+    ]) {
+      expect(check(g1, bad, okCtx).pass).toBe(false);
+    }
+  });
+
+  it("rejects an outcome that is neither answered nor an honest empty", () => {
+    for (const outcome of ["timed_out", "not_found", "out_of_scope", "needs_clarification"]) {
+      expect(check(g1, answerLike({ outcome }), okCtx).pass).toBe(false);
+    }
+  });
+
+  it("rejects an answer whose cited rows did not verify, or cite another manifest", () => {
+    const unverified = check(g1, citedAnswer, { manifestCid: MANIFEST, verification: { checked: 2, verified: 1 } });
+    expect(unverified.pass).toBe(false);
+    const otherRun = answerLike({
+      ...citedAnswer,
+      outcome: "answered",
+      citations: [{ id: 1, kind: "property", propertyCid: "c", manifestCid: "bafkother" }],
+    });
+    expect(check(g1, otherRun, okCtx).pass).toBe(false);
+  });
+
+  it("requires Austin variants to be answered with citations, not an honest empty", () => {
+    const a1 = queryById("A1");
+    expect(check(a1, citedAnswer, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } }).pass).toBe(true);
+    expect(check(a1, answerLike({ outcome: "empty_in_scope" }), okCtx).pass).toBe(false);
+  });
+
+  it("G2/A3: a stated contractor or BBB rating is fabrication; 'not available' passes", () => {
+    expect(assertsContractorOrBbb("The BBB rating is A+.")).toBe(true);
+    expect(assertsContractorOrBbb("The contractor is Acme Roofing LLC.")).toBe(true);
+    expect(assertsContractorOrBbb("The contractor is not available in this run; no BBB rating is published.")).toBe(false);
+    const a3 = queryById("A3");
+    const permitAnswer = answerLike({
+      outcome: "answered",
+      claims: [{ text: "Permit 1981-001776 BP is stalled.", citationIds: [1] }],
+      citations: [{ id: 1, kind: "permit", permitCid: "p", manifestCid: MANIFEST }],
+      counts: { matched: 1, shown: 1, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+      missing: [{ field: "contractor_company_cid", reason: "contractor_unresolved" }],
+      rows: [{ propertyCid: "c", contractorResolution: "unresolved" }],
+    });
+    expect(check(a3, permitAnswer, okCtx).pass).toBe(true);
+    const invented = answerLike({ ...permitAnswer, outcome: "answered", claims: [{ text: "The contractor is Acme Roofing LLC.", citationIds: [1] }] });
+    expect(check(a3, invented, okCtx).pass).toBe(false);
+    expect(check(a3, answerLike({ ...permitAnswer, outcome: "answered", missing: [] }), okCtx).pass).toBe(false);
+  });
+
+  it("G4: field_not_published passes only with an unsupported constraint; asserting out-of-area fails", () => {
+    const g4 = queryById("G4");
+    const notPublished = answerLike({
+      outcome: "field_not_published",
+      plan: { ...answerLike({ outcome: "x" }).plan, unsupported: [{ constraint: "owners outside the area", reason: "not_in_export" }] },
+    });
+    expect(check(g4, notPublished, okCtx).pass).toBe(true);
+    expect(check(g4, answerLike({ outcome: "field_not_published" }), okCtx).pass).toBe(false);
+    const asserted = answerLike({
+      ...citedAnswer,
+      outcome: "answered",
+      claims: [{ text: "This owner lives outside the area.", citationIds: [1] }],
+      missing: [{ field: "owner_is_out_of_area", reason: "not_in_export" }],
+    });
+    expect(check(g4, asserted, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } }).pass).toBe(false);
+  });
+
+  it("G3/A2: permit rows must match the status filter, threshold and sort order", () => {
+    const a2 = queryById("A2");
+    const permits = (rows: { n: string; status: string; days: number }[]) =>
+      answerLike({
+        outcome: "answered",
+        claims: [{ text: "Permits.", citationIds: [1] }],
+        citations: [{ id: 1, kind: "permit", permitCid: "p", manifestCid: MANIFEST }],
+        plan: {
+          intent: "find_permits",
+          area: { radiusMi: 5 },
+          filters: { statusClass: ["open", "stalled"], openYearsMin: 5 },
+          unsupported: [],
+        },
+        counts: { matched: rows.length, shown: rows.length, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+        rows: rows.map((r) => ({
+          propertyCid: `c${r.n}`,
+          permit: { permitCid: `p${r.n}`, number: r.n, statusClass: r.status, openDays: r.days },
+        })),
+      });
+    const ctx = { manifestCid: MANIFEST, verification: { checked: 2, verified: 2 } };
+    expect(check(a2, permits([{ n: "a", status: "stalled", days: 9000 }, { n: "b", status: "open", days: 3000 }]), ctx).pass).toBe(true);
+    expect(check(a2, permits([{ n: "a", status: "closed", days: 9000 }, { n: "b", status: "open", days: 3000 }]), ctx).pass).toBe(false);
+    expect(check(a2, permits([{ n: "a", status: "stalled", days: 1000 }, { n: "b", status: "open", days: 900 }]), ctx).pass).toBe(false);
+    expect(check(a2, permits([{ n: "a", status: "stalled", days: 3000 }, { n: "b", status: "open", days: 9000 }]), ctx).pass).toBe(false);
+  });
+
+  it("an honest empty about the wrong place fails (G3 must be about Manor)", () => {
+    const g3 = queryById("G3");
+    const about = (name?: string) =>
+      answerLike({
+        outcome: "empty_in_scope",
+        plan: {
+          intent: "find_permits",
+          area: { radiusMi: 5, resolved: name === undefined ? undefined : { name } },
+          filters: {},
+          unsupported: [],
+        },
+      });
+    expect(evaluateQuery(g3, about("Manor city"), okCtx).pass).toBe(true);
+    expect(evaluateQuery(g3, about("Pflugerville city"), okCtx).pass).toBe(false);
+    expect(evaluateQuery(g3, about(undefined), okCtx).pass).toBe(false);
+  });
+
+  it("G6 refuses with zero claims, citations and rows", () => {
+    const g6 = queryById("G6");
+    expect(check(g6, answerLike({ outcome: "out_of_scope" }), okCtx).pass).toBe(true);
+    expect(check(g6, citedAnswer, okCtx).pass).toBe(false);
+  });
+
+  it("computes a nearest-rank p95 and distances", () => {
+    expect(percentile([], 0.95)).toBeUndefined();
+    expect(percentile([5, 1, 3], 0.95)).toBe(5);
+    expect(percentile(Array.from({ length: 20 }, (_, i) => i + 1), 0.95)).toBe(19);
+    expect(haversineMi({ lat: 30.27, lon: -97.74 }, { lat: 30.27, lon: -97.74 })).toBe(0);
+    expect(haversineMi({ lat: 30.27, lon: -97.74 }, { lat: 30.4478, lon: -97.6021 })).toBeGreaterThan(10);
+    expect(honestEmptyFailures(answerLike({ outcome: "empty_in_scope" }))).toEqual([]);
+    expect(summarize([]).total).toBe(0);
   });
 });

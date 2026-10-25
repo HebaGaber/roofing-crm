@@ -8,7 +8,7 @@ spec: specs/009-agent-hardening/spec.md
 owner: HebaGaber
 status: Draft
 gate: G6
-version: 0.1
+version: 0.2
 created: 2026-10-24
 runtime_url: "{RUNTIME_URL} = https://crm.{domain} or the 009-agent-hardening Amplify branch preview; never localhost"
 reviewed_code: "d8e9299 (plan/tasks only; no implementation commit yet)"
@@ -17,7 +17,7 @@ qc_signoff: false
 
 # Test Cases: B-09 Grounded agent + production hardening + real-data switch + prototype re-audit
 
-> **v0.1, 2026-10-24.** Drafted with `developmentsupport-testcases` from the story's Given / When /
+> **v0.2, 2026-10-25: real Run 2 test data filled in (§ 5) and the golden pass rules set to what the data supports (§ 8, TC-001, TC-009 to TC-015, TC-NF-01). v0.1, 2026-10-24.** Drafted with `developmentsupport-testcases` from the story's Given / When /
 > Then ACs (AC-1 … AC-8), its edge cases, its Requirements table and `specs/009-agent-hardening/spec.md`'s
 > FR-001 … FR-008. `tasks.md` was **not** read for this draft, per constitution XXII. Every case
 > starts from `{RUNTIME_URL}` in a private window and logs in as `{TEST_USER}`. Playwright runs
@@ -72,9 +72,8 @@ production-ready, not just demo-ready.
 
 - **Data source.** Per AC-7, this story's deployed build reads property/permit data directly by
   Task A's Run 2 full-county manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`
-  (441,961 properties / 15,025 permits). Test data below (`{P_...}` tokens) must be filled in from
-  this manifest once it is live — they are placeholders, not fabricated values, consistent with
-  this template's convention. **Do not** substitute B-03/B-07's earlier 35-row-sample fixtures;
+  (441,961 properties / 15,025 permits). The test data in § 5 was read from this manifest on
+  2026-10-25 (provenance recorded there); no placeholder token remains. **Do not** substitute B-03/B-07's earlier 35-row-sample fixtures;
   SC-005 explicitly requires the real publication.
 - **Routes.** Ask screen `/ask` (or wherever `apps/web/src/routes/Ask/` mounts — confirm against
   the build; `{route}` marks where it may differ), map `/map`, leads list `/leads`.
@@ -125,10 +124,62 @@ production-ready, not just demo-ready.
 - **Place E (refuse, not clarify):** a clearly non-Travis, non-existent place name, e.g. "Zzyzxville" —
   expected score <0.80 → `not_found`.
 - **Out-of-scope ZIP (AC-3, G6):** `99999` (not a Travis County ZIP).
-- **Real permit number (G5):** `{PM_REAL}` — read from the Run 2 manifest at test setup time (a
-  real open permit number), not invented.
-- **Lakeway combined-filter case (G4):** "Lakeway", tenure ≥10 years, owner mailing address outside
-  the area — exact property set read from the live index at test time.
+- **Real permit number (G5):** `1981-001776 BP` (Austin, roofing replacement, **stalled**, issued
+  1981-08-05, 16,516 days open when read on 2026-10-25), permit CID
+  `baguqeeratgqigjx72ocnrviqvfzg3jeojnoz4r2slpejuljn5cyjibzbacza`, property CID
+  `baguqeeradgf5m53kbzldg3rxy5fj6oy5ac5i5jc46pnxpvttkizlqiwap5sq` (TCAD id `284902`, Duplex,
+  30.2425521, -97.7327896; no roof date, reason `no_roof_date`). Contractor is `unresolved`
+  (`contractor_unresolved`); `bbb_rating` has no lexicon carrier, so the expected G5 answer is the
+  permit found and cited, the BBB rating stated as not available.
+- **Open (not stalled) long-running permit:** `1989-010586 BP`, status Planned, issued 1989-03-08,
+  13,744 days open on 2026-10-25, permit CID
+  `baguqeera2rehbqfcax5busc3737zzfwdqaci5f5hkjuh22muyqoizvsivxqa`, property CID
+  `baguqeera7vhpi6mthe7kya66nli6hmcv3znfttativpbsnzrgloxjyhdhcvq` (TCAD id `205334`, no roof date).
+  `2024-032172 BP` (Permitted, 948 days open) is the open permit with a short open time.
+- **Austin property with roof age >= 20 and its basis (A1, TC-001 Austin variant):** property CID
+  `baguqeeranjr5dt4wn5xcpa3flm6mgqcwlt5v35xbfixrrmo3dzzbig6ztsxa`, TCAD id `194401`, Commercial
+  Building at 30.2672948, -97.7426184, roof age 33 years, `roofAgeBasis: permit`, confidence high,
+  derived from its closed reroof permit `1992-000408 BP` (issued 1992-04-30, final 1993-03-02,
+  permit CID `baguqeerawb5epsdnvytifm6dxq6yg5rvbvbjhj37zm7of2wlpsl4ra4yybwa`).
+- **Three properties for the lead-create scenario (TC-004/006):** TCAD ids `194401` (33 years,
+  basis permit, `1992-000408 BP`), `194348` (35 years, basis permit, `1989-012978 BP`, CID
+  `baguqeeraburffmo4bnncbjjne6bxycz2bk4hi4v2ni4u625cbylnotjkdvyq`) and `194346` (41 years, basis
+  permit, `1983-007189 BP`, CID `baguqeeraayekdy33assuaimhgoh5sghf2wibdfxt36btkqwz2l53ilbwoncq`);
+  all within 3 mi of downtown Austin, all with roof age >= 20. The suite never creates leads on
+  other properties; it deletes only the ones it created.
+- **ZIP with results:** ZIP `78701` (Austin; gazetteer ZCTA centre 30.270569, -97.742589).
+  Run 2 publishes no postal code (`postal_code` is `not_in_export` on every property), so a ZIP is
+  answered as a radius around the ZCTA centre: 3 mi gives 34,828 properties, 2,874 with roof age
+  >= 20, 31,374 with no roof date. There is no ZIP filter on the data itself.
+- **Lakeway combined-filter case (G4):** "Lakeway" (30.354982, -97.986269), tenure >= 10 years,
+  owner mailing address outside the area. Run 2 does not publish owner location
+  (`owner_is_out_of_area` and `owner_area_class` are `not_in_export` for every property), so the
+  expected result is `field_not_published` (or an answer that flags the constraint and asserts no
+  owner location). In a 100-row sample within 5 mi of Lakeway, `isLongTenure` was true for 65,
+  false for 5 and null (`no_dated_sale`) for 30.
+- **Expected exact counts (read from the same index through the deployed API, 2026-10-25):**
+  - County overview (zoom 8, no filter): 441,961 properties; 390,061 binned; 51,900 without
+    coordinates; 380,569 binned properties without a roof age. Roof age >= 20: 7,922 matched
+    (7,907 binned, 15 without coordinates, 432,451 without a roof date). Open roofing permits 80,
+    stalled 1,669 (1,674 stalled and 80 open in the permit table, 15,025 permits in all).
+  - Radius, roof age (counts `afterRadius` / `afterRoofAge`): Pflugerville 5 mi 47,282 / 0 for roof
+    >= 15 (47,269 with no roof date); Manor 5 mi 26,983 / 2; Lakeway 5 mi 28,361 / 1; Austin
+    (30.298622, -97.754134) 3 mi 31,001 / 2,585 for roof >= 15 and 2,462 for roof >= 20;
+    Austin 5 mi 78,233 / 5,815 for roof >= 20.
+  - Permits: Manor 5 mi has 3 roofing permits, 1 stalled older than 5 years (`1990-002676 BP`,
+    13,156 days open), 0 open. Lakeway 5 mi has 6, of which 4 are stalled and older than 5 years
+    (`1987-017516 BP`, `2000-001756 BP`, `2002-018982 BP`, `2007-124940 BP`). Within 2 mi of
+    30.2672, -97.7431 there are 2,283 roofing permits, 274 open or stalled (9 open), 247 of them
+    older than 5 years. Contractor: 0 of 15,025 permits resolved (manifest
+    `coverage.contractor_resolved.count` is 0).
+  - Provenance: manifest `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`, run
+    `travis-full-run2-20261024`; read through `crm-api-trpc` (`search.properties`,
+    `search.permits`, `search.countyOverview`, `property.get`) and the published parquet parts
+    (`property_improvement`) fetched by CID from the CloudFront gateway.
+  - Known limits of that API (defects, not data): `search.permits` returns every permit status
+    with no limit; around downtown Austin it fails at 3 mi (response over the 6 MB Lambda limit)
+    and 5 mi (28 s timeout), and for Pflugerville 5 mi it runs out of memory. Count cross-checks
+    for permits therefore use `property.get` on cited rows, not `search.permits`.
 - **Data snapshot:** manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute`
   (441,961 properties / 15,025 permits). Every agent-created lead must store this CID in
   `sourceManifestCid`.
@@ -141,19 +192,20 @@ production-ready, not just demo-ready.
 
 ## 6. Environment, risks and dependencies
 
-- `RUNTIME_URL={RUNTIME_URL}` · test user `{TEST_USER}` (environment variable).
+- `RUNTIME_URL=https://009-agent-hardening.d1zmhc6kkyzsbe.amplifyapp.com` (branch preview; replace with `https://crm.{domain}` once promoted) · `{TEST_USER}` = the seeded admin `admin@roofing-crm.test`, password from Secrets Manager `roofing-crm/admin-user` into `CRM_TEST_PASSWORD` (environment only, never in a file). `{RUNTIME_URL}` and `{TEST_USER}` in the cases below are these two environment parameters, not unfilled data.
 - B-07 merged (leads live, for the agent's `createLead`/confirm path) — confirmed (`8b13240`).
 - The data-switch (AC-7) must be deployed before TC-001–TC-015, TC-020, TC-021 are meaningful —
   running them against the 35-row sample instead of the Run 2 manifest would pass for the wrong
   reason. Confirm `leadIndex.indexInfo().manifestCid` before running this suite.
 - **Known gaps** that become expected-to-fail or blocked cases are listed in § 10 and linked from
-  the rows they affect. None recorded yet — this is the first draft, before implementation.
+  the rows they affect. First real run on Run 2 (2026-10-25, `docs/evidence/B-09.md`) recorded GAP-1 to GAP-5.
 
 ## 7. Coverage matrix
 
 | TC ID | Title | Priority | Tags | Type | Requirement(s) | Playwright test |
 | --- | --- | --- | --- | --- | --- | --- |
 | B-09-TC-001 | Ask about Pflugerville permits, get cited answer | P1 | `@smoke @demo` | UI | AC-1, FR-001 | `tests/agent/golden.test.ts › "G1"` |
+| B-09-TC-001a | Austin variant: roofs over 20 years within 3 mi of Austin answered with verified rows | P1 | `@smoke` | API | AC-1, FR-001 | `tests/agent/golden.test.ts › "A1"` |
 | B-09-TC-002 | Open a cited result on the map | P1 | `@smoke` | UI | AC-1, FR-001 | `tests/e2e/responsive/ask.spec.ts › "open on map"` |
 | B-09-TC-003 | Follow-up question inherits the area (G2) | P2 | `@demo` | UI | AC-1, FR-001 | `tests/agent/golden.test.ts › "G2"` |
 | B-09-TC-004 | Create a lead from the agent's answer | P1 | `@smoke @demo` | UI | AC-2, FR-002 | `tests/agent/golden.test.ts › "G7"` |
@@ -205,6 +257,16 @@ production-ready, not just demo-ready.
 - **Expected result:** the answer names the center point used, every result has a real,
   verifiable `property_cid` with a citation, and the roof-age filter (>15 years) is reflected in
   every returned result's shown roof age.
+- **Run 2 data truth (§ 5):** within 5 mi of Pflugerville there are 47,282 properties and none
+  has a roof age of 15 years or more (47,269 have no roof date, 13 are younger). The passing
+  result on Run 2 is therefore an honest empty: `outcome: "empty_in_scope"`, zero results, zero
+  citations, the 47,269 excluded for no roof date and the reason stated, and the Pflugerville
+  centre named. A list of Pflugerville roofs would be fabricated and fails.
+- **Austin variant (TC-001a, golden A1):** "Which properties within 3 miles of Austin have roofs
+  older than 20 years?" must be `answered`: centre Austin city (30.298622, -97.754134), 2,462
+  matching properties, every cited row (for example TCAD `194401`, 33 years, basis permit)
+  verifying against the index. ("downtown Austin" is not a gazetteer place and is correctly
+  refused.)
 
 ### B-09-TC-002: Open a cited result on the map
 
@@ -307,23 +369,45 @@ production-ready, not just demo-ready.
   1. **Call** `agent.ask` with the query's exact prompt from `tests/agent/golden.json`.
   2. **Verify** groundedness: every returned `property_cid` resolves via `property.get` against
      the live index, and the answer's `manifestCid` equals the pinned Run 2 CID.
-  3. **Verify** correctness: re-run the equivalent `search.properties`/`search.permits` call with
-     the answer's stated center/thresholds; returned rows must be a subset, recall ≥80% of top-N.
+  3. **Verify** correctness: re-read every cited row with `property.get` (inside the stated radius,
+     meets the stated roof-age, status and open-duration filters, permit present and same status);
+     for property questions the answer's matched count must equal `search.properties`' own count
+     for the same centre, radius and roof age. (`search.permits` is not used as the oracle: it
+     cannot serve a 3 to 5 mi radius around central Austin.)
   4. **Verify** honesty: the answer text states its assumptions (center, thresholds) and flags any
      missing data.
   5. **G6 only:** verify zero results and an explicit "scope invalid/empty" statement.
   6. **G7 only:** verify the proposed lead, once confirmed, appears in `leads.list`.
-- **Expected result:** each of G1–G7 individually passes its grading rule from checks.md §7.2.
+- **Expected result:** each of G1–G7 individually passes its grading rule from checks.md §7.2,
+  where the rule is the truth of Run 2 (`tests/agent/passRules.ts`, `tests/agent/golden.json`):
+  - G1 (Pflugerville, roof > 15): answered with verified rows, or an honest empty (see TC-001). Run 2: honest empty.
+  - G2 (inherits Pflugerville, open permits, contractor): answered or honest empty; any contractor
+    or BBB value is a failure (0 of 15,025 permits have a resolved contractor).
+  - G3 (Manor, open permits over 5 years, sorted by open duration): answered or honest empty
+    about Manor. Run 2: Manor 5 mi has 3 roofing permits, 1 stalled over 5 years
+    (`1990-002676 BP`) and none open, so the status wording decides which.
+  - G4 (Lakeway, 10+ years, owners outside the area): `field_not_published`, or an answer that
+    flags the owner-location constraint as unsupported (`not_in_export`) and never asserts an
+    owner is outside the area. Run 2 does not publish owner location.
+  - G5 (permit `1981-001776 BP`): answered, the permit cited (permit CID in § 5), the BBB rating
+    and contractor stated as not available.
+  - G6 (ZIP 99999): refusal, zero claims, citations, rows and count.
+  - G7: seeded with A1 (G1 has no rows on Run 2), propose then confirm, lead in `leads.list`.
+  - Austin variants A1 to A5 (§ 5 data) must be `answered` with real, verified rows (A3 with the
+    contractor and BBB stated as not available).
+  Honest empties are accepted only with zero claims, citations and rows, matched 0, and the
+  reason in structured fields. The resolved area must match the place in the prompt.
 
 ### B-09-TC-NF-01: All 7 golden queries, p95 < 20s, 100% groundedness
 
 - **Priority / tags:** P1 · `@perf`
 - **Maps to:** AC-4, FR-004
 - **Steps:**
-  1. **Run** all 7 golden queries, 3 repeats each (21 total asks), paced to stay under 5 asks/min.
+  1. **Run** the golden set (G1 to G7 and the Austin variants A1 to A5: 13 asks per repeat, G7
+     counted as its seed plus its own ask), 3 repeats (39 asks), paced 13 s apart to stay under 5 asks/min.
   2. **Measure** "first useful answer" latency for each ask.
-  3. **Compute** p95 across all 21 latencies.
-  4. **Compute** citation groundedness: (cited `property_cid`s that resolve) / (total cited) across all 21 answers.
+  3. **Compute** p95 across all latencies (report n; with fewer than 20 samples the p95 equals the maximum).
+  4. **Compute** citation groundedness: (cited `property_cid`s that resolve) / (total cited) across all answers.
 - **Expected result:** p95 < 20.000s; groundedness = 100.00%; zero asks hit `rate_limited` or
   `paused` from the test harness's own pacing.
 
@@ -519,4 +603,8 @@ case rather than folded into a happy-path case, since each needs its own determi
 
 | TC ID | Asserts | Gap | Defect |
 | --- | --- | --- | --- |
-| — | — | — | None recorded yet — this is the pre-implementation draft. Populate this table during/after `/speckit-implement` as defects are found (constitution XXIII). |
+| B-09-TC-013 (G5) | Permit-number lookup answers with the permit cited and the BBB rating "not available" | GAP-1 | The lookup runs the county-wide permit search (all properties in a 25 mi radius): `Runtime.OutOfMemory` at 1024 MB, then 28 s timeout; the caller gets no parsable response. Same class: `search.permits` over 3 to 5 mi around central Austin. |
+| B-09-TC-011, TC-012 (G3, G4) | The place in the prompt resolves to Manor / Lakeway | GAP-2 | The plan step returned the whole question as `area.query` on a repeat (`needs_clarification`), after answering `empty_in_scope` on the first run. Non-deterministic place extraction. |
+| B-09-TC-012 (G4) | Owner-outside-the-area half is flagged as not published | GAP-3 | First run returned `empty_in_scope` with no recorded reason; owner location is `not_in_export` for every property. Needs the answer's `missing`/`unsupported` inspected on a re-run. |
+| B-09-TC-NF-01 | p95 under 20 s, max under 23.5 s | GAP-4 | First run: 11 timed asks, p95 and max 23.7 s (ZIP 78701 radius ask timed out at the 23 s abort); the failed G5 call took 28.4 s on a repeat. |
+| B-09-TC-015 (G7) | Lead created from the first result, appears in the list | GAP-5 | Not exercised on Run 2: the seed question failed in the first run because the prompt said "downtown Austin" (not a gazetteer place). Needs a re-run with the "Austin" wording. |
