@@ -114,8 +114,8 @@ function failureCode(error: unknown): string {
 }
 
 const DEFAULT_LIMIT = 50;
-/** The index search applies LIMIT 100 when no center+radius is given; a lead filter must see the
- *  whole index or it silently drops matching leads, so ask for effectively everything. */
+/** Fallback path only (an index without `matchingRequestIdentifiers`): the index search applies
+ *  LIMIT 100 when no center+radius is given, so ask for effectively everything. */
 const INDEX_SCAN_LIMIT = 1_000_000;
 
 export function createLeadService(
@@ -156,18 +156,38 @@ export function createLeadService(
     }
   }
 
-  /** Request identifiers of properties matching the roof-age/permit/radius filters, resolved by
-   *  the same LeadIndex calls the map's search.properties makes (AC-4). */
-  async function matchingRequestIdentifiers(filters: LeadFilters): Promise<Set<string>> {
+  /** The caller's request identifiers whose property passes the roof-age/permit/radius filters.
+   *  Resolved inside the index in SQL (same predicates as the map's search.properties, AC-4), so a
+   *  county-wide radius never lists properties in JavaScript. */
+  async function matchingRequestIdentifiers(
+    filters: LeadFilters,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
     if (leadIndex === undefined) throw new LeadIndexUnavailableError();
-    const query: SearchPropertiesQuery = { limit: INDEX_SCAN_LIMIT };
-    if (
+    const hasCircle =
       filters.radiusMi !== undefined &&
       filters.centerLat !== undefined &&
-      filters.centerLon !== undefined
-    ) {
-      query.center = { lat: filters.centerLat, lng: filters.centerLon };
-      query.radiusMi = filters.radiusMi;
+      filters.centerLon !== undefined;
+    if (leadIndex.matchingRequestIdentifiers !== undefined) {
+      return leadIndex.matchingRequestIdentifiers({
+        requestIdentifiers: candidateIds,
+        ...(hasCircle
+          ? {
+              center: { lat: filters.centerLat as number, lng: filters.centerLon as number },
+              radiusMi: filters.radiusMi as number,
+            }
+          : {}),
+        ...(filters.roofAgeMinYears === undefined
+          ? {}
+          : { roofAgeMinYears: filters.roofAgeMinYears }),
+        ...(filters.permitStatus === undefined ? {} : { permitStatus: filters.permitStatus }),
+      });
+    }
+    // Index without the SQL method (test doubles only): the original two-call path.
+    const query: SearchPropertiesQuery = { limit: INDEX_SCAN_LIMIT };
+    if (hasCircle) {
+      query.center = { lat: filters.centerLat as number, lng: filters.centerLon as number };
+      query.radiusMi = filters.radiusMi as number;
     }
     if (filters.roofAgeMinYears !== undefined) query.roofAgeMinYears = filters.roofAgeMinYears;
     let properties = await leadIndex.searchProperties(query);
@@ -299,7 +319,7 @@ export function createLeadService(
         candidates = candidates.filter((l) => l.status === input.status);
 
       if (geo) {
-        const ids = await matchingRequestIdentifiers(filters);
+        const ids = await matchingRequestIdentifiers(filters, candidates.map(requestIdOf));
         candidates = candidates.filter((l) => ids.has(requestIdOf(l)));
       }
 

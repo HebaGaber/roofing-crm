@@ -11,6 +11,8 @@ import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -64,7 +66,18 @@ export interface CrmApiStackProps extends StackProps {
    *  literals pattern as `dataManifestCid`. */
   readonly aiProvider: string;
   readonly agentModelId: string;
+  /** Keep-warm schedule on/off. Default: the `crm:keepWarm` context (true in cdk.json). */
+  readonly keepWarm?: boolean;
+  /** Secrets Manager secret holding the Vercel AI Gateway key; only used when `aiProvider` is
+   *  `gateway`. Default: the `crm:aiGatewaySecretArn` context (unset: gateway fails synth). */
+  readonly aiGatewaySecretArn?: string;
 }
+
+/** Event the keep-warm rule sends; apps/api/src/handlers/health.ts `isWarmEvent` matches it. */
+export const KEEP_WARM_EVENT = { source: "crm.warm" } as const;
+export const KEEP_WARM_RATE_MINUTES = 5;
+
+const SECRET_ARN_PATTERN = /^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$/;
 
 export class CrmApiStack extends Stack {
   public readonly httpApi: apigwv2.HttpApi;
@@ -189,7 +202,14 @@ export class CrmApiStack extends Stack {
     // (apps/api/src/agent/threadStore.ts) — one item by key, still no Query/Scan/Delete.
     agentUsageTable.grant(trpcHandler, "dynamodb:UpdateItem", "dynamodb:GetItem");
 
-    this.grantModelAccess(trpcHandler, props.aiProvider, props.agentModelId);
+    this.grantModelAccess(
+      trpcHandler,
+      props.aiProvider,
+      props.agentModelId,
+      props.aiGatewaySecretArn,
+    );
+
+    this.addKeepWarm(trpcHandler, props.keepWarm);
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],
@@ -359,10 +379,61 @@ export class CrmApiStack extends Stack {
    *  `gateway`: no AWS grant at all; the Vercel AI Gateway key would have to come from Secrets
    *  Manager, which is not wired in this deployment — so synth fails closed instead of deploying
    *  a Lambda whose every ask would fail at its first model call. */
-  private grantModelAccess(fn: NodejsFunction, aiProvider: string, agentModelId: string): void {
+  /** Keep-warm: an EventBridge schedule invokes the function every 5 minutes with the internal
+   *  `{ source: "crm.warm" }` event so a sandbox, and the 442k-row index loaded in it, stays alive
+   *  (cold API start about 5 s, warm about 1 s). The handler only loads or confirms the index. The
+   *  target's invoke permission is scoped to this one rule (CDK adds `lambda:InvokeFunction` for
+   *  events.amazonaws.com with the rule ARN as source), no retries (the next tick is 5 minutes
+   *  away). Cost: 12 per hour, about 8,640 invocations a month, well inside the Lambda free tier
+   *  (1M requests and 400,000 GB-seconds a month; this is about 4,000 GB-seconds at 2 GB and
+   *  0.25 s). The `crm:keepWarm` context (or the prop) turns the rule off without removing it. */
+  private addKeepWarm(fn: NodejsFunction, override: boolean | undefined): void {
+    const raw: unknown = this.node.tryGetContext("crm:keepWarm");
+    const enabled = override ?? (raw === undefined ? true : String(raw) !== "false");
+    new events.Rule(this, "KeepWarmRule", {
+      description: "Keeps crm-api-trpc and its loaded index warm (handler: isWarmEvent).",
+      schedule: events.Schedule.rate(Duration.minutes(KEEP_WARM_RATE_MINUTES)),
+      enabled,
+      targets: [
+        new targets.LambdaFunction(fn, {
+          event: events.RuleTargetInput.fromObject(KEEP_WARM_EVENT),
+          retryAttempts: 0,
+        }),
+      ],
+    });
+  }
+
+  private grantModelAccess(
+    fn: NodejsFunction,
+    aiProvider: string,
+    agentModelId: string,
+    secretArnOverride?: string,
+  ): void {
     if (aiProvider === "gateway") {
-      Annotations.of(this).addError(
-        "AI_PROVIDER=gateway is not deployable yet: the AI Gateway API key must be read from Secrets Manager at runtime (never an env literal), and that wiring does not exist in CrmApi. Deploy with AI_PROVIDER=bedrock, or add the Secrets Manager grant + runtime read first.",
+      // Wired but off: the deployed provider stays Bedrock. Choosing gateway needs the secret that
+      // holds the key (created outside this stack, never by it); the key is read at cold start by
+      // apps/api/src/agent/getModel.ts and never lands in an env var, a log or the template.
+      const raw: unknown = secretArnOverride ?? this.node.tryGetContext("crm:aiGatewaySecretArn");
+      const secretArn = typeof raw === "string" ? raw.trim() : "";
+      if (secretArn === "") {
+        Annotations.of(this).addError(
+          "AI_PROVIDER=gateway needs the AI Gateway key from Secrets Manager (never an env literal): set the CDK context crm:aiGatewaySecretArn to the secret's ARN (cdk synth -c crm:aiGatewaySecretArn=arn:aws:secretsmanager:...), or deploy with AI_PROVIDER=bedrock.",
+        );
+        return;
+      }
+      if (!SECRET_ARN_PATTERN.test(secretArn)) {
+        Annotations.of(this).addError(
+          `crm:aiGatewaySecretArn "${secretArn}" is not a Secrets Manager secret ARN (arn:aws:secretsmanager:<region>:<account>:secret:<name>).`,
+        );
+        return;
+      }
+      fn.addEnvironment("AI_GATEWAY_SECRET_ARN", secretArn);
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "ReadAiGatewayKey",
+          actions: ["secretsmanager:GetSecretValue"],
+          resources: [secretArn],
+        }),
       );
       return;
     }

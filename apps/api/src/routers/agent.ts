@@ -24,7 +24,7 @@ import type { LeadIndex } from "../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../adapters/leadRepo.js";
 import { propertyByTcadId } from "../services/agent/tools.js";
 import { createPlaceResolver } from "../services/agent/placeResolver.js";
-import { getModel } from "../agent/getModel.js";
+import { resolveModel } from "../agent/getModel.js";
 import { estimateCents } from "../agent/modelPricing.js";
 import { RUN_AGENT_MAX_MODEL_CALLS } from "../agent/runAgent.js";
 import type { SpendReservation } from "../agent/spendCap.js";
@@ -331,7 +331,7 @@ async function ask(input: z.infer<typeof AskInput>, ctx: AskContext): Promise<Ag
   // Resolved before the spend reservation: a misconfigured provider/model id throws here, with
   // nothing reserved, so the day's spend never holds a reservation no `finally` would reconcile.
   // Still fail closed (no model call), and the guard check above still runs first.
-  const baseModel = ctx.model ?? getModel();
+  const baseModel = ctx.model ?? (await resolveModel());
   const budget = await checkBudget(guard, userId, input.question, ctx.requestId); // step 1
   if ("blocked" in budget) return budget.blocked;
 

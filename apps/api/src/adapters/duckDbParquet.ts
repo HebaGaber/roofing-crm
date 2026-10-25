@@ -171,6 +171,21 @@ export interface PermitsPage {
   total: number;
 }
 
+/** Which of the caller's own request identifiers pass the leads-list filters. The candidates are
+ *  the caller's leads (a few hundred at most); the radius, roof age and permit status are
+ *  evaluated in SQL with the same predicates as the map's property and permit searches. */
+export interface MatchingRequestIdentifiersQuery {
+  requestIdentifiers: readonly string[];
+  center?: LatLng;
+  radiusMi?: number;
+  roofAgeMinYears?: number;
+  /** Keep a property only if it has at least one permit with this `statusClass`. */
+  permitStatus?: string;
+}
+
+/** Candidate identifiers per statement: keeps the SQL text small for a very long lead list. */
+export const MATCHING_IDS_CHUNK = 10_000;
+
 export type SearchPropertiesPageQuery = SearchPropertiesQuery & {
   center: LatLng;
   radiusMi: number;
@@ -189,6 +204,14 @@ export interface LeadIndex {
   searchPropertiesPage?(query: SearchPropertiesPageQuery): Promise<PropertiesPage>;
   /** Bounded permit search joined to `crm_property` in SQL: one page plus the exact total. */
   searchPermitsPage?(query: SearchPermitsQuery): Promise<PermitsPage>;
+  /** Leads-list filters in SQL: the subset of `requestIdentifiers` whose property passes radius,
+   *  roof age and permit status (semi-join on `crm_permit`). No property is ever listed in
+   *  JavaScript. Optional on the port so single-purpose test doubles need no stub; the lead
+   *  service falls back to `searchProperties` + `searchPermits` when an index lacks it. */
+  matchingRequestIdentifiers?(query: MatchingRequestIdentifiersQuery): Promise<Set<string>>;
+  /** Starts (or joins) the load of the promoted index ahead of any request; resolves when it is
+   *  ready. Optional on the port: test doubles need no stub, the warm-up skips an index without it. */
+  warm?(): Promise<{ manifestCid: string }>;
   getProperty(propertyCid: string): Promise<(PropertyResult & { permits: PermitResult[] }) | null>;
   /** One property by its `requestIdentifier` (tcadId) — an indexed `WHERE` filter, not a
    *  full-table scan (CR finding: `services/agent/tools.ts`'s `propertyCidForTcadId` and
@@ -447,14 +470,19 @@ export interface DuckDbParquetDeps {
   tableName: string;
   bucket: string;
   obs: Observability;
-  /** Default 3s per architecture-constitution.md §10's index-cold-load NFR. */
+  /** Default 3s per architecture-constitution.md §10's index-cold-load NFR. This is the most a
+   *  request waits for the index before the typed "warming up" error. */
   coldLoadTimeoutMs?: number;
+  /** Budget of a load started by `warm()` (module init or the keep-warm ping), where no request
+   *  is waiting: the load itself may take this long (default 20 s, inside the 28 s Lambda). */
+  warmTimeoutMs?: number;
   tmpDir?: string;
   /** Per-query budget in ms (default `DEFAULT_QUERY_BUDGET_MS`). */
   queryBudgetMs?: number;
 }
 
 const DEFAULT_COLD_LOAD_TIMEOUT_MS = 3_000;
+const DEFAULT_WARM_TIMEOUT_MS = 20_000;
 const PK = "META#index";
 /** crm-leads has a pk+sk key (B-07); the pointer item lives at sk "META". */
 const SK = "META";
@@ -466,6 +494,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
   private readonly bucket: string;
   private readonly obs: Observability;
   private readonly coldLoadTimeoutMs: number;
+  private readonly warmTimeoutMs: number;
   private readonly tmpDir: string;
   private readonly queryBudgetMs: number;
   /** CR-B-02 finding #8: one monotonically increasing attempt id per manifestCid. A timed-out
@@ -484,6 +513,7 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     this.bucket = deps.bucket;
     this.obs = deps.obs;
     this.coldLoadTimeoutMs = deps.coldLoadTimeoutMs ?? DEFAULT_COLD_LOAD_TIMEOUT_MS;
+    this.warmTimeoutMs = deps.warmTimeoutMs ?? DEFAULT_WARM_TIMEOUT_MS;
     this.tmpDir = deps.tmpDir ?? "/tmp/crm-index";
     this.queryBudgetMs = deps.queryBudgetMs ?? DEFAULT_QUERY_BUDGET_MS;
   }
@@ -543,19 +573,61 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     });
   }
 
-  /** Downloads and opens this manifest's Parquet once per sandbox, caching the open connection.
-   *  A cache hit never re-downloads or re-emits IndexColdLoadMs — only a genuine cold load does. */
-  private async ensureLoaded(manifestCid: string): Promise<BoundIndex> {
-    const cached = sandboxCache.get(manifestCid);
-    if (cached !== undefined) return cached;
+  /** Starts loading the promoted index ahead of any request (Lambda init phase, which has full
+   *  CPU) and by the keep-warm ping. The in-flight promise is the one `ensureLoaded` hands to
+   *  requests, so a request arriving mid-load awaits it instead of starting a second download.
+   *  Resolves once the index is loaded; a rejection (no promoted run, S3 error, warm budget) is the
+   *  caller's to swallow: a failed load is not cached, so the next request just loads normally. */
+  async warm(): Promise<{ manifestCid: string }> {
+    const { manifestCid } = await this.indexInfo();
+    await this.ensureLoaded(manifestCid, { warm: true });
+    return { manifestCid };
+  }
 
-    const loadPromise = this.coldLoad(manifestCid);
+  /** Downloads and opens this manifest's Parquet once per sandbox, caching the open connection.
+   *  A cache hit never re-downloads or re-emits IndexColdLoadMs — only a genuine cold load does.
+   *  A request that finds a load already in flight (started by `warm()`) waits for it only up to
+   *  its own cold-load budget; past that it gets IndexColdLoadTimeoutError and the load carries on. */
+  private async ensureLoaded(
+    manifestCid: string,
+    options: { warm?: boolean } = {},
+  ): Promise<BoundIndex> {
+    const cached = sandboxCache.get(manifestCid);
+    if (cached !== undefined) {
+      return options.warm === true ? cached : this.withinRequestBudget(cached, manifestCid);
+    }
+
+    const loadPromise = this.coldLoad(
+      manifestCid,
+      options.warm === true ? this.warmTimeoutMs : this.coldLoadTimeoutMs,
+    );
     sandboxCache.set(manifestCid, loadPromise);
-    loadPromise.catch(() => sandboxCache.delete(manifestCid));
+    loadPromise.catch(() => {
+      if (sandboxCache.get(manifestCid) === loadPromise) sandboxCache.delete(manifestCid);
+    });
     return loadPromise;
   }
 
-  private async coldLoad(manifestCid: string): Promise<BoundIndex> {
+  /** Waits for an in-flight load at most `coldLoadTimeoutMs`, without cancelling it. */
+  private async withinRequestBudget(
+    load: Promise<BoundIndex>,
+    manifestCid: string,
+  ): Promise<BoundIndex> {
+    let timer: NodeJS.Timeout | undefined;
+    const budget = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new IndexColdLoadTimeoutError(manifestCid, this.coldLoadTimeoutMs)),
+        this.coldLoadTimeoutMs,
+      );
+    });
+    try {
+      return await Promise.race([load, budget]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async coldLoad(manifestCid: string, budgetMs: number): Promise<BoundIndex> {
     // This attempt's own generation number. A later ensureLoaded() call for the same manifestCid
     // (e.g. a retry after this attempt times out) bumps the counter again, so this value is only
     // ever "current" until a newer attempt starts.
@@ -563,10 +635,11 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     this.loadAttemptCounter.set(manifestCid, attemptId);
 
     const startedAt = Date.now();
+    let timer: NodeJS.Timeout | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new IndexColdLoadTimeoutError(manifestCid, this.coldLoadTimeoutMs)),
-        this.coldLoadTimeoutMs,
+      timer = setTimeout(
+        () => reject(new IndexColdLoadTimeoutError(manifestCid, budgetMs)),
+        budgetMs,
       );
     });
 
@@ -612,7 +685,12 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     // purposes; this just stops the abandoned branch from going unhandled.
     loadPromise.catch(() => undefined);
 
-    const bound = await Promise.race([loadPromise, timeout]);
+    let bound: BoundIndex;
+    try {
+      bound = await Promise.race([loadPromise, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
     this.obs.metrics.addMetric(
       METRIC_NAMES.IndexColdLoadMs,
       MetricUnit.Milliseconds,
@@ -694,6 +772,50 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       }
       return { rows, ...counts };
     });
+  }
+
+  /** Leads-list filter pushdown: one statement per chunk of candidates, a semi-join to
+   *  `crm_permit` for the permit status, the same bbox + haversine cut as `searchProperties`.
+   *  Returns at most the candidates themselves, so the response is bounded by the caller's leads. */
+  async matchingRequestIdentifiers(query: MatchingRequestIdentifiersQuery): Promise<Set<string>> {
+    const ids = [...new Set(query.requestIdentifiers)];
+    if (ids.length === 0) return new Set();
+    return withObservabilityOperation(
+      this.obs,
+      "LeadIndex.matchingRequestIdentifiers",
+      async () => {
+        const { manifestCid } = await this.indexInfo();
+        const { connection } = await this.ensureLoaded(manifestCid);
+        const filters: string[] = [];
+        if (query.center !== undefined && query.radiusMi !== undefined) {
+          filters.push(radiusSql(query.center, query.radiusMi, (n) => `p."${n}"`).where);
+        }
+        if (query.roofAgeMinYears !== undefined)
+          filters.push(`p."roofAgeYears" >= ${sqlNumber(query.roofAgeMinYears)}`);
+        if (query.permitStatus !== undefined) {
+          filters.push(
+            `EXISTS (SELECT 1 FROM crm_permit pm WHERE pm."propertyCid" = p."propertyCid" ` +
+              `AND pm."statusClass" = '${sqlEscapeString(query.permitStatus)}')`,
+          );
+        }
+        const extra = filters.length === 0 ? "" : ` AND ${filters.join(" AND ")}`;
+        const found = new Set<string>();
+        for (let at = 0; at < ids.length; at += MATCHING_IDS_CHUNK) {
+          const list = ids
+            .slice(at, at + MATCHING_IDS_CHUNK)
+            .map((id) => `'${sqlEscapeString(id)}'`)
+            .join(", ");
+          const reader = await this.runBounded(
+            connection,
+            `SELECT DISTINCT p."requestIdentifier" FROM crm_property p
+           WHERE p."requestIdentifier" IN (${list})${extra}`,
+          );
+          for (const row of reader.getRowObjectsJS() as unknown as { requestIdentifier: string }[])
+            found.add(row.requestIdentifier);
+        }
+        return found;
+      },
+    );
   }
 
   async searchPermits(query: SearchPermitsQuery): Promise<PermitResult[]> {

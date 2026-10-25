@@ -13,9 +13,12 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { GetObjectCommand, S3Client, type GetObjectCommandOutput } from "@aws-sdk/client-s3";
 import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { createObservability } from "@crm/observability";
+import { DuckDBInstance } from "@duckdb/node-api";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeAll, describe, expect, it } from "vitest";
 import { DuckDbParquetLeadIndex } from "../src/adapters/duckDbParquet.js";
+import { createLeadService } from "../src/services/leads.js";
+import type { LeadRepo, StoredLead } from "../src/adapters/leadRepo.js";
 import { countyOverview, searchPermits, searchProperties } from "../src/services/search.js";
 
 const DIR = process.env.CRM_REAL_INDEX_DIR ?? "";
@@ -89,7 +92,42 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
       });
       await index.indexInfo();
       await searchProperties(index, { center: AUSTIN, radiusMi: 0.5, limit: 1 }); // cold load
+      // Read straight from the Parquet (listing the whole county through the index is the very
+      // thing this suite guards against).
+      const reader = await (
+        await (await DuckDBInstance.create(":memory:")).connect()
+      ).runAndReadAll(
+        `SELECT "requestIdentifier" FROM (SELECT "requestIdentifier", row_number() OVER () AS n
+           FROM read_parquet('${join(DIR, "crm_property.parquet")}')) WHERE n % 150 = 0`,
+      );
+      leadIds = (reader.getRowObjectsJS() as unknown as { requestIdentifier: string }[]).map(
+        (r) => r.requestIdentifier,
+      );
     }, 180_000);
+
+    /** A rep with about 2,900 leads spread over the whole county (every 150th property). */
+    let leadIds: string[] = [];
+    const leadRows = (): StoredLead[] =>
+      leadIds.map((id, n) => ({
+        leadKey: `48453:tcad:${id}`,
+        leadId: `L${String(n)}`,
+        address: "a",
+        lat: 1,
+        lon: 2,
+        status: "new" as const,
+        assignee: "rep-1",
+        createdFrom: "map" as const,
+        sourceManifestCid: MANIFEST,
+        createdAt: "2026-10-24T10:00:00.000Z",
+        eventSequence: 0,
+      }));
+    const leadList = async (
+      filters: Parameters<ReturnType<typeof createLeadService>["list"]>[0],
+    ) => {
+      const repo = { listByAssignee: async () => leadRows() } as unknown as LeadRepo;
+      const out = await createLeadService(repo, { leadIndex: index }).list(filters, "rep-1");
+      return { rows: out.leads.length, payload: { ...out, traceId: "t" } };
+    };
 
     const cases: [string, () => Promise<{ rows: number; payload: unknown }>][] = [
       [
@@ -149,6 +187,32 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
           });
           return { rows: r.properties.length, payload: { ...r, traceId: "t" } };
         },
+      ],
+      [
+        "leads.list radius 25 mi (whole county)",
+        () =>
+          leadList({
+            filters: { radiusMi: 25, centerLat: AUSTIN.lat, centerLon: AUSTIN.lng },
+            limit: 50,
+          }),
+      ],
+      [
+        "leads.list 5 mi Austin, roof >= 15, permit open",
+        () =>
+          leadList({
+            filters: {
+              radiusMi: 5,
+              centerLat: AUSTIN.lat,
+              centerLon: AUSTIN.lng,
+              roofAgeMinYears: 15,
+              permitStatus: "open",
+            },
+            limit: 50,
+          }),
+      ],
+      [
+        "leads.list permit open only (no radius)",
+        () => leadList({ filters: { permitStatus: "open" }, limit: 50 }),
       ],
       [
         "county overview zoom 9 + permits",
