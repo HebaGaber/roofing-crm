@@ -38,6 +38,22 @@ export function roofAgeBasisLabel(code: RoofAgeBasis): string {
   return ROOF_AGE_BASIS_LABELS[code];
 }
 
+/** Property types with no building on them: there is no roof, so "no roof date found" would read as
+ *  missing data when nothing is missing (Run 3: 34,471 vacant land and 16,884 land parcels). */
+const NO_BUILDING_TYPES = new Set(["VacantLand", "LandParcel"]);
+
+/** The wording for an empty roof age. For a record with no building (and the contract's
+ *  `no_roof_date` reason) it says so; for anything else it is undefined and the contract's own
+ *  reason label stands. */
+export function roofAgeGapLabel(
+  propertyType: string | null | undefined,
+  reason: string,
+): string | undefined {
+  return reason === "no_roof_date" && propertyType != null && NO_BUILDING_TYPES.has(propertyType)
+    ? "No building on this parcel, so no roof age"
+    : undefined;
+}
+
 /** The roof age with its basis beside it where the age is only a stand-in: Task A publishes no
  *  roof date from TCAD, so a "built year" age is the age of the building, not of a roof
  *  (Task A, 2026-10-26: keep "estimated from year built" visible next to the age). */

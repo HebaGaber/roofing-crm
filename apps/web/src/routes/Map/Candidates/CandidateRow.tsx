@@ -11,6 +11,7 @@ import {
   propertyKind,
   roofAgeBucket,
   roofAgeConfidenceLabel,
+  roofAgeGapLabel,
 } from "../../../format/index.js";
 import { STATUS_LABEL } from "../../Leads/LeadFilters.js";
 import { candidateTitle, shortBasis, permitSignalText, type Candidate } from "./candidates.js";
@@ -37,7 +38,7 @@ const CONFIDENCE_CLASS: Readonly<Record<string, string | undefined>> = {
 };
 
 function RoofCell({ candidate }: { readonly candidate: Candidate }): ReactElement {
-  const { roofAgeYears, missingReasons } = candidate.property;
+  const { roofAgeYears, missingReasons, propertyType } = candidate.property;
   if (roofAgeYears === null) {
     const entry = missingReasons.find(
       (m) => m.field === "roofAgeYears" || m.field === "roof_age_years",
@@ -46,7 +47,7 @@ function RoofCell({ candidate }: { readonly candidate: Candidate }): ReactElemen
       <span className={styles.muted} data-field="roof_age_years">
         {entry === undefined
           ? "Not published"
-          : `Not published · ${missingReasonText(entry.field, entry.reason)}`}
+          : `Not published · ${roofAgeGapLabel(propertyType, entry.reason) ?? missingReasonText(entry.field, entry.reason)}`}
       </span>
     );
   }

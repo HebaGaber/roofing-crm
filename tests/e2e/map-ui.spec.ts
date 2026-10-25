@@ -129,4 +129,38 @@ test.describe("Map: results list, Layers and hexagons", () => {
       timeout: 60_000,
     });
   });
+
+  test("the transparent strip above the legend card takes no clicks (hexagons there stay clickable)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await expect(page.locator('[data-route="map"]')).toBeVisible();
+    await page.waitForFunction(() => {
+      const map = (window as unknown as { __crmMap?: { loaded(): boolean } }).__crmMap;
+      return map?.loaded() === true;
+    });
+    // The legend slot is taller than the card inside it (the card is bottom-aligned); a real
+    // pointer at the middle of the gap must reach the map canvas, not the slot's empty box.
+    const probe = await page.evaluate(() => {
+      const slot = document.querySelector<HTMLElement>('[class*="legendSlot"]');
+      const card = slot?.firstElementChild as HTMLElement | null | undefined;
+      if (!slot || !card) return null;
+      const s = slot.getBoundingClientRect();
+      const c = card.getBoundingClientRect();
+      if (c.top - s.top < 24) return { gap: c.top - s.top };
+      const x = s.left + s.width / 2;
+      const y = s.top + (c.top - s.top) / 2;
+      const top = document.elementFromPoint(x, y);
+      return {
+        gap: c.top - s.top,
+        topTag: top?.tagName ?? null,
+        topClass: top?.className.toString() ?? "",
+      };
+    });
+    test.skip(probe === null || probe.gap < 24, "no legend slot gap at this size (legend closed)");
+    expect(probe, "the element under a pointer in the gap above the legend card").toMatchObject({
+      topTag: "CANVAS",
+    });
+  });
 });

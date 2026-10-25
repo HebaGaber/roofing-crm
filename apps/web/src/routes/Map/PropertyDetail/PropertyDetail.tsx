@@ -24,6 +24,7 @@ import {
   permitStatusLabel,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
+  roofAgeGapLabel,
   roofAgeText,
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
@@ -214,7 +215,14 @@ function RoofAgeMissing({
     (m) => m.field === "roofAgeYears" || m.field === "roof_age_years",
   );
   if (entry === undefined) return <>Roof age not published (no reason recorded)</>;
-  return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+  const gap = roofAgeGapLabel(property.propertyType, entry.reason);
+  return (
+    <MissingReason
+      field={entry.field}
+      reason={entry.reason as Reason}
+      {...(gap === undefined ? {} : { label: gap })}
+    />
+  );
 }
 
 /** A value the row left empty, with the reason from its own `missing` entry (never blank). */

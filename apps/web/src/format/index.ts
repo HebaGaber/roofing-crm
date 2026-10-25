@@ -13,6 +13,7 @@ export {
   propertyKind,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
+  roofAgeGapLabel,
   roofAgeText,
   type PropertyKind,
 } from "./labels.js";

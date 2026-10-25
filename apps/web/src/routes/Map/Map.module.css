@@ -83,6 +83,13 @@
   pointer-events: auto;
 }
 
+/* The legend slot is itself a child of the layers row, so the rule above made the whole slot take
+   clicks. It is taller than the legend card inside it, and the transparent strip above the card sat
+   over real hexagons and swallowed their clicks. Only the card takes clicks. */
+.layersRow > .legendSlot {
+  pointer-events: none;
+}
+
 /* The map's status stack: GPS, pin-mode and pin-outside cards portal in here (boards CrmGpsStates,
    CrmMapPinMode*, CrmMapPinOutside390). No card, no box: it collapses when empty. */
 .statusStack {

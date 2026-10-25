@@ -212,6 +212,29 @@ describe("PropertyDetail drawer", () => {
     );
   });
 
+  it("says 'No building on this parcel' for a land parcel with no roof date, not 'No roof date found'", () => {
+    const land = {
+      ...property,
+      propertyType: "LandParcel",
+      roofAgeYears: null,
+      roofAgeBasis: "unknown",
+      roofAgeConfidence: "none",
+      missingReasons: [{ field: "roof_age_years", reason: "no_roof_date" }],
+    } as unknown as Provenanced<CrmProperty>;
+    const drawer = renderDrawer({ ...data, property: land });
+    expect(drawer.querySelector("[data-field='roof_age_years']")?.textContent).toContain(
+      "No building on this parcel",
+    );
+    cleanup();
+    const building = renderDrawer({
+      ...data,
+      property: { ...land, propertyType: "Building" } as unknown as Provenanced<CrmProperty>,
+    });
+    expect(building.querySelector("[data-field='roof_age_years']")?.textContent).toContain(
+      "No roof date found",
+    );
+  });
+
   it("a Run 2 row (no v1.1 columns at all) still renders, with the reason instead of a name", () => {
     const drawer = renderDrawer();
     expect(

@@ -25,6 +25,7 @@ import {
   propertyKind,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
+  roofAgeGapLabel,
   roofAgeText,
 } from "../../format/index.js";
 import { PermitChip } from "./PermitChip.js";
@@ -80,6 +81,10 @@ export function TypePill({ usageType }: { readonly usageType: string | null }): 
   );
 }
 
+/** Spread-able optional `label` (the prop is optional under exactOptionalPropertyTypes). */
+const labelProp = (label: string | undefined): { label?: string } =>
+  label === undefined ? {} : { label };
+
 function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
   if (row.roofAgeYears === null) {
     const entry =
@@ -88,7 +93,11 @@ function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactEl
     return entry === undefined ? (
       <StatusPill status="unavailable" text="Roof age not available" />
     ) : (
-      <MissingReason field={entry.field} reason={entry.reason as Reason} />
+      <MissingReason
+        field={entry.field}
+        reason={entry.reason as Reason}
+        {...labelProp(roofAgeGapLabel(row.propertyType, entry.reason))}
+      />
     );
   }
   const confidenceStatus =
@@ -117,7 +126,13 @@ function missingFor(row: Provenanced<CrmProperty>, field: string): Missing | und
 function RoofAgeGap({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
   const entry = missingFor(row, "roofAgeYears") ?? missingFor(row, "roof_age_years");
   if (entry !== undefined) {
-    return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+    return (
+      <MissingReason
+        field={entry.field}
+        reason={entry.reason as Reason}
+        {...labelProp(roofAgeGapLabel(row.propertyType, entry.reason))}
+      />
+    );
   }
   // No missingReasons entry on this slice yet (B-03-TC-012, GAP-4b: no live row demonstrates
   // this), but roofAgeYears can still be null — show the honest fallback rather than inventing
