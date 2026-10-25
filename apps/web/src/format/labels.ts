@@ -72,6 +72,7 @@ export function contractorResolutionLabel(code: string | null): string {
 
 export const COORDINATE_SOURCE_LABELS = Object.freeze({
   gis_centroid: "Parcel centre (GIS)",
+  address_point: "Austin address point",
   permit_point: "Permit location",
   none: "No coordinates",
 } satisfies Record<CrmProperty["coordinateSource"], string>);

@@ -6,6 +6,7 @@
 // events; past 96 px it commits, otherwise the card snaps back). Render-only: the stack decides.
 import { isLongOpen } from "@crm/domain";
 import { Icon, StatusPill } from "@crm/ui";
+import type { CrmPermit } from "@crm/index-schema";
 import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from "react";
 import {
   contractorResolutionLabel,
@@ -29,7 +30,7 @@ import styles from "./Triage.module.css";
 export const SWIPE_COMMIT_PX = 96;
 
 export interface TriageBbb {
-  readonly status: "not_checked" | null;
+  readonly status: NonNullable<CrmPermit["bbbStatus"]> | null;
   readonly reason: string | null;
 }
 

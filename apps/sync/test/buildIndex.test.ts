@@ -28,6 +28,7 @@ function propertyRow(overrides: Partial<ViewRow> = {}): ViewRow {
     roof_age_basis: "built_year",
     roof_age_confidence: "low",
     is_long_tenure: null,
+    tenure_basis: "sale_date",
     owner_kind: null,
     owner_area_class: "unknown",
     owner_is_out_of_area: null,
@@ -56,6 +57,10 @@ function permitRow(overrides: Partial<ViewRow> = {}): ViewRow {
     open_days: 8,
     contractor_resolution: "resolved",
     contractor_company_cid: null,
+    contractor_name_as_printed: null,
+    bbb_status: "not_checked",
+    bbb_status_reason: "contractor_unresolved",
+    bbb_url: null,
     missing: [],
     captured_at: "2026-10-21T10:35:59.798Z",
     cid: RUN_CID,
@@ -126,5 +131,69 @@ describe("BuildIndex", () => {
     expect(result.permits[0]?.capturedAt).toBe("2026-10-21T10:35:59.798Z");
     expect(result.permits[0]?.issueDate).toBe("2026-09-02T00:00:00.000Z");
     expect(result.permits[0]?.finalDate).toBeNull();
+  });
+
+  // contract v1.1 (Run 3): these values used to fail CrmProperty/CrmPermit validation (the
+  // coordinate-source enum had no address_point), which would have aborted the whole index build.
+  it("carries Run 3's v1.1 values: address-point coordinates, deed-dated tenure, printed contractor, BBB state", async () => {
+    const engine = fakeEngine(
+      [
+        propertyRow({
+          coordinate_source: "address_point",
+          is_long_tenure: true,
+          tenure_basis: "deed_date",
+        }),
+      ],
+      [
+        permitRow({
+          contractor_resolution: "unresolved",
+          contractor_name_as_printed: "ACME ROOFING LLC",
+          bbb_status: "blocked",
+          bbb_status_reason: "bbb_blocked",
+          bbb_url:
+            "https://www.bbb.org/search?find_text=ACME%20ROOFING%20LLC&find_loc=Austin%2C%20TX",
+          missing: [{ field: "bbb_rating", reason: "bbb_blocked" }],
+        }),
+      ],
+    );
+
+    const result = await buildIndexCore(engine, MANIFEST_CID);
+
+    expect(result.properties[0]).toMatchObject({
+      coordinateSource: "address_point",
+      isLongTenure: true,
+      tenureBasis: "deed_date",
+    });
+    expect(result.permits[0]).toMatchObject({
+      contractorResolution: "unresolved",
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbStatus: "blocked",
+      bbbStatusReason: "bbb_blocked",
+      bbbUrl: expect.stringMatching(/^https:\/\/www\.bbb\.org\//),
+    });
+    expect(result.permits[0]?.missingReasons).toEqual([
+      { field: "bbb_rating", reason: "bbb_blocked" },
+    ]);
+  });
+
+  it("keeps a missing printed contractor name null with its reason, never a placeholder name", async () => {
+    const engine = fakeEngine(
+      [propertyRow()],
+      [
+        permitRow({
+          contractor_name_as_printed: null,
+          bbb_status: "not_checked",
+          bbb_status_reason: "contractor_unresolved",
+          missing: [{ field: "contractor_name_as_printed", reason: "contractor_unresolved" }],
+        }),
+      ],
+    );
+
+    const result = await buildIndexCore(engine, MANIFEST_CID);
+
+    expect(result.permits[0]?.contractorNameAsPrinted).toBeNull();
+    expect(result.permits[0]?.missingReasons).toEqual([
+      { field: "contractor_name_as_printed", reason: "contractor_unresolved" },
+    ]);
   });
 });

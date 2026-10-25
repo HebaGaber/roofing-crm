@@ -32,7 +32,9 @@ export const CrmProperty = z
     requestIdentifier: z.string().min(1),
     latitude: z.number().nullable(),
     longitude: z.number().nullable(),
-    coordinateSource: z.enum(["gis_centroid", "permit_point", "none"]),
+    // contract v1.1 (Run 3): condo units without a GIS point get one from the City of Austin
+    // address-point layer, only on an exact single-point match (Task A ADR 0004).
+    coordinateSource: z.enum(["gis_centroid", "address_point", "permit_point", "none"]),
     propertyType: z.string().nullable(),
     propertyUsageType: z.string().nullable(),
     // Never guessed or interpolated (AC-3/FR-003) — null + its missingReasons entry is the only
@@ -41,6 +43,8 @@ export const CrmProperty = z
     roofAgeBasis: z.enum(["permit", "new_construction", "built_year", "unknown"]),
     roofAgeConfidence: z.enum(["high", "medium", "low", "none"]),
     isLongTenure: z.boolean().nullable(),
+    // contract v1.1 (Run 3): how tenure was dated — a TCAD sale, a TCAD transfer deed, or neither.
+    tenureBasis: z.enum(["sale_date", "deed_date", "unknown"]).nullable(),
     ownerKind: z.enum(["person", "company", "unknown"]).nullable(),
     ownerAreaClass: z.enum(["in_county", "regional", "out_of_area", "unknown"]).nullable(),
     ownerIsOutOfArea: z.boolean().nullable(),
@@ -70,6 +74,13 @@ export const CrmPermit = z
     openDays: z.number().int().nullable(),
     contractorResolution: z.string().nullable(),
     contractorCompanyCid: CidV1.nullable(),
+    // contract v1.1 (Run 3, ERR-32): the contractor exactly as the permit prints it — unverified,
+    // not a registry identity — and the BBB state Task A derives from it. No rating is ever
+    // published (BBB blocks the lookup); bbbUrl is a search link Task A builds, never fetched.
+    contractorNameAsPrinted: z.string().nullable(),
+    bbbStatus: z.enum(["rated", "not_found", "blocked", "not_checked"]).nullable(),
+    bbbStatusReason: z.string().nullable(),
+    bbbUrl: z.string().nullable(),
     ...ProvenanceFields,
   })
   .strict();

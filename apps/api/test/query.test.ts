@@ -62,6 +62,7 @@ const PROPERTY_TYPES: Record<string, string> = {
   roofAgeBasis: "VARCHAR",
   roofAgeConfidence: "VARCHAR",
   isLongTenure: "BOOLEAN",
+  tenureBasis: "VARCHAR",
   ownerKind: "VARCHAR",
   ownerAreaClass: "VARCHAR",
   ownerIsOutOfArea: "BOOLEAN",
@@ -88,6 +89,10 @@ const PERMIT_TYPES: Record<string, string> = {
   openDays: "INTEGER",
   contractorResolution: "VARCHAR",
   contractorCompanyCid: "VARCHAR",
+  contractorNameAsPrinted: "VARCHAR",
+  bbbStatus: "VARCHAR",
+  bbbStatusReason: "VARCHAR",
+  bbbUrl: "VARCHAR",
   sourceManifestCid: "VARCHAR",
   missingReasons: MISSING_TYPE,
   capturedAt: "VARCHAR",
@@ -116,6 +121,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeBasis: "permit",
     roofAgeConfidence: "high",
     isLongTenure: true,
+    tenureBasis: "sale_date",
     ownerKind: "person",
     ownerAreaClass: "in_county",
     ownerIsOutOfArea: false,
@@ -135,6 +141,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeBasis: "permit",
     roofAgeConfidence: "medium",
     isLongTenure: false,
+    tenureBasis: "sale_date",
     ownerKind: "company",
     ownerAreaClass: "regional",
     ownerIsOutOfArea: true,
@@ -154,6 +161,7 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     roofAgeBasis: "unknown",
     roofAgeConfidence: "none",
     isLongTenure: null,
+    tenureBasis: "sale_date",
     ownerKind: "unknown",
     ownerAreaClass: "unknown",
     ownerIsOutOfArea: null,
@@ -184,6 +192,10 @@ const PERMIT_ROWS: Record<string, Cell>[] = [
     openDays: 340,
     contractorResolution: "resolved",
     contractorCompanyCid: null,
+    contractorNameAsPrinted: null,
+    bbbStatus: "not_checked",
+    bbbStatusReason: "contractor_unresolved",
+    bbbUrl: null,
   },
   {
     ...base,
@@ -203,6 +215,10 @@ const PERMIT_ROWS: Record<string, Cell>[] = [
     openDays: 12,
     contractorResolution: "unresolved",
     contractorCompanyCid: null,
+    contractorNameAsPrinted: null,
+    bbbStatus: "not_checked",
+    bbbStatusReason: "contractor_unresolved",
+    bbbUrl: null,
   },
   {
     ...base,
@@ -222,6 +238,10 @@ const PERMIT_ROWS: Record<string, Cell>[] = [
     openDays: 500,
     contractorResolution: "unresolved",
     contractorCompanyCid: null,
+    contractorNameAsPrinted: null,
+    bbbStatus: "not_checked",
+    bbbStatusReason: "contractor_unresolved",
+    bbbUrl: null,
   },
 ];
 
@@ -509,7 +529,7 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       "{propertyCid: 'VARCHAR', requestIdentifier: 'VARCHAR', latitude: 'DOUBLE', " +
       "longitude: 'DOUBLE', coordinateSource: 'VARCHAR', propertyType: 'VARCHAR', " +
       "propertyUsageType: 'VARCHAR', roofAgeYears: 'INTEGER', roofAgeBasis: 'VARCHAR', " +
-      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', ownerKind: 'VARCHAR', " +
+      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', tenureBasis: 'VARCHAR', ownerKind: 'VARCHAR', " +
       "ownerAreaClass: 'VARCHAR', ownerIsOutOfArea: 'BOOLEAN', sourceManifestCid: 'VARCHAR', " +
       `missingReasons: '${MISSING_STRUCT_LIST}', capturedAt: 'VARCHAR', cid: 'VARCHAR', runId: 'VARCHAR'}`;
     const permitColumns =
@@ -517,7 +537,7 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       "permitNumber: 'VARCHAR', improvementType: 'VARCHAR', improvementAction: 'VARCHAR', " +
       "improvementStatus: 'VARCHAR', statusClass: 'VARCHAR', issueDate: 'VARCHAR', " +
       "finalDate: 'VARCHAR', permitCloseDate: 'VARCHAR', finalInspectionDate: 'VARCHAR', " +
-      "openDays: 'INTEGER', contractorResolution: 'VARCHAR', contractorCompanyCid: 'VARCHAR', " +
+      "openDays: 'INTEGER', contractorResolution: 'VARCHAR', contractorCompanyCid: 'VARCHAR', contractorNameAsPrinted: 'VARCHAR', bbbStatus: 'VARCHAR', bbbStatusReason: 'VARCHAR', bbbUrl: 'VARCHAR', " +
       `sourceManifestCid: 'VARCHAR', missingReasons: '${MISSING_STRUCT_LIST}', capturedAt: 'VARCHAR', cid: 'VARCHAR', runId: 'VARCHAR'}`;
 
     const jsonDir = mkdtempSync(join(tmpdir(), "crm-json-index-"));

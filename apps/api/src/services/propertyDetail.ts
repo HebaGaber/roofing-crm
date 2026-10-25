@@ -7,20 +7,28 @@
 import type { LeadIndex, PermitResult, PropertyResult } from "../adapters/duckDbParquet.js";
 import { nearestPlace, type NearestPlace } from "./agent/placeResolver.js";
 
-/** contract/v1's `bbb_status` is pinned `BBB_SOURCE = "always not_checked in v1"`
- *  (packages/oracle-contract/src/columns.ts) — no live BBB lookup exists in this story's data
- *  (README; architecture-constitution.md ADR-08). `bbbStatusReason` follows the same derivation
- *  the vendored `v_roofing_permit`/`v_contractor` columns document ("contractor_unresolved if
- *  unresolved, else no_lexicon_carrier") — read verbatim from `CrmPermit.contractorResolution`,
- *  the field the index already carries, never a new guess. */
-export function bbbFor(contractorResolution: string | null): {
-  bbbStatus: "not_checked";
+export type BbbStatus = "rated" | "not_found" | "blocked" | "not_checked";
+
+/** contract v1.1 (Run 3) publishes `bbb_status` and `bbb_status_reason` on every permit row:
+ *  `blocked` / `bbb_blocked` when the permit prints a contractor name (BBB blocks the lookup,
+ *  Task A A-01; no rating is ever published), else `not_checked` / `contractor_unresolved`. The
+ *  permit's own values are read verbatim (packages/oracle-contract/src/columns.ts). Only a permit
+ *  that carries neither (an index built before v1.1, or a property with no permits) falls back to
+ *  the v1 derivation — "contractor_unresolved if unresolved, else no_lexicon_carrier" — so the
+ *  reason is never empty (AC-7) and a rating is never invented (ADR-07, constitution P0-4). */
+export function bbbFor(
+  permit: Pick<PermitResult, "contractorResolution" | "bbbStatus" | "bbbStatusReason"> | undefined,
+): {
+  bbbStatus: BbbStatus;
   bbbStatusReason: string;
 } {
+  if (permit?.bbbStatus != null && permit.bbbStatusReason != null) {
+    return { bbbStatus: permit.bbbStatus, bbbStatusReason: permit.bbbStatusReason };
+  }
   return {
     bbbStatus: "not_checked",
     bbbStatusReason:
-      contractorResolution === "resolved" ? "no_lexicon_carrier" : "contractor_unresolved",
+      permit?.contractorResolution === "resolved" ? "no_lexicon_carrier" : "contractor_unresolved",
   };
 }
 
@@ -43,7 +51,7 @@ export function countyLensBaseUrl(): string {
 export interface PropertyDetailResult {
   property: PropertyResult | null;
   permits: PermitResult[];
-  bbbStatus: "not_checked" | null;
+  bbbStatus: BbbStatus | null;
   bbbStatusReason: string | null;
   lineageUrl: string;
   manifestCid: string;
@@ -77,11 +85,10 @@ export async function propertyDetail(
   }
 
   const { permits, ...property } = found;
-  // v1 has exactly one bbb/contractor state per property (every permit's contractorResolution
-  // agrees in this story's data — AC-7's edge case): the first permit's resolution stands for
-  // the drawer-level field. A property with no permits at all is "unresolved" by the same
-  // vendored fallback rule (no contractor can have been matched with nothing to match it on).
-  const { bbbStatus, bbbStatusReason } = bbbFor(permits[0]?.contractorResolution ?? null);
+  // The first permit's BBB state stands for the drawer-level field; each permit card shows its
+  // own (they differ when only some permits print a contractor name). A property with no permits
+  // at all is "unresolved" by the vendored fallback rule (nothing to match a contractor on).
+  const { bbbStatus, bbbStatusReason } = bbbFor(permits[0]);
 
   const near =
     property.latitude === null || property.longitude === null

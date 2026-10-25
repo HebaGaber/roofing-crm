@@ -7,7 +7,9 @@ import { withObservability } from "@crm/observability";
 /** ADR-05's three independent thresholds; exceeding any one holds the run. */
 export const COST_GATE_THRESHOLDS = {
   maxSpendUsd: 1.0,
-  maxDocCount: 600_000,
+  // Run 3 added `parcels_published` (441,961) to the coverage entries this sums, so a full-county
+  // run counts about 848k (Run 2: about 406k). 1M keeps the gate a real ceiling with headroom.
+  maxDocCount: 1_000_000,
   maxBytes: 2 * 1024 * 1024 * 1024, // 2 GB
 } as const;
 

@@ -15,7 +15,7 @@ PlanResult = {
 }
 ```
 
-**Holds** (does not proceed to `FetchPart`) when: a `profiles[].sha256` digest mismatches the vendored copy; `costEstimate` exceeds $1.00 / 600,000 docs / 2 GB; the candidate run is a lineage fork or has an older `finishedAt` than the currently promoted run.
+**Holds** (does not proceed to `FetchPart`) when: a `profiles[].sha256` digest mismatches the vendored copy; `costEstimate` exceeds $1.00 / 1,000,000 docs (600,000 until 2026-10-25, raised for Run 3) / 2 GB; the candidate run is a lineage fork or has an older `finishedAt` than the currently promoted run.
 
 ## `FetchPart` (machamp)
 

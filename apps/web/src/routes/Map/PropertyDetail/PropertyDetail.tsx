@@ -30,13 +30,16 @@ import { ContractorBadge } from "./ContractorBadge.js";
 import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import styles from "./PropertyDetail.module.css";
 
+/** `bbb_status` (contract v1.1): `rated` is never published; `blocked` means BBB blocked the lookup. */
+type BbbStatus = NonNullable<CrmPermit["bbbStatus"]>;
+
 /** The exact shape `property.get` returns (contracts/property-detail.md) — kept local rather
  *  than imported from `@crm/api-client` so this component has no hard dependency on the tRPC
  *  client package for its own Vitest/Storybook-style rendering tests. */
 export interface PropertyDetailData {
   readonly property: Provenanced<CrmProperty> | null;
   readonly permits: Provenanced<CrmPermit>[];
-  readonly bbbStatus: "not_checked" | null;
+  readonly bbbStatus: BbbStatus | null;
   readonly bbbStatusReason: string | null;
   readonly lineageUrl: string;
   /** The nearest travis-places@1.0.0 place centroid, computed server-side by `property.get`;
@@ -63,7 +66,7 @@ function BbbField({
   bbbStatus,
   bbbStatusReason,
 }: {
-  readonly bbbStatus: "not_checked" | null;
+  readonly bbbStatus: BbbStatus | null;
   readonly bbbStatusReason: string | null;
 }): ReactElement {
   if (bbbStatus === null || bbbStatusReason === null) {
@@ -79,6 +82,39 @@ function BbbField({
   );
 }
 
+/** The contractor exactly as the permit prints it — unverified, never a registry identity
+ *  (contract v1.1, ERR-32). When Task A published no name, the stated reason is shown (FR-003). */
+function ContractorName({ permit }: { readonly permit: Provenanced<CrmPermit> }): ReactElement {
+  // `!= null`, not `!== null`: until a Run 3 index is promoted the served rows are Run 2's, which
+  // have no such column at all (undefined), and the drawer must not crash on them.
+  if (permit.contractorNameAsPrinted != null) {
+    return (
+      <span data-field="contractor_name_as_printed">
+        {permit.contractorNameAsPrinted} <small>(as printed, unverified)</small>
+      </span>
+    );
+  }
+  const reason =
+    permit.missingReasons.find((m) => m.field === "contractor_name_as_printed")?.reason ??
+    "contractor_unresolved";
+  return (
+    <span data-field="contractor_name_as_printed" data-reason={reason}>
+      Contractor name not published · {missingReasonText("contractor_name_as_printed", reason)}
+    </span>
+  );
+}
+
+/** Task A builds the BBB search link from the printed name and never fetches it, so it is a
+ *  search, not a rating. Only an https URL is ever rendered as a link. */
+function BbbLink({ url }: { readonly url?: string | null }): ReactElement | null {
+  if (typeof url !== "string" || !url.startsWith("https://")) return null;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" data-field="bbb_url">
+      Search BBB for this contractor
+    </a>
+  );
+}
+
 function PermitDetail({
   permit,
   property,
@@ -87,7 +123,7 @@ function PermitDetail({
 }: {
   readonly permit: Provenanced<CrmPermit>;
   readonly property: Provenanced<CrmProperty>;
-  readonly bbbStatus: "not_checked" | null;
+  readonly bbbStatus: BbbStatus | null;
   readonly bbbStatusReason: string | null;
 }): ReactElement {
   const issued = formatDate(permit.issueDate);
@@ -127,13 +163,18 @@ function PermitDetail({
         <div className={styles.permitField}>
           <dt>Contractor, as printed on permit</dt>
           <dd>
+            <ContractorName permit={permit} />{" "}
             <ContractorBadge resolution={permit.contractorResolution} />
           </dd>
         </div>
         <div className={styles.permitField}>
           <dt>BBB</dt>
           <dd>
-            <BbbField bbbStatus={bbbStatus} bbbStatusReason={bbbStatusReason} />
+            <BbbField
+              bbbStatus={permit.bbbStatus ?? bbbStatus}
+              bbbStatusReason={permit.bbbStatusReason ?? bbbStatusReason}
+            />{" "}
+            <BbbLink url={permit.bbbUrl} />
           </dd>
         </div>
       </dl>

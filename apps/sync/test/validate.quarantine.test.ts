@@ -32,6 +32,7 @@ function property(n: number): CrmProperty {
     roofAgeBasis: "built_year",
     roofAgeConfidence: "low",
     isLongTenure: null,
+    tenureBasis: null,
     ownerKind: null,
     ownerAreaClass: "unknown",
     ownerIsOutOfArea: null,

@@ -36,6 +36,7 @@ function property(
     roofAgeBasis: "built_year",
     roofAgeConfidence: "medium",
     isLongTenure: null,
+    tenureBasis: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,

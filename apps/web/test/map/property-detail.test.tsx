@@ -141,6 +141,58 @@ describe("PropertyDetail drawer", () => {
     expect(screen.getAllByText("Not included in the published tables").length).toBeGreaterThan(0);
   });
 
+  it("Run 3: shows the contractor as printed (unverified) and the BBB search link, with BBB's stated reason", () => {
+    const printed = {
+      ...permit,
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbStatus: "blocked",
+      bbbStatusReason: "bbb_blocked",
+      bbbUrl: "https://www.bbb.org/search?find_text=ACME%20ROOFING%20LLC&find_loc=Austin%2C%20TX",
+    } as unknown as Provenanced<CrmPermit>;
+    const drawer = renderDrawer({ ...data, permits: [printed] });
+    expect(
+      drawer.querySelector("[data-field='contractor_name_as_printed']")?.textContent,
+    ).toContain("ACME ROOFING LLC (as printed, unverified)");
+    const link = drawer.querySelector("a[data-field='bbb_url']");
+    expect(link?.getAttribute("href")).toMatch(/^https:\/\/www\.bbb\.org\/search/);
+    expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(drawer.textContent).toContain("BBB rating not available · BBB blocked the lookup");
+  });
+
+  it("Run 3: with no printed name it says why instead of leaving the field blank, and renders no BBB link", () => {
+    const none = {
+      ...permit,
+      contractorNameAsPrinted: null,
+      bbbStatus: "not_checked",
+      bbbStatusReason: "contractor_unresolved",
+      bbbUrl: null,
+      missingReasons: [{ field: "contractor_name_as_printed", reason: "contractor_unresolved" }],
+    } as unknown as Provenanced<CrmPermit>;
+    const drawer = renderDrawer({ ...data, permits: [none] });
+    expect(drawer.querySelector("[data-field='contractor_name_as_printed']")?.textContent).toBe(
+      "Contractor name not published · Contractor not matched to a company",
+    );
+    expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
+  });
+
+  it("a Run 2 row (no v1.1 columns at all) still renders, with the reason instead of a name", () => {
+    const drawer = renderDrawer();
+    expect(
+      drawer.querySelector("[data-field='contractor_name_as_printed']")?.textContent,
+    ).toContain("Contractor name not published");
+    expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
+  });
+
+  it("Run 3: never links a BBB URL that is not https", () => {
+    const bad = {
+      ...permit,
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbUrl: "javascript:alert(1)",
+    } as unknown as Provenanced<CrmPermit>;
+    const drawer = renderDrawer({ ...data, permits: [bad] });
+    expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
+  });
+
   it("keeps provenance visible: run id and captured time for the property and each permit", () => {
     renderDrawer();
     expect(screen.getAllByText(/run travis-202609-permits-20261021t103516z/).length).toBe(2);

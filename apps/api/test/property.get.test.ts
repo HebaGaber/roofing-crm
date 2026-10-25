@@ -27,6 +27,7 @@ function property(overrides: Partial<Provenanced<CrmProperty>> = {}): Provenance
     roofAgeBasis: "built_year",
     roofAgeConfidence: "medium",
     isLongTenure: null,
+    tenureBasis: null,
     ownerKind: null,
     ownerAreaClass: null,
     ownerIsOutOfArea: null,
@@ -56,6 +57,10 @@ function permit(overrides: Partial<Provenanced<CrmPermit>> = {}): Provenanced<Cr
     openDays: 28,
     contractorResolution: "unresolved",
     contractorCompanyCid: null,
+    contractorNameAsPrinted: null,
+    bbbStatus: null,
+    bbbStatusReason: null,
+    bbbUrl: null,
     sourceManifestCid: MANIFEST_CID,
     missingReasons: [],
     capturedAt: "2026-10-21T10:40:04.525Z",
@@ -132,6 +137,27 @@ describe("property.get", () => {
     const result = await caller.property.get({ propertyCid: PROPERTY_CID });
     expect(result.bbbStatus).toBe("not_checked");
     expect(result.bbbStatusReason).toBe("no_lexicon_carrier");
+  });
+
+  it("Run 3 (contract v1.1): a permit's own bbb_status and reason pass through verbatim", async () => {
+    const caller = makeCaller([
+      {
+        ...property(),
+        permits: [
+          permit({
+            contractorResolution: "unresolved",
+            contractorNameAsPrinted: "ACME ROOFING LLC",
+            bbbStatus: "blocked",
+            bbbStatusReason: "bbb_blocked",
+            bbbUrl: "https://www.bbb.org/search?find_text=ACME%20ROOFING%20LLC",
+          }),
+        ],
+      },
+    ]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    expect(result.bbbStatus).toBe("blocked");
+    expect(result.bbbStatusReason).toBe("bbb_blocked");
+    expect(result.permits[0]?.contractorNameAsPrinted).toBe("ACME ROOFING LLC");
   });
 
   it("bbbStatus is never 'rated' and bbbStatusReason is never empty for a found property (AC-7)", async () => {

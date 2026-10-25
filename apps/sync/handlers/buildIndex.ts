@@ -52,6 +52,7 @@ export const CRM_PROPERTY_COLUMNS: Record<string, string> = {
   roofAgeBasis: "VARCHAR",
   roofAgeConfidence: "VARCHAR",
   isLongTenure: "BOOLEAN",
+  tenureBasis: "VARCHAR",
   ownerKind: "VARCHAR",
   ownerAreaClass: "VARCHAR",
   ownerIsOutOfArea: "BOOLEAN",
@@ -78,6 +79,10 @@ export const CRM_PERMIT_COLUMNS: Record<string, string> = {
   openDays: "INTEGER",
   contractorResolution: "VARCHAR",
   contractorCompanyCid: "VARCHAR",
+  contractorNameAsPrinted: "VARCHAR",
+  bbbStatus: "VARCHAR",
+  bbbStatusReason: "VARCHAR",
+  bbbUrl: "VARCHAR",
   sourceManifestCid: "VARCHAR",
   missingReasons: MISSING_STRUCT_LIST,
   capturedAt: "VARCHAR",
@@ -113,7 +118,7 @@ function nullableIsoString(value: unknown): string | null {
 /**
  * Maps one bound v_property row into the CRM's own CrmProperty shape and Zod-validates it.
  * Every field not carried into data-model.md's crm_property table (parcel_identifier,
- * property_structure_built_year, last_ownership_transfer_date, tenure_years, tenure_basis,
+ * property_structure_built_year, last_ownership_transfer_date, tenure_years,
  * owner_name, area_list_sha256) is dropped here on purpose — never copied, per ADR-03 for
  * owner_name specifically and per data-model.md's slimmer field list for the rest. A null field
  * keeps its exact missing reason (row.missing, verbatim) — this function never guesses or
@@ -132,6 +137,7 @@ export function mapPropertyRow(row: ViewRow, sourceManifestCid: string): CrmProp
     roofAgeBasis: row.roof_age_basis,
     roofAgeConfidence: row.roof_age_confidence,
     isLongTenure: row.is_long_tenure,
+    tenureBasis: row.tenure_basis,
     ownerKind: row.owner_kind,
     ownerAreaClass: row.owner_area_class,
     ownerIsOutOfArea: row.owner_is_out_of_area,
@@ -162,6 +168,10 @@ export function mapPermitRow(row: ViewRow, sourceManifestCid: string): CrmPermit
     openDays: row.open_days,
     contractorResolution: row.contractor_resolution,
     contractorCompanyCid: row.contractor_company_cid,
+    contractorNameAsPrinted: row.contractor_name_as_printed,
+    bbbStatus: row.bbb_status,
+    bbbStatusReason: row.bbb_status_reason,
+    bbbUrl: row.bbb_url,
     sourceManifestCid,
     missingReasons: asMissing(row.missing),
     capturedAt: isoString(row.captured_at),

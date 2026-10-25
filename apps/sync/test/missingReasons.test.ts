@@ -25,6 +25,7 @@ const MISSING_ROOF_AGE_ROW: ViewRow = {
   roof_age_basis: "unknown",
   roof_age_confidence: "none",
   is_long_tenure: null,
+  tenure_basis: "sale_date",
   owner_kind: null,
   owner_area_class: "unknown",
   owner_is_out_of_area: null,

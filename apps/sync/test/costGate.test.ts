@@ -1,11 +1,12 @@
 // T035: Plan's cost-gate check (called from T024's plan.ts) holds the run when predicted spend
-// exceeds $1.00, predicted doc count exceeds 600,000, or predicted bytes exceed 2 GB — sized from
+// exceeds $1.00, predicted doc count exceeds 1,000,000, or predicted bytes exceed 2 GB — sized from
 // the manifest's own declared byte size, never a live network call (ADR-05; research.md's
 // machamp refinement). T036 implements apps/sync/handlers/costGate.ts to make this pass —
 // intentionally failing now (no module exists yet).
 import { describe, expect, it, vi } from "vitest";
 import {
   COST_GATE_THRESHOLDS,
+  COST_PER_GB_USD,
   estimateCostFromManifest,
   evaluateCostGate,
   handler,
@@ -73,7 +74,7 @@ describe("evaluateCostGate", () => {
     expect(evaluateCostGate(estimate)).toEqual({ held: true, heldReason: "cost_gate_exceeded" });
   });
 
-  it("holds when predicted doc count exceeds 600,000", () => {
+  it("holds when predicted doc count exceeds 1,000,000", () => {
     const estimate = { ...passing, predictedDocCount: COST_GATE_THRESHOLDS.maxDocCount + 1 };
     expect(evaluateCostGate(estimate)).toEqual({ held: true, heldReason: "cost_gate_exceeded" });
   });
@@ -88,6 +89,21 @@ describe("evaluateCostGate", () => {
       predictedSpendUsd: COST_GATE_THRESHOLDS.maxSpendUsd,
       predictedDocCount: COST_GATE_THRESHOLDS.maxDocCount,
       predictedBytes: COST_GATE_THRESHOLDS.maxBytes,
+    };
+    expect(evaluateCostGate(estimate)).toEqual({ held: false });
+  });
+});
+
+describe("Run 3 full-county sizing (travis-full-run3-20261025)", () => {
+  // Run 3's coverage entries sum to 848,164 documents (parcels_published 441,961 plus the permit
+  // diagnostics; Run 2 summed 406,124 because it published no parcels_published entry) and its
+  // fetched table parts are about 0.92 GB. The old 600,000 limit would have held it.
+  it("is not held: 848,164 documents, 0.92 GB, about $0.08", () => {
+    const bytes = 983_000_000;
+    const estimate = {
+      predictedSpendUsd: (bytes / 1024 ** 3) * COST_PER_GB_USD,
+      predictedDocCount: 848_164,
+      predictedBytes: bytes,
     };
     expect(evaluateCostGate(estimate)).toEqual({ held: false });
   });
