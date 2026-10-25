@@ -6,12 +6,12 @@ story: B-01
 test_case: B-01 sign-in lockout (AC-3)
 ac_reference: B-01-AC-3
 severity: High
-status: Fixed (awaiting redeploy and hosted retest)
+status: Closed
 found_by: PO, signing in on the B-09 hosted preview
 found_date: 2026-10-24
 fix_branch: 009-agent-hardening
-fix_commit: (this commit)
-retest_date: pending
+fix_commit: 15f3ab9
+retest_date: 2026-10-25
 ---
 
 # ERR-21: Sign-in says "Too many attempts" on the first wrong password
@@ -47,3 +47,7 @@ A successful sign-in therefore never reset the email's counter. It had reached 1
 ## Retest
 
 After redeploy: sign in with a wrong password once (no lock message), then sign in correctly (counter resets to 0), then 4 wrong attempts (lock message, 5 minutes).
+
+## Retest result (2026-10-25)
+
+Deployed since `15f3ab9`. Hosted check on commit `731b481` (CI run https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532): `tests/e2e/B-01.spec.ts` "AC-3: typed lockout after the 4th consecutive failed attempt" passes on desktop-1440 (the check is skipped on the other viewports on purpose). The stale counter row for the admin was deleted from `crm-lockout-counter` on 2026-10-24. Closed.

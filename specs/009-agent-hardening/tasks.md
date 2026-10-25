@@ -241,7 +241,7 @@ Phase N runs before its Phase Z).
 - [x] TZ03 Run the Playwright scenario tests (one per TC in `testplans/B-09-test-cases.md`, tagged `@scenario:B-09-TC-nnn`) against `RUNTIME_URL`; screenshots to `docs/evidence/img/`
 - [x] TZ04 Run the full `smeargle` suite (`tests/e2e/responsive/*.spec.ts`) at 390/768/1440 on the hosted URL
 - [x] TZ05 Run the story's `agents.verify` check: golden queries G1–G7 (T042/T047) + `RoofingCrm` dashboard check (T057)
-- [ ] TZ06 Write `docs/reports/TR-B-09.md`, `docs/evidence/B-09.md`, the `docs/traceability.md` row, and one `docs/kit-usage.md` line per agent used
+- [x] TZ06 Write `docs/reports/TR-B-09.md`, `docs/evidence/B-09.md`, the `docs/traceability.md` row, and one `docs/kit-usage.md` line per agent used
 - [ ] TZ07 Update `docs/progress.md` via `bash scripts/progress.sh` — only after the user approves G7 and the branch is merged `--no-ff` into `feature/roofing-crm` (constitution XX); not part of the pre-merge build
 
 ---

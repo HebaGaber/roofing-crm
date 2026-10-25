@@ -5,7 +5,7 @@ feature: FEAT-B09, FEAT-B11
 story: B-09
 test_cases: testplans/B-09-test-cases.md
 runtime_url: https://009-agent-hardening.d1zmhc6kkyzsbe.amplifyapp.com
-build: CI and e2e at 71c22d9, golden pass 6 on the API at cbb548e, branch head c1e6260 (evidence and docs only)
+build: CI and e2e at 731b481, golden pass 6 on the API at cbb548e (API unchanged since), web with the optimistic lead insert (7d483df)
 data_snapshot: bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute (travis-full-run2-20261024)
 owner: Claude (session), approved by HebaGaber
 status: Draft (not signed off; open items listed below)
@@ -31,7 +31,7 @@ Every Run 2 golden answer is either "answered with verified rows" or an **honest
 | Open Critical defects | 0 recorded; no Critical review finding open (see `docs/reviews/CR-B-09.md`) |
 | Unit test report | no `docs/reports/UT-B-09.md` was written. The unit suites run in CI `workspace` |
 | Code review log | `docs/reviews/CR-B-09.md`: final scores alakazam 84, ash 87, metagross 88, audino 82, porygon 84 (pass mark 75). Earlier scores 72, 62, 68, 72, 58, re-scored 80, 86, 84, 88, 88 |
-| Playwright run | CI https://github.com/HebaGaber/roofing-crm/actions/runs/40163992058, green at 71c22d9 (artifact `playwright-report-71c22d99...`). Jobs: gitleaks, `workspace` (1m45s), `e2e-hosted` (13m59s). Parallel phase 141 passed, 31 skipped. Isolated phase 80 passed, 11 skipped. The workspace job log shows the unit suites passing. I did not total its unit test count |
+| Playwright run | CI https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532, green at 731b481. Jobs: gitleaks, `workspace` (1m24s), `e2e-hosted` (12m42s). Parallel phase 152 passed, 59 skipped (211 tests). Isolated phase 80 passed, 11 skipped. The workspace job log shows the unit suites passing. I did not total its unit test count |
 
 Honest limits of those numbers: the skipped tests are not itemised in this report. `tests/e2e/responsive/layout.spec.ts` has an uncommitted edit in the working tree, so CI did not run that edit.
 
@@ -46,7 +46,7 @@ Type is the test-case file's type. "API" below means the deployed `agent.ask` ha
 | B-09-TC-002 | AC-1 | UI | DEFERRED: no hosted test or evidence found for "Open on map" from an Ask answer | — | none. `ask.spec.ts` has no such test. The numbered answer pins and map wiring were built (commits `2c6478b`, `a7083c0`) but not proven by a recorded test |
 | B-09-TC-003 | AC-1 | UI | PASS at API level (honest empty) | — | `docs/evidence/B-09.md` pass 6, G2: `empty_in_scope`, 1.9 s, area inherited from G1, contractor stated unsupported (`not_in_export`) |
 | B-09-TC-004 | AC-2 | UI | PASS at API level | pass 4 undo and context defects (below) | `docs/evidence/B-09.md` pass 5: propose, `confirmLead`, `confirmLeads` created 2, `createdFrom: agent`. The Ask-screen confirmation card was not driven in a browser |
-| B-09-TC-005 | AC-2 | API | PASS (unit test `apps/api/test/routers/agent.confirmLead.test.ts`, CI `workspace` green) | — | CI run 40163992058. I did not re-read the test's assertions for this report |
+| B-09-TC-005 | AC-2 | API | PASS (unit test `apps/api/test/routers/agent.confirmLead.test.ts`, CI `workspace` green) | — | CI run 40167849532. I did not re-read the test's assertions for this report |
 | B-09-TC-006 | AC-2 | UI | PASS at API level | — | `docs/evidence/B-09.md` pass 5: all 3 leads present in `leads.list`, `createdFrom: agent`. Detail-view provenance in a browser not run |
 | B-09-TC-007 | AC-3 | UI | PASS at API level | — | `docs/evidence/B-09.md` pass 6, G6: `out_of_scope`, 1.4 s, zero claims, citations, rows, count 0 |
 | B-09-TC-008 | AC-3 | UI | PASS at API level (reason is in structured fields: ZIP 99999 not a Travis ZCTA). Exact answer wording not quoted in evidence | — | `docs/evidence/B-09.md` pass 6 |
@@ -58,9 +58,9 @@ Type is the test-case file's type. "API" below means the deployed `agent.ask` ha
 | B-09-TC-014 | AC-4 | API | PASS (G6) | — | pass 6, 1.4 s |
 | B-09-TC-015 | AC-4 | API | PASS (G7 propose, confirm 1, confirm 2 more, list, undo all 3, list again) | GAP-5, lead repo missing from the Lambda context, Undo reserved word | pass 5, asks 10.6 s and 7.1 s |
 | B-09-TC-NF-01 | AC-4 | API | DEFERRED: the specified run (13 asks times 3 repeats, 39 asks) was never made; repeats were set to 1 to limit Bedrock spend | GAP-4 (earlier) | see Non-functional results |
-| B-09-TC-016 | AC-5 | UI | PASS in CI at 390, 768, 1440 for the specs that exist (Ask, Coming soon, layout, Leads shell, Map shell, Sign-in). Not itemised screen by screen against the 9-screen list in the test case | — | CI run 40163992058 |
+| B-09-TC-016 | AC-5 | UI | PASS in CI at 390, 768, 1440 for the specs that exist (Ask, Coming soon, layout, Leads shell, Map shell, Sign-in). Not itemised screen by screen against the 9-screen list in the test case | — | CI run 40167849532 |
 | B-09-TC-017 | AC-5 | UI | DEFERRED / partial: the idle, working, out-of-scope and not-found or low-confidence states are in `ask.spec.ts`. The throttled and paused states have unit tests (TC-026, TC-027) but no recorded responsive run at three widths | — | `tests/e2e/responsive/ask.spec.ts` |
-| B-09-TC-NF-02 | AC-5 | UI | PASS for the widths 390, 768, 1440 (token audit, no horizontal overflow). No e2e check at 360, 600 or 1280; a CSS-rule test was added instead | — | CI run 40163992058; `docs/reviews/CR-B-09.md` audino note |
+| B-09-TC-NF-02 | AC-5 | UI | PASS for the widths 390, 768, 1440 (token audit, no horizontal overflow) and, since T062, no-horizontal-scroll checks at 360, 600 and 1280 px (map, list, Leads, phone Filters sheet, AI panel; 14 cases, run on the hosted URL in CI) | — | CI run 40167849532; `docs/reviews/CR-B-09.md` audino note |
 | B-09-TC-018 | AC-6 | Infra | PASS (manual, forced failure) | — | `docs/evidence/B-09.md` AC-6 table: OK to ALARM at 2026-10-24 21:25:50 UTC; `docs/evidence/img/B-09-T057-dlq-alarm.png`. Dashboard widget screenshot of the `RoofingCrm` dashboard in ALARM was not captured, only the alarm history and the depth image |
 | B-09-TC-019 | AC-6 | Infra | PASS (manual) | — | queue drained 21:26:05, alarm back to OK 21:28:50 with no manual reset |
 | B-09-TC-019b | AC-6 | Infra | NOT RUN (DEFERRED). Incidental observation only: the real DLQ failures from 2026-10-23 held the alarm in ALARM until the queue was purged on 2026-10-24, but that was not a designed test | — | `docs/evidence/B-09.md` |
@@ -71,9 +71,9 @@ Type is the test-case file's type. "API" below means the deployed `agent.ask` ha
 | B-09-TC-023b | AC-8 | Docs | DEFERRED to QC sign-off, same as TC-022 | — | `design/design-review-log.md` |
 | B-09-TC-024 | edge | UI | DEFERRED: no hosted test of the "took too long" state. The server side was seen once: A5 returned `timed_out` at 23.7 s in pass 1 (the abort works); the Ask screen's `timed_out` state was not driven | GAP-4 | `docs/evidence/B-09.md` pass 1 |
 | B-09-TC-025 | edge | UI | PASS at unit level (`placeResolver.test.ts`, CI green). Not run live with "Zzyzxville"; "downtown Austin" (score 0.58) was refused live in pass 1 | — | `docs/evidence/B-09.md` pass 2 notes |
-| B-09-TC-025b | edge | UI | PASS at unit level ("Pflugervile" fuzzy case in `placeResolver.test.ts`). Not run live | — | CI run 40163992058 |
-| B-09-TC-026 | NFR | API | PASS (unit `rateLimiter.test.ts`: 6th call rejected, `retryAfterSec`). Not exercised on the deployed API: the golden runs were paced to stay under 5 asks a minute | — | CI run 40163992058 |
-| B-09-TC-027 | NFR | API | PASS (unit `spendCap.test.ts`: rejected before the model call). Not exercised live; the real counter reached 137.3 of 300 cents on 2026-10-25 | — | CI run 40163992058 |
+| B-09-TC-025b | edge | UI | PASS at unit level ("Pflugervile" fuzzy case in `placeResolver.test.ts`). Not run live | — | CI run 40167849532 |
+| B-09-TC-026 | NFR | API | PASS (unit `rateLimiter.test.ts`: 6th call rejected, `retryAfterSec`). Not exercised on the deployed API: the golden runs were paced to stay under 5 asks a minute | — | CI run 40167849532 |
+| B-09-TC-027 | NFR | API | PASS (unit `spendCap.test.ts`: rejected before the model call). Not exercised live; the real counter reached 137.3 of 300 cents on 2026-10-25 | — | CI run 40167849532 |
 
 ## Non-functional results
 
@@ -82,7 +82,7 @@ Type is the test-case file's type. "API" below means the deployed `agent.ask` ha
 | B-09-TC-NF-01 (golden latency) | p95 under 20 s, max under 23.5 s | `tests/agent/golden.test.ts` on the deployed API, repeats 1 | **Not proven as specified.** Met in the passes that ran after the fixes, with a small n | pass 3: n = 7, p95 = max = 11.5 s. Pass 5: n = 2, max 10.6 s. Pass 6: n = 5, p95 = max = 3.9 s. Pass 1 (before the fixes): max 23.7 s (A5 timed out); pass 2: G5 28.4 s | p95 under 20 s |
 | Groundedness | 100 percent of cited property CIDs resolve | `property.get` re-read of every cited row | PASS in the passes that cited rows | pass 3: 100 cited rows verified (4 queries times 25); pass 4: 25 of 25; pass 2: 25 of 25; pass 6: 1 of 1. No fabricated property, permit, contractor or BBB value in any answer | 100 percent |
 | Count cross-check | answer matched count equals index count | `search.properties` | PASS where checkable | G1 0 equals 0; A1 2,462 equals 2,462; A5 1,350 equals the index for 2 mi around the ZCTA centre. Permit counts cannot be cross-checked through `search.permits` (size limit) | equal |
-| B-07-TC-NF-01 on Run 2 (lead create to top of list, 20 creates per viewport) | p95 at most 2,000 ms | Playwright per animation frame, hosted, commit 71c22d9 | PASS, close to the limit | p95 1,883 ms (mobile-390, max sample 2,139 ms), 1,668 ms (tablet-768), 1,684 ms (desktop-1440). An earlier run at 9fc1c08 had p95 1.75, 1.84 and 2.03 s, one viewport 25 ms over. Server share is small (Lambda p95 122 ms over 734 invocations) | p95 at most 2,000 ms |
+| B-07-TC-NF-01 on Run 2 (lead create to top of list, 20 creates per viewport) | p95 at most 2,000 ms | Playwright per animation frame, hosted, commit 731b481 | PASS, close to the limit | p95 1,844 ms (mobile-390), 1,621 ms (tablet-768), 1,642 ms (desktop-1440). Earlier runs at the same limit: 71c22d9 gave 1,883, 1,668 and 1,684 ms; 9fc1c08 gave 1.75, 1.84 and 2.03 s; 661e634 gave 2,167, 1,958 and 2,016 ms and failed. The check swings by about half a second between runs. The optimistic insert of a created lead into the Leads cache (7d483df) removes one round trip but did not move these CI figures much; the runner's network dominates. Server share is small (Lambda p95 122 ms over 734 invocations) | p95 at most 2,000 ms |
 | Spend and rate limits | $3 a day, 5 asks a minute | `crm-agent-usage` counter | not breached | counter 137.3 cents after pass 6; no ask was rate limited or paused | 300 cents; 5 per minute |
 | Responsive and tokens | no overflow, Atlas tokens only | Playwright, 390 / 768 / 1440 | PASS | see TC-016, TC-NF-02 | no violations |
 | Index warm-up and cold start | cold start | local measurement only | **not re-measured on the deployed Lambda** | local 2.8 to 8.7 s cold, about 1 s warm (`docs/pending-items.md` section 5) | — |
@@ -125,4 +125,4 @@ Defects of this story were tracked as test-case gaps (GAP-1 to GAP-5) and review
 - Browser journeys for the Ask screen (TC-001, TC-003, TC-004, TC-006, TC-007, TC-008) were substituted by the same questions through the deployed API harness plus the hosted responsive specs. The harness checks answers and rows, not the rendered text.
 - The `smeargle` agent was consulted for the design; whether it ran on the changed pages is not recorded in the files I read.
 - The golden prompts for the Austin variants say "Austin", not "downtown Austin", after pass 1.
-- CI covers commit 71c22d9. Later commits are `c1e6260` (evidence) and an uncommitted edit to `tests/e2e/responsive/layout.spec.ts`; neither was run in CI.
+- CI covers commit 731b481, the head when this report was updated; later commits are documentation only.

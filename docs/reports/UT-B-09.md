@@ -3,28 +3,28 @@ id: UT-B-09
 type: unit-test-report
 story: B-09
 branch: 009-agent-hardening
-commit: 71c22d9 (tests added after it are listed below)
-ci_run: https://github.com/HebaGaber/roofing-crm/actions/runs/40163992058
+commit: 731b481
+ci_run: https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532
 created: 2026-10-25
 ---
 
 # Unit and Integration Test Report: B-09 Agent and hardening (parts B-09 and B-11)
 
-The CI `workspace` job (type-check, lint, prettier, unit tests, `cdk synth --strict`) passed on commit `71c22d9`: https://github.com/HebaGaber/roofing-crm/actions/runs/40163992058 . The per-package totals below are from a local run of `vitest run` in every package on the same code plus the later commits `062cbae` to `cd4f0c8` (docs, tasks, e2e checks) and one new unit test file section for the lead service. `pnpm exec eslint .` and `pnpm exec prettier --check .` are clean.
+The CI `workspace` job (type-check, lint, prettier, unit tests, `cdk synth --strict`) passed on commit `731b481`: https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532 . The per-package totals below are from a local run of `vitest run` in every package on the same code plus the later commits `062cbae` to `cd4f0c8` (docs, tasks, e2e checks) and one new unit test file section for the lead service. `pnpm exec eslint .` and `pnpm exec prettier --check .` are clean.
 
 | Item | Value |
 | --- | --- |
 | Command | `pnpm exec vitest run` in each package (coverage: `--coverage.enabled=true --coverage.reporter=text`) |
-| Suites / tests | 178 test files passed (+4 skipped) / 1,726 tests passed |
-| Passed / failed / skipped | 1,726 / 0 / 20 skipped (15 opt-in performance cases in `@crm/api`, 5 inherited in `@crm/oracle-views`) and 1 todo |
+| Suites / tests | 179 test files passed (+4 skipped) / 1,743 tests passed |
+| Passed / failed / skipped | 1,743 / 0 / 20 skipped (15 opt-in performance cases in `@crm/api`, 5 inherited in `@crm/oracle-views`) and 1 todo |
 | Coverage of new and changed code | **Met** (see below) |
 
 ## By package
 
 | Package | Files | Tests | Notes |
 | --- | --- | --- | --- |
-| `@crm/api` | 54 (+3 skipped) | 413 (+15 skipped, 1 todo) | agent (plan, compose, claim check, citation check, place scan, unpublished filters, answer notes), spend guard, confirm flows, SQL search and permits, lead filters in SQL, index warm-up, keep-warm, gateway key, lead repo wiring |
-| `web` | 51 | 684 | Ask panel, answer pins, Map panes, candidates and triage, Undo row, Filters sheet, first-visit card, style rules, no-scroll rules |
+| `@crm/api` | 54 (+3 skipped) | 414 (+15 skipped, 1 todo) | agent (plan, compose, claim check, citation check, place scan, unpublished filters, answer notes), spend guard, confirm flows, SQL search and permits, lead filters in SQL, index warm-up, keep-warm, gateway key, lead repo wiring |
+| `web` | 52 | 700 | Ask panel, answer pins, Map panes, candidates and triage, Undo row, Filters sheet, first-visit card, style rules, no-scroll rules |
 | `@crm/sync` | 20 | 129 | fetch part (small result), plan (bound parts), validate (reconcile and holds), build index |
 | `@crm/shared` | 9 | 36 | agent answer wire, `UNDO_WINDOW_MS` |
 | `@crm/domain` | 5 | 30 | hex grid, distance |
