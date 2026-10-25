@@ -17,6 +17,12 @@
   transition: max-height var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-emphasized);
 }
 
+/* A sheet that only holds a notice peeks at about a quarter of the page, so the map keeps the rest.
+   More specific than the 600 to 839 px peek below, so it wins there too. */
+.sheet[data-peek="compact"][data-sheet="peek"] {
+  max-height: 25%;
+}
+
 .sheet[data-sheet="full"] {
   max-height: calc(100% - var(--space-10));
 }
@@ -25,6 +31,14 @@
 @media (min-width: 600px) and (max-width: 1279.98px) {
   .sheet[data-sheet="peek"] {
     max-height: 50%;
+  }
+}
+
+/* Short landscape: the peek is the handle and the header row, never a quarter of a 390 px screen. */
+@media (max-height: 500px) and (max-width: 1279.98px) {
+  .sheet[data-sheet="peek"],
+  .sheet[data-peek="compact"][data-sheet="peek"] {
+    max-height: calc(var(--space-9) * 2 + var(--space-2));
   }
 }
 

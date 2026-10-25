@@ -723,3 +723,9 @@
 .page[data-layout="pane"] {
   padding: var(--space-4);
 }
+
+/* The tab bar is dropped (not just hidden by the attribute) when the Matches rows live in the
+   results pane. */
+.tabs[hidden] {
+  display: none;
+}

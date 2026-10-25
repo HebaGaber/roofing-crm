@@ -772,6 +772,22 @@ describe("Ask screen", () => {
       expect(screen.getByText(/did not include a list of matches/)).toBeTruthy();
     });
 
+    it("with a matches host (three-pane widths) the rows live there, not in a tab", () => {
+      askState = { ...askState, data: pinned() };
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      renderAsk({ matchesHost: host });
+      expect(screen.queryByRole("tab", { name: /^Matches/ })).toBeNull();
+      const list = within(host).getByRole("list", { name: "Matches" });
+      expect(list.textContent).toContain("TCAD 0201885122");
+      expect(within(list).getByRole("button", { name: "Create lead" })).toBeTruthy();
+      expect(within(list).getByRole("link", { name: "Open on map" })).toBeTruthy();
+      // The left panel keeps the answer, its actions and sources; it does not repeat the rows.
+      expect(screen.getByRole("button", { name: "Show on map" })).toBeTruthy();
+      expect(screen.getAllByRole("list", { name: "Matches" })).toHaveLength(1);
+      host.remove();
+    });
+
     it("Show on map asks the map to fit the pins, and is off with none", () => {
       askState = { ...askState, data: pinned() };
       renderAsk();

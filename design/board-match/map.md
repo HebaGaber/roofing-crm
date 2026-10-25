@@ -79,6 +79,40 @@ Fourth pass (Ask inside the map, AI mode; contract: ask-in-map CONTRACT.md secti
 - Not visually compared yet: `AskPanel` was still being written, so the CrmAsk boards are covered by
   route tests with the panel stubbed. Capture and compare once it lands.
 
+Fifth pass (PO review: three-pane panes, one toolbar, phone fixes):
+
+- **Decisions that differ from the boards.** The boards put the AI pane on the right; the PO chose the
+  left, so from 1280 px the left pane is a switch "Filters | Ask AI" (one at a time; `mode=map` and
+  `mode=filters` show Filters, `mode=ai` shows Ask AI) and the right pane always lists results: the
+  search results in Map mode, the answer's matched properties (numbered like the pins, with Open on
+  map and Create lead) in AI mode. The boards draw no minimise handles (only `CrmCandidatesHide1440`
+  hides something); the PO asked for them on both panes, so each pane has a 48 px chevron handle on
+  its inner edge (names "Hide filters panel" and so on, `aria-expanded`, `aria-controls`, 3 px focus
+  ring), a 48 px rail with a vertical label when collapsed, state kept for the session. The answer's
+  Matches rows render into the results pane through `matchesHost` on `AskPanel`; below 1280 px the
+  single sheet keeps both tabs. Once AI is opened its panel stays mounted under the Filters tab, so
+  the answer is never lost by switching.
+- **One control above the map at every width**: Map + cards | List | Ask AI (icons only on phones;
+  words from 600 px). The phone toolbar is one row under the search box: Use my location (icon-only
+  under 430 px, name kept), Filters with the match count, and that control. The Travis County chip is
+  dropped on phones.
+- **Legend**: a 48 px button (collapsed by default below 1280 px); open it is a card, at most 60% of
+  the map's width, with Close, Escape and tap outside; the choice is kept for the session. Root cause
+  of "open on a phone": the default came from a one-off media check at first render (and, before
+  that, a 600 px breakpoint), so a viewport that became narrow afterwards (device emulation, rotating)
+  kept an open legend. It now follows the live viewport until a choice is made.
+- **Radius card**: one row; the "From ... all query modes" line is its tooltip and screen reader text
+  below 1280 px, and a second line from there.
+- **Results sheet**: a sheet that only holds a notice (index unavailable, nothing found, loading)
+  peeks at about a quarter of the page (measured visible map 48 to 71% of the viewport at 360 to 768
+  px); with results it keeps the 40% peek. In short landscape (844 by 390) the peek is the handle and
+  header row only (map about 26%).
+- **Data chip**: a run id with a date reads "24 Oct" on phones and "Run 24 Oct 2026" wider; the full
+  id stays in the tooltip, the name and the panel.
+- Token audit (`atlasTokenAudit`) clean at 1280, 1440 and 1920 px in every pane state and mode (27
+  combinations) and at 360, 390, 430, 600 and 768 px plus landscape in the main states (33); no
+  horizontal scroll in any. Phone before and after screenshots: scratchpad `board-match/map/phone`.
+
 ## Matrix
 
 | Board | Route + state | Status | Side-by-side | Notes |

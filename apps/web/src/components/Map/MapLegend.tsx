@@ -6,7 +6,16 @@
 // the hexagons cover only the properties loaded around a pin). A collapsible <details>: open by
 // default from 1280 px (where the legend has its own corner of the map), collapsed below it: open
 // it covers a large part of the map and sits over the points a pin is dropped on.
-import { useState, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactElement,
+} from "react";
+import { Icon } from "@crm/ui";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
 import styles from "./MapLegend.module.css";
@@ -109,9 +118,45 @@ const SWATCH_CLASS: Readonly<Record<string, string>> = {
   "--viz-permit-open-gt-5y": "open5",
 };
 
-function startsOpen(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
-  return window.matchMedia("(min-width: 1280px)").matches;
+const WIDE_QUERY = "(min-width: 1280px)";
+const LEGEND_KEY = "crm.legend.v1";
+
+/** From the three-pane width the legend opens by itself; below it (phones, tablets) it is a
+ *  button and opens on request, so it never covers the map. A person's own choice (kept for the
+ *  session) wins over this default; with no choice the default follows the live viewport. */
+function useWideViewport(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+        return () => undefined;
+      }
+      const list = window.matchMedia(WIDE_QUERY);
+      list.addEventListener("change", onChange);
+      return () => list.removeEventListener("change", onChange);
+    },
+    () =>
+      typeof window === "undefined" || typeof window.matchMedia !== "function"
+        ? true
+        : window.matchMedia(WIDE_QUERY).matches,
+    () => true,
+  );
+}
+
+function readChoice(): boolean | null {
+  try {
+    const stored = sessionStorage.getItem(LEGEND_KEY);
+    return stored === "open" ? true : stored === "closed" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeChoice(open: boolean): void {
+  try {
+    sessionStorage.setItem(LEGEND_KEY, open ? "open" : "closed");
+  } catch {
+    // Storage blocked: the choice lasts for this page only (component state).
+  }
 }
 
 function Scale({
@@ -142,53 +187,113 @@ export function MapLegend({
   loadedCount,
   county,
 }: MapLegendProps): ReactElement | null {
-  const [open, setOpen] = useState(startsOpen);
+  const wide = useWideViewport();
+  const [choice, setChoice] = useState<boolean | null>(readChoice);
+  const open = choice ?? wide;
+  const id = useId();
+  const root = useRef<HTMLDivElement | null>(null);
+  const set = useCallback((next: boolean) => {
+    setChoice(next);
+    writeChoice(next);
+  }, []);
+
+  // Escape closes it everywhere; a tap outside closes it below the three-pane width, where the
+  // card floats over the map (from there on it stays until closed).
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") set(false);
+    };
+    const onPointerDown = (event: Event): void => {
+      if (wide) return;
+      if (
+        root.current !== null &&
+        event.target instanceof Node &&
+        root.current.contains(event.target)
+      )
+        return;
+      set(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [open, wide, set]);
+
   if (!roofs && !permits) return null;
   const overview = mode === "overview";
   return (
-    <details
-      className={styles.legend}
-      open={open}
-      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
-      data-legend={mode}
-    >
-      <summary className={styles.summary}>Legend</summary>
-      {roofs ? (
-        <section className={styles.block}>
-          <p className={styles.title}>
-            {overview ? "Median roof age per hexagon, yrs" : "Roof age, yrs"}
-          </p>
-          <Scale steps={ROOF_AGE_BUCKETS} />
+    <div ref={root} className={styles.root} data-legend-root="">
+      <button
+        type="button"
+        className={styles.button}
+        aria-expanded={open}
+        aria-controls={`${id}-card`}
+        aria-label="Legend"
+        onClick={() => set(!open)}
+      >
+        <Icon name="legend_toggle" size="medium" />
+        <span className={styles.buttonText}>Legend</span>
+      </button>
+      {open ? (
+        <section
+          id={`${id}-card`}
+          role="region"
+          aria-label="Map legend"
+          className={styles.legend}
+          data-legend={mode}
+        >
+          <div className={styles.cardHead}>
+            <span className={styles.summary}>Legend</span>
+            <button
+              type="button"
+              className={styles.close}
+              aria-label="Close legend"
+              onClick={() => set(false)}
+            >
+              <Icon name="close" size="medium" />
+            </button>
+          </div>
+          {roofs ? (
+            <section className={styles.block}>
+              <p className={styles.title}>
+                {overview ? "Median roof age per hexagon, yrs" : "Roof age, yrs"}
+              </p>
+              <Scale steps={ROOF_AGE_BUCKETS} />
+              <p className={styles.line}>
+                <span
+                  className={`${styles.swatch} ${styles.none}`}
+                  data-swatch="--md-sys-color-surface-container-highest"
+                  aria-hidden="true"
+                />
+                No roof age published
+              </p>
+            </section>
+          ) : null}
+          {permits ? (
+            <section className={styles.block}>
+              <p className={styles.title}>
+                {overview ? "Permit open, yrs · clusters" : "Permit open, yrs"}
+              </p>
+              <Scale steps={PERMIT_OPEN_BUCKETS} />
+            </section>
+          ) : null}
           <p className={styles.line}>
-            <span
-              className={`${styles.swatch} ${styles.none}`}
-              data-swatch="--md-sys-color-surface-container-highest"
-              aria-hidden="true"
-            />
-            No roof age published
+            {overview
+              ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · tap a hexagon to drop a pin there, or a circle to zoom in"
+              : "● roof · ◆ open or stalled permit · dark ring = open over 5 yrs"}
           </p>
+          {overview ? (
+            county === undefined ? (
+              <p className={styles.note}>{loadedNote(loadedCount)}</p>
+            ) : (
+              <CountyNote county={county} loadedCount={loadedCount} />
+            )
+          ) : null}
         </section>
       ) : null}
-      {permits ? (
-        <section className={styles.block}>
-          <p className={styles.title}>
-            {overview ? "Permit open, yrs · clusters" : "Permit open, yrs"}
-          </p>
-          <Scale steps={PERMIT_OPEN_BUCKETS} />
-        </section>
-      ) : null}
-      <p className={styles.line}>
-        {overview
-          ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · tap a hexagon to drop a pin there, or a circle to zoom in"
-          : "● roof · ◆ open or stalled permit · dark ring = open over 5 yrs"}
-      </p>
-      {overview ? (
-        county === undefined ? (
-          <p className={styles.note}>{loadedNote(loadedCount)}</p>
-        ) : (
-          <CountyNote county={county} loadedCount={loadedCount} />
-        )
-      ) : null}
-    </details>
+    </div>
   );
 }

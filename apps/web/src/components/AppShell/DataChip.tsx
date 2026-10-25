@@ -22,14 +22,42 @@ function runText(runId: string | null): string {
   return runId === null ? "run not recorded in the index" : `run ${runId}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The calendar date a run id carries (`20261024`, `2026-10-24`, `…-20261021t103516z`), or null. */
+function runDate(runId: string): { day: number; month: string; year: number } | null {
+  const match = /(?<!\d)(20\d{2})-?(0[1-9]|1[0-2])-?(0[1-9]|[12]\d|3[01])(?!\d)/.exec(runId);
+  if (match === null) return null;
+  return {
+    day: Number(match[3]),
+    month: MONTHS[Number(match[2]) - 1] ?? "",
+    year: Number(match[1]),
+  };
+}
+
+function runTail(runId: string): string {
+  return `Run …${runId.slice(-6)}`;
+}
+
 /** The compact chip text (board CrmShellApps768 "Run 3"): a short run number as is, a run id that
- *  carries a calendar date as that date, any other long id cut to its last six characters. The
- *  full id stays in the chip's tooltip and in the panel; the chip never invents a run. */
+ *  carries a calendar date as "24 Oct", any other long id cut to its last six characters. The
+ *  full id stays in the chip's tooltip, its name and the panel; the chip never invents a run. */
 export function shortRunLabel(runId: string | null): string {
   if (runId === null || runId === "") return "Data";
   if (runId.length <= 8) return `Run ${runId}`;
-  const date = /\d{4}-\d{2}-\d{2}/.exec(runId);
-  return date === null ? `Run …${runId.slice(-6)}` : `Run ${date[0]}`;
+  const date = runDate(runId);
+  return date === null ? runTail(runId) : `${String(date.day)} ${date.month}`;
+}
+
+/** The wider chip text: "Run 24 Oct 2026" for a dated id, else as the short label; null when
+ *  there is no run id. */
+export function longRunLabel(runId: string | null): string | null {
+  if (runId === null || runId === "") return null;
+  if (runId.length <= 8) return `Run ${runId}`;
+  const date = runDate(runId);
+  return date === null
+    ? runTail(runId)
+    : `Run ${String(date.day)} ${date.month} ${String(date.year)}`;
 }
 
 export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactElement {
@@ -64,7 +92,11 @@ export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactEleme
         <span className={styles.stateIcon} data-state={state}>
           <Icon name={icon} size="small" />
         </span>
-        <span className={styles.long}>{label}</span>
+        <span className={styles.long}>
+          {state === "ready" && index.data !== undefined
+            ? `Data: CountyLens ${longRunLabel(index.data.runId) ?? runText(index.data.runId)}`
+            : label}
+        </span>
         <span className={styles.short} aria-hidden="true">
           {state === "ready" && index.data !== undefined ? shortRunLabel(index.data.runId) : "Data"}
         </span>

@@ -40,3 +40,11 @@
   font-size: var(--md-sys-typescale-label-large-size);
   white-space: nowrap;
 }
+
+/* Phones: the county is already in the top bar and the data chip, so the chip row goes and the
+   search box takes the width (the toolbar below is one row). */
+@media (max-width: 599.98px), (max-height: 500px) and (max-width: 1279.98px) {
+  .county {
+    display: none;
+  }
+}

@@ -64,9 +64,10 @@ import { TopBar } from "./TopBar.js";
 import { TriageStack } from "./Triage/index.js";
 import { AskPanel } from "../Ask/AskPanel.js";
 import { answerPins, type AgentAnswer } from "@crm/shared";
-import { ModeChips } from "./ModeChips.js";
-import { newThreadId, readThreadId, useMapMode } from "./mapMode.js";
-import { ViewToggle } from "./ViewToggle.js";
+import { MapViewToggle, type MapViewChoice } from "./MapViewToggle.js";
+import { PaneHandle } from "./PaneHandle.js";
+import { usePaneCollapsed } from "./paneState.js";
+import { newThreadId, patchMapMode, readThreadId, useMapMode } from "./mapMode.js";
 import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
@@ -120,7 +121,7 @@ export function Component(): ReactElement {
   const wide = useWide();
   // `view=list` (the Candidate list) and `triage=1` (Field triage) live in the URL beside the
   // centre, radius and filters, so reload, back and a shared link reopen the same view.
-  const { view, triage, setView, setTriage } = useMapViewParam();
+  const { view, triage, setTriage } = useMapViewParam();
   const [triageCid, setTriageCid] = useState<string | null>(null);
   // AI mode (`mode=ai&q=`): the agent answers inside the map; its cited properties are numbered pins.
   const { mode, q, setMode, clearQuestion } = useMapMode();
@@ -138,6 +139,19 @@ export function Component(): ReactElement {
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
   const pins = useMemo(() => (answer === null ? [] : answerPins(answer)), [answer]);
   const hadAnswer = useRef(false);
+  // Three-pane widths: each pane can be minimised (kept for the session); the Matches rows of an
+  // AI answer render into the results pane (`matchesHost`) while the left pane shows the answer.
+  const [leftCollapsedState, toggleLeft] = usePaneCollapsed("left");
+  const [rightCollapsedState, toggleRight] = usePaneCollapsed("right");
+  const leftCollapsed = wide && leftCollapsedState;
+  const rightCollapsed = wide && rightCollapsedState;
+  const [matchesHost, setMatchesHost] = useState<HTMLDivElement | null>(null);
+  // Once AI mode has been opened at three-pane widths its panel stays mounted (hidden under the
+  // Filters tab), so switching tabs never throws the answer away.
+  const [aiOpened, setAiOpened] = useState(ai);
+  useEffect(() => {
+    if (ai) setAiOpened(true);
+  }, [ai]);
   const onAnswer = useCallback((next: AgentAnswer | null) => {
     // "New question" clears the answer: that starts a new agent thread (no carried-over memory).
     if (next === null && hadAnswer.current) setThreadId(newThreadId());
@@ -281,6 +295,20 @@ export function Component(): ReactElement {
     setTriageCid(null);
   }, [setTriage]);
 
+  // The single top control and the left switch: one URL update (two in a row would each start from
+  // the same params and drop the first).
+  const chooseView = useCallback(
+    (choice: MapViewChoice) => {
+      setSearchParams((prev) => {
+        if (choice === "list") return patchMapView(prev, { view: "list" });
+        return patchMapMode(patchMapView(prev, { view: "map" }), {
+          mode: choice === "ai" ? "ai" : "map",
+        });
+      });
+    },
+    [setSearchParams],
+  );
+
   const roofMarkers = useMemo(
     () =>
       (query.data?.properties ?? [])
@@ -371,10 +399,27 @@ export function Component(): ReactElement {
   const isIndexDown = searchInput !== null && query.isError;
   const sheetEmpty =
     !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
+  // A sheet that only holds a notice (no pin, loading, failed, or nothing found) peeks small.
+  const compactPeek = pinOutsideCounty || isLoading || isIndexDown || isZeroResult || sheetEmpty;
   const showOverviewChip =
     viewMode === "overview" &&
     layers.roofs &&
     ((overviewCells?.length ?? 0) > 0 || roofMarkers.length > 0);
+
+  const askPanel = (layout: "pane" | "sheet"): ReactElement => (
+    <AskPanel
+      threadId={threadId}
+      {...(prefill === null ? {} : { initialQuestion: prefill })}
+      focusedCitation={focusedCitation}
+      onFocusCitation={setFocusedCitation}
+      onAnswer={onAnswer}
+      onShowOnMap={() => mapHandleRef.current?.fitPins()}
+      layout={layout}
+      {...(layout === "pane" ? { matchesHost } : {})}
+    />
+  );
+  const topChoice: MapViewChoice = view === "list" ? "list" : ai ? "ai" : "cards";
+  const matchCountInAnswer = answer?.rows?.length ?? 0;
 
   return (
     <section
@@ -387,35 +432,76 @@ export function Component(): ReactElement {
       <div className={styles.top}>
         <TopBar />
       </div>
-      <div className={styles.controls}>
-        <GpsButton
-          onLocated={gpsLocated}
-          onAccuracy={setAccuracyM}
-          isInCoverage={isInTravisCounty}
-          radiusMi={radiusMi}
-          onDropPin={() => setPinMode(true)}
-          onGoToCounty={() => mapHandleRef.current?.showCounty()}
-          statusHost={statusHost}
-        />
-        <FilterSheet
-          roofAgeMinYears={roofAgeMinYears}
-          onRoofAgeMinYearsChange={setRoofAgeMinYears}
-          permitStatus={permitStatus}
-          onPermitStatusChange={setPermitStatus}
-          permitOpenYrs={permitOpenYrs}
-          onPermitOpenYrsChange={setPermitOpenYrs}
-          matchCount={searchInput === null ? undefined : query.data?.properties.length}
-          open={mode === "filters"}
-          onOpenChange={(open) => setMode(open ? "filters" : "map")}
-          inline={wide}
-        />
-        {wide ? null : <ViewToggle view={view} onChange={setView} />}
-        {wide ? null : <ModeChips mode={mode} onChange={setMode} />}
+      <div
+        className={styles.controls}
+        data-pane="left"
+        data-collapsed={leftCollapsed ? "true" : undefined}
+      >
+        {wide ? (
+          <PaneHandle
+            side="left"
+            label="filters"
+            collapsed={leftCollapsed}
+            controls="map-left-body"
+            onToggle={toggleLeft}
+          />
+        ) : null}
+        <div id="map-left-body" className={styles.paneBody} hidden={leftCollapsed}>
+          {wide ? (
+            <div role="group" aria-label="Left panel" className={styles.leftSwitch}>
+              <button
+                type="button"
+                className={`${styles.leftTab} ${ai ? "" : styles.leftTabOn}`}
+                aria-pressed={!ai}
+                onClick={() => chooseView("cards")}
+              >
+                Filters
+              </button>
+              <button
+                type="button"
+                className={`${styles.leftTab} ${ai ? styles.leftTabOn : ""}`}
+                aria-pressed={ai}
+                aria-label="Ask AI panel"
+                onClick={() => chooseView("ai")}
+              >
+                Ask AI
+              </button>
+            </div>
+          ) : null}
+          <div className={styles.paneBody} hidden={wide && ai}>
+            <GpsButton
+              onLocated={gpsLocated}
+              onAccuracy={setAccuracyM}
+              isInCoverage={isInTravisCounty}
+              radiusMi={radiusMi}
+              onDropPin={() => setPinMode(true)}
+              onGoToCounty={() => mapHandleRef.current?.showCounty()}
+              statusHost={statusHost}
+            />
+            <FilterSheet
+              roofAgeMinYears={roofAgeMinYears}
+              onRoofAgeMinYearsChange={setRoofAgeMinYears}
+              permitStatus={permitStatus}
+              onPermitStatusChange={setPermitStatus}
+              permitOpenYrs={permitOpenYrs}
+              onPermitOpenYrsChange={setPermitOpenYrs}
+              matchCount={searchInput === null ? undefined : query.data?.properties.length}
+              open={mode === "filters"}
+              onOpenChange={(open) => setMode(open ? "filters" : "map")}
+              inline={wide}
+            />
+            {wide ? null : <MapViewToggle selected={topChoice} onSelect={chooseView} />}
+          </div>
+          {wide && aiOpened ? (
+            <div className={styles.aiLeft} hidden={!ai}>
+              {askPanel("pane")}
+            </div>
+          ) : null}
+        </div>
       </div>
       {wide ? (
         <div className={styles.viewBar} data-view-bar="">
-          <ViewToggle view={view} onChange={setView} />
-          <ModeChips mode={mode} onChange={setMode} />
+          <MapViewToggle selected={topChoice} onSelect={chooseView} />
         </div>
       ) : null}
       {view === "list" ? (
@@ -558,105 +644,131 @@ export function Component(): ReactElement {
             : null}
         </div>
       ) : null}
-      {view === "map" && ai ? (
-        <div className={styles.resultsSlot} data-empty="false" data-slot="ai">
-          <ResultsSheet>
-            <AskPanel
-              threadId={threadId}
-              {...(prefill === null ? {} : { initialQuestion: prefill })}
-              focusedCitation={focusedCitation}
-              onFocusCitation={setFocusedCitation}
-              onAnswer={onAnswer}
-              onShowOnMap={() => mapHandleRef.current?.fitPins()}
-              layout={wide ? "pane" : "sheet"}
+      {view === "map" ? (
+        <div
+          className={styles.resultsSlot}
+          data-empty={ai || triage ? "false" : sheetEmpty}
+          data-pane="right"
+          {...(ai ? { "data-slot": "ai" } : {})}
+          data-collapsed={rightCollapsed ? "true" : undefined}
+        >
+          {wide ? (
+            <PaneHandle
+              side="right"
+              label="results"
+              collapsed={rightCollapsed}
+              controls="map-right-body"
+              onToggle={toggleRight}
             />
-          </ResultsSheet>
-        </div>
-      ) : null}
-      {view === "map" && triage && !ai ? (
-        <div className={styles.resultsSlot} data-empty="false">
-          <div className={styles.triageDock}>
-            <TriageStack
-              filters={candidateFilters}
-              onBack={closeTriage}
-              onOpenDetails={selectProperty}
-              onCurrentChange={setTriageCid}
-              onRadiusChange={setRadiusMi}
-              onRoofChange={setRoofAgeMinYears}
-            />
-          </div>
-        </div>
-      ) : null}
-      {view === "map" && !triage && !ai ? (
-        <div className={styles.resultsSlot} data-empty={sheetEmpty}>
-          <ResultsSheet>
-            {pinOutsideCounty ? (
-              <p className={styles.notice}>No search was run: the pin is outside Travis County.</p>
-            ) : null}
-            {isLoading ? (
-              <p
-                role="progressbar"
-                aria-label="Loading results"
-                data-state="CrmMapLoading390"
-                className={styles.notice}
-              >
-                Loading results…
-              </p>
-            ) : null}
-            {isIndexDown ? (
-              <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
-                <span>
-                  <strong>Lead index unavailable.</strong> Map results can&apos;t load right now.
-                  Your leads and notes still open.
-                </span>
-                <button type="button" className={styles.widen} onClick={() => void query.refetch()}>
-                  Retry
-                </button>
-              </p>
-            ) : null}
-            {isZeroResult ? (
-              <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
-                No properties within {radiusMi} mi.
-                {widenTo === null ? null : (
-                  <button
-                    type="button"
-                    className={styles.widen}
-                    onClick={() => setRadiusMi(widenTo)}
+          ) : null}
+          <div id="map-right-body" className={styles.paneBody} hidden={rightCollapsed}>
+            {ai ? (
+              wide ? (
+                <div className={styles.matchesPane} data-slot="ai-matches">
+                  <h2 className={styles.matchesTitle}>{`Matches ${String(matchCountInAnswer)}`}</h2>
+                  {answer === null ? (
+                    <p className={styles.notice}>
+                      Ask a question on the left. The properties it matches appear here, numbered
+                      like the pins on the map.
+                    </p>
+                  ) : null}
+                  <div ref={setMatchesHost} className={styles.matchesHost} />
+                </div>
+              ) : (
+                <ResultsSheet>{askPanel("sheet")}</ResultsSheet>
+              )
+            ) : triage ? (
+              <div className={styles.triageDock}>
+                <TriageStack
+                  filters={candidateFilters}
+                  onBack={closeTriage}
+                  onOpenDetails={selectProperty}
+                  onCurrentChange={setTriageCid}
+                  onRadiusChange={setRadiusMi}
+                  onRoofChange={setRoofAgeMinYears}
+                />
+              </div>
+            ) : (
+              <ResultsSheet peek={compactPeek ? "compact" : "results"}>
+                {pinOutsideCounty ? (
+                  <p className={styles.notice}>
+                    No search was run: the pin is outside Travis County.
+                  </p>
+                ) : null}
+                {isLoading ? (
+                  <p
+                    role="progressbar"
+                    aria-label="Loading results"
+                    data-state="CrmMapLoading390"
+                    className={styles.notice}
                   >
-                    {`Widen to ${widenTo} mi`}
-                  </button>
-                )}
-              </p>
-            ) : null}
-            {sheetEmpty ? (
-              <p className={styles.notice} data-results-empty="">
-                No centre chosen yet, so no results. Drop a pin on the map or use your location to
-                list properties within a radius.
-              </p>
-            ) : null}
-            {query.data !== undefined && hasResults ? (
-              <ResultsPanel
-                count={query.data.properties.length}
-                {...(wide ? {} : { onTriage: () => setTriage(true) })}
-              >
-                <ul className={styles.results} aria-label="Results" data-testid="search-results">
-                  {query.data.properties.map((property) => (
-                    <li key={property.propertyCid}>
-                      <ResultRow
-                        row={property}
-                        selected={sel === property.propertyCid}
-                        onSelect={selectProperty}
-                        {...(center === null ? {} : { center })}
-                        {...(permitView
-                          ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
-                          : {})}
-                      />
-                    </li>
-                  ))}
-                </ul>
-              </ResultsPanel>
-            ) : null}
-          </ResultsSheet>
+                    Loading results…
+                  </p>
+                ) : null}
+                {isIndexDown ? (
+                  <p role="alert" data-state="CrmMapIndexDown390" className={styles.notice}>
+                    <span>
+                      <strong>Lead index unavailable.</strong> Map results can&apos;t load right
+                      now. Your leads and notes still open.
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.widen}
+                      onClick={() => void query.refetch()}
+                    >
+                      Retry
+                    </button>
+                  </p>
+                ) : null}
+                {isZeroResult ? (
+                  <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
+                    No properties within {radiusMi} mi.
+                    {widenTo === null ? null : (
+                      <button
+                        type="button"
+                        className={styles.widen}
+                        onClick={() => setRadiusMi(widenTo)}
+                      >
+                        {`Widen to ${widenTo} mi`}
+                      </button>
+                    )}
+                  </p>
+                ) : null}
+                {sheetEmpty ? (
+                  <p className={styles.notice} data-results-empty="">
+                    No centre chosen yet, so no results. Drop a pin on the map or use your location
+                    to list properties within a radius.
+                  </p>
+                ) : null}
+                {query.data !== undefined && hasResults ? (
+                  <ResultsPanel
+                    count={query.data.properties.length}
+                    {...(wide ? {} : { onTriage: () => setTriage(true) })}
+                  >
+                    <ul
+                      className={styles.results}
+                      aria-label="Results"
+                      data-testid="search-results"
+                    >
+                      {query.data.properties.map((property) => (
+                        <li key={property.propertyCid}>
+                          <ResultRow
+                            row={property}
+                            selected={sel === property.propertyCid}
+                            onSelect={selectProperty}
+                            {...(center === null ? {} : { center })}
+                            {...(permitView
+                              ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
+                              : {})}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </ResultsPanel>
+                ) : null}
+              </ResultsSheet>
+            )}
+          </div>
         </div>
       ) : null}
       {sel !== null && detailQuery.data !== undefined ? (

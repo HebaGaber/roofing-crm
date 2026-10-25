@@ -599,14 +599,14 @@ describe("Map route AI mode (mode=ai&q=)", () => {
 
   it("the Map and AI chips switch mode and keep the pin", async () => {
     renderAt("/?lat=30.4394&lng=-97.62&r=5");
-    const ai = screen.getByRole("button", { name: "AI mode" });
+    const ai = screen.getByRole("button", { name: "Ask AI" });
     expect(ai.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(ai);
     await screen.findByTestId("ask-panel");
-    expect(screen.getByRole("button", { name: "AI mode" }).getAttribute("aria-pressed")).toBe(
+    expect(screen.getByRole("button", { name: "Ask AI" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Map mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
     await screen.findByRole("region", { name: "Results" });
     expect(screen.queryByTestId("ask-panel")).toBeNull();
     expect(screen.getByRole("spinbutton", { name: "Radius" })).not.toBeNull();
@@ -654,5 +654,196 @@ describe("Map route AI mode (mode=ai&q=)", () => {
         "true",
       ),
     );
+  });
+});
+
+describe("Map route three-pane layout (PO review: left Filters | Ask AI, collapsible panes)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const PIN_URL = "/?lat=30.4394&lng=-97.62&r=5";
+  const left = (page: HTMLElement): HTMLElement =>
+    page.querySelector<HTMLElement>("[data-pane='left']") as HTMLElement;
+  const leftSwitch = (page: HTMLElement): HTMLElement =>
+    within(left(page)).getByRole("group", { name: "Left panel" });
+  const right = (page: HTMLElement): HTMLElement =>
+    page.querySelector<HTMLElement>("[data-pane='right']") as HTMLElement;
+
+  it("the bar above the map is ONE group: Map + cards | List | Ask AI", () => {
+    stubWide(true);
+    const page = renderAt(PIN_URL);
+    const bar = page.querySelector("[data-view-bar]") as HTMLElement;
+    const group = within(bar).getByRole("group", { name: "View" });
+    expect([...group.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
+      "Map + cards",
+      "List",
+      "Ask AI",
+    ]);
+    expect(within(bar).queryByRole("button", { name: "AI mode" })).toBeNull();
+    expect(within(bar).queryByRole("button", { name: "Map mode" })).toBeNull();
+    expect(
+      within(bar).getByRole("button", { name: "Map + cards" }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("the left pane offers Filters | Ask AI, one at a time, kept in the URL", async () => {
+    stubWide(true);
+    const page = renderAt(PIN_URL);
+    const filters = within(leftSwitch(page)).getByRole("button", { name: "Filters" });
+    const ask = within(leftSwitch(page)).getByRole("button", { name: "Ask AI panel" });
+    expect(filters.getAttribute("aria-pressed")).toBe("true");
+    expect(ask.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByTestId("ask-panel")).toBeNull();
+    fireEvent.click(ask);
+    await screen.findByTestId("ask-panel");
+    expect(left(page).contains(screen.getByTestId("ask-panel"))).toBe(true);
+    expect(
+      within(leftSwitch(page))
+        .getByRole("button", { name: "Ask AI panel" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    // The Filters body is hidden while Ask AI shows.
+    expect(
+      left(page).querySelector("[aria-label='Filters'][id$='-panel']")?.closest("[hidden]"),
+    ).not.toBeNull();
+    // The top control follows the same state.
+    expect(screen.getByRole("button", { name: "Ask AI" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("switching back to Filters keeps the answer (the panel stays mounted)", async () => {
+    stubWide(true);
+    const page = renderAt(`${PIN_URL}&mode=ai`);
+    await screen.findByTestId("ask-panel");
+    act(() =>
+      (lastPanelProps?.onAnswer as (a: unknown) => void)({
+        outcome: "answered",
+        claims: [],
+        citations: [],
+      }),
+    );
+    fireEvent.click(within(leftSwitch(page)).getByRole("button", { name: "Filters" }));
+    expect(page.getAttribute("data-mode")).toBeNull();
+    expect(screen.getByTestId("ask-panel").closest("[hidden]")).not.toBeNull();
+    fireEvent.click(within(leftSwitch(page)).getByRole("button", { name: "Ask AI panel" }));
+    expect(screen.getByTestId("ask-panel").closest("[hidden]")).toBeNull();
+  });
+
+  it("in AI mode the right pane lists the matches and the panel renders them there", async () => {
+    stubWide(true);
+    const page = renderAt(`${PIN_URL}&mode=ai`);
+    await screen.findByTestId("ask-panel");
+    const host = right(page).querySelector("[data-slot='ai-matches']") as HTMLElement;
+    expect(host).not.toBeNull();
+    expect(lastPanelProps?.matchesHost).toBe(host.querySelector("div"));
+    expect(within(host).getByText(/Ask a question on the left/)).not.toBeNull();
+    expect(lastPanelProps?.layout).toBe("pane");
+    expect(within(right(page)).queryByTestId("ask-panel")).toBeNull();
+    act(() =>
+      (lastPanelProps?.onAnswer as (a: unknown) => void)({
+        outcome: "answered",
+        claims: [],
+        citations: [],
+        rows: [{ propertyCid: "a", tcadId: "1", missing: [] }],
+      }),
+    );
+    expect(within(host).getByText("Matches 1")).not.toBeNull();
+    expect(within(host).queryByText(/Ask a question on the left/)).toBeNull();
+  });
+
+  it("below the three-pane width the single sheet keeps both tabs: no matches host", async () => {
+    renderAt(`${PIN_URL}&mode=ai`);
+    await screen.findByTestId("ask-panel");
+    expect(lastPanelProps?.matchesHost).toBeUndefined();
+    expect(lastPanelProps?.layout).toBe("sheet");
+  });
+
+  it("Map + cards and List leave AI mode / keep it as the control says", async () => {
+    stubWide(true);
+    const page = renderAt(`${PIN_URL}&mode=ai`);
+    await screen.findByTestId("ask-panel");
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    await screen.findByTestId("candidate-list");
+    fireEvent.click(screen.getByRole("button", { name: "Ask AI" }));
+    await screen.findByTestId("crm-map");
+    expect(page.getAttribute("data-view")).toBe("map");
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
+    expect(page.getAttribute("data-mode")).toBeNull();
+  });
+
+  it("each pane collapses on its own to a rail with a named handle, and the choice is kept", () => {
+    stubWide(true);
+    const page = renderAt(PIN_URL);
+    const hideLeft = screen.getByRole("button", { name: "Hide filters panel" });
+    expect(hideLeft.getAttribute("aria-expanded")).toBe("true");
+    const bodyId = hideLeft.getAttribute("aria-controls") as string;
+    fireEvent.click(hideLeft);
+    expect(left(page).getAttribute("data-collapsed")).toBe("true");
+    expect(right(page).getAttribute("data-collapsed")).toBeNull();
+    expect(document.getElementById(bodyId)?.hasAttribute("hidden")).toBe(true);
+    expect(screen.getByRole("button", { name: "Show filters panel" })).not.toBeNull();
+    expect(sessionStorage.getItem("crm.pane.left.v1")).toBe("collapsed");
+    expect(screen.getByRole("button", { name: "Hide results panel" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Hide results panel" }));
+    expect(right(page).getAttribute("data-collapsed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Show filters panel" }));
+    expect(left(page).getAttribute("data-collapsed")).toBeNull();
+    // The map is still there to take the freed width.
+    expect(screen.getByTestId("crm-map")).not.toBeNull();
+  });
+
+  it("a remembered collapsed pane opens collapsed", () => {
+    stubWide(true);
+    sessionStorage.setItem("crm.pane.right.v1", "collapsed");
+    const page = renderAt(PIN_URL);
+    expect(right(page).getAttribute("data-collapsed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Show results panel" })).not.toBeNull();
+  });
+
+  it("the property drawer is not hidden by a collapsed results pane", async () => {
+    stubWide(true);
+    sessionStorage.setItem("crm.pane.right.v1", "collapsed");
+    renderAt(`${PIN_URL}&sel=${property.propertyCid}`);
+    const drawer = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>("aside[role='dialog'][data-property-cid]");
+      if (found === null) throw new Error("no drawer");
+      return found;
+    });
+    expect(drawer.closest("[hidden]")).toBeNull();
+    expect(within(drawer).getByRole("button", { name: "Close" })).not.toBeNull();
+  });
+
+  it("below three-pane widths there are no pane handles", () => {
+    renderAt(PIN_URL);
+    expect(screen.queryByRole("button", { name: /panel$/ })).toBeNull();
+  });
+});
+
+describe("Map route phone toolbar (one row under the search box)", () => {
+  it("is Use my location, Filters with the count, and ONE Map | List | AI control", async () => {
+    const page = renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("search-results");
+    const row = page.querySelector("[data-pane='left']") as HTMLElement;
+    const groups = within(row).getAllByRole("group");
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["View"]);
+    expect(
+      [...(groups[0] as HTMLElement).querySelectorAll("button")].map((b) => b.textContent),
+    ).toEqual(["Map + cards", "List", "Ask AI"]);
+    expect(within(row).getByRole("button", { name: "Use my location" })).not.toBeNull();
+    expect(within(row).getByRole("button", { name: /^Filters/ }).textContent).toMatch(/1/);
+    expect(within(row).queryByRole("button", { name: "Map mode" })).toBeNull();
+  });
+
+  it("the sheet peeks small when it only holds a notice, and keeps the full peek with results", async () => {
+    searchFails = true;
+    const page = renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByText(/Lead index unavailable/);
+    expect(page.querySelector("[data-sheet]")?.getAttribute("data-peek")).toBe("compact");
+    cleanup();
+    searchFails = false;
+    const ok = renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("search-results");
+    expect(ok.querySelector("[data-sheet]")?.getAttribute("data-peek")).toBe("results");
   });
 });

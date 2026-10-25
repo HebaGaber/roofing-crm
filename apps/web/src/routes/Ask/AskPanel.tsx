@@ -41,6 +41,7 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router";
 import { contractorResolutionLabel } from "../../format/index.js";
 import {
@@ -236,6 +237,9 @@ interface PanelCtx {
   readonly focused: number | null;
   readonly onFocus: (n: number | null) => void;
   readonly bulkCreated: ReadonlySet<string>;
+  /** Three-pane widths: the Matches rows render into this element (the results pane) instead of
+   *  a tab, so the left pane shows the answer and the right pane shows the matches. */
+  readonly matchesHost?: HTMLElement | null | undefined;
 }
 
 /** Creating a lead from a proposal is a separate, explicit click — never automatic on receiving
@@ -548,7 +552,9 @@ function AnsweredBody({
   const proposals = answer.proposals ?? [];
   const byTcad = new Map(proposals.map((p) => [p.tcadId, p]));
   const rows = answer.rows;
-  const [tab, setTab] = useState<"answer" | "matches">("answer");
+  const [tabState, setTab] = useState<"answer" | "matches">("answer");
+  const matchesHost = ctx.matchesHost ?? null;
+  const tab = matchesHost === null ? tabState : "answer";
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetError, setSheetError] = useState<string | undefined>(undefined);
   const [snack, setSnack] = useState<
@@ -625,7 +631,31 @@ function AnsweredBody({
   const matchCount = rows?.length ?? 0;
   return (
     <div className={styles.answer}>
-      <div className={styles.tabs} role="tablist" aria-label="Answer views">
+      {matchesHost === null
+        ? null
+        : createPortal(
+            rows === undefined || rows.length === 0 ? (
+              <p className={styles.notice}>{matchesEmptyText(rows)}</p>
+            ) : (
+              <ul className={styles.sources} aria-label="Matches">
+                {rows.map((row) => (
+                  <MatchRow
+                    key={row.propertyCid}
+                    row={row}
+                    proposal={byTcad.get(row.tcadId)}
+                    ctx={ctx}
+                  />
+                ))}
+              </ul>
+            ),
+            matchesHost,
+          )}
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label="Answer views"
+        hidden={matchesHost !== null}
+      >
         <button
           type="button"
           role="tab"
@@ -1018,6 +1048,8 @@ export interface AskPanelProps {
   readonly onShowOnMap: () => void;
   /** A pane at 1280 px and up, the results sheet below. */
   readonly layout: "pane" | "sheet";
+  /** Three-pane widths: where the Matches rows render (the results pane). Absent = a tab. */
+  readonly matchesHost?: HTMLElement | null | undefined;
 }
 
 export function AskPanel({
@@ -1028,6 +1060,7 @@ export function AskPanel({
   onAnswer,
   onShowOnMap,
   layout,
+  matchesHost,
 }: AskPanelProps): ReactElement {
   const [question, setQuestion] = useState(() => prefillFrom(initialQuestion ?? null));
   const [asked, setAsked] = useState("");
@@ -1142,6 +1175,7 @@ export function AskPanel({
     focused: focusedCitation,
     onFocus: onFocusCitation,
     bulkCreated,
+    matchesHost,
     addBulkCreated: (ids) => setBulkCreated((prev) => new Set([...prev, ...ids])),
   };
 

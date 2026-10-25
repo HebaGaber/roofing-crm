@@ -41,7 +41,7 @@ const signOutMock = vi.fn(() => localStorage.removeItem("crm.session"));
 vi.mock("../../../src/auth/signOut", () => ({ signOut: () => signOutMock() }));
 
 import { AppShell, DESTINATIONS } from "../../../src/components/AppShell";
-import { shortRunLabel } from "../../../src/components/AppShell/DataChip";
+import { longRunLabel, shortRunLabel } from "../../../src/components/AppShell/DataChip";
 import { WHAT_CAN_I_ASK_EVENT } from "../../../src/components/Onboarding/firstVisit";
 import { capitalise, initialsOf } from "../../../src/components/AppShell/ShellTopBar";
 
@@ -345,18 +345,29 @@ describe("top bar below 840 px (CrmShellApps768)", () => {
     expect(chip).toMatch(/\.short\s*{\s*display: inline;/);
   });
 
-  it("shortRunLabel: a short run id as is, a dated id as its date, a long id by its tail", () => {
+  it("shortRunLabel: a short run id as is, a dated id as its day and month, else its tail", () => {
     expect(shortRunLabel("3")).toBe("Run 3");
-    expect(shortRunLabel("travis-2026-10-21-permits")).toBe("Run 2026-10-21");
-    expect(shortRunLabel("travis-202609-permits-20261021t103516z")).toBe("Run …03516z");
+    expect(shortRunLabel("travis-2026-10-21-permits")).toBe("21 Oct");
+    expect(shortRunLabel("travis-202609-permits-20261021t103516z")).toBe("21 Oct");
+    expect(shortRunLabel("travis-full-run2-20261024")).toBe("24 Oct");
+    expect(shortRunLabel("travis-run-9999")).toBe("Run …n-9999");
+    expect(shortRunLabel("travis-full-run2-20261399")).toBe("Run …261399");
     expect(shortRunLabel(null)).toBe("Data");
   });
 
-  it("the chip shows the short label and keeps the full run id in its name and tooltip", () => {
+  it("longRunLabel: Run and the date with its year when the id carries one", () => {
+    expect(longRunLabel("travis-full-run2-20261024")).toBe("Run 24 Oct 2026");
+    expect(longRunLabel("3")).toBe("Run 3");
+    expect(longRunLabel("travis-run-abcdefghijk")).toBe("Run …fghijk");
+    expect(longRunLabel(null)).toBeNull();
+  });
+
+  it("the chip shows the date for a dated run and keeps the full run id in its name and tooltip", () => {
     renderShell();
     const chip = screen.getByRole("button", { name: `Data: CountyLens run ${RUN_ID}` });
     expect(chip.getAttribute("title")).toBe(`Data: CountyLens run ${RUN_ID}`);
-    expect(chip.lastElementChild?.textContent).toBe("Run …03516z");
+    expect(chip.lastElementChild?.textContent).toBe("21 Oct");
+    expect(chip.textContent).toContain("Run 21 Oct 2026");
   });
 
   it("the bar sits 24 px from the edge from 600 px and has a 1 px edge on compact", () => {

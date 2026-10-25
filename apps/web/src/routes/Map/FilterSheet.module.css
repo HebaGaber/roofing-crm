@@ -237,9 +237,11 @@
   display: none;
 }
 
-.toggle {
-  display: inline-flex;
-  align-items: center;
+@media (max-width: 1279.98px) {
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+  }
 }
 
 @media (max-width: 599.98px) {

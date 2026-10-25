@@ -8,6 +8,7 @@
 // step before the browser prompt that the B-03 e2e does not expect (design/board-match/map.md).
 import { useCallback, useId, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { Icon } from "@crm/ui";
 import { MapStatusCard, type MapStatusAction } from "./MapStatusCard.js";
 import styles from "./GpsButton.module.css";
 
@@ -233,7 +234,8 @@ export function GpsButton({
         onClick={locate}
         aria-describedby={describedBy}
       >
-        Use my location
+        <Icon name="my_location" size="medium" />
+        <span className={styles.text}>Use my location</span>
       </button>
       {card === null ? null : hosted ? (
         createPortal(<div id={`${id}-state`}>{card}</div>, statusHost)

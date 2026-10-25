@@ -216,7 +216,18 @@
   border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
 }
 
-.resultsSlot[data-empty="true"] > * {
+/* The pane bodies (left and right) add no box below 1280 px: their children stay in the toolbar
+   row and over the map exactly as before. From 1280 px they are the panes' content columns. */
+.paneBody {
+  display: contents;
+}
+
+.paneBody[hidden],
+.aiLeft[hidden] {
+  display: none;
+}
+
+.resultsSlot[data-empty="true"] > .paneBody {
   display: none;
 }
 
@@ -277,12 +288,24 @@
 /* Expanded: three panes. */
 @media (min-width: 1280px) {
   .page {
-    grid-template-columns: 320px minmax(0, 1fr) 360px;
+    /* Pane widths: a collapsed pane is a slim 48 px rail (PO review), and the map takes the
+       freed width. */
+    --pane-left: 320px;
+    --pane-right: 360px;
+    grid-template-columns: var(--pane-left) minmax(0, 1fr) var(--pane-right);
     grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas:
       "controls top top"
       "controls bar results"
       "controls map results";
+  }
+
+  .page:has(> [data-pane="left"][data-collapsed="true"]) {
+    --pane-left: var(--space-9);
+  }
+
+  .page:has(> [data-pane="right"][data-collapsed="true"]) {
+    --pane-right: var(--space-9);
   }
 
   /* The list takes the centre and results panes (board CrmCandidates1440). */
@@ -308,11 +331,69 @@
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: var(--space-4);
-    padding: var(--space-4);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4) var(--space-4);
     overflow-y: auto;
     border-right: 1px solid var(--md-sys-color-outline-variant);
     background: var(--md-sys-color-surface);
+  }
+
+  .controls[data-collapsed="true"] {
+    padding: var(--space-2) 0;
+    overflow: hidden;
+  }
+
+  /* Left pane content: the Filters | Ask AI switch, then one of the two. */
+  .paneBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .paneBody[hidden],
+  .aiLeft[hidden] {
+    display: none;
+  }
+
+  .aiLeft {
+    min-width: 0;
+  }
+
+  .leftSwitch {
+    flex: none;
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--md-sys-color-outline);
+    border-radius: var(--md-sys-shape-corner-full);
+  }
+
+  .leftTab {
+    flex: 1 1 0;
+    min-height: var(--space-9);
+    padding: 0 var(--space-3);
+    border: 0;
+    background: transparent;
+    color: var(--md-sys-color-on-surface);
+    font-family: var(--md-sys-typescale-label-large-font);
+    font-size: var(--md-sys-typescale-label-large-size);
+    font-weight: var(--md-sys-typescale-label-large-weight);
+    cursor: pointer;
+  }
+
+  .leftTab + .leftTab {
+    border-left: 1px solid var(--md-sys-color-outline);
+  }
+
+  .leftTabOn {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+  }
+
+  .leftTab:focus-visible {
+    outline: 3px solid var(--md-sys-color-primary);
+    outline-offset: -3px;
   }
 
   .mapArea {
@@ -368,13 +449,51 @@
   }
 
   .resultsSlot {
-    display: block;
+    display: flex;
+    flex-direction: column;
     grid-area: results;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--md-sys-color-surface);
   }
 
-  .resultsSlot[data-empty="true"] > * {
+  /* Even with nothing to list the right pane keeps its place (the empty-state text). */
+  .resultsSlot[data-empty="true"] > .paneBody,
+  .resultsSlot > .paneBody {
     display: flex;
+    flex: 1 1 0;
+    gap: 0;
+  }
+
+  .resultsSlot > .paneBody[hidden] {
+    display: none;
+  }
+
+  .resultsSlot[data-collapsed="true"] {
+    border-left: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  /* The AI answer's matched properties, numbered like the citations and the pins. */
+  .matchesPane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-height: 0;
+    padding: 0 var(--space-4) var(--space-4);
+    overflow-y: auto;
+  }
+
+  .matchesTitle {
+    margin: 0;
+    color: var(--md-sys-color-on-surface);
+    font-family: var(--md-sys-typescale-title-medium-font);
+    font-size: var(--md-sys-typescale-title-medium-size);
+    font-weight: var(--md-sys-typescale-title-medium-weight);
+  }
+
+  .matchesHost {
+    min-width: 0;
   }
 
   .drawerSlot {

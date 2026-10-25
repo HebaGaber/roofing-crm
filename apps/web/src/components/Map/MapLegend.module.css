@@ -1,8 +1,87 @@
 /* Map legend (Atlas legend pattern, prototype `atlas-legend`). Atlas tokens only. */
+/* The legend is a 48 px button; open, it is a card (Atlas legend pattern). Below 1280 px the card
+   floats under the button over the map: at most 60% of the map's width, never over the zoom and
+   locate controls (the overlay stack already clears them), scrolling inside when long. From
+   1280 px it sits in its own corner of the map in the flow. */
+.root {
+  position: relative;
+  min-width: 0;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: var(--space-9);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-medium);
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level2);
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  cursor: pointer;
+}
+
+.button:focus-visible,
+.close:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
+}
+
+/* Icon-only on phones (the name stays in aria-label), icon and word from 430 px. */
+.buttonText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (min-width: 430px) {
+  .buttonText {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+  }
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-9);
+  height: var(--space-9);
+  padding: 0;
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
 .legend {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  z-index: 12;
   box-sizing: border-box;
-  width: min(300px, 100%);
-  padding: var(--space-2) var(--space-3);
+  /* 60% of the map's width: the overlay stack is the map minus its gutters and controls column,
+     and the card is capped to 18rem inside it. */
+  width: min(18rem, 60vw);
+  padding: var(--space-1) var(--space-3) var(--space-2);
   border-radius: var(--md-sys-shape-corner-medium);
   background: var(--md-sys-color-surface);
   box-shadow: var(--md-sys-elevation-level2);
@@ -10,17 +89,23 @@
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
   line-height: var(--md-sys-typescale-body-small-line-height);
-  /* A county note with its exclusions can run long: scroll inside the card instead of growing
-     over the "Whole county" card and the radius control. */
-  max-height: min(46vh, 360px);
+  /* A county note with its exclusions can run long: scroll inside the card. */
+  max-height: min(40vh, 22rem);
   overflow-y: auto;
+}
+
+@media (min-width: 1280px) {
+  .legend {
+    position: static;
+    width: min(300px, 100%);
+    max-height: min(46vh, 360px);
+  }
 }
 
 .summary {
   display: flex;
   align-items: center;
   min-height: var(--space-9);
-  cursor: pointer;
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
   font-weight: var(--md-sys-typescale-label-large-weight);

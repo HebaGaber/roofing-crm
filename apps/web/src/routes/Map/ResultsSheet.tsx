@@ -18,7 +18,14 @@ export type SheetState = "peek" | "full";
 /** Drag distance, px, that counts as a swipe rather than a tap. */
 const DRAG_THRESHOLD = 40;
 
-export function ResultsSheet({ children }: { readonly children: ReactNode }): ReactElement {
+export interface ResultsSheetProps {
+  readonly children: ReactNode;
+  /** `compact` when the sheet only holds a notice (index down, no results, loading): it peeks
+   *  small and gives the map the rest. `results` (default) keeps the full peek. */
+  readonly peek?: "compact" | "results";
+}
+
+export function ResultsSheet({ children, peek = "results" }: ResultsSheetProps): ReactElement {
   const [state, setState] = useState<SheetState>("peek");
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
@@ -60,7 +67,7 @@ export function ResultsSheet({ children }: { readonly children: ReactNode }): Re
   };
 
   return (
-    <section className={styles.sheet} aria-label="Results" data-sheet={state}>
+    <section className={styles.sheet} aria-label="Results" data-sheet={state} data-peek={peek}>
       <button
         type="button"
         className={styles.handle}

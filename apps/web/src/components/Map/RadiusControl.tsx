@@ -60,7 +60,10 @@ export function RadiusControl({
   };
 
   return (
-    <div className={styles.card}>
+    <div
+      className={styles.card}
+      {...(originLabel === undefined ? {} : { title: `From ${originLabel} · all query modes` })}
+    >
       <div className={styles.field}>
         <label className={styles.label} htmlFor={id}>
           Radius

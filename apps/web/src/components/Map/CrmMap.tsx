@@ -455,6 +455,13 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       map.getCanvas().style.cursor = "";
     };
 
+    // The panes around the map can be minimised, which resizes its container without a window
+    // resize: repaint MapLibre at the new size (no-op where ResizeObserver is absent, e.g. tests).
+    const container = containerRef.current;
+    const observer =
+      typeof ResizeObserver === "function" ? new ResizeObserver(() => map.resize()) : null;
+    observer?.observe(container);
+
     map.on("load", onLoad);
     map.on("resize", applyMinZoom);
     map.on("error", onError);
@@ -467,6 +474,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     }
 
     return () => {
+      observer?.disconnect();
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
