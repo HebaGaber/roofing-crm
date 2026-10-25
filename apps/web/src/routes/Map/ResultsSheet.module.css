@@ -1,0 +1,104 @@
+/* Results sheet / pane (CRM-HANDOFF §4.2; prototype `cards`, `sheet-handle`). Atlas tokens only.
+   Compact and medium (< 1280 px): a bottom sheet over the map — peek shows the header and the
+   first card, full leaves the map's top strip visible. Expanded (≥ 1280 px): the static right
+   pane of the three-pane layout (Map.module.css places it), no handle. */
+.sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  max-height: 40%;
+  border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
+  background: var(--md-sys-color-surface);
+  box-shadow: var(--md-sys-elevation-level3);
+  transition: max-height var(--md-sys-motion-duration-medium) var(--md-sys-motion-easing-emphasized);
+}
+
+/* A sheet that only holds a notice peeks at about a quarter of the page, so the map keeps the rest.
+   More specific than the 600 to 839 px peek below, so it wins there too. */
+.sheet[data-peek="compact"][data-sheet="peek"] {
+  max-height: 25%;
+}
+
+.sheet[data-sheet="full"] {
+  max-height: calc(100% - var(--space-10));
+}
+
+/* 600–1279 px (prototype 768: the cards take about half the height). */
+@media (min-width: 600px) and (max-width: 1279.98px) {
+  .sheet[data-sheet="peek"] {
+    max-height: 50%;
+  }
+}
+
+/* Short landscape: the peek is the handle and the header row, never a quarter of a 390 px screen. */
+@media (max-height: 500px) and (max-width: 1279.98px) {
+  .sheet[data-sheet="peek"],
+  .sheet[data-peek="compact"][data-sheet="peek"] {
+    max-height: calc(var(--space-9) * 2 + var(--space-2));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition: none;
+  }
+}
+
+/* The 32 × 4 grab bar, centred in a full-width 48 px hit area (§10 fix 12). */
+.handle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: var(--space-9);
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle::after {
+  content: "";
+  width: var(--space-8);
+  height: var(--space-1);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-outline);
+}
+
+.handle:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
+}
+
+.body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 1280px) {
+  .sheet,
+  .sheet[data-sheet="full"] {
+    position: static;
+    z-index: auto;
+    max-height: none;
+    height: 100%;
+    border-left: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .handle {
+    display: none;
+  }
+
+  .body {
+    flex: 1 1 auto;
+  }
+}

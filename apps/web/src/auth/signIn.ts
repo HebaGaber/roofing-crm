@@ -23,7 +23,8 @@ export interface ClassifiedSignInError {
 }
 
 const LOCKOUT_MESSAGE = "Too many attempts — try again in 5 minutes.";
-const INVALID_CREDENTIALS_MESSAGE = "Incorrect username or password.";
+// Board CrmSignInError390: never says which of the two was wrong; names where the login came from.
+const INVALID_CREDENTIALS_MESSAGE = "Wrong email or password. Check the test login you were sent.";
 const UNKNOWN_MESSAGE = "Sign-in failed. Please try again.";
 
 export function classifySignInError(error: unknown): ClassifiedSignInError {

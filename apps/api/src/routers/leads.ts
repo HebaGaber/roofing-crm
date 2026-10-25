@@ -7,7 +7,13 @@ import { z } from "zod";
 import { LeadFilters, LeadStatus } from "@crm/shared";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import { publicProcedure, requireLeadService, requireUserId, router } from "../trpc.js";
+import {
+  causeWithCode,
+  publicProcedure,
+  requireLeadService,
+  requireUserId,
+  router,
+} from "../trpc.js";
 import {
   LeadAlreadyExistsError,
   LeadIndexUnavailableError,
@@ -19,6 +25,8 @@ const obs = createObservability("crm-api");
 
 const NOTE_MAX_CHARS = 4000; // constitution §6 validation boundary
 const LIST_MAX_LIMIT = 100;
+const CREATE_MANY_MAX = 25;
+const PRESENCE_MAX = 100;
 
 const CreateLeadInput = z.object({
   fips: z.string().min(1),
@@ -58,10 +66,6 @@ const ListInput = z.object({
   cursor: z.string().max(32).optional(),
   limit: z.number().int().positive().max(LIST_MAX_LIMIT).optional(),
 });
-
-function causeWithCode(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code });
-}
 
 /** Typed lead errors -> tRPC errors; anything unrecognised is returned unchanged. */
 function toTrpcError(error: unknown): unknown {
@@ -120,6 +124,17 @@ async function observed<T>(
   }
 }
 
+const UndoCreateInput = LeadKeyInput.extend({
+  /** Optional guard: refuse unless the lead still carries the leadId `create` returned. */
+  leadId: z.string().min(1).optional(),
+});
+const CreateManyInput = z.object({ items: z.array(CreateLeadInput).min(1).max(CREATE_MANY_MAX) });
+const PresenceInput = z.object({
+  requestIdentifiers: z.array(z.string().min(1)).min(1).max(PRESENCE_MAX),
+  /** County FIPS; defaults to Travis (48453), the one county the CRM serves. */
+  fips: z.string().min(1).optional(),
+});
+
 export const leadsRouter = router({
   create: publicProcedure
     .input(CreateLeadInput)
@@ -128,6 +143,42 @@ export const leadsRouter = router({
         requireLeadService(ctx).create(input, requireUserId(ctx)),
       ),
     ),
+
+  /** Typed refusals come back as `{ deleted: false, reason }`, never as an error: an undo that
+   *  does not apply is an outcome the caller shows, not a failure. */
+  undoCreate: publicProcedure.input(UndoCreateInput).mutation(async ({ input, ctx }) =>
+    observed("undoCreate", ctx.requestId, METRIC_NAMES.LeadsUndone, async () => {
+      const res = await requireLeadService(ctx).undoCreate(
+        input.leadKey,
+        requireUserId(ctx),
+        input.leadId,
+      );
+      return res.deleted
+        ? { deleted: true as const }
+        : { deleted: false as const, reason: res.reason };
+    }),
+  ),
+
+  createMany: publicProcedure
+    .input(CreateManyInput)
+    .mutation(({ input, ctx }) =>
+      observed("createMany", ctx.requestId, METRIC_NAMES.LeadsCreated, () =>
+        requireLeadService(ctx).createMany(input.items, requireUserId(ctx)),
+      ),
+    ),
+
+  presence: publicProcedure.input(PresenceInput).query(({ input, ctx }) => {
+    requireUserId(ctx);
+    return observed("presence", ctx.requestId, METRIC_NAMES.LeadsRead, async () => {
+      const rows = await requireLeadService(ctx).presence(input.requestIdentifiers, input.fips);
+      return rows.map((r) => ({
+        requestIdentifier: r.requestIdentifier,
+        leadKey: r.leadKey,
+        leadId: r.leadId,
+        status: r.status,
+      }));
+    });
+  }),
 
   updateStatus: publicProcedure
     .input(LeadKeyInput.extend({ status: LeadStatus }).merge(SequenceInput))

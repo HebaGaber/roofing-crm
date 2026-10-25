@@ -7,7 +7,9 @@
 // health.ping), and every other route never reaches this file without a validated token already
 // attached to the request context.
 import { initTRPC, TRPCError } from "@trpc/server";
-import type { LeadIndex } from "./adapters/duckDbParquet.js";
+import type { LanguageModel } from "ai";
+import { IndexNotReadyError, type LeadIndex } from "./adapters/duckDbParquet.js";
+import type { LeadRepo } from "./adapters/leadRepo.js";
 import type { LeadService } from "./services/leads.js";
 
 export interface TrpcContext {
@@ -23,6 +25,17 @@ export interface TrpcContext {
   readonly leadService?: LeadService;
   /** B-07: the caller's Cognito `sub`, read from the API Gateway JWT authorizer claims. */
   readonly userId?: string;
+  /** B-09: the `LeadRepo` port, used only by `services/agent/tools.ts`'s `proposeLeads` tool for
+   *  its read-only duplicate check (never for a write — T029's import guard). Optional: a test
+   *  that never exercises `proposeLeads` (e.g. `agent.ask.test.ts`) never has to supply one; a
+   *  real request falls back to a lazily-built DynamoDB-backed instance (`agent/usageGuard.ts`'s
+   *  sibling pattern in `routers/agent.ts`). */
+  readonly leadRepo?: LeadRepo;
+  /** B-09: the Vercel AI SDK model `agent.ask` calls through `agent/composeAnswer.ts`'s `runAsk`
+   *  (the plan call, at most one repair call, and the compose call — ADR-06 §6.1, no tools ever
+   *  passed). Optional so a test can inject a `MockLanguageModelV4`; a real request falls back to
+   *  `agent/getModel.ts`'s `AI_PROVIDER` switch. */
+  readonly model?: LanguageModel;
 }
 
 /** `search`/`property` procedures call this first — never destructure `ctx.leadIndex` directly
@@ -59,6 +72,20 @@ export function requireUserId(ctx: { userId: string | undefined }): string {
     throw new TRPCError({ code: "UNAUTHORIZED", message: "Sign in required" });
   }
   return ctx.userId;
+}
+
+/** A typed, honest "index not ready" response (never a bare 500) when no run has ever been
+ *  promoted — shared by search/property/agent routers. */
+export function mapIndexNotReady(error: unknown): never {
+  if (error instanceof IndexNotReadyError) {
+    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
+  }
+  throw error;
+}
+
+/** Attaches a domain `code` to an `Error`'s `cause`, read back out by `withAppCode` below. */
+export function causeWithCode(code: string, message: string): Error {
+  return Object.assign(new Error(message), { code });
 }
 
 /** tRPC drops `cause` from the wire error, so a domain code carried on it (ALREADY_EXISTS,

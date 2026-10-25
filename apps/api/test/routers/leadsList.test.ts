@@ -85,6 +85,33 @@ describe("leads.list (T011)", () => {
     expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1"]);
   });
 
+  it("with the SQL method, filters go to matchingRequestIdentifiers with only the caller's own ids and no property is listed", async () => {
+    const r = repo();
+    const i = index();
+    const matching = vi.fn(async () => new Set(["1", "3"]));
+    i.matchingRequestIdentifiers = matching;
+    const out = await c(r, i).leads.list({
+      filters: {
+        roofAgeMinYears: 15,
+        radiusMi: 25,
+        centerLat: 30.2,
+        centerLon: -97.7,
+        permitStatus: "open",
+      },
+    });
+    expect(matching).toHaveBeenCalledWith({
+      requestIdentifiers: ["1", "2", "3"],
+      center: { lat: 30.2, lng: -97.7 },
+      radiusMi: 25,
+      roofAgeMinYears: 15,
+      permitStatus: "open",
+    });
+    expect(i.searchProperties).not.toHaveBeenCalled();
+    expect(i.searchPermits).not.toHaveBeenCalled();
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1", "48453:tcad:3"]);
+    expect(out.totalCount).toBe(2);
+  });
+
   it("status-only defaults to the caller's leads (GSI1, filtered in memory); explicit assignee to listByAssignee; LeadIndex untouched", async () => {
     const r = repo();
     const i = index();

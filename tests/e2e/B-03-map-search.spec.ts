@@ -12,45 +12,44 @@
 // case localhost itself (B-01.spec.ts's precedent; config-guard.spec.ts + playwright.config.ts
 // already enforce "never localhost" for any RUNTIME_URL that IS set).
 import { expect, test } from "@playwright/test";
+import { EAST_TRAVIS, GEORGETOWN, ZERO_THEN_WIDEN } from "./lib/run-fixtures.js";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
+test.use({ storageState: AUTH_STATE_PATH });
 
-// testplans/B-03-test-cases.md § 5: confirmed live, 2026-10-23.
-const PFLUGERVILLE = { lat: 30.4394, lng: -97.62 };
-const LAGO_VISTA = { lat: 30.47, lng: -97.99 };
-/** Georgetown, Williamson County — well outside Travis County (TC-007). */
-const GEORGETOWN = { lat: 30.6333, lng: -97.678 };
+// Data-dependent points live in lib/run-fixtures.ts (read from the real Run 2 index).
 
-async function signIn(page: import("@playwright/test").Page, password: string): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
-}
-
-/** Clicks the map canvas at the given lat/lng by converting it to pixel coordinates via the live
- *  MapLibre instance (window.__crmMap, CrmMap.tsx's test-only hook — same seam B-01.spec.ts uses
- *  for minZoom, repurposed here for a precise pin-drop click rather than a canvas-center click). */
+/** Drops the pin at the given lat/lng by firing the live MapLibre instance's own click event
+ *  (window.__crmMap, CrmMap.tsx's test-only hook) at that point. A real pointer click is not used
+ *  because, at phone and tablet widths, the status cards and legend float over most of the canvas
+ *  and would take the click; the app's click handler (CrmMap's onClick) is what runs either way. */
 async function clickMapAt(
   page: import("@playwright/test").Page,
   point: { lat: number; lng: number },
 ): Promise<void> {
-  const pixel = await page.evaluate((p) => {
+  const fired = await page.evaluate((p) => {
     const map = (
       window as unknown as {
-        __crmMap?: { project(lngLat: [number, number]): { x: number; y: number } };
+        __crmMap?: {
+          project(lngLat: [number, number]): { x: number; y: number };
+          jumpTo(options: { center: [number, number]; zoom: number }): void;
+          fire(type: string, data: unknown): void;
+        };
       }
     ).__crmMap;
-    if (map === undefined) return null;
+    if (map === undefined) return false;
+    // Zoomed in first, as a person aiming a pin would: at county zoom the permit clusters cover
+    // the point and a click on a cluster expands it instead of dropping a pin.
+    map.jumpTo({ center: [p.lng, p.lat], zoom: 12 });
     const projected = map.project([p.lng, p.lat]);
-    return { x: projected.x, y: projected.y };
+    map.fire("click", {
+      lngLat: { lng: p.lng, lat: p.lat },
+      point: { x: projected.x, y: projected.y },
+    });
+    return true;
   }, point);
-  if (pixel === null) throw new Error("window.__crmMap not found — is CrmMap mounted?");
-  const box = await page.getByTestId("crm-map").boundingBox();
-  if (box === null) throw new Error("crm-map has no bounding box");
-  await page.mouse.click(box.x + pixel.x, box.y + pixel.y);
+  if (!fired) throw new Error("window.__crmMap not found — is CrmMap mounted?");
 }
 
 async function waitForMapReady(page: import("@playwright/test").Page): Promise<void> {
@@ -61,108 +60,109 @@ async function waitForMapReady(page: import("@playwright/test").Page): Promise<v
   });
 }
 
+const resultsOrState =
+  '[data-testid="search-results"], [data-state="CrmMapNoResults390"], [data-state="CrmMapIndexDown390"]';
+
+/** The "Matches N" count in the results header and each row's printed distance in miles. */
+async function readResults(
+  page: import("@playwright/test").Page,
+): Promise<{ matches: number; distancesMi: number[] }> {
+  const header = await page
+    .getByText(/^Matches \d+$/)
+    .first()
+    .textContent({ timeout: 2_000 });
+  const matches = Number(/\d+/.exec(header ?? "")?.[0]);
+  const distancesMi = await page.locator("[data-result-row]").evaluateAll((rows) =>
+    rows
+      .map((row) => /(\d+(?:\.\d+)?) mi/.exec((row as HTMLElement).innerText)?.[1])
+      .filter((value): value is string => value !== undefined)
+      .map(Number),
+  );
+  return { matches, distancesMi };
+}
+
 test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () => {
-  test("pin near Pflugerville: 5 mi draws a ring with the real count (0 on the sample slice, widen shown); 6 mi includes a real result inside the ring", async ({
+  // The pin drop first searches the default 10 mi radius (tens of thousands of properties), which
+  // the API answers in many seconds; the radius change after it is what this test is about.
+  test.describe.configure({ timeout: 120_000 });
+  test("pin in east Travis County: 5 mi lists real properties inside the ring; 6 mi never loses any", async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
-    await clickMapAt(page, PFLUGERVILLE);
+    await clickMapAt(page, EAST_TRAVIS);
     const radius = page.getByRole("spinbutton", { name: "Radius" });
     await radius.fill("5");
     await radius.blur();
 
-    // testplans/B-03-test-cases.md TC-001: the closest real property to this pin on the current
-    // sample slice is 5.52 mi away — a real 0 is a valid AC-1 outcome here (GAP-3), not a bug.
-    // GAP-7 (found live, 2026-10-23): on the current hosted environment, crm-leads (B-07's
-    // DynamoDB table) does not exist yet, so B-02's index was never actually promoted — every
-    // search honestly reports "index not ready" (CrmMapIndexDown390), never a silent failure or
-    // blank map (docs/evidence/B-02.md documents the same root cause). This test accepts that
-    // state as valid proof of the error-handling path; it asserts the stronger
-    // radius-inclusion mechanic only once the index is actually promoted.
-    await page
-      .locator(
-        '[data-testid="search-results"], [data-state="CrmMapNoResults390"], [data-state="CrmMapIndexDown390"]',
-      )
-      .first()
-      .waitFor({ state: "visible" });
-
-    const indexDown = page.locator('[data-state="CrmMapIndexDown390"]');
-    if (await indexDown.isVisible()) {
-      await expect(page.getByTestId("crm-map")).toBeVisible();
-      test.info().annotations.push({
-        type: "known-gap",
-        description:
-          "GAP-7: crm-leads (B-07) not yet deployed — index never promoted on this environment. The AC-1 radius-inclusion mechanic is unverifiable live until B-07 ships; the honest not-ready state is confirmed instead.",
-      });
-      return;
-    }
-
-    const noResults = page.locator('[data-state="CrmMapNoResults390"]');
-    if (await noResults.isVisible()) {
-      await expect(noResults).toContainText(/widen to 6 mi/i);
-      await noResults.getByRole("button", { name: /widen/i }).click();
-    } else {
-      await radius.fill("6");
-      await radius.blur();
-    }
-
+    // Run 2 has rows around this pin at every radius from 1 mi (fixtures file), so the
+    // honest outcome is a results list. "Index not ready" would be a real failure here, not a state
+    // to accept.
+    await page.locator(resultsOrState).first().waitFor({ state: "visible" });
+    await expect(page.locator('[data-state="CrmMapIndexDown390"]')).toHaveCount(0);
+    await expect(page.locator('[data-state="CrmMapNoResults390"]')).toHaveCount(0);
     await page.getByTestId("search-results").waitFor({ state: "visible" });
-    const rowCids = await page
-      .locator("[data-result-row]")
-      .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-property-cid")));
-    expect(
-      rowCids.length,
-      "at least one result inside a 6 mi ring near Pflugerville",
-    ).toBeGreaterThan(0);
+    await page.locator("[data-result-row]").first().waitFor({ state: "attached" });
+
+    const at5 = await readResults(page);
+    expect(at5.matches, "at least one result inside the 5 mi ring").toBeGreaterThan(0);
+    expect(at5.distancesMi.length, "rows print their distance").toBeGreaterThan(0);
+    for (const miles of at5.distancesMi) {
+      // The pixel click can sit up to ~130 m off the nominal point; a printed distance is rounded.
+      expect(miles, "every listed property is inside the 5 mi ring").toBeLessThanOrEqual(5.2);
+    }
+
+    await radius.fill("6");
+    await radius.blur();
+    await expect(radius).toHaveValue("6");
+    // The header disappears while the wider search loads (several seconds at this size), so a
+    // missing header reads as -1 and the poll waits for the new count.
+    await expect
+      .poll(async () => (await readResults(page).catch(() => ({ matches: -1 }))).matches, {
+        message: "widening 5 -> 6 mi never reduces the matches",
+        timeout: 60_000,
+      })
+      .toBeGreaterThanOrEqual(at5.matches);
   });
 });
 
-test.describe("AC-1 edge case: zero results near Lago Vista widen to a wider radius (B-03-TC-006)", () => {
-  test('0.5 mi near Lago Vista shows "widen to {n} mi", not a blank list', async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+test.describe("AC-1 edge case: zero results widen to a wider radius (B-03-TC-006)", () => {
+  test('0.5 mi in an empty pocket shows "widen to {n} mi"; widening finds results', async ({
+    page,
+  }) => {
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    // Opened by URL, not by a click: see ZERO_THEN_WIDEN in lib/run-fixtures.ts.
+    await openSignedIn(
+      page,
+      `/?lat=${ZERO_THEN_WIDEN.lat}&lng=${ZERO_THEN_WIDEN.lng}&r=${ZERO_THEN_WIDEN.zeroRadiusMi}`,
+    );
     await waitForMapReady(page);
-
-    await clickMapAt(page, LAGO_VISTA);
     const radius = page.getByRole("spinbutton", { name: "Radius" });
-    await radius.fill("0.5");
-    await radius.blur();
-
-    // GAP-7 (found live, 2026-10-23): see the AC-1 test above — crm-leads (B-07) isn't deployed
-    // on this environment yet, so the index is never promoted and every search honestly reports
-    // "not ready" instead of a real (also zero, on this sample slice) result count.
-    const indexDown = page.locator('[data-state="CrmMapIndexDown390"]');
-    await page
-      .locator('[data-state="CrmMapNoResults390"], [data-state="CrmMapIndexDown390"]')
-      .first()
-      .waitFor({ state: "visible" });
-    if (await indexDown.isVisible()) {
-      test.info().annotations.push({
-        type: "known-gap",
-        description:
-          "GAP-7: crm-leads (B-07) not yet deployed — widen-suggestion UI unverifiable live until B-07 ships.",
-      });
-      return;
-    }
+    await expect(radius).toHaveValue(String(ZERO_THEN_WIDEN.zeroRadiusMi));
 
     const noResults = page.locator('[data-state="CrmMapNoResults390"]');
+    await expect(page.locator('[data-state="CrmMapIndexDown390"]')).toHaveCount(0);
     await expect(noResults).toBeVisible();
     await expect(noResults).toContainText(/widen to \d+(\.\d+)? mi/i);
 
-    // Clicking the suggestion raises the radius and (per the Round 1 decision, 2026-10-23) moves
-    // it by a fixed +1 mi step each time, never doubling.
+    // Clicking the suggestion raises the radius by a fixed +1 mi step (Round 1 decision,
+    // 2026-10-23), never doubling.
     const widenButton = noResults.getByRole("button", { name: /widen/i });
     const label = (await widenButton.textContent()) ?? "";
     const match = /widen to (\d+(?:\.\d+)?) mi/i.exec(label);
     expect(match, "the suggestion names a specific radius").not.toBeNull();
-    expect(Number(match?.[1])).toBeCloseTo(1.5, 5); // 0.5 + the fixed 1 mi step
+    expect(Number(match?.[1])).toBeCloseTo(ZERO_THEN_WIDEN.widenedMi, 5);
     await widenButton.click();
-    await expect(radius).toHaveValue("1.5");
+    await expect(radius).toHaveValue(String(ZERO_THEN_WIDEN.widenedMi));
+
+    // The pocket was chosen so that one step wider reaches properties.
+    await page.getByTestId("search-results").waitFor({ state: "visible" });
+    await expect(noResults).toHaveCount(0);
+    expect((await readResults(page)).matches, "results after widening").toBeGreaterThan(0);
   });
 });
 
@@ -171,11 +171,11 @@ test.describe("AC-1 edge case: GPS outside Travis County shows an explicit state
     page,
     context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
     await context.grantPermissions(["geolocation"]);
     await context.setGeolocation({ latitude: GEORGETOWN.lat, longitude: GEORGETOWN.lng });
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await page.getByRole("button", { name: "Use my location" }).click();
@@ -191,10 +191,10 @@ test.describe("AC-2: GPS denied falls back to pin-drop with an explicit state (B
     page,
     context: _context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
     // No grantPermissions call: geolocation stays denied by default in a fresh context.
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     await waitForMapReady(page);
 
     await page.getByRole("button", { name: "Use my location" }).click();
@@ -204,14 +204,13 @@ test.describe("AC-2: GPS denied falls back to pin-drop with an explicit state (B
 
     // Pin-drop mode is still active: the map is never blank and still accepts a click.
     await expect(page.getByTestId("crm-map")).toBeVisible();
-    await clickMapAt(page, PFLUGERVILLE);
-    // GAP-7 (found live, 2026-10-23): see the AC-1 test above — any of the three states is valid
-    // proof that pin-drop triggered a real search attempt, never a silent no-op.
-    await page
-      .locator(
-        '[data-testid="search-results"], [data-state="CrmMapNoResults390"], [data-state="CrmMapIndexDown390"]',
-      )
-      .first()
-      .waitFor({ state: "visible" });
+    await clickMapAt(page, EAST_TRAVIS);
+    // A real search ran: a results list (this pin has rows), never a silent no-op. A 1 mi radius
+    // keeps the answer quick (the default radius covers tens of thousands of properties).
+    const radius = page.getByRole("spinbutton", { name: "Radius" });
+    await radius.fill("1");
+    await radius.blur();
+    await page.getByTestId("search-results").waitFor({ state: "visible" });
+    await expect(page.locator('[data-state="CrmMapIndexDown390"]')).toHaveCount(0);
   });
 });

@@ -36,7 +36,9 @@ export type FetchPartResult =
   | {
       readonly status: "verified";
       readonly partPath: string;
-      readonly verifiedBytes: Uint8Array;
+      /** The verified bytes live in S3 at `s3Key` (BuildIndex reads them from there). They are never
+       *  part of this result: a Lambda task result over Step Functions' 256 KB limit fails the whole
+       *  execution (found on Task A's Run 2, whose parts reach ~6 MB). */
       readonly sha256: string;
       readonly s3Key: string;
       readonly written: boolean;
@@ -142,7 +144,6 @@ export async function fetchPart(
           return {
             status: "verified",
             partPath: input.part.path,
-            verifiedBytes: result.body,
             sha256: digest,
             s3Key,
             written,

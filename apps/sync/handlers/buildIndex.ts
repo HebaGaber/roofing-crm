@@ -5,15 +5,29 @@
 // status_class/open_days/roof age — ADR-07), and Zod-validates every row against
 // packages/index-schema before it is ever written out as crm_property/crm_permit Parquet.
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { mkdtempSync, rmSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { createWriteStream, mkdtempSync, rmSync } from "node:fs";
+import { mkdir, readFile } from "node:fs/promises";
+import { once } from "node:events";
+import { finished } from "node:stream/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import {
+  createInMemoryConnection,
+  duckDbOptionsFromEnv,
+  type DuckDBConnection,
+} from "../src/engine/duckdb.js";
 import { contentAddressedKey } from "./fetchPart.js";
 import { downloadS3ObjectToFile, withObservability, type Observability } from "@crm/observability";
 import { CrmPermit, CrmProperty, type Missing } from "@crm/index-schema";
-import { bindManifest } from "@crm/oracle-views";
+import { bindManifest, type BoundRun } from "@crm/oracle-views";
+import {
+  BUILD_INDEX_VIEWS,
+  batchCoverage,
+  manifestTableArtifactNames,
+  type BatchCoverage,
+} from "../src/batchCoverage.js";
+
+export { batchCoverage, manifestTableArtifactNames, type BatchCoverage };
 import type { QueryEngine, Row } from "@crm/oracle-views";
 
 /** One row of the bound v_property view, as DuckDB returns it (snake_case, verbatim column
@@ -198,7 +212,12 @@ export interface BuildIndexEvent {
   /** Plan's own values, echoed into BuildIndexOutput below purely as pass-through state (the
    *  Step Functions payload replaces itself at every LambdaInvoke's outputPath, so anything
    *  Validate or Promote needs has to ride through this step, not just Plan's). */
-  coverageParcelsPublished: number;
+  /** The manifest's `coverage.parcels_published.count`, or null when Task A does not publish it
+   *  (full-county manifests). */
+  coverageParcelsPublished: number | null;
+  /** The manifest's `coverage.permits_emitted.count` (Task A's own publish gate compares
+   *  v_roofing_permit against it), or null when absent. Optional for older in-flight payloads. */
+  coveragePermitsEmitted?: number | null;
   finishedAt: string;
   /** Plan's run-start timestamp — Promote (T022) reads this back (as `planStartedAt`) to
    *  compute SyncDurationMs, two steps after BuildIndex. */
@@ -218,13 +237,17 @@ export interface BuildIndexOutput {
   permitCount: number;
   propertyKey: string;
   permitKey: string;
-  coverageParcelsPublished: number;
+  coverageParcelsPublished: number | null;
+  coveragePermitsEmitted: number | null;
   finishedAt: string;
   /** Echoed from the event — Promote reads this back two steps later. */
   startedAt: string;
   /** T020a: true when any part in this run was routed to the DLQ as unverified — Validate holds
    *  the whole run on this signal alone, before evaluating row counts (constitution P0-2). */
   anyPartUnverified: boolean;
+  /** B-09 review fix: which manifest batches were bound and contributed rows — Validate holds on
+   *  any gap (src/batchCoverage.ts). */
+  batchCoverage: BatchCoverage;
 }
 
 const s3 = new S3Client({});
@@ -233,22 +256,95 @@ async function downloadToFile(bucket: string, key: string, destPath: string): Pr
   await downloadS3ObjectToFile(s3, bucket, key, destPath);
 }
 
-/** `tables/county/property/part-00000.parquet` -> `{group}/{table}/{part}`, the local layout
- *  bindManifest's default partUrl expects under `tablesDir`. */
-function localPartPath(path: string): string {
-  const match = /tables\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(path);
-  if (!match)
-    throw new Error(`BuildIndex: part path "${path}" is not tables/{group}/{table}/{part}`);
-  const [, group, table, part] = match;
-  return join(String(group), String(table), String(part));
+/**
+ * Streams one bound view through map+validate into an NDJSON file, one DuckDB chunk (~2,048 rows)
+ * at a time — B-09 full-county sizing. The earlier path read every row into one JS array and
+ * `JSON.stringify`-ed the whole array before COPY: at 441,961 properties that is ~1 GB of JS
+ * objects plus a single string near V8's ~512M-character limit, a real OOM/RangeError risk at the
+ * function's memory size. Each line is the same validated CrmProperty/CrmPermit object as before,
+ * so the Parquet written from it has the identical schema. Returns the row count.
+ */
+async function streamViewToNdjson<T>(
+  connection: DuckDBConnection,
+  sql: string,
+  destPath: string,
+  mapRow: (row: ViewRow) => T,
+): Promise<number> {
+  const out = createWriteStream(destPath, { encoding: "utf8" });
+  let count = 0;
+  try {
+    const result = await connection.stream(sql);
+    for await (const rows of result.yieldRowObjectJs()) {
+      if (rows.length === 0) continue;
+      const lines = rows.map((row) => JSON.stringify(mapRow(row))).join("\n") + "\n";
+      count += rows.length;
+      if (!out.write(lines)) await once(out, "drain");
+    }
+    out.end();
+    await finished(out);
+    return count;
+  } catch (error) {
+    out.destroy();
+    throw error;
+  }
 }
 
-async function buildIndexCoreFromEvent(
-  event: BuildIndexEvent,
-  obs: Observability,
-): Promise<BuildIndexOutput> {
-  const tmpDir = mkdtempSync(join(tmpdir(), "crm-build-index-"));
-  const connection = await createInMemoryConnection();
+// BUILD_INDEX_VIEWS (src/batchCoverage.ts): the two contract views BuildIndex reads —
+// bindManifest binds only the export tables these need (query-core's ERR-19 view plan), not all
+// 204 full-county parts' tables.
+
+export interface BuildIndexFilesInput {
+  manifestCid: string;
+  /** The manifest JSON bytes (already verified against manifestCid by Plan). */
+  manifestBytes: Uint8Array;
+  /** Local path of one verified part, from its manifest artifact name. */
+  partFile: (artifactName: string) => string;
+  /** Scratch directory for NDJSON, Parquet output and DuckDB's spill files. */
+  workDir: string;
+}
+
+export interface BuildIndexFiles {
+  propertyCount: number;
+  permitCount: number;
+  propertyFile: string;
+  permitFile: string;
+  batchCoverage: BatchCoverage;
+}
+
+/** Row count per `_part` of the bound county.property relation (empty when it was not emitted —
+ *  then there is nothing to count, and every county batch reports empty). */
+async function countyPropertyRowsByPart(
+  engine: QueryEngine,
+  bound: BoundRun,
+): Promise<Map<string, number>> {
+  const property = (bound.tables ?? []).find(
+    (t) => t.group === "county" && t.table === "property" && t.emitted,
+  );
+  if (property === undefined) return new Map();
+  const rows = await engine.all(
+    "SELECT _part AS part, count(*) AS n FROM county.property GROUP BY _part",
+  );
+  return new Map(rows.map((r) => [String(r.part), Number(r.n)]));
+}
+
+/**
+ * The S3-free core of BuildIndex: binds already-downloaded, verified parts with the vendored
+ * query-core bindManifest, streams v_property/v_roofing_permit through map+validate, and writes
+ * crm_property/crm_permit Parquet into `workDir`. Every part is bound by an explicit `partUrl`:
+ * full-county manifests batch their tables as `.../tables/bNN/<table>/part-NNNNN.parquet` (10
+ * batches), so bindManifest's default `<tablesDir>/<group>/<table>/<part>` layout would make
+ * same-named parts of different batches collide. Also runnable locally (no AWS) against real
+ * parts, which is how the full-county build time was first measured.
+ */
+export async function buildIndexFiles(
+  input: BuildIndexFilesInput,
+  obs?: Pick<Observability, "logger">,
+): Promise<BuildIndexFiles> {
+  const spillDir = join(input.workDir, "duckdb-spill");
+  await mkdir(spillDir, { recursive: true });
+  // memory_limit + a /tmp spill directory: DuckDB spills the view joins to ephemeral storage
+  // instead of OOM-ing the function (CrmSyncStack sizes both per function).
+  const connection = await createInMemoryConnection(duckDbOptionsFromEnv(process.env, spillDir));
   try {
     await connection.run("SET TimeZone = 'UTC'");
     const engine: QueryEngine = {
@@ -261,39 +357,88 @@ async function buildIndexCoreFromEvent(
       },
     };
 
+    const bound = await bindManifest(input.manifestBytes, input.workDir, engine, {
+      partUrl: ({ name }) => input.partFile(name),
+      views: BUILD_INDEX_VIEWS,
+    });
+    const coverage = batchCoverage({
+      tableArtifactNames: manifestTableArtifactNames(input.manifestBytes),
+      boundTables: bound.tables ?? [],
+      countyPropertyRowsByPart: await countyPropertyRowsByPart(engine, bound),
+    });
+    if (coverage.unboundBatches.length > 0 || coverage.emptyCountyBatches.length > 0) {
+      obs?.logger.warn("BuildIndex: manifest batches missing from the bound index", {
+        ...coverage,
+      });
+    }
+
+    // Write the already-validated CrmProperty/CrmPermit rows (camelCase, index-schema shape) —
+    // never the raw view rows — as Parquet, via an NDJSON round-trip DuckDB reads back typed.
+    const propertyJson = join(input.workDir, "crm_property.ndjson");
+    const permitJson = join(input.workDir, "crm_permit.ndjson");
+    const propertyCount = await streamViewToNdjson(
+      connection,
+      "SELECT * FROM v_property",
+      propertyJson,
+      (row) => mapPropertyRow(row, input.manifestCid),
+    );
+    const permitCount = await streamViewToNdjson(
+      connection,
+      "SELECT * FROM v_roofing_permit",
+      permitJson,
+      (row) => mapPermitRow(row, input.manifestCid),
+    );
+    obs?.logger.info("BuildIndex: rows mapped and validated", { propertyCount, permitCount });
+
+    const propertyFile = join(input.workDir, "crm_property.parquet");
+    const permitFile = join(input.workDir, "crm_permit.parquet");
+    await connection.run(
+      `COPY (SELECT * FROM read_json('${propertyJson}', format = 'newline_delimited', columns = ${duckDbColumnsClause(CRM_PROPERTY_COLUMNS)})) TO '${propertyFile}' (FORMAT parquet)`,
+    );
+    await connection.run(
+      `COPY (SELECT * FROM read_json('${permitJson}', format = 'newline_delimited', columns = ${duckDbColumnsClause(CRM_PERMIT_COLUMNS)})) TO '${permitFile}' (FORMAT parquet)`,
+    );
+    rmSync(propertyJson, { force: true });
+    rmSync(permitJson, { force: true });
+    return { propertyCount, permitCount, propertyFile, permitFile, batchCoverage: coverage };
+  } finally {
+    connection.closeSync();
+  }
+}
+
+async function buildIndexCoreFromEvent(
+  event: BuildIndexEvent,
+  obs: Observability,
+): Promise<BuildIndexOutput> {
+  const tmpDir = mkdtempSync(join(tmpdir(), "crm-build-index-"));
+  try {
     const manifestPath = join(tmpDir, "manifest.json");
     await downloadToFile(event.bucket, event.manifestKey, manifestPath);
     const manifestBytes = new Uint8Array(await readFile(manifestPath));
 
+    // Each part is stored under its content-addressed key — the same `sha256(manifestCid + path)`
+    // FetchPart wrote it to S3 under — so no path from the manifest ever shapes a local path.
+    const partsDir = join(tmpDir, "parts");
+    await mkdir(partsDir, { recursive: true });
+    // Plan lists exactly the parts bindManifest reads for the two views (boundPartNames). If the
+    // two ever drift, fail here by name — never read a part that was not fetched and verified.
+    const listed = new Set(event.parts.map((part) => part.path));
+    const partFile = (path: string): string => {
+      if (!listed.has(path)) {
+        throw new Error(
+          `BuildIndex: bindManifest asked for part "${path}", not in Plan's part list`,
+        );
+      }
+      return join(partsDir, `${contentAddressedKey(event.manifestCid, path)}.parquet`);
+    };
     for (const part of event.parts) {
-      const relative = localPartPath(part.path);
-      const destPath = join(tmpDir, relative);
-      await mkdir(join(destPath, ".."), { recursive: true });
       const s3Key = contentAddressedKey(event.manifestCid, part.path);
-      await downloadToFile(event.bucket, s3Key, destPath);
+      await downloadToFile(event.bucket, s3Key, partFile(part.path));
     }
 
-    await bindManifest(manifestBytes, tmpDir, engine);
-    const { properties, permits } = await buildIndexCore(engine, event.manifestCid);
-    obs.logger.info("BuildIndex: rows mapped and validated", {
-      propertyCount: properties.length,
-      permitCount: permits.length,
-    });
-
-    // Write the already-validated CrmProperty/CrmPermit rows (camelCase, index-schema shape) —
-    // never the raw view rows — as Parquet, via a JSON round-trip DuckDB reads back typed.
-    const propertyJson = join(tmpDir, "crm_property.json");
-    const permitJson = join(tmpDir, "crm_permit.json");
-    await writeFile(propertyJson, JSON.stringify(properties));
-    await writeFile(permitJson, JSON.stringify(permits));
-
-    const propertyFile = join(tmpDir, "crm_property.parquet");
-    const permitFile = join(tmpDir, "crm_permit.parquet");
-    await connection.run(
-      `COPY (SELECT * FROM read_json('${propertyJson}', columns = ${duckDbColumnsClause(CRM_PROPERTY_COLUMNS)})) TO '${propertyFile}' (FORMAT parquet)`,
-    );
-    await connection.run(
-      `COPY (SELECT * FROM read_json('${permitJson}', columns = ${duckDbColumnsClause(CRM_PERMIT_COLUMNS)})) TO '${permitFile}' (FORMAT parquet)`,
+    const built = await buildIndexFiles(
+      { manifestCid: event.manifestCid, manifestBytes, partFile, workDir: tmpDir },
+      obs,
     );
 
     const propertyKey = `index/${event.manifestCid}/crm_property.parquet`;
@@ -302,31 +447,32 @@ async function buildIndexCoreFromEvent(
       new PutObjectCommand({
         Bucket: event.bucket,
         Key: propertyKey,
-        Body: await readFile(propertyFile),
+        Body: await readFile(built.propertyFile),
       }),
     );
     await s3.send(
       new PutObjectCommand({
         Bucket: event.bucket,
         Key: permitKey,
-        Body: await readFile(permitFile),
+        Body: await readFile(built.permitFile),
       }),
     );
 
     return {
       manifestCid: event.manifestCid,
       bucket: event.bucket,
-      propertyCount: properties.length,
-      permitCount: permits.length,
+      propertyCount: built.propertyCount,
+      permitCount: built.permitCount,
       propertyKey,
       permitKey,
       coverageParcelsPublished: event.coverageParcelsPublished,
+      coveragePermitsEmitted: event.coveragePermitsEmitted ?? null,
       finishedAt: event.finishedAt,
       startedAt: event.startedAt,
       anyPartUnverified: (event.fetchResults ?? []).some((r) => r.status === "dlq"),
+      batchCoverage: built.batchCoverage,
     };
   } finally {
-    connection.closeSync();
     rmSync(tmpDir, { recursive: true, force: true });
   }
 }

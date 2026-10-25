@@ -17,6 +17,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 - Feature branch: `feature/roofing-crm`. PR from `{fork}:feature/roofing-crm` to `prismteam-ai/roofing-crm:main`. Never commit to `main`, never merge the PR.
 - Each story has its own branch `NNN-slug` (listed in AGENT-MAP.md), created by `/speckit-specify`. Merge it back with `git merge --no-ff` only after its G7 pre-check passes and the user approves, then run `bash scripts/progress.sh`.
 - Commit messages start with the story ID: `B-03: ...`.
+- Never write `#` followed by a number in commit messages, PR text or GitHub comments (write `F-8` or "finding 8"). This repo is a fork of `prismteam-ai/roofing-crm`, so GitHub links `#9` to PR #9 there, which is another candidate's submission.
 - Hosted runtime: `https://crm.{domain}`, plus Amplify branch previews for story branches. localhost is never evidence.
 
 ## Rules
@@ -26,7 +27,7 @@ The user is a technical product manager. Explain steps in plain language, say wh
 - Gate pre-checks are the `developmentsupport-*` skills. They report gaps only; the user approves.
 - Use only the kit-bundled Elephant skills (`soofi-xyz-team-kit/skills/`). Never use `../skills` (deprecated upstream copy).
 - UI uses only Atlas tokens and components. Every data display shows provenance, and missing data says why.
-- Access boundary: read only the Oracle task's published CIDs, `contract/v1` and its MCP. No scraping, no ingestion, no access to Oracle's internal stores.
+- Access boundary: the CRM syncs Task A's published data into its own index: the run manifest named by `DATA_MANIFEST_CID` and its parts, fetched by CID, plus `contract/v1`. Requests never go to Task A at run time. No Atlas registration or MCP lookup is needed; Task A's MCP is an optional cross-check. No scraping, no ingestion, no access to Oracle's internal stores.
 - Never: secrets in git or logs, invented or synthetic data presented as real, Python outside PySpark/Glue, non-CDK IaC, direct LLM provider SDKs (use the Vercel AI SDK; provider set by `AI_PROVIDER`), merging the PR.
 
 ## The story loop (summary of the playbook's Part 2)

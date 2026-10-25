@@ -33,6 +33,13 @@ import {
   type LockoutStore,
 } from "./lockout-store.js";
 
+/** The one key every lockout path uses: the sign-in email, trimmed and lower-cased. The web app
+ *  reports failures under the email the person typed, while Cognito's triggers receive its
+ *  internal sub as `userName`; both must land on the same counter. */
+export function lockoutKey(username: string): string {
+  return username.trim().toLowerCase();
+}
+
 export const MAX_FAILED_ATTEMPTS = 4;
 export const LOCKOUT_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -116,7 +123,8 @@ type LockoutTriggerEvent = PreAuthenticationTriggerEvent | PostAuthenticationTri
  */
 export async function handler<T extends LockoutTriggerEvent>(event: T): Promise<T> {
   const segment = tracer.getSegment();
-  const username = event.userName;
+  // Prefer the email attribute: `userName` is Cognito's sub when sign-in is by email alias.
+  const username = lockoutKey(event.request.userAttributes.email ?? event.userName);
   if (event.triggerSource === "PostAuthentication_Authentication") {
     const subsegment = segment?.addNewSubsegment("## crm-ops-lockout.postAuthentication");
     logger.info("post-authentication: resetting lockout counter", { username });

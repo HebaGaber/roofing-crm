@@ -80,12 +80,27 @@ describe("ResultRow card", () => {
   it("shows a roof-age badge with its confidence", () => {
     render(<ResultRow row={makeRow()} />);
     expect(screen.getByText("Roof 20 yrs")).not.toBeNull();
-    expect(screen.getByText("Confidence high")).not.toBeNull();
+    expect(screen.getByText("Confidence High")).not.toBeNull();
   });
 
-  it("shows 'Type not published' when propertyType is null, never blank", () => {
-    render(<ResultRow row={makeRow({ propertyType: null })} />);
+  it("shows 'Type not published' when the usage type is null, never blank and never the structure form", () => {
+    render(<ResultRow row={makeRow({ propertyType: "Building", propertyUsageType: null })} />);
     expect(screen.getByText("Type not published")).not.toBeNull();
+    expect(screen.queryByText("Building")).toBeNull();
+  });
+
+  it("shows the published usage type as Residential / Commercial", () => {
+    render(
+      <ResultRow row={makeRow({ propertyType: "Building", propertyUsageType: "Residential" })} />,
+    );
+    expect(screen.getByText("Residential")).not.toBeNull();
+  });
+
+  it("shows roof-age basis and confidence as plain labels, never enum codes", () => {
+    render(<ResultRow row={makeRow({ roofAgeBasis: "built_year", roofAgeConfidence: "low" })} />);
+    expect(screen.getByText("Year built (no reroof permit found)")).not.toBeNull();
+    expect(screen.queryByText("built_year")).toBeNull();
+    expect(screen.queryByText("low")).toBeNull();
   });
 
   it("shows the honest roof-age-not-available fallback when roofAgeYears is null with no matching missingReasons entry (GAP-4b)", () => {
@@ -120,7 +135,8 @@ describe("ResultRow card", () => {
       />,
     );
     expect(screen.getByLabelText("Missing data")).not.toBeNull();
-    expect(screen.getByText("propertyUsageType, ownerKind")).not.toBeNull();
+    expect(screen.getByText("Property use, owner kind")).not.toBeNull();
+    expect(screen.queryByText(/propertyUsageType/)).toBeNull();
   });
 
   it("renders a PermitChip per permit when the permit-view prop is populated (AC-5), nothing when empty or absent", () => {

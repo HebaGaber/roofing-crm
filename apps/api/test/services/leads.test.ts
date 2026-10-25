@@ -28,6 +28,8 @@ function fakeRepo(overrides: Partial<LeadRepo> = {}): LeadRepo {
     get: vi.fn(async () => ({ lead, signals: undefined, events: [] })),
     listByAssignee: vi.fn(async () => [lead]),
     listByStatus: vi.fn(async () => [lead]),
+    undoCreate: vi.fn(async () => ({ deleted: true as const })),
+    presence: vi.fn(async () => []),
     ...overrides,
   };
 }

@@ -6,6 +6,7 @@
 // fake LeadIndex into the tRPC context, same convention as search.properties.test.ts.
 import { describe, expect, it } from "vitest";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+import { gazetteer } from "@crm/oracle-views";
 import { appRouter } from "../src/routers/index.js";
 import { createCallerFactory } from "../src/trpc.js";
 import type { LeadIndex } from "../src/adapters/duckDbParquet.js";
@@ -94,6 +95,9 @@ class FakeLeadIndex implements LeadIndex {
   async getProperty(propertyCid: string) {
     return this.byCid.get(propertyCid) ?? null;
   }
+  async getPropertyByRequestIdentifier(requestIdentifier: string) {
+    return [...this.byCid.values()].find((p) => p.requestIdentifier === requestIdentifier);
+  }
 }
 
 function makeCaller(entries: (Provenanced<CrmProperty> & { permits: Provenanced<CrmPermit>[] })[]) {
@@ -152,6 +156,42 @@ describe("property.get", () => {
     expect(result.permits).toHaveLength(1);
     expect(result.permits[0]?.openDays).toBe(28);
     expect(result.permits[0]?.statusClass).toBe("open");
+  });
+
+  it("returns nearPlace: the nearest travis-places@1.0.0 centroid, with its digest", async () => {
+    const caller = makeCaller([
+      { ...property({ latitude: 30.447765, longitude: -97.602116 }), permits: [] },
+    ]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    expect(result.nearPlace).toEqual({
+      name: "Pflugerville",
+      distanceMi: 0,
+      source: "travis-places@1.0.0",
+      sha256: gazetteer.GAZETTEER.sha256,
+    });
+  });
+
+  it("omits nearPlace when the property has no coordinates (never a guessed place)", async () => {
+    const caller = makeCaller([
+      {
+        ...property({
+          latitude: null,
+          longitude: null,
+          missingReasons: [{ field: "latitude", reason: "no_coordinates" }],
+        }),
+        permits: [],
+      },
+    ]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    expect(result.property).not.toBeNull();
+    expect(result.nearPlace).toBeUndefined();
+    expect("nearPlace" in result).toBe(false);
+  });
+
+  it("omits nearPlace when the property is not in this run", async () => {
+    const caller = makeCaller([]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    expect("nearPlace" in result).toBe(false);
   });
 
   it("rejects a propertyCid that isn't a CIDv1 string", async () => {

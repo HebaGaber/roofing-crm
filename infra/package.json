@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@crm/config": "workspace:*",
+    "@crm/observability": "workspace:*",
     "aws-cdk-lib": "2.173.4",
     "cdk-nag": "2.35.52",
     "constructs": "10.4.2",

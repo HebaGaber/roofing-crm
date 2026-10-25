@@ -1,11 +1,19 @@
-// B-07 T026: "Create lead" action for the property drawer (AC-1, AC-2, FR-001). Calls
-// `leads.create` through leadsApi; an `ALREADY_EXISTS` error (the dedupe on
-// {fips}:tcad:{request_identifier}, ADR-04) is shown as "Already a lead", not as a failure.
-import { ErrorBanner } from "../../components/ErrorBanner.js";
+// B-07 T026 / B-09 board match (CrmLeadCreate390/768/1440, CrmLeadDup390/1440, E-74, E-77):
+// "Create lead" is one tap, no form (AC-1, AC-2, FR-001). Calls `leads.create` through leadsApi
+// and answers with a snackbar: "Lead created" with Open lead and an optional note (Skip / Save
+// note). An `ALREADY_EXISTS` error (the dedupe on {fips}:tcad:{request_identifier}, ADR-04) is
+// shown as "Already a lead", never as a failure. Undo calls `leads.undoCreate` with the leadId the
+// create returned; a refusal is shown as the reason the lead was kept. The snackbar renders inside this component's own
+// subtree (position fixed), so it stays with the drawer or permit row that made the lead.
+import { leadKey as leadKeyOf } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import type { ReactElement } from "react";
+import { Icon, StatusPill } from "@crm/ui";
+import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
-import { useCreateLead, type LeadCreateInput } from "./leadsApi.js";
+import { useUndoCreateLead } from "../Map/Candidates/candidatesApi.js";
+import { undoOneText, type UndoAnswer } from "../Map/Candidates/undoCopy.js";
+import { LeadBanner } from "./LeadBanner.js";
+import { useAddLeadNote, useCreateLead, type LeadCreateInput } from "./leadsApi.js";
 import styles from "./Leads.module.css";
 
 /** Travis County, TX (the only county this CRM serves); part of the lead dedupe key. */
@@ -48,6 +56,127 @@ export function toCreateInput(
   };
 }
 
+/** The words for a failed create: offline is its own sentence (CrmPropertyFailed390). */
+function failureText(): string {
+  return typeof navigator !== "undefined" && navigator.onLine === false
+    ? "You're offline. The lead was not saved."
+    : "Couldn't create the lead. Nothing was saved. Try again.";
+}
+
+function Snackbar({
+  headline,
+  leadHref,
+  note,
+  undo,
+  onDismiss,
+}: {
+  readonly headline: string;
+  readonly leadHref: string;
+  /** Present only for a lead that was just created: the optional first note. */
+  readonly note?: { readonly leadKey: string } | undefined;
+  /** Present only for a lead that was just created: Undo removes it (`leads.undoCreate`). */
+  readonly undo?:
+    | {
+        readonly leadKey: string;
+        readonly leadId: string;
+        readonly onDone: (answer: UndoAnswer | "failed") => void;
+        /** Why the server kept the lead, once it refused. */
+        readonly kept: string | null;
+      }
+    | undefined;
+  readonly onDismiss: () => void;
+}): ReactElement {
+  const addNote = useAddLeadNote();
+  const undoCreate = useUndoCreateLead();
+  const [noteOpen, setNoteOpen] = useState(note !== undefined);
+  const [text, setText] = useState("");
+  const saveNote = (): void => {
+    const trimmed = text.trim();
+    if (note === undefined || trimmed === "") return;
+    addNote.mutate(
+      { leadKey: note.leadKey, text: trimmed },
+      { onSuccess: () => setNoteOpen(false) },
+    );
+  };
+  return (
+    <div className={styles.snackbar} role="status" data-snackbar="">
+      <div className={styles.snackbarRow}>
+        <Icon name={note === undefined ? "description" : "check_circle"} size="medium" />
+        <p className={styles.snackbarText}>{headline}</p>
+        {undo === undefined ? null : (
+          <button
+            type="button"
+            className={styles.snackbarAction}
+            disabled={undoCreate.isPending || undo.kept !== null}
+            onClick={() =>
+              undoCreate.mutate(
+                { leadKey: undo.leadKey, leadId: undo.leadId },
+                {
+                  onSuccess: (answer) => undo.onDone(answer),
+                  onError: () => undo.onDone("failed"),
+                },
+              )
+            }
+          >
+            {undoCreate.isPending ? "Undoing…" : "Undo"}
+          </button>
+        )}
+        <Link className={styles.snackbarAction} to={leadHref}>
+          Open lead
+        </Link>
+        <Link className={styles.snackbarAction} to="/leads">
+          View leads
+        </Link>
+        <button
+          type="button"
+          className={styles.snackbarClose}
+          aria-label="Dismiss"
+          onClick={onDismiss}
+        >
+          <Icon name="close" size="medium" />
+        </button>
+      </div>
+      {undo?.kept == null ? null : <p className={styles.snackbarSaved}>{undo.kept}</p>}
+      {note === undefined ? null : noteOpen ? (
+        <div className={styles.snackbarNote}>
+          <label htmlFor="snackbar-note" className={styles.snackbarLabel}>
+            Add a note (optional)
+          </label>
+          <textarea
+            id="snackbar-note"
+            className={styles.snackbarField}
+            placeholder="For example: owner mails from Houston"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          {addNote.error === null || addNote.error === undefined ? null : (
+            <span className={styles.snackbarError}>Couldn't save the note. Try again.</span>
+          )}
+          <div className={styles.snackbarButtons}>
+            <button
+              type="button"
+              className={styles.snackbarAction}
+              onClick={() => setNoteOpen(false)}
+            >
+              Skip
+            </button>
+            <button
+              type="button"
+              className={styles.snackbarAction}
+              disabled={addNote.isPending || text.trim() === ""}
+              onClick={saveNote}
+            >
+              Save note
+            </button>
+          </div>
+        </div>
+      ) : addNote.isSuccess ? (
+        <p className={styles.snackbarSaved}>Note saved.</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function LeadCreateAction({
   property,
   permits = [],
@@ -60,6 +189,10 @@ export function LeadCreateAction({
   readonly permit?: Provenanced<CrmPermit>;
 }): ReactElement | null {
   const create = useCreateLead();
+  const [dismissed, setDismissed] = useState(false);
+  /** What Undo answered: the lead was removed, or why it was kept. */
+  const [removed, setRemoved] = useState<string | null>(null);
+  const [kept, setKept] = useState<string | null>(null);
   const input = toCreateInput(property, permits, permit);
 
   if (input === null) {
@@ -71,30 +204,77 @@ export function LeadCreateAction({
       </p>
     );
   }
+  const key = leadKeyOf(input.fips, input.requestIdentifier);
+  const leadHref = `/leads/${encodeURIComponent(create.data?.leadKey ?? key)}`;
+
   if (create.isSuccess) {
     return (
-      <p className={styles.createState} role="status">
-        Lead created.{" "}
-        <Link className={styles.link} to="/leads">
-          View leads
-        </Link>
-      </p>
+      <div className={styles.createState}>
+        <StatusPill status="info" text="Lead · New" icon="description" />
+        {dismissed ? null : (
+          <Snackbar
+            headline="Lead created · New · assigned to you"
+            leadHref={leadHref}
+            note={{ leadKey: create.data?.leadKey ?? key }}
+            undo={
+              create.data === undefined
+                ? undefined
+                : {
+                    leadKey: create.data.leadKey,
+                    leadId: create.data.leadId,
+                    kept,
+                    onDone: (answer) => {
+                      if (answer !== "failed" && answer.deleted) {
+                        setRemoved(undoOneText(answer));
+                        setKept(null);
+                        setDismissed(false);
+                        create.reset();
+                      } else {
+                        setKept(undoOneText(answer));
+                      }
+                    },
+                  }
+            }
+            onDismiss={() => setDismissed(true)}
+          />
+        )}
+      </div>
     );
   }
   if (isAlreadyExists(create.error)) {
     return (
-      <p className={styles.createState} role="status">
-        Already a lead.{" "}
-        <Link className={styles.link} to="/leads">
-          View leads
-        </Link>
-      </p>
+      <div className={styles.createState}>
+        <StatusPill status="info" text="Already a lead" icon="description" />
+        {dismissed ? null : (
+          <Snackbar
+            headline="Already a lead. Nothing was added."
+            leadHref={`/leads/${encodeURIComponent(key)}`}
+            onDismiss={() => setDismissed(true)}
+          />
+        )}
+      </div>
     );
   }
   return (
     <div className={styles.createState}>
+      {removed === null ? null : (
+        <div className={styles.snackbar} role="status" data-snackbar="">
+          <div className={styles.snackbarRow}>
+            <Icon name="delete" size="medium" />
+            <p className={styles.snackbarText}>{removed}</p>
+            <button
+              type="button"
+              className={styles.snackbarClose}
+              aria-label="Dismiss"
+              onClick={() => setRemoved(null)}
+            >
+              <Icon name="close" size="medium" />
+            </button>
+          </div>
+        </div>
+      )}
       {create.error === null || create.error === undefined ? null : (
-        <ErrorBanner message="Lead could not be created. Try again." />
+        <LeadBanner kind="error" icon="error" headline={failureText()} />
       )}
       <button
         type="button"
@@ -104,10 +284,15 @@ export function LeadCreateAction({
             ? undefined
             : `Create lead from permit ${permit.permitNumber ?? "(number not published)"}`
         }
+        aria-busy={create.isPending}
         disabled={create.isPending}
         onClick={() => create.mutate(input)}
       >
-        {permit === undefined ? "Create lead" : "Create lead from permit"}
+        {create.isPending
+          ? "Creating…"
+          : permit === undefined
+            ? "Create lead"
+            : "Create lead from permit"}
       </button>
     </div>
   );

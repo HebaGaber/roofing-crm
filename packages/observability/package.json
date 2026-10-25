@@ -4,7 +4,10 @@
   "private": true,
   "description": "Shared Powertools Logger/Tracer/Metrics middleware every Lambda handler wraps with (constitution Article VIII: structured JSON logs, X-Ray on, named custom metrics — never inline string literals at a call site).",
   "type": "module",
-  "exports": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./metric-names": "./src/metricNames.ts"
+  },
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",

@@ -10,10 +10,13 @@ import { withObservability, type Observability } from "@crm/observability";
 import { RunManifestV1, RunsIndexV1 } from "@crm/oracle-contract";
 import { isCidV1 } from "@crm/oracle-contract/cid";
 import { PROFILE } from "@crm/oracle-profile-travis-austin";
-import { gazetteer } from "@crm/oracle-views";
+import { boundPartNames, gazetteer } from "@crm/oracle-views";
+import { BUILD_INDEX_VIEWS } from "../src/batchCoverage.js";
 import type { IndexMetaHeldReason } from "@crm/index-schema";
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { contentAddressedKey } from "./fetchPart.js";
 import { estimateCostFromManifest, evaluateCostGate } from "./costGate.js";
 
@@ -103,8 +106,12 @@ export interface PlanResult {
   /** This run's start timestamp — Promote (T022) reads this back to compute SyncDurationMs. */
   startedAt: string;
   /** The manifest's own `coverage.parcels_published.count` — Validate (T019) reconciles
-   *  BuildIndex's row count against this, never a live recount of Task A's data. */
-  coverageParcelsPublished: number;
+   *  BuildIndex's row count against this, never a live recount of Task A's data. Null when Task A
+   *  does not publish it (full-county manifests) — never defaulted to 0. */
+  coverageParcelsPublished: number | null;
+  /** The manifest's own `coverage.permits_emitted.count` (B-09): Validate reconciles crm_permit
+   *  against it, exactly Task A's own publish gate. Null when absent. */
+  coveragePermitsEmitted: number | null;
   /** The manifest's own `finishedAt` — carried through to Validate/Promote's `IndexMeta` rather
    *  than generated fresh at each later step. */
   finishedAt: string;
@@ -116,8 +123,19 @@ export interface PlanHeld {
   manifestCid: string;
 }
 
+/** B-09 auto-sync idempotency: the resolved manifestCid is already `META#index.current`, so this
+ *  run ends before fetching anything (the state machine routes it straight to a Succeed state). */
+export interface PlanAlreadyPromoted {
+  status: "AlreadyPromoted";
+  heldReason?: undefined;
+  manifestCid: string;
+}
+
 export interface PlanInput {
   manifestCidHint?: string;
+  /** Operator override: rebuild and re-validate even when this manifestCid is already promoted
+   *  (e.g. after a BuildIndex code change). Promote still no-ops on the pointer itself. */
+  forceRebuild?: boolean;
   /** Test-only: forces the digest guard to see a mismatch, without needing a crafted manifest. */
   __testForceDigestMismatch?: boolean;
 }
@@ -259,6 +277,29 @@ async function resolveAuthoritativeManifestCid(
   return undefined;
 }
 
+const META_INDEX_KEY = { pk: "META#index", sk: "META" } as const;
+
+/**
+ * True only when `META#index.current` (Promote's pointer item in crm-leads) is exactly this
+ * manifestCid. Any other outcome — no table configured (local runs), no pointer yet (first run),
+ * a different CID, or an unreadable pointer — returns false and the run proceeds; Promote's own
+ * conditional write remains the guard against a duplicate flip.
+ */
+async function isAlreadyPromoted(manifestCid: string, obs: Observability): Promise<boolean> {
+  const tableName = process.env.CRM_LEADS_TABLE_NAME;
+  if (tableName === undefined || tableName === "") return false;
+  try {
+    const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+    const result = await ddb.send(new GetCommand({ TableName: tableName, Key: META_INDEX_KEY }));
+    return result.Item?.current === manifestCid;
+  } catch (error) {
+    obs.logger.warn("Plan: META#index unreadable, continuing without the already-promoted check", {
+      error,
+    });
+    return false;
+  }
+}
+
 async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   let lastError: unknown;
   for (const url of manifestGatewayUrls(cid)) {
@@ -277,7 +318,10 @@ async function fetchManifestBytes(cid: string): Promise<Uint8Array> {
   );
 }
 
-async function planCore(input: PlanInput, obs: Observability): Promise<PlanResult | PlanHeld> {
+async function planCore(
+  input: PlanInput,
+  obs: Observability,
+): Promise<PlanResult | PlanHeld | PlanAlreadyPromoted> {
   const bucket = process.env.CRM_INDEX_BUCKET_NAME;
   if (bucket === undefined || bucket === "") {
     throw new Error("Plan: CRM_INDEX_BUCKET_NAME is not set");
@@ -307,6 +351,13 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     );
   }
 
+  if (input.forceRebuild !== true && (await isAlreadyPromoted(manifestCid, obs))) {
+    obs.logger.info("Plan: no-op, this manifestCid is already the promoted index", {
+      manifestCid,
+    });
+    return { status: "AlreadyPromoted", manifestCid };
+  }
+
   const manifestBytes = await fetchManifestBytes(manifestCid);
 
   // T047: verify the manifest's own bytes against the CID they were fetched by, before parsing
@@ -329,13 +380,15 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
   const rulesProfile = manifest.profiles.find((p) => p.name === PROFILE.name);
   const placesProfile = manifest.profiles.find((p) => p.name === PLACES_PROFILE_NAME);
 
+  // Mirrors vendored query-core's bindManifest (1ef8bff): a run that never captured places carries
+  // no travis-places profile and binds with an empty ZCTA table; a *present* places profile whose
+  // digest disagrees with the in-repo gazetteer is still a mismatch.
   const digestMismatch =
     input.__testForceDigestMismatch === true ||
     rulesProfile === undefined ||
     rulesProfile.sha256 !== PROFILE.sha256 ||
     rulesProfile.version !== PROFILE.version ||
-    placesProfile === undefined ||
-    placesProfile.sha256 !== gazetteer.GAZETTEER.sha256;
+    (placesProfile !== undefined && placesProfile.sha256 !== gazetteer.GAZETTEER.sha256);
 
   if (digestMismatch) {
     obs.logger.warn("Plan: held, profile digest mismatch against the vendored copy", {
@@ -348,8 +401,18 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
   // USD_PER_BYTE constant, ~6x stricter than costGate.ts's) — costGate.ts's
   // estimateCostFromManifest/evaluateCostGate is now the one place this math lives; Plan just
   // calls it, same as it calls the digest guard above.
-  const { predictedSpendUsd, predictedDocCount, predictedBytes } =
-    estimateCostFromManifest(manifest);
+  // B-09 (query-core 502bfe6): only the table parts the two views BuildIndex reads are fetched —
+  // the same selection bindManifest makes, so FetchPart, this cost gate and BuildIndex all work
+  // from this one list (Run 1: 124 of 204 parts, ~322 of ~556 MB). Each part keeps the CID and
+  // SHA-256 from the CID-verified manifest above.
+  const boundNames = new Set(boundPartNames(manifest.artifacts, BUILD_INDEX_VIEWS));
+  const fetchedArtifacts = manifest.artifacts.filter(
+    (artifact) => artifact.kind === PART_KIND && boundNames.has(artifact.name),
+  );
+  const { predictedSpendUsd, predictedDocCount, predictedBytes } = estimateCostFromManifest({
+    artifacts: fetchedArtifacts,
+    coverage: manifest.coverage,
+  });
   const costGateResult = evaluateCostGate({ predictedSpendUsd, predictedDocCount, predictedBytes });
 
   if (costGateResult.held) {
@@ -369,14 +432,12 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
   const { createS3PartWriter } = await import("../src/s3PartWriter.js");
   await createS3PartWriter(bucket).putIfAbsent(manifestKey, manifestBytes);
 
-  const parts: PlanPart[] = manifest.artifacts
-    .filter((artifact) => artifact.kind === PART_KIND)
-    .map((artifact) => ({
-      name: artifact.name,
-      path: artifact.name,
-      cid: artifact.cid,
-      sha256: artifact.sha256,
-    }));
+  const parts: PlanPart[] = fetchedArtifacts.map((artifact) => ({
+    name: artifact.name,
+    path: artifact.name,
+    cid: artifact.cid,
+    sha256: artifact.sha256,
+  }));
 
   return {
     manifestCid,
@@ -390,7 +451,8 @@ async function planCore(input: PlanInput, obs: Observability): Promise<PlanResul
     })),
     costEstimate: { predictedSpendUsd, predictedDocCount, predictedBytes },
     startedAt: new Date().toISOString(),
-    coverageParcelsPublished: manifest.coverage.parcels_published?.count ?? 0,
+    coverageParcelsPublished: manifest.coverage.parcels_published?.count ?? null,
+    coveragePermitsEmitted: manifest.coverage.permits_emitted?.count ?? null,
     finishedAt: manifest.finishedAt,
   };
 }

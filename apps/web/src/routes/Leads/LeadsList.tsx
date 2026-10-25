@@ -1,19 +1,21 @@
-// B-07 T024: paginated lead list (AC-4, FR-004). Consumes `leads.list` through leadsApi (the one
-// shared tRPC client), filters live in the URL (leadFilters.state.ts), Atlas tokens and components
-// only. States: loading skeleton, error banner with Retry, an explicit empty state (no leads yet)
-// and a distinct no-match state (filters match zero) -- never an endless spinner. A lead whose
-// source property left the current run is flagged, never shown as if current (AC-5).
-import { StatusPill } from "@crm/ui";
-import { LEAD_STATUSES, type LeadStatus } from "@crm/shared";
+// B-07 T024 / B-09 board match (CrmLeads390/768/1440, CrmLeadsFiltered1440, CrmLeadsPaged*, and the
+// state boards Loading, Empty, NoMatch, Error, Partial): the paginated lead list. Consumes
+// `leads.list` through leadsApi (the one shared tRPC client); filters live in the URL
+// (leadFilters.state.ts) and render in LeadFilters (status, assignee, roof, permit, within; a sheet
+// below 600 px). Atlas tokens and components only. Columns are the ones `leads.list` returns
+// (address, status, assignee, origin, created); the board's roof, permit, contractor and last
+// activity columns need the snapshot on the list rows (API gap, design/board-match/leads.md).
+// States: loading, error with Retry, no leads yet, no match, partial (a lead whose property left
+// the current run keeps its snapshot, AC-5), never an endless spinner.
+import { Icon, StatusPill } from "@crm/ui";
+import type { LeadStatus } from "@crm/shared";
 import { useMemo, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
-import { EmptyState } from "../../components/EmptyState.js";
-import { ErrorBanner } from "../../components/ErrorBanner.js";
 import { Skeleton } from "../../components/Skeleton.js";
-import { ROOF_AGE_CHIPS } from "../Map/FilterSheet.js";
-import filterStyles from "../Map/FilterSheet.module.css";
+import { LeadBanner } from "./LeadBanner.js";
+import { LeadProgress } from "./LeadProgress.js";
+import { LeadActions, LeadFilters, STATUS_LABEL, filterSummary } from "./LeadFilters.js";
 import {
-  PERMIT_STATUSES,
   hasActiveFilters,
   parseLeadQuery,
   patchLeadParams,
@@ -21,16 +23,9 @@ import {
   type LeadQuery,
   type LeadQueryPatch,
 } from "./leadFilters.state.js";
+import { leadTime, leadTimeExact, myIds, originLabel, personLabel } from "./leadFormat.js";
 import { useLeadsList, type LeadListItem } from "./leadsApi.js";
 import styles from "./Leads.module.css";
-
-const STATUS_LABEL: Readonly<Record<LeadStatus, string>> = {
-  new: "New",
-  contacted: "Contacted",
-  qualified: "Qualified",
-  won: "Won",
-  lost: "Lost",
-};
 
 export const LEAD_STATUS_KIND = {
   new: "info",
@@ -40,231 +35,274 @@ export const LEAD_STATUS_KIND = {
   lost: "unavailable",
 } as const satisfies Record<LeadStatus, "info" | "warning" | "verified" | "unavailable">;
 
-function Filters({
-  query,
-  onPatch,
+/** The board's status icons (CrmLeads*: Contacted phone, Qualified check, New new-box). */
+export const LEAD_STATUS_ICON = {
+  new: "add_circle",
+  contacted: "call",
+  qualified: "check_circle",
+  won: "emoji_events",
+  lost: "cancel",
+} as const satisfies Record<LeadStatus, string>;
+
+/** True when the title is the TCAD fallback: the contract publishes no street address
+ *  (design-review-log row 1), so the row says so instead of showing a made-up one. */
+export function isFallbackTitle(address: string): boolean {
+  return address.startsWith("TCAD ");
+}
+
+export function coordinateText(lat: number, lon: number): string {
+  return `${lat.toFixed(5)}, ${lon.toFixed(5)}`.replace(/-/g, "−");
+}
+
+function LeadRow({
+  lead,
+  mine,
 }: {
-  readonly query: LeadQuery;
-  readonly onPatch: (patch: LeadQueryPatch) => void;
+  readonly lead: LeadListItem;
+  readonly mine: readonly string[];
 }): ReactElement {
   return (
-    <section className={styles.filters} aria-label="Lead filters">
-      <div className={filterStyles.group}>
-        <span className={filterStyles.groupLabel}>Roof age ≥</span>
-        <div className={filterStyles.chips} role="group" aria-label="Roof age threshold">
-          {ROOF_AGE_CHIPS.map((years) => (
-            <button
-              key={years}
-              type="button"
-              className={`${filterStyles.chip} ${
-                query.roofAgeMinYears === years ? filterStyles.chipSelected : ""
-              }`}
-              aria-pressed={query.roofAgeMinYears === years}
-              onClick={() => onPatch({ roof: query.roofAgeMinYears === years ? null : years })}
-            >
-              {years}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={filterStyles.group}>
-        <span className={filterStyles.groupLabel}>Permit status</span>
-        <div className={filterStyles.chips} role="group" aria-label="Permit status">
-          {PERMIT_STATUSES.map((status) => (
-            <button
-              key={status}
-              type="button"
-              className={`${filterStyles.chip} ${
-                query.permitStatus === status ? filterStyles.chipSelected : ""
-              }`}
-              aria-pressed={query.permitStatus === status}
-              onClick={() => onPatch({ permit: query.permitStatus === status ? null : status })}
-            >
-              {status[0]?.toUpperCase()}
-              {status.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className={styles.filterRow}>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-status">
-            Status
-          </label>
-          <select
-            id="lead-status"
-            className={filterStyles.select}
-            value={query.status ?? ""}
-            onChange={(e) =>
-              onPatch({ status: LEAD_STATUSES.find((s) => s === e.target.value) ?? null })
-            }
-          >
-            <option value="">Any</option>
-            {LEAD_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {STATUS_LABEL[status]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-lat">
-            Center latitude
-          </label>
-          <input
-            id="lead-lat"
-            className={filterStyles.input}
-            type="number"
-            step="any"
-            value={query.center?.lat ?? ""}
-            onChange={(e) => onPatch({ lat: committedNumber(e.target.value) })}
-          />
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-lng">
-            Center longitude
-          </label>
-          <input
-            id="lead-lng"
-            className={filterStyles.input}
-            type="number"
-            step="any"
-            value={query.center?.lng ?? ""}
-            onChange={(e) => onPatch({ lng: committedNumber(e.target.value) })}
-          />
-        </div>
-        <div className={filterStyles.field}>
-          <label className={filterStyles.label} htmlFor="lead-radius">
-            Radius, mi
-          </label>
-          <input
-            id="lead-radius"
-            className={filterStyles.input}
-            type="number"
-            step="0.5"
-            value={query.radiusMi}
-            onChange={(e) => onPatch({ r: committedNumber(e.target.value) })}
-          />
-        </div>
-      </div>
-      {hasActiveFilters(query) ? (
-        <button
-          type="button"
-          className={styles.clear}
-          onClick={() =>
-            onPatch({
-              roof: null,
-              permit: null,
-              lat: null,
-              lng: null,
-              r: null,
-              status: null,
-              assignee: null,
-            })
-          }
-        >
-          Clear filters
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function committedNumber(text: string): number | null {
-  if (text.trim() === "") return null;
-  const n = Number(text);
-  return Number.isFinite(n) ? n : null;
-}
-
-function LeadCard({ lead }: { readonly lead: LeadListItem }): ReactElement {
-  return (
-    <li className={styles.card} data-lead-id={lead.leadId}>
-      <Link className={styles.cardLink} to={`/leads/${encodeURIComponent(lead.leadKey)}`}>
-        {lead.address}
-      </Link>
-      <div className={styles.meta}>
-        <StatusPill status={LEAD_STATUS_KIND[lead.status]} text={STATUS_LABEL[lead.status]} />
-        {lead.notInCurrentRun ? (
-          <StatusPill status="warning" text="Not in the current run" data={{ field: "run" }} />
+    <li className={styles.row} data-lead-id={lead.leadId}>
+      <div className={styles.cellLead}>
+        <Link className={styles.cardLink} to={`/leads/${encodeURIComponent(lead.leadKey)}`}>
+          {lead.address}
+        </Link>
+        {isFallbackTitle(lead.address) ? (
+          <span className={styles.sub}>
+            {`Address not published · ${coordinateText(lead.lat, lead.lon)}`}
+          </span>
         ) : null}
-        <span>{`Assignee ${lead.assignee}`}</span>
-        <span>{`Created ${lead.createdAt.slice(0, 16).replace("T", " ")} UTC`}</span>
+      </div>
+      <div className={styles.cellStatus}>
+        <StatusPill
+          status={LEAD_STATUS_KIND[lead.status]}
+          text={STATUS_LABEL[lead.status]}
+          icon={LEAD_STATUS_ICON[lead.status]}
+        />
+        {lead.notInCurrentRun ? (
+          <StatusPill
+            status="warning"
+            text="Not in the current run · snapshot"
+            icon="history"
+            data={{ field: "run" }}
+          />
+        ) : null}
+      </div>
+      <div className={styles.facts}>
+        <span className={styles.cell}>
+          <span className={styles.srOnly}>Assignee </span>
+          {personLabel(lead.assignee, mine)}
+        </span>
+        <span className={styles.cell}>
+          <span className={styles.pre}>From </span>
+          {originLabel(lead.createdFrom)}
+        </span>
+        <span className={styles.cell}>
+          <span className={styles.pre}>Created </span>
+          <time dateTime={lead.createdAt} title={leadTimeExact(lead.createdAt)}>
+            {leadTime(lead.createdAt)}
+          </time>
+        </span>
       </div>
     </li>
   );
 }
 
+function offsetOf(cursor: string | undefined): number {
+  if (cursor === undefined) return 0;
+  const n = Number.parseInt(cursor, 10);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
 export function Component(): ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const query = useMemo(() => parseLeadQuery(searchParams), [searchParams]);
+  const query: LeadQuery = useMemo(() => parseLeadQuery(searchParams), [searchParams]);
   const result = useLeadsList(toLeadsListInput(query));
   const patch = (next: LeadQueryPatch): void =>
     setSearchParams((prev) => patchLeadParams(prev, next));
+  const mine = useMemo(() => myIds(), []);
+
+  const filtered = hasActiveFilters(query);
+  const loaded = result.status === "success" ? result.data : undefined;
+  const noLeadsYet = loaded !== undefined && loaded.leads.length === 0 && !filtered;
+  const noMatch = loaded !== undefined && loaded.leads.length === 0 && filtered;
+  const summary = filterSummary(query);
+
+  const head = (
+    <header className={styles.head}>
+      <div className={styles.headTitle}>
+        <h2 id="leads-title" className={styles.title}>
+          Leads
+        </h2>
+        <span className={styles.headCount} aria-hidden="true">
+          {loaded === undefined ? "" : `· ${loaded.totalCount}`}
+        </span>
+      </div>
+      <LeadActions query={query} />
+    </header>
+  );
 
   let body: ReactElement;
   if (result.status === "pending") {
-    body = <Skeleton variant="cards" />;
-  } else if (result.status === "error") {
-    body = (
-      <ErrorBanner
-        message="Leads could not be loaded."
-        onRetry={() => {
-          void result.refetch();
-        }}
-      />
-    );
-  } else if (result.data.leads.length === 0) {
-    body = hasActiveFilters(query) ? (
-      <EmptyState title="No leads match these filters">
-        Try widening the radius or clearing a filter.
-      </EmptyState>
-    ) : (
-      <EmptyState title="No leads yet">
-        Open a property on the map and choose Create lead to add the first one.
-      </EmptyState>
-    );
-  } else {
-    const { leads, nextCursor, totalCount } = result.data;
     body = (
       <>
-        <p className={styles.count}>{`${totalCount} ${totalCount === 1 ? "lead" : "leads"}`}</p>
+        <p className={styles.count}>
+          <span>… leads</span>
+        </p>
+        <div className={styles.loadingCard} aria-busy="true">
+          <LeadProgress label="Loading your leads" />
+          <p className={styles.loadingText} role="status">
+            Loading your leads…
+          </p>
+          <Skeleton variant="cards" count={3} />
+        </div>
+      </>
+    );
+  } else if (result.status === "error") {
+    body = (
+      <>
+        <LeadBanner
+          kind="error"
+          icon="error"
+          headline="Leads couldn't load."
+          actionLabel="Retry"
+          onAction={() => {
+            void result.refetch();
+          }}
+        >
+          The lead store didn't answer. Nothing was lost; your filters are kept.
+        </LeadBanner>
+      </>
+    );
+  } else if (noLeadsYet) {
+    body = (
+      <section className={styles.stateCard} aria-labelledby="leads-empty" role="status">
+        <Icon name="contact_page" />
+        <h3 id="leads-empty" className={styles.stateTitle}>
+          No leads yet
+        </h3>
+        <p className={styles.stateBody}>
+          Create your first lead from the map: find aged roofs and long-open permits, then choose
+          Create lead.
+        </p>
+        <Link className={styles.primary} to="/">
+          <Icon name="map" size="medium" />
+          Go to map
+        </Link>
+      </section>
+    );
+  } else if (noMatch) {
+    body = (
+      <>
+        <p className={styles.count}>
+          <span>0 leads</span>
+          {summary === null ? null : (
+            <>
+              <span aria-hidden="true">{" · "}</span>
+              <span>{summary}</span>
+            </>
+          )}
+        </p>
+        <section className={styles.stateCard} aria-labelledby="leads-nomatch" role="status">
+          <h3 id="leads-nomatch" className={styles.stateTitle}>
+            No leads match these filters
+          </h3>
+          <p className={styles.stateBody}>
+            Clear filters, or widen the radius or lower the roof age.
+          </p>
+          <button
+            type="button"
+            className={styles.tonal}
+            onClick={() =>
+              patch({
+                roof: null,
+                permit: null,
+                lat: null,
+                lng: null,
+                r: null,
+                status: null,
+                assignee: null,
+              })
+            }
+          >
+            Clear filters
+          </button>
+        </section>
+      </>
+    );
+  } else if (loaded !== undefined) {
+    const { leads, nextCursor, totalCount } = loaded;
+    const flagged = leads.filter((lead) => lead.notInCurrentRun).length;
+    const first = offsetOf(query.cursor) + 1;
+    const last = first + leads.length - 1;
+    body = (
+      <>
+        <p className={styles.count}>
+          <span>{`${totalCount} ${totalCount === 1 ? "lead" : "leads"}`}</span>
+          <span aria-hidden="true">{" · "}</span>
+          <span>{summary ?? "all mine"}</span>
+        </p>
+        {flagged === 0 ? null : (
+          <LeadBanner kind="warning" icon="history" headline="Property not in the current run.">
+            {`${flagged === 1 ? "1 lead keeps" : `${flagged} leads keep`} its snapshot. Status, notes and history are complete.`}
+          </LeadBanner>
+        )}
+        <div className={styles.thead} aria-hidden="true">
+          <span>Lead</span>
+          <span>Status</span>
+          <span>Assignee</span>
+          <span>From</span>
+          <span>Created</span>
+        </div>
         <ul className={styles.list}>
           {leads.map((lead) => (
-            <LeadCard key={lead.leadKey} lead={lead} />
+            <LeadRow key={lead.leadKey} lead={lead} mine={mine} />
           ))}
         </ul>
         <nav className={styles.pager} aria-label="Lead pages">
-          {query.cursor === undefined ? null : (
-            <button
-              type="button"
-              className={styles.pageBtn}
-              onClick={() => patch({ cursor: null })}
-            >
-              First page
-            </button>
-          )}
-          {nextCursor === undefined ? null : (
-            <button
-              type="button"
-              className={styles.pageBtn}
-              onClick={() => patch({ cursor: nextCursor })}
-            >
-              Next page
-            </button>
-          )}
+          <span className={styles.pagerText}>
+            {totalCount <= leads.length && first === 1
+              ? `Showing 1–${leads.length} of ${totalCount}`
+              : `Showing ${first}–${last} of ${totalCount}`}
+          </span>
+          <span className={styles.pagerButtons}>
+            {query.cursor === undefined ? null : (
+              <button
+                type="button"
+                className={styles.pageBtn}
+                onClick={() => patch({ cursor: null })}
+              >
+                First page
+              </button>
+            )}
+            {nextCursor === undefined ? null : (
+              <button
+                type="button"
+                className={styles.pageBtn}
+                onClick={() => patch({ cursor: nextCursor })}
+              >
+                Next page
+              </button>
+            )}
+          </span>
         </nav>
       </>
     );
+  } else {
+    body = <></>;
   }
 
   return (
     <section className={styles.page} aria-labelledby="leads-title">
-      <header className={styles.head}>
-        <h2 id="leads-title" className={styles.title}>
-          Leads
-        </h2>
-      </header>
-      <Filters query={query} onPatch={patch} />
+      <LeadFilters
+        query={query}
+        params={searchParams}
+        onPatch={patch}
+        totalCount={loaded?.totalCount}
+        head={head}
+        noMatch={noMatch}
+        hidePanel={noLeadsYet}
+      />
       {body}
     </section>
   );

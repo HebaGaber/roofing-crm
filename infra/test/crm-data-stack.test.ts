@@ -72,6 +72,15 @@ describe("CrmData (T038)", () => {
     });
   });
 
+  it("B-09 T017: creates crm-agent-usage with a single partition key and a TTL attribute", () => {
+    build().hasResourceProperties("AWS::DynamoDB::Table", {
+      TableName: "crm-agent-usage",
+      KeySchema: [{ AttributeName: "pk", KeyType: "HASH" }],
+      TimeToLiveSpecification: { AttributeName: "ttl", Enabled: true },
+      Tags: [{ Key: "project_name", Value: "roofing-crm" }],
+    });
+  });
+
   it("declares no Task A resources — this stack only ever reads Task A's public CID copies", () => {
     expect(() => build()).not.toThrow();
   });

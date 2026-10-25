@@ -35,7 +35,7 @@ approved_by: [HebaGaber]
 flowchart LR
   REP["Sales rep / evaluator\n(shared test login)"]
   CRM["Roofing CRM\ncrm.aldarraj.com"]
-  TASKA["Task A: CountyLens\npublished CIDs + MCP\n(public, read-only)"]
+  TASKA["Task A: CountyLens\npublished manifest + parts by CID\n(public, read-only; MCP optional)"]
   BEDROCK["Amazon Bedrock\n(via Vercel AI SDK)"]
   COG["Amazon Cognito\n(shared test user)"]
 
@@ -46,7 +46,7 @@ flowchart LR
   CRM -.->|"optional: cross-check, coverage"| TASKA
 ```
 
-The CRM is the only system a rep touches. It never reaches Task A's internal stores (Query DB, buckets, SSM), only Task A's published, CID-verified bytes and (optionally, never on the request path) its MCP.
+The CRM is the only system a rep touches. Its sync job copies Task A's published data into the CRM's own index: the run manifest and its parts, fetched by CID and verified byte for byte. Requests are served from that index, never from Task A at run time. It never reaches Task A's internal stores (Query DB, buckets, SSM). Task A's MCP is optional, for cross-checks only, and never on the request path.
 
 ### 2.2 Container (C4-2)
 
@@ -188,7 +188,7 @@ Each row traces to the read-only consults in `docs/decisions/0000-agent-architec
 
 ## 7. Data access rules
 
-- Property and permit data comes **only** from Task A's published, CID-verified artifacts (CloudFront copy, then Filebase, then Pinata — ADR-02) or Task A's MCP (cross-check only, never on the request path). No `s3:GetObject` on Task A's buckets, no reading `/countylens/*` SSM parameters, no CloudFormation imports from Task A stacks, no calls to Task A's tRPC API, no Query DB access. Both tasks share one AWS account; the CRM's IAM roles carry an explicit **Deny** on Task A's resource ARNs as a second line of defense (espeon P0-1), in addition to never calling those APIs in code.
+- The CRM **syncs** property and permit data **from Task A's published data** into its own index (requests never go to Task A at run time). `DATA_MANIFEST_CID` (`packages/config`) names the run manifest; the sync fetches that manifest and every part it lists by CID (CloudFront copy, then Filebase, then Pinata — ADR-02), verifies each byte, and builds the CRM index from it. Pointing the CRM at a newer run is a change to that one setting. No catalog lookup (Atlas registration, MCP `listPublishedCounties`) is needed to find the data. Task A's MCP is optional, for cross-checks only, never on the request path. No `s3:GetObject` on Task A's buckets, no reading `/countylens/*` SSM parameters, no CloudFormation imports from Task A stacks, no calls to Task A's tRPC API, no Query DB access. Both tasks share one AWS account; the CRM's IAM roles carry an explicit **Deny** on Task A's resource ARNs as a second line of defense (espeon P0-1), in addition to never calling those APIs in code.
 - Leads are the CRM's own data, stored in DynamoDB, owned and written only by the CRM (constitution B2). The sync job never edits or deletes a lead; a property absent from a new run puts the lead's "Now" view into a stale/"not in Run n" state, computed at read time.
 - Every row, index document, and agent claim carries provenance (`cid`, `source_url` or its missing reason, `captured_at`, `table_cid`, `run_id`, `manifest_cid`, `as_of`). A null field always carries its `missing` reason from Task A's closed list; the CRM never geocodes, guesses, or invents a value.
 
@@ -258,7 +258,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 
 ## 12. Blocking violations (P0)
 
-1. **Access boundary.** Data comes only from Task A's published CIDs (CloudFront copy or gateway, CID-verified — ADR-02) or its MCP (cross-check only). No IAM access to Task A's resources (enforced by both never calling those APIs and an explicit IAM Deny on Task A's ARNs), no scraping, no ingestion, no Query DB access.
+1. **Access boundary.** Data is synced from Task A's published data: the configured run manifest and its parts, by CID (CloudFront copy or gateway, CID-verified — ADR-02). Task A's MCP is for cross-checks only. No IAM access to Task A's resources (enforced by both never calling those APIs and an explicit IAM Deny on Task A's ARNs), no scraping, no ingestion, no Query DB access.
 2. **CID integrity.** Every fetched byte is checked against its CID before use. A mismatch fails the part; a run with a failed part is never promoted.
 3. **One run per index; atomic promotion.** Every index row and every API response carries the `manifestCid` it came from. The pointer flips only after `Validate` passes. No partial promotion.
 4. **Data honesty.** Nothing invented, synthetic, or sample-shaped appears in a deployed index or UI. `contract/v1/sample.parquet` and `pilot-manifest.json` are for tests only. BBB is shown as a rating only when `bbb_status = rated`. A null `improvement_status` permit is "stalled", never "open". Missing data always says why.
@@ -304,7 +304,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 
 These were raised by one consult and not settled by the others (`docs/decisions/0000-agent-architecture.md` § "D8"). They do not change any decision above; they are follow-ups:
 
-1. **Does an incremental Task A run (A-11 Run 2/3) publish a full snapshot, or only changed rows?** If delta-only, a full rebuild from one manifest could silently drop older permits. Mitigation already in place regardless: the sync blocks promotion on an unexplained row-count drop > 5%. Ask Task A to state this explicitly in the A-11 spec.
+1. **Incremental Task A runs are delta-only per data group** (answered by Task A's A-11 `research.md`: an unchanged group is omitted from the new manifest; a consumer follows `previousManifestCid` back to its last CID). The sync reads one manifest, so a delta-only run is held by the > 5% row-drop check and the CRM stays on the last good run — never silently wrong. **Deferred (PO, 2026-10-24):** chain-following in the sync, to ship after Tasks A and B are complete as an update alongside the "coming soon" sections; it cannot be tested before Task A publishes a real incremental run.
 2. **The published manifest carries no explicit contract version field.** The CRM detects contract compatibility by schema fingerprint instead (§ 6). Ask Task A to add a `contract` field to the manifest or to `profiles[]` when FU-A-01 ships.
 3. **Account-wide Lambda concurrency may be as low as 10**, shared with Task A's own functions. Check `aws lambda get-account-settings` at B-01; no design change until it is measured.
 

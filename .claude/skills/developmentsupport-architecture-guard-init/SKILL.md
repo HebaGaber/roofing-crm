@@ -25,7 +25,7 @@ Fill `assessment-guide/templates/architecture-constitution.md` and save it as `d
 4. Give each NFR a threshold and a way to verify it on the hosted runtime.
 5. List the P0 rules. Always include the task's access boundary:
    - Task A: publish only `elephant-cli export-tables` output, and never expose the Query DB.
-   - Task B: no scraping or ingestion; read only Task A's CIDs or MCP.
+   - Task B: no scraping or ingestion; read Task A's published data directly (manifest and parts by CID); MCP only as a cross-check.
 6. Record the deployment and rollback strategy (Amplify atomic deploy plus CDK; redeploying the previous build is the Blue/Green equivalent).
 7. Use only the kit-bundled Elephant skills (`soofi-xyz-team-kit/skills/`). Never reference the deprecated standalone `elephant-xyz/skills` repo.
 8. Run the checks from `developmentsupport-g3-precheck` and report the verdict. The user, as Architect and Dev Lead, records the G3 decision.

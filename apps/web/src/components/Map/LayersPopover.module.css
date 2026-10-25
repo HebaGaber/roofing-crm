@@ -24,7 +24,7 @@
 .checkbox {
   width: 20px;
   height: 20px;
-  margin-top: 2px;
+  margin: var(--space-1) 0 0;
   accent-color: var(--md-sys-color-primary);
 }
 
@@ -40,4 +40,13 @@
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-body-small-font);
   font-size: var(--md-sys-typescale-body-small-size);
+}
+
+/* A layer the published data cannot draw: shown, disabled, with its reason. */
+.disabled {
+  cursor: default;
+}
+
+.disabled .label {
+  color: var(--md-sys-color-on-surface-variant);
 }

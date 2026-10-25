@@ -53,13 +53,30 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     promoteHandlerEntry: new URL(PROMOTE_HANDLER_ENTRY, import.meta.url).pathname,
     indexBucketName: dataStack.indexBucket.bucketName,
     leadsTableName: CRM_LEADS_TABLE_NAME,
+    // B-09 auto-sync: the one place the served Task A run is chosen. Changing DATA_MANIFEST_CID and
+    // deploying updates CrmSync's SSM-pinned CID and starts one sync of that run.
+    dataManifestCid: config.dataManifestCid,
+    // B-09 review fix: a new nonce every synth, so every deploy re-attempts the sync start
+    // (crm-sync-stack.ts's deploy-time StartExecution).
+    deployNonce: config.deployNonce,
+    // B-09 T050/T052 (AC-6): the FetchPart DLQ alarm's (and CrmOps's groundedness alarm's) SNS
+    // email subscriber. From cdk.json context `crm:alarmEmail` (infra/src/config.ts), never a
+    // literal here.
+    alarmEmail: config.alarmEmail,
   });
   syncStack.addDependency(dataStack);
 
   const opsStack = new CrmOpsStack(app, "CrmOps", {
     env,
     lockoutHandlerEntry: new URL(LOCKOUT_HANDLER_ENTRY, import.meta.url).pathname,
+    // B-09 T053: the `RoofingCrm` dashboard's DLQ-depth/alarm-status widgets read these straight
+    // from CrmSyncStack's own public queue/alarm references (no second DLQ, no duplicated alarm
+    // definition).
+    fetchPartDlq: syncStack.fetchPartDlq,
+    fetchPartDlqAlarm: syncStack.fetchPartDlqAlarm,
+    alarmTopic: syncStack.alarmTopic,
   });
+  opsStack.addDependency(syncStack);
 
   const apiStack = new CrmApiStack(app, "CrmApi", {
     env,
@@ -70,6 +87,11 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     // B-03: search.properties/search.permits/property.get read the B-02 index this way too.
     indexBucketName: dataStack.indexBucket.bucketName,
     leadsTableName: CRM_LEADS_TABLE_NAME,
+    // B-09 T017: rateLimiter.ts/spendCap.ts read/write this table.
+    agentUsageTableName: dataStack.agentUsageTable.tableName,
+    // B-09: apps/api/src/agent/getModel.ts reads these via the Lambda's environment.
+    aiProvider: config.aiProvider,
+    agentModelId: config.agentModelId,
   });
   // The recorded deviation from architecture-constitution.md §11's literal stack order
   // (plan.md's Complexity Tracking table): CrmApi's JWT authorizer needs CrmOps's pool first.

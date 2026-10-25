@@ -28,8 +28,8 @@ test.describe("Responsive design: sign-in screen", () => {
   test("the sign-in form is visible and reachable without horizontal scroll", async ({ page }) => {
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const username = page.getByLabel("Username");
-    const password = page.getByLabel("Password");
+    const username = page.getByLabel("Email");
+    const password = page.getByLabel("Password", { exact: true });
     const submit = page.getByRole("button", { name: /Sign in/ });
     await expect(username).toBeVisible();
     await expect(password).toBeVisible();

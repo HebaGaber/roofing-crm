@@ -99,6 +99,9 @@ describe("CrmApi (T007)", () => {
         lockoutTable: ops.lockoutTable,
         indexBucketName: "crm-index",
         leadsTableName: "crm-leads",
+        agentUsageTableName: "crm-agent-usage",
+        aiProvider: "bedrock",
+        agentModelId: "eu.anthropic.claude-sonnet-4-6",
       }),
     );
     return cachedTemplate;
@@ -181,6 +184,29 @@ describe("CrmWeb (T009)", () => {
       ]),
     });
     template.resourceCountIs("AWS::Amplify::Branch", 1);
+  });
+
+  it("writes dist/build.json with the commit Amplify built, so CI can wait for its own build", () => {
+    const template = Template.fromStack(
+      new CrmWebStack(new App(), "CrmWeb", {
+        env: ENV,
+        githubRepository: "HebaGaber/roofing-crm",
+        githubRef: "001-crm-shell",
+        apiUrl: "https://example.execute-api.eu-north-1.amazonaws.com",
+        userPoolId: "eu-north-1_example",
+        userPoolClientId: "exampleclientid",
+      }),
+    );
+    const app = Object.values(template.findResources("AWS::Amplify::App"))[0] as {
+      Properties: { BuildSpec: string };
+    };
+    const spec = JSON.parse(app.Properties.BuildSpec) as {
+      applications: { frontend: { phases: { build: { commands: string[] } } } }[];
+    };
+    const commands = spec.applications[0]?.frontend.phases.build.commands ?? [];
+    expect(commands.some((c) => c.includes("dist/build.json") && c.includes("AWS_COMMIT_ID"))).toBe(
+      true,
+    );
   });
 });
 

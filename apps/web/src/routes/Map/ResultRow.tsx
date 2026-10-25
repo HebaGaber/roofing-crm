@@ -11,6 +11,13 @@ import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract
 import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
 import { CidDisplay, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
 import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
+import {
+  coordinateSourceLabel,
+  groupMissing,
+  propertyKind,
+  roofAgeBasisLabel,
+  roofAgeConfidenceLabel,
+} from "../../format/index.js";
 import { PermitChip } from "./PermitChip.js";
 import styles from "./ResultRow.module.css";
 
@@ -25,10 +32,10 @@ export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): R
     <span className={styles.titleStack}>
       <span className={styles.titleMain}>{`TCAD ${row.requestIdentifier}`}</span>
       <span className={styles.titleSub}>
-        Address not published
+        Address not published in this run
         {row.latitude === null || row.longitude === null
           ? ""
-          : ` · ${row.latitude.toFixed(4)}, ${row.longitude.toFixed(4)}`}
+          : ` · ${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`}
       </span>
     </span>
   );
@@ -48,17 +55,17 @@ function RowDistance({
   return <span className={styles.distance}>{`${miles.toFixed(1)} mi`}</span>;
 }
 
-export function TypePill({ propertyType }: { readonly propertyType: string | null }): ReactElement {
-  if (propertyType === null) {
-    return <StatusPill status="unavailable" text="Type not published" />;
+/** E-51 Residential / Commercial from the published usage type; "Type not published" when it
+ *  is null (E-93). The structure form (`propertyType`, e.g. "Building") is not the design's type. */
+export function TypePill({ usageType }: { readonly usageType: string | null }): ReactElement {
+  const kind = propertyKind(usageType);
+  if (!kind.published) {
+    return <StatusPill status="unavailable" text={kind.label} icon="help" />;
   }
   return (
-    <span className={styles.typePill}>
-      <Icon
-        name={propertyType.toLowerCase() === "commercial" ? "storefront" : "home"}
-        size="small"
-      />
-      {propertyType}
+    <span className={styles.typePill} data-field="property_usage_type">
+      <Icon name={kind.icon} size="small" />
+      {kind.label}
     </span>
   );
 }
@@ -83,7 +90,10 @@ function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactEl
   return (
     <span className={styles.roofBadges}>
       <StatusPill status="info" text={`Roof ${row.roofAgeYears} yrs`} icon="roofing" />
-      <StatusPill status={confidenceStatus} text={`Confidence ${row.roofAgeConfidence}`} />
+      <StatusPill
+        status={confidenceStatus}
+        text={`Confidence ${roofAgeConfidenceLabel(row.roofAgeConfidence)}`}
+      />
     </span>
   );
 }
@@ -131,38 +141,41 @@ export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty>
         {row.roofAgeYears === null ? <RoofAgeGap row={row} /> : `${row.roofAgeYears} yrs`}
       </Cell>
       <Cell label="Basis" field="roof_age_basis">
-        {row.roofAgeBasis}
+        {roofAgeBasisLabel(row.roofAgeBasis)}
       </Cell>
       <Cell label="Confidence" field="roof_age_confidence">
-        {row.roofAgeConfidence}
+        {roofAgeConfidenceLabel(row.roofAgeConfidence)}
       </Cell>
       <Cell label="Coordinates" field="lat_lon">
         {row.latitude === null || row.longitude === null ? (
-          <span>coordinates not available</span>
+          <span>{coordinateSourceLabel("none")}</span>
         ) : (
-          `${row.latitude}, ${row.longitude}`
+          `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)} · ${coordinateSourceLabel(row.coordinateSource)}`
         )}
       </Cell>
     </dl>
   );
 }
 
-/** The row's `missingReasons` entries, grouped by reason (constitution XI/P0-4). */
+/** The row's `missingReasons` entries, grouped by reason (constitution XI/P0-4): the fields in
+ *  plain language, then the contract's reason label. The raw names stay in `data-fields`. */
 export function MissingSummary({
   row,
 }: {
-  readonly row: Provenanced<CrmProperty>;
+  readonly row: Pick<Provenanced<CrmProperty>, "missingReasons">;
 }): ReactElement | null {
   if (row.missingReasons.length === 0) return null;
-  const groups = new Map<string, string[]>();
-  for (const m of row.missingReasons)
-    groups.set(m.reason, [...(groups.get(m.reason) ?? []), m.field]);
   return (
     <ul className={styles.missing} aria-label="Missing data">
-      {[...groups].map(([reason, fields]) => (
-        <li key={reason} className={styles.missingGroup} data-missing-group={reason}>
-          <code className={styles.fieldNames}>{fields.join(", ")}</code>
-          <MissingReason field={fields[0] ?? ""} reason={reason as Reason} />
+      {groupMissing(row.missingReasons).map((group) => (
+        <li
+          key={group.reason}
+          className={styles.missingGroup}
+          data-missing-group={group.reason}
+          data-fields={group.fields.join(",")}
+        >
+          <span className={styles.fieldNames}>{group.fieldsLabel}</span>
+          <MissingReason field={group.fields[0] ?? ""} reason={group.reason as Reason} />
         </li>
       ))}
     </ul>
@@ -236,7 +249,7 @@ export function ResultRow({
       </header>
       <div className={styles.badgeRow}>
         <RoofBadge row={row} />
-        <TypePill propertyType={row.propertyType} />
+        <TypePill usageType={row.propertyUsageType} />
       </div>
       <p className={styles.cidLine}>
         Property <CidDisplay cid={row.propertyCid} />

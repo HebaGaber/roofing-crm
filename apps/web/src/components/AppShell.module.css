@@ -20,12 +20,16 @@
 /* Top app bar: 64 px, surface, title-large; elevation 2 while the main region is scrolled. */
 .bar {
   grid-area: bar;
-  z-index: 1;
+  /* Above every page layer (map controls 10, result/filter sheets up to 30), so the data panel
+     and the Apps / account menus open over the page, not under it. */
+  z-index: 40;
   box-sizing: border-box;
   height: var(--space-10);
   display: flex;
   align-items: center;
   padding: 0 var(--space-4);
+  /* The 1 px edge under the bar on compact (CrmShell390); from 600 px elevation on scroll. */
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
   transition: box-shadow var(--md-sys-motion-duration-short) var(--md-sys-motion-easing-standard);
@@ -96,19 +100,11 @@
 }
 
 .item:hover .pill {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-hover-opacity) * 100%),
-    transparent
-  );
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .item:active .pill {
-  background: color-mix(
-    in srgb,
-    var(--md-sys-color-on-surface) calc(var(--md-sys-state-pressed-opacity) * 100%),
-    transparent
-  );
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .itemActive {
@@ -124,6 +120,12 @@
   text-align: center;
 }
 
+/* Which layout a destination belongs to (navigation.ts `where`): the bottom bar below 600 px, the
+   rail from 600 px. Map's children (Filters, AI) are the rail's, smaller under Map. */
+.itemRailOnly {
+  display: none;
+}
+
 /* Medium and up (Atlas § 4): navigation rail, 80 px wide, left of the main region; 24 px margins. */
 @media (min-width: 600px) {
   .shell {
@@ -134,6 +136,29 @@
       "nav main";
   }
 
+  .itemRailOnly {
+    display: flex;
+  }
+
+  .itemBarOnly {
+    display: none;
+  }
+
+  /* Nested under Map (CrmShell1440): a smaller icon pill and quieter label. */
+  .itemNested {
+    min-height: var(--space-8);
+  }
+
+  .itemNested .pill {
+    width: var(--space-9);
+    height: var(--space-6);
+  }
+
+  .itemNested .label {
+    font-size: var(--md-sys-typescale-label-small-size);
+    line-height: var(--md-sys-typescale-label-small-line-height);
+  }
+
   .nav {
     height: auto;
     width: calc(var(--space-10) + var(--space-4));
@@ -141,9 +166,57 @@
     justify-content: flex-start;
     gap: var(--space-3);
     padding: var(--space-2) 0 0;
+    /* Three destinations plus the Coming-soon group fit a 768 px-tall window; a shorter one
+       scrolls the rail rather than clipping its last items. */
+    overflow-x: hidden;
+    overflow-y: auto;
   }
 
   .main {
     padding: var(--space-6);
   }
+
+  /* The title sits 24 px from the window edge, in line with the page content (CrmShell1440). */
+  .bar {
+    padding: 0 var(--space-6);
+    border-bottom: 0;
+  }
+}
+
+/* The Map route is full bleed (CrmMap390/768/1440): no page margin at any width, so the map and
+   its panes meet the bar, the rail and the window edge. Two classes outrank the media rule above. */
+.main.mainFullBleed {
+  padding: 0;
+}
+
+/* Skip to content: out of sight until it has focus, then a filled button at the top left, above
+   the bar (z-index 50, over the menus' 40). */
+.skip {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: 50;
+  box-sizing: border-box;
+  min-height: var(--space-9);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-6);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
+  text-decoration: none;
+  transform: translateY(calc(-1 * var(--space-10) * 2));
+}
+
+.skip:focus-visible {
+  transform: none;
+  outline: 3px solid var(--md-sys-color-on-primary);
+  outline-offset: -4px;
+}
+
+.main:focus {
+  outline: none;
 }

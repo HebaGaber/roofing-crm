@@ -10,13 +10,20 @@
 // status filter of its own, contracts/search-api.md). There is no separate "show permits"
 // toggle in the CRM-HANDOFF filter set — the old A-13 "Show open permits" checkbox was left
 // behind by the structural rebuild and has been removed as a duplicate of "Permit status".
-// Below 840 px the controls collapse into a real dismissible sheet behind a "Filters" button
+// Below 1280 px the controls collapse into a real dismissible sheet behind a "Filters" button
 // (aria-expanded; Escape and backdrop-click close it, matching `@crm/ui`'s `Popover`); from
-// 840 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
+// 1280 px they sit beside the results as an always-visible anchored panel (same breakpoint as the
 // file this replaces). Atlas outlined text fields and chips, 48 px targets. Render-only.
-import { IconButton } from "@crm/ui";
+import { Icon, IconButton } from "@crm/ui";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
-import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from "react";
 import styles from "./FilterSheet.module.css";
 
 /** CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other'; default 15)". */
@@ -39,6 +46,15 @@ export interface FilterSheetProps {
   /** Permit open ≥ N yrs; `undefined` = "Any". */
   readonly permitOpenYrs: number | undefined;
   readonly onPermitOpenYrsChange: (value: number | undefined) => void;
+  /** How many properties match the filters now (the chip on the phone toolbar's Filters button,
+   *  boards CrmMapPin390 and CrmMap390); absent while there is no search to count. */
+  readonly matchCount?: number | undefined;
+  /** Controlled open state (the map's `mode=filters` opens the phone sheet). Absent = the sheet
+   *  keeps its own state, as before. */
+  readonly open?: boolean | undefined;
+  readonly onOpenChange?: ((open: boolean) => void) | undefined;
+  /** True where the panel is a permanent pane beside the map (a region, not a dialog). */
+  readonly inline?: boolean | undefined;
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -58,17 +74,62 @@ export function FilterSheet({
   onPermitStatusChange,
   permitOpenYrs,
   onPermitOpenYrsChange,
+  matchCount,
+  open: controlledOpen,
+  onOpenChange,
+  inline = false,
 }: FilterSheetProps): ReactElement {
   const id = useId();
-  const [open, setOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const open = controlledOpen ?? ownOpen;
+  const setOpen = (next: boolean | ((current: boolean) => boolean)): void => {
+    const value = typeof next === "function" ? next(open) : next;
+    setOwnOpen(value);
+    onOpenChange?.(value);
+  };
   // What the person is typing, until they leave the box (mirrors the copied-from file's "drafts"
   // pattern so a half-typed value is never clobbered by the committed one re-rendering).
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
 
-  // Below 840px the panel is a dismissible overlay: Escape closes it (same contract as
-  // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 840px
+  // aria-modal below 1280 px, so Tab must not leave the sheet: wrap from the last control to the
+  // first and back (the same trap as the Candidates ConfirmSheet).
+  const trapTab = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== "Tab" || !open || panelRef.current === null) return;
+    const focusable = [
+      ...panelRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled])",
+      ),
+    ];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (first === undefined || last === undefined) return;
+    if (
+      event.shiftKey &&
+      (document.activeElement === first || document.activeElement === panelRef.current)
+    ) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  // The overlay is a dialog: focus moves into it when it opens and returns to the Filters button
+  // when it closes (not for the always-visible panel at three-pane widths, which never takes focus).
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (inline) return;
+    if (open && !wasOpen.current) panelRef.current?.focus();
+    if (!open && wasOpen.current) toggleRef.current?.focus();
+    wasOpen.current = open;
+  }, [open, inline]);
+
+  // Below 1280px the panel is a dismissible overlay: Escape closes it (same contract as
+  // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 1280px
   // the panel is always visible beside the results (CSS below), so neither listener fires
   // anything a person can see.
   useEffect(() => {
@@ -83,21 +144,32 @@ export function FilterSheet({
   return (
     <div className={styles.sheet}>
       <button
+        ref={toggleRef}
         type="button"
         className={styles.toggle}
         aria-expanded={open}
         aria-controls={`${id}-panel`}
         onClick={() => setOpen((o) => !o)}
       >
-        Filters
+        <span className={styles.toggleIcon}>
+          <Icon name="tune" size="medium" />
+        </span>
+        <span className={styles.toggleLabel}>Filters</span>
+        {matchCount === undefined ? null : (
+          <span className={styles.count} data-filter-count="">
+            {matchCount}
+          </span>
+        )}
       </button>
       {open ? <div className={styles.backdrop} onClick={close} aria-hidden="true" /> : null}
       <div
         ref={panelRef}
         id={`${id}-panel`}
-        role="dialog"
+        role={inline ? "region" : "dialog"}
         aria-label="Filters"
-        aria-modal={open || undefined}
+        aria-modal={!inline && open ? true : undefined}
+        tabIndex={-1}
+        onKeyDown={inline ? undefined : trapTab}
         className={`${styles.panel} ${open ? styles.open : ""}`}
       >
         <div className={styles.header}>
@@ -188,6 +260,13 @@ export function FilterSheet({
               </option>
             ))}
           </select>
+        </div>
+        <div className={styles.footer}>
+          <button type="button" className={styles.showResults} onClick={close}>
+            {matchCount === undefined
+              ? "Show results"
+              : `Show ${String(matchCount)} ${matchCount === 1 ? "result" : "results"}`}
+          </button>
         </div>
       </div>
     </div>

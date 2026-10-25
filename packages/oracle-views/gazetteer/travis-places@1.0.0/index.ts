@@ -81,6 +81,15 @@ for (const p of places) {
 }
 const zctaByCode = new Map(zctas.map((z) => [z.zcta, z]));
 
+/** T030 (B-09): every known Travis place's bare name ("Austin", "Pflugerville", ...), for the
+ *  agent's fuzzy place-matcher (apps/api/src/services/agent/placeResolver.ts) — `lookup()` above
+ *  only resolves an exact or LSAD-suffixed match, never an approximate one, so a misspelling like
+ *  "Pflugervile" needs this enumeration to score against. Additive: does not change
+ *  `places.json`/`GAZETTEER.sha256`, which cover data, not this exported helper. */
+export function listPlaceNames(): readonly string[] {
+  return places.map((p) => p.name);
+}
+
 function foundPlace(p: PlaceRow): FoundPlace {
   return {
     status: "found",

@@ -1,6 +1,7 @@
 <!--
 Sync Impact Report
-- Version: 2.0.0 → 3.0.0 (2026-10-17): Article VI redefined. Model provider is a setting: Bedrock (default) or Vercel AI Gateway (demo: embeddings now, Claude until the Bedrock quota is raised).
+- Version: 3.0.0 → 3.1.0 (2026-10-24): B1 clarified. The CRM syncs Task A's published data (manifest + parts by CID, manifest named by `DATA_MANIFEST_CID`) into its own index; the MCP is an optional cross-check.
+- Earlier: 2.0.0 → 3.0.0 (2026-10-17): Article VI redefined. Model provider is a setting: Bedrock (default) or Vercel AI Gateway (demo: embeddings now, Claude until the Bedrock quota is raised).
 - Earlier: 1.0.0 → 2.0.0 (2026-10-16): Article III redefined. Region comes from config; demo deploys to eu-north-1 (region-locked AWS project), company default us-east-2.
 - Earlier: 0.0.0 (template placeholders) → 1.0.0
 - Added: Parts 1–3 (articles I–XXIII), Task B addendum (B1–B3), agent roster
@@ -104,7 +105,7 @@ Every failing hosted test gets `docs/defects/ERR-{n}.md`. No Critical defect is 
 
 ## Task B addendum
 
-- **B1.** Property and permit data comes only from Task A's published artifacts (by CID) or its MCP. No scraping, no ingestion, no access to Oracle's internal stores.
+- **B1.** The CRM syncs property and permit data from the data Task A publishes into its own index: the sync job fetches the run manifest named by config (`DATA_MANIFEST_CID`) and the parts it lists by CID, verifies them, and builds the index the CRM queries. Requests never go to Task A at run time. No catalog lookup (Atlas registration or an MCP name search) is needed to find the data. Task A's MCP is optional, for cross-checks only. No scraping, no ingestion, no access to Oracle's internal stores.
 - **B2.** Leads are the CRM's own data (DynamoDB). Every lead records the source manifest CID.
 - **B3.** Agent answers cite records that exist in the index. The agent never invents properties.
 

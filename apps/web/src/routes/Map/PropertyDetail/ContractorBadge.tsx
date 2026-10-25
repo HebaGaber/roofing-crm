@@ -4,6 +4,7 @@
 // `unresolved` (the vendored view's own default, ADR-07). Render-only.
 import type { ReactElement } from "react";
 import { StatusPill, type StatusKind } from "@crm/ui";
+import { contractorResolutionLabel } from "../../../format/index.js";
 
 const STATUS: Readonly<Record<string, StatusKind>> = {
   resolved: "verified",
@@ -18,7 +19,10 @@ export function ContractorBadge({ resolution }: ContractorBadgeProps): ReactElem
   const state = resolution ?? "unresolved";
   return (
     <span data-contractor-resolution={state}>
-      <StatusPill status={STATUS[state] ?? "unavailable"} text={`Contractor ${state}`} />
+      <StatusPill
+        status={STATUS[state] ?? "unavailable"}
+        text={`Contractor ${contractorResolutionLabel(state).toLowerCase()}`}
+      />
     </span>
   );
 }

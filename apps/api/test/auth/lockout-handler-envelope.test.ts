@@ -91,3 +91,50 @@ describe("lockout-handler.ts's Lambda envelope (handler, lockoutStore())", () =>
     });
   });
 });
+
+// ERR (B-09 hosted): Cognito passes its internal sub as `userName` to the triggers, while the web
+// app reports failed attempts under the email the person typed. Both halves must key the same
+// counter, or failures pile up under the email and are never reset by a successful sign-in.
+describe("lockout key is the normalized email on every path", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    sendMock.mockReset();
+    process.env.LOCKOUT_TABLE_NAME = "test-lockout-table";
+  });
+
+  afterEach(() => {
+    delete process.env.LOCKOUT_TABLE_NAME;
+  });
+
+  function withEmail<T extends { request: { userAttributes: Record<string, string> } }>(
+    event: T,
+    email: string,
+  ): T {
+    return { ...event, request: { ...event.request, userAttributes: { email } } };
+  }
+
+  it("pre-authentication reads the counter under the email, not the Cognito sub", async () => {
+    sendMock.mockResolvedValue({ Item: undefined });
+    const { handler } = await import("../../src/auth/lockout-handler.js");
+    await handler(
+      withEmail(preAuthEvent("806cb99c-e001-703e-d400-d2af32506587"), "Admin@Roofing-CRM.test"),
+    );
+    const get = sendMock.mock.calls[0]?.[0] as { input: { Key: { username: string } } };
+    expect(get.input.Key.username).toBe("admin@roofing-crm.test");
+  });
+
+  it("post-authentication resets the counter under the email, not the Cognito sub", async () => {
+    sendMock.mockResolvedValue({});
+    const { handler } = await import("../../src/auth/lockout-handler.js");
+    await handler(
+      withEmail(postAuthEvent("806cb99c-e001-703e-d400-d2af32506587"), "admin@roofing-crm.test"),
+    );
+    const put = sendMock.mock.calls.at(-1)?.[0] as { input: { Item: { username: string } } };
+    expect(put.input.Item.username).toBe("admin@roofing-crm.test");
+  });
+
+  it("normalizes a typed username the same way the triggers do", async () => {
+    const { lockoutKey } = await import("../../src/auth/lockout-handler.js");
+    expect(lockoutKey("  Admin@Roofing-CRM.test ")).toBe("admin@roofing-crm.test");
+  });
+});

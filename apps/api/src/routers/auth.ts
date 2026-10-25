@@ -7,7 +7,7 @@
 // accepted for this story (one shared admin login, no public attacker surface worth hardening
 // against here) — decided with the user rather than assumed.
 import { z } from "zod";
-import { recordFailedAttempt } from "../auth/lockout-handler.js";
+import { lockoutKey, recordFailedAttempt } from "../auth/lockout-handler.js";
 import { createDynamoLockoutStore, type LockoutStore } from "../auth/lockout-store.js";
 import { publicProcedure, router } from "../trpc.js";
 
@@ -28,7 +28,7 @@ export const authRouter = router({
     .input(z.object({ username: z.string().min(1) }))
     .output(z.object({ ok: z.literal(true), locked: z.boolean() }))
     .mutation(async ({ input }) => {
-      const counter = await recordFailedAttempt(lockoutStore(), input.username);
+      const counter = await recordFailedAttempt(lockoutStore(), lockoutKey(input.username));
       // `locked` tells the client this exact attempt just crossed the 4th-failure threshold, so
       // it can show the typed lockout message immediately (AC-3) instead of waiting for a 5th
       // attempt to hit the PreAuthentication gate — see lockout-handler.ts's recordFailedAttempt.

@@ -6,7 +6,8 @@
 // TC-010 work on it, TC-007 creates P_AGE48, TC-011 adds P_5_89. A lead cannot be created twice
 // (that is what AC-2 tests), so `beforeAll` first deletes the four test leads from `crm-leads`
 // (tests/e2e/lib/leads-cleanup.ts, GAP-3) and `afterAll` does it again only when CRM_E2E_CLEANUP=1.
-// That helper needs AWS credentials in the default chain; nothing here prints or stores them.
+// That helper needs AWS credentials in the default chain and AWS_REGION set to the table's region
+// (CI: vars.AWS_REGION; locally export it alongside the profile); nothing here prints or stores them.
 //
 // Request identifiers are read from the live index (`property.get`), never typed by hand. The
 // tRPC calls made directly (property.get, leads.list, leads.create) use the app's own call shape
@@ -24,6 +25,13 @@ import { expect, test, type APIResponse, type Locator, type Page } from "@playwr
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
 import {
+  LEAD_FIXTURES,
+  LEADS_AREA,
+  OLD_MANIFEST_CID,
+  FIXTURES_MANIFEST_CID,
+  STALE_REQUEST_ID,
+} from "./lib/run-fixtures.js";
+import {
   awsCredentialsAvailable,
   createLeadsCleanup,
   type LeadsCleanup,
@@ -31,21 +39,35 @@ import {
 
 /** A saved note shows once the save and the page's refetch complete. */
 const NOTE_VISIBLE_MS = 15_000;
+/** A radius filter makes the lead list wait for the index, which can take several seconds. */
+const FILTERED_LIST_MS = 30_000;
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
 const CLEANUP_AFTER = process.env.CRM_E2E_CLEANUP === "1";
 
-// testplans/B-07-test-cases.md § 5 (real records, confirmed live).
-const P_5_52 = "baguqeera6sd3t5tdfy7xzfaycmcggimk6nzqv7prlcwvbqebohurx37cnpha";
-const P_AGE48 = "baguqeerakmixkpatzw4wbiqtxcqbewecmgrzcw3j4vcm3skbe7zofycy5daq";
-const P_5_89 = "baguqeeraowktgtrrqrvysxggav2z6sxl5jzy4y5ql43c4ye5mivxphj7p3na";
-const MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
-/** A published manifest that is NOT the served one, and a request identifier absent from the index. */
-const OLD_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
-const STALE_REQUEST_ID = "B07STALE";
+// Real Austin properties of Run 2 (tests/e2e/lib/run-fixtures.ts says how each was read). The old
+// names are kept so the case bodies read as before: P_5_52 = the property with an open permit,
+// P_AGE48 = roof age only (no open permit), P_5_89 = the third.
+const P_5_52 = LEAD_FIXTURES.openPermit.cid;
+const P_AGE48 = LEAD_FIXTURES.roofOnly.cid;
+const P_5_89 = LEAD_FIXTURES.third.cid;
+const MANIFEST_CID = FIXTURES_MANIFEST_CID;
+const FIXTURE_IDS: Record<string, string> = {
+  [P_5_52]: LEAD_FIXTURES.openPermit.requestIdentifier,
+  [P_AGE48]: LEAD_FIXTURES.roofOnly.requestIdentifier,
+  [P_5_89]: LEAD_FIXTURES.third.requestIdentifier,
+};
+
+/** The lead page shows the roof-age basis in words (apps/web/src/format/labels.ts). */
+const BASIS_LABEL: Record<string, string> = {
+  permit: "Last reroof permit",
+  new_construction: "New construction (year built)",
+  built_year: "Year built (no reroof permit found)",
+  unknown: "Basis unknown",
+};
 const TRAVIS_FIPS = "48453";
-const ROUND_ROCK = { lat: 30.5083, lng: -97.6789 };
+const AREA_CENTRE = LEADS_AREA;
 /** Prefix for every note this suite writes, so one run can be told apart from another. */
 const RUN_TAG = `B07-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-`;
 
@@ -80,8 +102,8 @@ function factsOf(cid: string): Facts {
 
 async function signIn(page: Page, password: string): Promise<void> {
   await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Email").fill(SEEDED_USERNAME);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
   await expect(page.locator('[data-route="map"]')).toBeVisible();
 }
@@ -116,6 +138,12 @@ async function loadFacts(page: Page, cid: string): Promise<Facts> {
     permits: { statusClass: string | null; permitNumber: string | null; openDays: number | null }[];
   }>(page, "property.get", { propertyCid: cid });
   const p = data.property;
+  const expectedId = FIXTURE_IDS[cid];
+  if (p !== null && expectedId !== undefined && p.requestIdentifier !== expectedId) {
+    throw new Error(
+      `fixture drift: ${cid} now has request identifier ${p.requestIdentifier}, expected ${expectedId} (re-read tests/e2e/lib/run-fixtures.ts)`,
+    );
+  }
   const open = data.permits.find((permit) => permit.statusClass === "open");
   if (p === null || p.latitude === null || p.longitude === null) {
     throw new Error(`property ${cid} is not in the served run or has no location`);
@@ -206,6 +234,17 @@ async function createFromDrawer(drawer: Locator): Promise<Locator> {
 }
 
 const leadCount = (page: Page): Locator => page.getByText(/^\d+ leads?$/);
+/** Below 600 px the lead filters sit in a sheet behind "Filters"; from 600 px they are inline. */
+async function openLeadFilters(page: Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: /^Filters/ });
+  if (await toggle.isVisible()) await toggle.click();
+}
+async function setLeadArea(page: Page, lat: number, lng: number, miles: string): Promise<void> {
+  await page.getByLabel("Area").selectOption("point");
+  await page.getByLabel("Center latitude").fill(String(lat));
+  await page.getByLabel("Center longitude").fill(String(lng));
+  await page.getByLabel("Radius, mi").selectOption(miles);
+}
 const leadLink = (page: Page, f: Facts): Locator =>
   page.getByRole("link", { name: `TCAD ${f.requestIdentifier}` });
 
@@ -232,13 +271,15 @@ test.describe("B-07 leads", () => {
 
   test.beforeAll(async ({ browser }, testInfo) => {
     if (!SEEDED_PASSWORD) return;
-    // CI has no AWS credentials (the account's organization policy blocks the GitHub OIDC role),
-    // and without them the four test leads cannot be cleared, so a second run would be refused as
-    // a duplicate. Skip the whole file there, loudly. Locally, missing or expired credentials
-    // must FAIL, never skip, so this applies on CI only.
+    // CI's AWS credentials are the `crm-ci` IAM user's key (the organization policy blocks the
+    // GitHub OIDC role; infra/lib/crm-ci-user.ts), from the repository secrets
+    // CRM_CI_AWS_ACCESS_KEY_ID / CRM_CI_AWS_SECRET_ACCESS_KEY. Without them the four test leads
+    // cannot be cleared, so a second run would be refused as a duplicate: skip the whole file
+    // there, loudly. Locally, missing or expired credentials must FAIL, never skip, so this
+    // applies on CI only.
     test.skip(
       process.env.CI !== undefined && !(await awsCredentialsAvailable()),
-      "B-07 needs AWS credentials to clear its test leads; CI has none. Proven by the local hosted run (docs/evidence/B-07.md).",
+      "B-07 needs AWS credentials to clear its test leads; the CRM_CI_AWS_* repository secrets are not set. Proven by the local hosted run (docs/evidence/B-07.md).",
     );
     const baseURL = testInfo.project.use.baseURL;
     const page = await browser.newPage(baseURL === undefined ? {} : { baseURL });
@@ -292,7 +333,7 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-001 create lead from property drawer", async ({ page }) => {
     const f = factsOf(P_5_52);
     const drawer = await openDrawer(page, P_5_52);
-    await expect(drawer.locator('[data-field="roof_age_years"]')).toHaveText(
+    await expect(drawer.locator('dd[data-field="roof_age_years"]')).toHaveText(
       `${f.roofAgeYears} yrs`,
     );
     const state = await createFromDrawer(drawer);
@@ -304,12 +345,12 @@ test.describe("B-07 leads", () => {
     await expect(first).toContainText(`TCAD ${f.requestIdentifier}`);
     await expect(first).toContainText("New");
     await expect(leadLink(page, f)).toHaveCount(1);
-    // "Created YYYY-MM-DD HH:MM UTC" is within the last few minutes (minute-truncated stamp).
-    const stamp = /Created (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) UTC/.exec(
-      (await first.textContent()) ?? "",
-    );
-    expect(stamp, "created-at is shown").not.toBeNull();
-    const ageMs = Date.now() - Date.parse(`${stamp?.[1]}T${stamp?.[2]}:00Z`);
+    // The row shows "Created Oct 20, 09:14 UTC"; the exact (minute-truncated) stamp is the <time>
+    // element's datetime attribute. It is within the last few minutes.
+    await expect(first).toContainText(/Created \w{3} \d{1,2}, \d{2}:\d{2} UTC/);
+    const createdAt = await first.locator("time").first().getAttribute("datetime");
+    expect(createdAt, "created-at is on the row").not.toBeNull();
+    const ageMs = Date.now() - Date.parse(createdAt ?? "");
     expect(Math.abs(ageMs)).toBeLessThan(3 * 60_000);
     await shot(page, "001", "top-of-list");
   });
@@ -345,7 +386,7 @@ test.describe("B-07 leads", () => {
     const signals = page.getByRole("region", { name: "Current signals" });
     await expect(signals).toBeVisible();
     await expect(signals).toContainText(`${f.roofAgeYears} yrs`);
-    await expect(signals).toContainText(f.roofAgeBasis);
+    await expect(signals).toContainText(BASIS_LABEL[f.roofAgeBasis] ?? f.roofAgeBasis);
     // Character-for-character: the stored CID equals both the index row's and the plan's CID.
     expect(f.sourceManifestCid).toBe(MANIFEST_CID);
     await expect(signals.locator(`[data-cid="${MANIFEST_CID}"]`).first()).toBeVisible();
@@ -548,17 +589,18 @@ test.describe("B-07 leads", () => {
     await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
     await expect(drawer.getByRole("status")).toContainText(/Lead created|Already a lead/);
 
-    // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of Round Rock).
+    // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of the Central Austin area centre).
     const expected = [P_5_52, P_AGE48, P_5_89]
       .map(factsOf)
       .filter(
         (f) =>
           (f.roofAgeYears ?? 0) >= 20 &&
           f.hasOpenPermit &&
-          milesBetween(ROUND_ROCK, { lat: f.latitude, lng: f.longitude }) <= 10,
+          milesBetween(AREA_CENTRE, { lat: f.latitude, lng: f.longitude }) <= 10,
       );
 
     await page.goto("/leads");
+    await openLeadFilters(page);
     await page
       .getByRole("group", { name: "Roof age threshold" })
       .getByRole("button", { name: "20", exact: true })
@@ -567,15 +609,16 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await page.getByLabel("Center latitude").fill(String(ROUND_ROCK.lat));
-    await page.getByLabel("Center longitude").fill(String(ROUND_ROCK.lng));
-    await page.getByLabel("Radius, mi").fill("10");
+    await setLeadArea(page, AREA_CENTRE.lat, AREA_CENTRE.lng, "10");
 
     if (expected.length === 0) {
-      await expect(page.getByText("No leads match these filters")).toBeVisible();
+      await expect(page.getByText("No leads match these filters")).toBeVisible({
+        timeout: FILTERED_LIST_MS,
+      });
     } else {
       await expect(leadCount(page)).toHaveText(
         `${expected.length} ${expected.length === 1 ? "lead" : "leads"}`,
+        { timeout: FILTERED_LIST_MS },
       );
       for (const f of expected) await expect(leadLink(page, f)).toHaveCount(1);
     }
@@ -592,6 +635,7 @@ test.describe("B-07 leads", () => {
 
   test("B-07-TC-012 filters in URL reopen same view", async ({ page, browser, baseURL }) => {
     await page.goto("/leads");
+    await openLeadFilters(page);
     await page
       .getByRole("group", { name: "Roof age threshold" })
       .getByRole("button", { name: "20", exact: true })
@@ -600,22 +644,20 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await page.getByLabel("Center latitude").fill(String(ROUND_ROCK.lat));
-    await page.getByLabel("Center longitude").fill(String(ROUND_ROCK.lng));
-    await page.getByLabel("Radius, mi").fill("10");
+    await setLeadArea(page, AREA_CENTRE.lat, AREA_CENTRE.lng, "10");
     await expect(page).toHaveURL(/roof=20/);
     const url = new URL(page.url());
     for (const [key, value] of [
       ["roof", "20"],
       ["permit", "open"],
-      ["lat", String(ROUND_ROCK.lat)],
-      ["lng", String(ROUND_ROCK.lng)],
+      ["lat", String(AREA_CENTRE.lat)],
+      ["lng", String(AREA_CENTRE.lng)],
       ["r", "10"],
     ] as const) {
       expect(url.searchParams.get(key), `URL param ${key}`).toBe(value);
     }
     const countText = await leadCount(page)
-      .textContent({ timeout: 5_000 })
+      .textContent({ timeout: FILTERED_LIST_MS })
       .catch(() => null);
 
     // A second, fresh browser context stands in for "a new private window".
@@ -627,6 +669,7 @@ test.describe("B-07 leads", () => {
       const second = await other.newPage();
       await signIn(second, SEEDED_PASSWORD ?? "");
       await second.goto(`${url.pathname}${url.search}`);
+      await openLeadFilters(second);
       await expect(
         second
           .getByRole("group", { name: "Roof age threshold" })
@@ -637,9 +680,11 @@ test.describe("B-07 leads", () => {
       ).toHaveAttribute("aria-pressed", "true");
       await expect(second.getByLabel("Radius, mi")).toHaveValue("10");
       if (countText === null) {
-        await expect(second.getByText("No leads match these filters")).toBeVisible();
+        await expect(second.getByText("No leads match these filters")).toBeVisible({
+          timeout: FILTERED_LIST_MS,
+        });
       } else {
-        await expect(leadCount(second)).toHaveText(countText);
+        await expect(leadCount(second)).toHaveText(countText, { timeout: FILTERED_LIST_MS });
       }
       await shot(second, "012", "reopened");
     } finally {
@@ -650,7 +695,7 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-013 no-match state", async ({ page }) => {
     // 60 yr is not a chip, so the combination is set through the URL (the same state the chips write).
     await page.goto(
-      `/leads?roof=60&permit=closed&lat=${ROUND_ROCK.lat}&lng=${ROUND_ROCK.lng}&r=0.5`,
+      `/leads?roof=60&permit=closed&lat=${AREA_CENTRE.lat}&lng=${AREA_CENTRE.lng}&r=0.5`,
     );
     await expect(page.getByText("No leads match these filters")).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);

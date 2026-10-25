@@ -4,6 +4,7 @@
 // RUNTIME_URL by TZ03 once TZ02 deploys. config-guard.spec.ts enforces RUNTIME_URL is never
 // localhost for that later run — this file does not special-case localhost itself.
 import { expect, test } from "@playwright/test";
+import { AUTH_STATE_PATH, openSignedIn } from "./lib/auth.js";
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
@@ -14,8 +15,8 @@ async function signIn(
   username: string = SEEDED_USERNAME,
 ): Promise<void> {
   await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Email").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/ }).click();
 }
 
@@ -52,14 +53,20 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
 
 // AC-2 (TC-002): free pan/zoom never drops below the county bbox; health.ping traces within 3s.
 test.describe("AC-2: map bounds and health.ping trace", () => {
+  // Not a sign-in case: reuses the session the `setup` project saved (tests/e2e/lib/auth.ts).
+  // AC-1 and AC-3 above keep signing in through the real form.
+  test.use({ storageState: AUTH_STATE_PATH });
+
   test("health.ping responds from the Map screen within 3s of load", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
-    const response = await page.waitForResponse(
-      (res) => res.url().includes("/api/trpc/health.ping"),
-      { timeout: 3000 },
-    );
+    // Listen before navigating: with the saved session the Map screen (and its ping) loads
+    // straight from `/`, with no sign-in round trip in between.
+    const ping = page.waitForResponse((res) => res.url().includes("/api/trpc/health.ping"), {
+      timeout: 3000,
+    });
+    await page.goto("/");
+    const response = await ping;
     expect(response.ok()).toBe(true);
   });
 
@@ -70,8 +77,7 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
   test("zooming out never drops below the county's minimum zoom", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
-    await expect(page.locator('[data-route="map"]')).toBeVisible();
+    await openSignedIn(page);
     await page.waitForFunction(() => {
       const map = (window as unknown as { __crmMap?: { loaded(): boolean } }).__crmMap;
       return map?.loaded() === true;
@@ -127,7 +133,7 @@ test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", ()
       // attempt 2) would have passed unnoticed.
       if (attempt < 3) {
         await expect(page.locator("[data-sign-in-error]")).toHaveText(
-          "Incorrect username or password.",
+          "Wrong email or password. Check the test login you were sent.",
         );
       }
     }
@@ -140,6 +146,10 @@ test.describe("AC-3: typed lockout after the 4th consecutive failed attempt", ()
 // Tile-failure edge case (TC-007): a tile-host network abort shows the named CrmMapFailed390
 // state with a Retry action, never a blank grey grid.
 test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", () => {
+  // Not a sign-in case: reuses the session the `setup` project saved (tests/e2e/lib/auth.ts).
+  // AC-1 and AC-3 above keep signing in through the real form.
+  test.use({ storageState: AUTH_STATE_PATH });
+
   test("aborting tile-host requests renders CrmMapFailed390 with a Retry action", async ({
     page,
   }) => {
@@ -150,7 +160,7 @@ test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", (
     // route pattern follows it so the tile-failure edge case still actually aborts the map's
     // real requests, not a dead host.
     await page.route("**/tiles.openfreemap.org/**", (route) => route.abort());
-    await signIn(page, SEEDED_PASSWORD);
+    await page.goto("/");
     await expect(page.locator('[data-state="CrmMapFailed390"]')).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
   });
@@ -159,12 +169,16 @@ test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", (
 // AC-4 (TC-005, TC-009): all 5 roadmap rows render aria-disabled with a "Coming soon" tooltip, at
 // 1440px and inside the 390px "More" sheet.
 test.describe("AC-4: disabled roadmap rows", () => {
+  // Not a sign-in case: reuses the session the `setup` project saved (tests/e2e/lib/auth.ts).
+  // AC-1 and AC-3 above keep signing in through the real form.
+  test.use({ storageState: AUTH_STATE_PATH });
+
   const SECTIONS = ["Campaigns", "Estimates", "Jobs", "Invoices", "Outreach"];
 
   test("all 5 rows are aria-disabled with a Coming soon tooltip", async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     // Found deploying (same cause as the "survives a reload" fix above): `moreTrigger.isVisible()`
     // is a one-shot synchronous check, not a retrying `expect` — checked before the SRP round
     // trip finishes, it always saw the sign-in page (no "More" button yet) and silently skipped
@@ -185,12 +199,16 @@ test.describe("AC-4: disabled roadmap rows", () => {
 // AC-5 (TC-008): tapping a disabled row opens a real Coming Soon page with "Back to Map", never
 // a 404.
 test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
+  // Not a sign-in case: reuses the session the `setup` project saved (tests/e2e/lib/auth.ts).
+  // AC-1 and AC-3 above keep signing in through the real form.
+  test.use({ storageState: AUTH_STATE_PATH });
+
   test('tapping "Campaigns" opens Coming Soon with a working Back to Map action', async ({
     page,
   }) => {
     test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
     if (!SEEDED_PASSWORD) return;
-    await signIn(page, SEEDED_PASSWORD);
+    await openSignedIn(page);
     // Same fix as AC-4 above: wait for the SRP round trip to actually land before checking for
     // "More" (found deploying).
     await expect(page.locator('[data-route="map"]')).toBeVisible();

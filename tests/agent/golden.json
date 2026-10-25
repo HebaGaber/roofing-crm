@@ -1,0 +1,127 @@
+{
+  "_comment": "B-09 golden queries. The Austin variants say \"Austin\", not \"downtown Austin\": the travis-places gazetteer has no sub-city places, so \"downtown Austin\" scores 0.58 and is correctly refused (first Run 2 harness pass, see docs/evidence/B-09.md). G1-G7 prompts are checks.md section 7.1's, verbatim (G5's {real permit number} is filled with `permitNumber`). A1-A5 are Austin variants with the same intents, because Run 2's roof ages exist only where Austin has a closed reroof permit (about 2 percent of properties), so the Pflugerville/Manor/Lakeway prompts cannot all return rows. Pass rules live in passRules.ts (unit-tested in golden.test.ts); the free-text mustDo/truth fields are the human-readable record. expectedOutcome values: answered | answered_or_honest_empty | answered_or_field_flagged | answered_unavailable | out_of_scope_or_empty | lead_created. Honest-empty means outcome empty_in_scope or field_not_published with zero claims, zero citations, zero rows and counts.matched 0, and a stated reason. Nothing here may be loosened to make an honest answer pass; a wrong or ungrounded answer must fail.",
+  "manifestCid": "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
+  "runId": "travis-full-run2-20261024",
+  "queries": [
+    {
+      "id": "G1",
+      "expectedAreaPattern": "Pflugerville",
+      "prompt": "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
+      "mustDo": "Geocode Pflugerville (state the centre point used); radius 5 mi; roof > 15; return real property_cids with roof-age basis and source, OR say honestly that none have a published roof age",
+      "expectedOutcome": "answered_or_honest_empty",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: 47,282 properties within 5 mi of Pflugerville (30.447765, -97.602116); 47,269 have no roof date; 0 have a roof age >= 15. Expected honest empty (empty_in_scope) stating the 47,269 excluded for no roof date."
+    },
+    {
+      "id": "G2",
+      "expectedAreaPattern": "Pflugerville",
+      "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
+      "mustDo": "Keep the area from the previous turn; state its meaning of \"many years\" (for example >= 5); include contractor + BBB or \"not available\"",
+      "expectedOutcome": "answered_or_honest_empty",
+      "check": "groundedness+correctness+honesty",
+      "inheritsAreaFrom": "G1",
+      "contractorMustBeUnavailable": true,
+      "truth": "Run 2 manifest: contractor_resolved count 0 (Comptroller registry not wired), every permit contractorResolution unresolved; bbb_rating has no lexicon carrier. Any contractor or BBB value in an answer is fabricated."
+    },
+    {
+      "id": "G3",
+      "expectedAreaPattern": "Manor",
+      "prompt": "Show me open roofing permits older than five years within five miles of Manor",
+      "mustDo": "Exact thresholds; sorted by open duration",
+      "expectedOutcome": "answered_or_honest_empty",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: 3 roofing permits within 5 mi of Manor (30.354228, -97.558259): 1 stalled older than 5 years, 1990-002676 BP (13,156 open days at read time), 0 open.",
+      "expectedMatchedPermitNumbers": ["1990-002676 BP"]
+    },
+    {
+      "id": "G4",
+      "expectedAreaPattern": "Lakeway",
+      "prompt": "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      "mustDo": "Combined filters; explain \"outside the area\"",
+      "expectedOutcome": "answered_or_field_flagged",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: owner_is_out_of_area and owner_area_class are not_in_export for every property (owner mailing address not published), so the owner-outside-the-area half cannot be answered. Expected field_not_published, or an answer that flags the constraint as unsupported with reason not_in_export and never asserts an owner is outside the area. Since the server drops the unpublished filter (dropUnpublishedFilters), the expected result is an answered list for Lakeway with tenure 10+ years, labelled as not narrowed by owner location, with the owner constraint in unsupported (not_in_export)."
+    },
+    {
+      "id": "G5",
+      "prompt": "What's the BBB rating of the contractor on permit {real permit number}?",
+      "permitNumber": "1981-001776 BP",
+      "mustDo": "Exact lookup; cite the BBB source or say it is missing",
+      "expectedOutcome": "answered_unavailable",
+      "check": "groundedness+honesty",
+      "expectedPermitCid": "baguqeeratgqigjx72ocnrviqvfzg3jeojnoz4r2slpejuljn5cyjibzbacza",
+      "truth": "Run 2: 1981-001776 BP, Austin, stalled (improvement_status absent), property request id 284902; contractorResolution unresolved; bbb_rating no_lexicon_carrier. The permit is found and cited; the BBB rating is stated as not available."
+    },
+    {
+      "id": "G6",
+      "prompt": "How many properties have roofs older than 40 years in ZIP 99999?",
+      "mustDo": "Says the scope is invalid or empty; no fabrication",
+      "expectedOutcome": "out_of_scope_or_empty",
+      "check": "zero_fabrication"
+    },
+    {
+      "id": "G7",
+      "prompt": "Create a lead for the first result",
+      "mustDo": "Lead created; appears in the lead list. Run in its own thread: seed it with the Austin roof-age question A1 (G1 has no rows on Run 2, so there is no first result to propose), ask this prompt there (plan intent propose_leads, ADR-06 sec. 6.2), then agent.confirmLead the first proposed tcadId (confirmLead accepts only tcadIds proposed in that thread). An already-a-lead proposal from an earlier repeat passes if it is in leads.list.",
+      "expectedOutcome": "lead_created",
+      "check": "lead_round_trip",
+      "seedsThreadWith": "A1",
+      "expectedIntent": "propose_leads"
+    },
+    {
+      "id": "A1",
+      "expectedAreaPattern": "Austin",
+      "prompt": "Which properties within 3 miles of Austin have roofs older than 20 years?",
+      "mustDo": "Same intent as G1 on a place that has data: state the centre used, radius 3 mi, roof >= 20; real property_cids with roof-age basis (permit) and source; counts equal the index's own count",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: 31,001 properties within 3 mi of the gazetteer Austin point (30.298622, -97.754134); 2,462 with a roof age >= 20 (about 2,874 around ZIP 78701's centre); 28,030 have no roof date. Example row: property request id 194401, roof 33 years, basis permit (1992-000408 BP)."
+    },
+    {
+      "id": "A2",
+      "expectedAreaPattern": "Austin",
+      "prompt": "Show me open or stalled roofing permits older than five years within five miles of Austin, sorted by open duration",
+      "mustDo": "Same intent as G3 on a place that has data: statuses open and stalled only, open for more than five years, longest open first, exact thresholds stated",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: within 2 mi of 30.2672, -97.7431 there are 274 open or stalled roofing permits, 247 older than five years; the longest is 1981-001776 BP (stalled, 16,516 open days at read time). The 5 mi radius covers 78,233 properties; the plain search.permits route cannot serve it (timeout), so this query also tests the agent's own path."
+    },
+    {
+      "id": "A3",
+      "expectedAreaPattern": "Austin",
+      "prompt": "Who is the listed contractor on the oldest stalled roofing permit within 2 miles of Austin, and what is their BBB rating?",
+      "mustDo": "Names the permit; says the contractor and BBB rating are not available in this run (honest unavailable); names no company and no rating",
+      "expectedOutcome": "answered_unavailable",
+      "check": "groundedness+honesty",
+      "contractorMustBeUnavailable": true,
+      "truth": "Run 2: contractor_resolved 0 of 15,025 permits; every contractorResolution is unresolved; bbb_rating has no lexicon carrier."
+    },
+    {
+      "id": "A4",
+      "expectedAreaPattern": "Austin",
+      "prompt": "Which properties within 2 miles of Austin haven't changed owners in 10 years or more?",
+      "mustDo": "Owner-tenure question the data supports (is_long_tenure from dated sales); returns real rows with tenure basis, or says which are unknown",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2: isLongTenure is true for 65 of a 100-row Lakeway sample and null (no dated sale) for 30; Austin center rows are mostly true. Rows without a dated sale must be reported as missing (no_dated_sale), not counted as long tenure."
+    },
+    {
+      "id": "A5",
+      "expectedAreaPattern": "78701",
+      "prompt": "How many properties have roofs older than 20 years in ZIP 78701?",
+      "mustDo": "ZIP resolved from the gazetteer (match zip); answered with real counts and rows; states the area used",
+      "expectedOutcome": "answered",
+      "check": "groundedness+correctness+honesty",
+      "truth": "Run 2 has no postal_code field (not_in_export), so a ZIP is answered as a radius around the ZCTA centre (30.270569, -97.742589); the plan must show the resolved centre and radius."
+    }
+  ],
+  "grading": {
+    "repeats": 3,
+    "pacingSeconds": 13,
+    "maxAsksPerMinute": 5,
+    "groundednessTargetPct": 100,
+    "correctnessRecallTargetPct": 80,
+    "latencyP95Ms": 20000,
+    "latencyMaxMs": 23500
+  }
+}

@@ -38,7 +38,7 @@ Run against the **hosted** URL (`https://001-crm-shell.d1zmhc6kkyzsbe.amplifyapp
 | B-01-TC-001 | AC-1 | Happy path | PASS (×3 viewports) | — | `docs/evidence/B-01.md`, `tests/e2e/B-01.spec.ts:26` |
 | B-01-TC-002 | AC-2 | Happy path | PASS (×3) | — | `tests/e2e/B-01.spec.ts:51` (also covers TC-NF-01) |
 | B-01-TC-003 | AC-3 | Negative | PASS (×3) | ERR-1 (fixed) | `tests/e2e/B-01.spec.ts:66` |
-| B-01-TC-004 | AC-3 | Negative | PASS (×3, inline) | — | Same test as TC-003: asserts "Incorrect username or password." on attempts 1–3 before the 4th locks |
+| B-01-TC-004 | AC-3 | Negative | PASS (×3, inline) | — | Same test as TC-003: asserts "Wrong email or password. Check the test login you were sent." on attempts 1–3 before the 4th locks |
 | B-01-TC-005 | AC-4 | Happy path | PASS (×3) | — | `tests/e2e/B-01.spec.ts:99`, `tests/e2e/responsive/map-shell.spec.ts` |
 | B-01-TC-006 | AC-1 | Negative | PASS (×3) | — | `tests/e2e/B-01.spec.ts:21` |
 | B-01-TC-007 | FR-002 | Edge / missing-data | PASS (×3) | — | `tests/e2e/B-01.spec.ts:82` (CrmMapFailed390 + Retry) |

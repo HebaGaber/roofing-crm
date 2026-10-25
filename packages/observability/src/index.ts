@@ -1,28 +1,22 @@
 // Shared Powertools middleware (constitution Article VIII): every new Lambda handler in this
 // story (apps/sync, apps/api's LeadIndex port) wraps with `withObservability` so JSON logging,
 // X-Ray tracing and named custom metrics are never hand-rolled per handler. Metric names are
-// constants here, never inline string literals at a call site (tasks.md T011).
+// constants (./metricNames.ts), never inline string literals at a call site (tasks.md T011).
 import { Logger } from "@aws-lambda-powertools/logger";
 import { Metrics } from "@aws-lambda-powertools/metrics";
 import { Tracer } from "@aws-lambda-powertools/tracer";
+import { METRICS_NAMESPACE } from "./metricNames.js";
 
 export { downloadS3ObjectToFile } from "./s3.js";
 
-export const METRICS_NAMESPACE = "RoofingCrm";
-
-export const METRIC_NAMES = {
-  SyncDurationMs: "SyncDurationMs",
-  IndexColdLoadMs: "IndexColdLoadMs",
-  IndexManifestAgeHours: "IndexManifestAgeHours",
-  LeadsCreated: "LeadsCreated",
-  LeadsStatusUpdated: "LeadsStatusUpdated",
-  LeadsNoteAdded: "LeadsNoteAdded",
-  LeadsRead: "LeadsRead",
-  LeadsListed: "LeadsListed",
-  LeadsErrors: "LeadsErrors",
-} as const;
-export type MetricName = (typeof METRIC_NAMES)[keyof typeof METRIC_NAMES];
-
+export {
+  AGENT_CITING_OUTCOMES,
+  AGENT_METRIC_DIMENSIONS,
+  API_SERVICE_NAME,
+  METRIC_NAMES,
+  METRICS_NAMESPACE,
+  type MetricName,
+} from "./metricNames.js";
 export interface Observability {
   readonly logger: Logger;
   readonly tracer: Tracer;

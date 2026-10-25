@@ -7,10 +7,13 @@
 // testplans/B-03-test-cases.md's B-03-TC-NF-01 (radius change 5→25 mi, then a threshold change),
 // 20 timed runs after one untimed warm-up, p95 < 3,000 ms (architecture-constitution.md §10).
 import { expect, test } from "@playwright/test";
+import { PERF_PIN } from "./lib/run-fixtures.js";
 import { runtimeUrl } from "./lib/runtime.js";
+import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
 
-const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
-const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
+// Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
+test.use({ storageState: AUTH_STATE_PATH });
+
 const TIMED_RUNS = 20;
 const P95_LIMIT_MS = 3_000;
 
@@ -27,36 +30,49 @@ function summarize(valuesMs: number[]): Summary {
   return { n: sorted.length, p50Ms: pick(0.5), p95Ms: pick(0.95) };
 }
 
-async function signIn(page: import("@playwright/test").Page, password: string): Promise<void> {
-  await page.goto("/sign-in");
-  await page.getByLabel("Username").fill(SEEDED_USERNAME);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: /Sign in/ }).click();
-  await expect(page.locator('[data-route="map"]')).toBeVisible();
-}
-
-/** Clicks the map at the Pflugerville pin (AC-1) and returns once a search response landed. */
-async function dropPinAndWait(page: import("@playwright/test").Page): Promise<void> {
-  await page.getByTestId("crm-map").click();
+/** Opens the perf pin (fixtures file) by URL at 5 mi and returns once the first search response
+ *  landed and rendered. */
+async function openPinAndWait(page: import("@playwright/test").Page): Promise<void> {
+  await openSignedIn(page, `/?lat=${PERF_PIN.lat}&lng=${PERF_PIN.lng}&r=5`);
   await page
-    .locator('[data-testid="search-results"], [data-state="CrmMapNoResults390"]')
+    .locator('[data-testid="search-results"]')
     .first()
-    .waitFor({ state: "visible", timeout: 10_000 });
+    .waitFor({ state: "visible", timeout: 60_000 });
 }
 
-/** One timed run: changes the radius, waits for the results region to re-render, returns the
- *  elapsed time in ms. Marked `[Skip="live run only"]` in Phase Z's evidence, per NF-01's note. */
+/** True for a `search.properties` response whose input carries this radius. */
+function isPropertiesFor(radiusMi: number) {
+  const radius = new RegExp(`"radiusMi":${String(radiusMi)}[,}]`);
+  return (response: import("@playwright/test").Response): boolean =>
+    response.url().includes("search.properties") && radius.test(decodeURIComponent(response.url()));
+}
+
+/** A change that never settled counts as this many ms (and is reported, never dropped). */
+const NO_ANSWER_MS = 32_000;
+
+/** One timed run: changes the radius, waits for the NEW `search.properties` response for exactly
+ *  this radius (so a list already on screen cannot end the timer early) and for the list to be
+ *  re-rendered, returns the elapsed time in ms. Every run uses a radius not asked for before, so
+ *  the client cache cannot answer it. The results list is what a person waits for; the permit
+ *  markers load beside it. */
 async function timedRadiusChange(
   page: import("@playwright/test").Page,
   toRadiusMi: number,
 ): Promise<number> {
-  const started = await page.evaluate(() => performance.now());
-  // The number box, not the slider (its label is "Radius (slider)", which also matches "Radius").
   const radius = page.getByRole("spinbutton", { name: "Radius" });
+  const properties = page.waitForResponse(isPropertiesFor(toRadiusMi), { timeout: NO_ANSWER_MS });
+  const started = await page.evaluate(() => performance.now());
   await radius.fill(String(toRadiusMi));
   await radius.blur();
+  try {
+    const response = await properties;
+    expect(response.ok(), `search.properties ${String(toRadiusMi)} mi`).toBe(true);
+  } catch {
+    return NO_ANSWER_MS;
+  }
+  await page.evaluate(() => new Promise<void>((done) => requestAnimationFrame(() => done())));
   await page
-    .locator('[data-testid="search-results"], [data-state="CrmMapNoResults390"]')
+    .locator('[data-testid="search-results"]')
     .first()
     .waitFor({ state: "visible", timeout: 10_000 });
   const ended = await page.evaluate(() => performance.now());
@@ -67,24 +83,28 @@ test.describe("B-03-TC-NF-01: radius change p95 < 3 s end to end, 20 runs", () =
   test.describe.configure({ timeout: 10 * 60_000 });
 
   test("@scenario:B-03-TC-NF-01", async ({ page }, testInfo) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    // The timing is the API's, not the layout's: one viewport is enough, and three would triple
+    // a run that already takes minutes.
+    test.skip(testInfo.project.name !== "desktop-1440", "API timing, measured once (desktop)");
+    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     if (!SEEDED_PASSWORD) return;
 
-    await signIn(page, SEEDED_PASSWORD);
-    await dropPinAndWait(page);
+    await openPinAndWait(page);
 
-    // One untimed warm-up (the first search fills the browser's HTTP cache).
-    await timedRadiusChange(page, 6);
+    // One untimed warm-up on the 442k index (cold Lambda and DuckDB start, browser connection).
+    await timedRadiusChange(page, 5.5);
 
     const timingsMs: number[] = [];
     for (let i = 1; i <= TIMED_RUNS; i += 1) {
-      // Alternates 25 <-> 6 mi so each run is a real re-fetch, never a no-op (B-03-TC-015's
-      // "repeated changes" shape applied to this NFR instead of to counts.afterRoofAge).
-      const toRadiusMi = i % 2 === 0 ? 6 : 25;
-      timingsMs.push(await timedRadiusChange(page, toRadiusMi));
+      // 6, 7 ... 25 mi: 20 distinct radii, each a real re-fetch of a larger set (never a no-op or
+      // a client-cache hit), ending at the 25 mi hard case.
+      timingsMs.push(await timedRadiusChange(page, 5 + i));
     }
 
     const summary = summarize(timingsMs);
+    console.log(
+      `NF-01 radii 6..25 mi, timings ms: ${timingsMs.map(Math.round).join(", ")} | ${JSON.stringify(summary)}`,
+    );
     await testInfo.attach("tc-nf-01-radius-change-timings.json", {
       body: JSON.stringify({ url: `${runtimeUrl()}/`, timingsMs, summary }, null, 2),
       contentType: "application/json",

@@ -5,20 +5,43 @@
 // needs CrmOps's user pool/app client to exist first — the one recorded deviation from
 // architecture-constitution.md §11's literal stack order, justified in plan.md's Complexity
 // Tracking table).
-import { Duration, Stack, type StackProps } from "aws-cdk-lib";
+import { Annotations, Duration, Stack, Token, type StackProps } from "aws-cdk-lib";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as integrations from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import { RegionInfo } from "aws-cdk-lib/region-info";
 import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
+
+/** ADR-06 §6.1 nested timeouts: 23 s server abort < 28 s Lambda < 30 s HTTP API. The 23 s is
+ *  `@crm/shared`'s `AGENT_TURN_LIMIT_MS`; infra/test/crm-api-stack.agent.test.ts asserts this
+ *  value nests around it (limit + margin <= Lambda <= HTTP API). */
+export const TRPC_LAMBDA_TIMEOUT_SECONDS = 28;
+/** Memory of the `crm-api-trpc` function; the reason is at its use below. */
+export const TRPC_LAMBDA_MEMORY_MB = 2048;
+
+/** Destination regions a system-defined *geographic* Bedrock cross-region inference profile
+ *  (`<geo>.<model id>`) may route a request to. Source: `bedrock:GetInferenceProfile` for
+ *  `eu.anthropic.claude-sonnet-4-6` in eu-north-1, account 515618610572, 2026-10-24 (read-only).
+ *  The foundation-model grant is scoped to exactly these regions (no `*` region), and only for
+ *  calls made *through* the configured profile (`bedrock:InferenceProfileArn` condition). If
+ *  AWS adds a destination region, InvokeModel fails with AccessDenied for requests routed there —
+ *  re-run GetInferenceProfile and update this list. A geo prefix not listed here fails synth
+ *  rather than silently granting nothing (or everything). */
+export const BEDROCK_GEO_PROFILE_DESTINATION_REGIONS: Readonly<Record<string, readonly string[]>> =
+  {
+    eu: ["eu-north-1", "eu-west-3", "eu-south-1", "eu-south-2", "eu-west-1", "eu-central-1"],
+  };
 
 export interface CrmApiStackProps extends StackProps {
   /** Path to apps/api/src/handlers/health.ts, relative to this file. */
@@ -35,7 +58,26 @@ export interface CrmApiStackProps extends StackProps {
   /** B-07's leads table name, for the META#index pointer read (ADR-05) — same string-only
    *  pattern as crm-sync-stack.ts's leadsTableName (no real table construct exists yet). */
   readonly leadsTableName: string;
+  /** B-09 T017: the `crm-agent-usage` rate-limit/spend-cap table name (data-model.md), same
+   *  string-only pattern as leadsTableName above. */
+  readonly agentUsageTableName: string;
+  /** B-09: apps/api/src/agent/getModel.ts reads these (never a hard-coded provider/model id,
+   *  constitution VI) — resolved by `@crm/config`'s `loadConfig`, same one-place-for-config-
+   *  literals pattern as `dataManifestCid`. */
+  readonly aiProvider: string;
+  readonly agentModelId: string;
+  /** Keep-warm schedule on/off. Default: the `crm:keepWarm` context (true in cdk.json). */
+  readonly keepWarm?: boolean;
+  /** Secrets Manager secret holding the Vercel AI Gateway key; only used when `aiProvider` is
+   *  `gateway`. Default: the `crm:aiGatewaySecretArn` context (unset: gateway fails synth). */
+  readonly aiGatewaySecretArn?: string;
 }
+
+/** Event the keep-warm rule sends; apps/api/src/handlers/health.ts `isWarmEvent` matches it. */
+export const KEEP_WARM_EVENT = { source: "crm.warm" } as const;
+export const KEEP_WARM_RATE_MINUTES = 5;
+
+const SECRET_ARN_PATTERN = /^arn:aws[a-z-]*:secretsmanager:[a-z0-9-]+:\d{12}:secret:.+$/;
 
 export class CrmApiStack extends Stack {
   public readonly httpApi: apigwv2.HttpApi;
@@ -70,10 +112,19 @@ export class CrmApiStack extends Stack {
       // at the real monorepo root so esbuild can still resolve `entry` relative to it.
       projectRoot: new URL("../../", import.meta.url).pathname,
       handler: "handler",
-      // 1024 MB reduces cold-init without a standing provisioned-concurrency cost
-      // (plan.md "Cold-start risk decision" — measure via TZ03's X-Ray trace, then decide).
-      memorySize: 1024,
-      timeout: Duration.seconds(10),
+      // 2048 MB (was 1024). Run 2's index is 441,961 properties (about 58 MB of Parquet) read by
+      // an in-process DuckDB. At 1024 MB a permit search over a county-sized radius ran the
+      // function out of memory (Runtime.OutOfMemory, GAP-1 in docs/evidence/B-09.md). The search
+      // paths now count and page inside DuckDB (services/search.ts), which removes the cause;
+      // the extra memory is headroom for DuckDB's buffer pool (capped at 60 percent of this size
+      // by the adapter, spilling to /tmp) plus the Parquet footprint, and Lambda gives CPU in
+      // proportion to memory, so a cold load and the scans also run faster. Cost: GB-seconds scale
+      // with memory, a few cents a month at this demo's traffic. Still no provisioned concurrency.
+      memorySize: TRPC_LAMBDA_MEMORY_MB,
+      // ADR-06 §6.1 / architecture-constitution.md §8 nested timeouts: the agent aborts server-side
+      // at 23 s (apps/api/src/agent/runAgent.ts RUN_AGENT_TIMEOUT_MS), this Lambda at 28 s, the
+      // HTTP API at 30 s — so the rep sees a typed `timed_out` answer, never a 500/504.
+      timeout: Duration.seconds(TRPC_LAMBDA_TIMEOUT_SECONDS),
       tracing: lambda.Tracing.ACTIVE,
       environment: {
         POWERTOOLS_SERVICE_NAME: "crm-api",
@@ -83,6 +134,13 @@ export class CrmApiStack extends Stack {
         // architecture-constitution.md §9's module-boundary table).
         CRM_INDEX_BUCKET_NAME: props.indexBucketName,
         CRM_LEADS_TABLE_NAME: props.leadsTableName,
+        // B-09: apps/api/src/agent/{rateLimiter,spendCap}.ts read this (never a hard-coded table
+        // name, architecture-constitution.md §9's module-boundary table).
+        CRM_AGENT_USAGE_TABLE_NAME: props.agentUsageTableName,
+        // B-09: apps/api/src/agent/getModel.ts reads these (constitution VI — never a hard-coded
+        // provider or model id anywhere else).
+        AI_PROVIDER: props.aiProvider,
+        AGENT_MODEL_ID: props.agentModelId,
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {
@@ -120,6 +178,38 @@ export class CrmApiStack extends Stack {
       "dynamodb:UpdateItem",
       "dynamodb:ConditionCheckItem",
     );
+    // leads.undoCreate deletes the LEAD, SIGNALS and EVT#0 items in one TransactWriteItems call,
+    // which is authorised per underlying action: DeleteItem. Granted on the TABLE ARN only (never
+    // the GSI ARNs) and nowhere else; the conditions that make a delete safe live in the
+    // transaction itself (leadRepo.undoCreate). leads.presence's BatchGetItem is already part of
+    // grantReadData above, so no separate grant is added for it.
+    trpcHandler.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["dynamodb:DeleteItem"],
+        resources: [leadsTable.tableArn],
+      }),
+    );
+
+    // B-09 T017: `crm-agent-usage` rate-limit/spend-cap guard — rateLimiter.ts/spendCap.ts only
+    // ever send one conditional UpdateItem per check (no reads, no transactions), so this grant
+    // is UpdateItem-only, no Query/Scan/Delete (same minimal-actions pattern as leadsTable above).
+    const agentUsageTable = dynamodb.Table.fromTableName(
+      this,
+      "AgentUsageTable",
+      props.agentUsageTableName,
+    );
+    // GetItem (consistent read) is for the per-thread proposal record agent.confirmLead checks
+    // (apps/api/src/agent/threadStore.ts) — one item by key, still no Query/Scan/Delete.
+    agentUsageTable.grant(trpcHandler, "dynamodb:UpdateItem", "dynamodb:GetItem");
+
+    this.grantModelAccess(
+      trpcHandler,
+      props.aiProvider,
+      props.agentModelId,
+      props.aiGatewaySecretArn,
+    );
+
+    this.addKeepWarm(trpcHandler, props.keepWarm);
 
     const authorizer = new authorizers.HttpUserPoolAuthorizer("CognitoAuthorizer", props.userPool, {
       userPoolClients: [props.userPoolClient],
@@ -236,7 +326,7 @@ export class CrmApiStack extends Stack {
         {
           id: "AwsSolutions-IAM5",
           reason:
-            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; no Scan, no DeleteItem (see the grant comment above).",
+            "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; DeleteItem is granted separately on the table ARN only, never on the indexes (see the grant comments above).",
           appliesTo: [
             {
               regex:
@@ -279,6 +369,119 @@ export class CrmApiStack extends Stack {
             "auth.reportFailedAttempt is deliberately unauthenticated — called from the sign-in page before any session exists (found deploying; decided with the user: client-reported failure count, server-enforced block — see auth/lockout-handler.ts).",
         },
       ],
+    );
+  }
+
+  /** CR finding 2: the model grant for `AI_PROVIDER` (constitution VI — the model id is config,
+   *  never a literal here). `bedrock`: InvokeModel(+WithResponseStream) on the configured
+   *  inference profile in this account/region, plus the underlying foundation model in each
+   *  destination region of that geo profile, conditioned on being invoked through that profile.
+   *  `gateway`: no AWS grant at all; the Vercel AI Gateway key would have to come from Secrets
+   *  Manager, which is not wired in this deployment — so synth fails closed instead of deploying
+   *  a Lambda whose every ask would fail at its first model call. */
+  /** Keep-warm: an EventBridge schedule invokes the function every 5 minutes with the internal
+   *  `{ source: "crm.warm" }` event so a sandbox, and the 442k-row index loaded in it, stays alive
+   *  (cold API start about 5 s, warm about 1 s). The handler only loads or confirms the index. The
+   *  target's invoke permission is scoped to this one rule (CDK adds `lambda:InvokeFunction` for
+   *  events.amazonaws.com with the rule ARN as source), no retries (the next tick is 5 minutes
+   *  away). Cost: 12 per hour, about 8,640 invocations a month, well inside the Lambda free tier
+   *  (1M requests and 400,000 GB-seconds a month; this is about 4,000 GB-seconds at 2 GB and
+   *  0.25 s). The `crm:keepWarm` context (or the prop) turns the rule off without removing it. */
+  private addKeepWarm(fn: NodejsFunction, override: boolean | undefined): void {
+    const raw: unknown = this.node.tryGetContext("crm:keepWarm");
+    const enabled = override ?? (raw === undefined ? true : String(raw) !== "false");
+    new events.Rule(this, "KeepWarmRule", {
+      description: "Keeps crm-api-trpc and its loaded index warm (handler: isWarmEvent).",
+      schedule: events.Schedule.rate(Duration.minutes(KEEP_WARM_RATE_MINUTES)),
+      enabled,
+      targets: [
+        new targets.LambdaFunction(fn, {
+          event: events.RuleTargetInput.fromObject(KEEP_WARM_EVENT),
+          retryAttempts: 0,
+        }),
+      ],
+    });
+  }
+
+  private grantModelAccess(
+    fn: NodejsFunction,
+    aiProvider: string,
+    agentModelId: string,
+    secretArnOverride?: string,
+  ): void {
+    if (aiProvider === "gateway") {
+      // Wired but off: the deployed provider stays Bedrock. Choosing gateway needs the secret that
+      // holds the key (created outside this stack, never by it); the key is read at cold start by
+      // apps/api/src/agent/getModel.ts and never lands in an env var, a log or the template.
+      const raw: unknown = secretArnOverride ?? this.node.tryGetContext("crm:aiGatewaySecretArn");
+      const secretArn = typeof raw === "string" ? raw.trim() : "";
+      if (secretArn === "") {
+        Annotations.of(this).addError(
+          "AI_PROVIDER=gateway needs the AI Gateway key from Secrets Manager (never an env literal): set the CDK context crm:aiGatewaySecretArn to the secret's ARN (cdk synth -c crm:aiGatewaySecretArn=arn:aws:secretsmanager:...), or deploy with AI_PROVIDER=bedrock.",
+        );
+        return;
+      }
+      if (!SECRET_ARN_PATTERN.test(secretArn)) {
+        Annotations.of(this).addError(
+          `crm:aiGatewaySecretArn "${secretArn}" is not a Secrets Manager secret ARN (arn:aws:secretsmanager:<region>:<account>:secret:<name>).`,
+        );
+        return;
+      }
+      fn.addEnvironment("AI_GATEWAY_SECRET_ARN", secretArn);
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "ReadAiGatewayKey",
+          actions: ["secretsmanager:GetSecretValue"],
+          resources: [secretArn],
+        }),
+      );
+      return;
+    }
+    if (aiProvider !== "bedrock") {
+      Annotations.of(this).addError(`Unsupported AI_PROVIDER "${aiProvider}".`);
+      return;
+    }
+
+    const [geo, ...rest] = agentModelId.split(".");
+    const destinationRegions =
+      geo === undefined ? undefined : BEDROCK_GEO_PROFILE_DESTINATION_REGIONS[geo];
+    if (destinationRegions === undefined || rest.length === 0) {
+      Annotations.of(this).addError(
+        `AGENT_MODEL_ID "${agentModelId}" is not a known geographic inference profile id (expected "<geo>.<model id>" with geo in ${Object.keys(BEDROCK_GEO_PROFILE_DESTINATION_REGIONS).join(", ")}).`,
+      );
+      return;
+    }
+    const foundationModelId = rest.join(".");
+    // A literal partition (not the `AWS::Partition` pseudo-parameter) when the region is known,
+    // so the synthesized policy reads as plain ARNs a reviewer can check against
+    // GetInferenceProfile's own output.
+    const partition =
+      (Token.isUnresolved(this.region) ? undefined : RegionInfo.get(this.region).partition) ??
+      this.partition;
+    const profileArn = this.formatArn({
+      partition,
+      service: "bedrock",
+      resource: "inference-profile",
+      resourceName: agentModelId,
+    });
+    const actions = ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"];
+
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeAgentInferenceProfile",
+        actions,
+        resources: [profileArn],
+      }),
+    );
+    fn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeAgentFoundationModelViaProfile",
+        actions,
+        resources: destinationRegions.map(
+          (region) => `arn:${partition}:bedrock:${region}::foundation-model/${foundationModelId}`,
+        ),
+        conditions: { StringEquals: { "bedrock:InferenceProfileArn": profileArn } },
+      }),
     );
   }
 }

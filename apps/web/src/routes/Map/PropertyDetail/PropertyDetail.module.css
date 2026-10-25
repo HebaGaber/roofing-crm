@@ -1,65 +1,58 @@
 /* B-03 detail drawer (tasks.md T037/T038): Atlas § 7 non-modal dialog, full-width sheet at 390.
    Atlas tokens only. */
 
+/* The drawer's box: it fills the slot Map.module.css gives it (a 440 px side sheet from 1280 px,
+   a full-height sheet below) and scrolls on its own. */
 .drawer {
   box-sizing: border-box;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
+  width: 100%;
+  height: 100%;
   min-width: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-large);
-  background: var(--md-sys-color-surface-container-low);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-4) var(--space-5);
+  background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
+}
+
+.drawer:focus-visible {
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: -2px;
 }
 
 .drawerHead {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
 .drawerTitle {
   margin: 0;
-  font-family: var(--md-sys-typescale-title-medium-font);
-  font-size: var(--md-sys-typescale-title-medium-size);
-  font-weight: var(--md-sys-typescale-title-medium-weight);
-  line-height: var(--md-sys-typescale-title-medium-line-height);
+  font-family: var(--md-sys-typescale-headline-small-font);
+  font-size: var(--md-sys-typescale-headline-small-size);
+  font-weight: var(--md-sys-typescale-headline-small-weight);
+  line-height: var(--md-sys-typescale-headline-small-line-height);
 }
 
-.tab {
-  box-sizing: border-box;
-  min-width: var(--space-9);
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Create lead, full width, right under the header (CRM-HANDOFF §4.3); lineage link below it. */
+.primaryAction {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.primaryAction button {
+  width: 100%;
   min-height: var(--space-9);
-  padding: 0 var(--space-4);
-  border: 1px solid var(--md-sys-color-outline);
-  border-radius: var(--md-sys-shape-corner-full);
-  color: var(--md-sys-color-primary);
-  background: transparent;
-  cursor: pointer;
-  font-family: var(--md-sys-typescale-label-large-font);
-  font-size: var(--md-sys-typescale-label-large-size);
-}
-
-.tab:focus-visible,
-.close:focus-visible {
-  outline: 2px solid var(--md-sys-color-primary);
-  outline-offset: 2px;
-}
-
-.close {
-  box-sizing: border-box;
-  width: var(--space-9);
-  height: var(--space-9);
-  border: none;
-  border-radius: var(--md-sys-shape-corner-full);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
 }
 
 .permitSection {
@@ -147,7 +140,24 @@
 }
 
 .link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
   color: var(--md-sys-color-primary);
   font-family: var(--md-sys-typescale-label-large-font);
   font-size: var(--md-sys-typescale-label-large-size);
+}
+
+/* Drawer header stack (E-93): "TCAD {id} · near {place}", then the address line. */
+.titleStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.titleSub {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-small-font);
+  font-size: var(--md-sys-typescale-body-small-size);
+  font-weight: var(--md-sys-typescale-body-small-weight);
 }

@@ -7,8 +7,13 @@ import { randomBytes } from "node:crypto";
 import { isNotInCurrentRun, leadKey, requestIdentifierOf } from "@crm/domain";
 import type { LeadEvent, LeadFilters, LeadSignals, LeadStatus } from "@crm/shared";
 import type { LeadIndex, SearchPropertiesQuery } from "../adapters/duckDbParquet.js";
-import type { LeadRepo, StoredLead } from "../adapters/leadRepo.js";
-import { LeadIndexUnavailableError } from "../leadErrors.js";
+import type {
+  LeadPresenceRecord,
+  LeadRepo,
+  StoredLead,
+  UndoCreateResult,
+} from "../adapters/leadRepo.js";
+import { LeadAlreadyExistsError, LeadIndexUnavailableError } from "../leadErrors.js";
 
 export interface CreateLeadInput {
   fips: string;
@@ -27,6 +32,23 @@ export interface ListLeadsInput {
   status?: LeadStatus | undefined;
   cursor?: string | undefined;
   limit?: number | undefined;
+}
+
+/** A lead can be undone for this long after it was created (config constant, not a user input). */
+export const UNDO_WINDOW_MS = 15 * 60 * 1000;
+/** Items one `createMany` runs at once. The account's Lambda concurrency is 10 and this Lambda
+ *  already shares it with the map, drawer and agent, so 3 is the ceiling. */
+export const CREATE_MANY_CONCURRENCY = 3;
+export const CREATE_MANY_MAX_ITEMS = 25;
+export const PRESENCE_MAX_IDENTIFIERS = 100;
+/** Travis County, the only county the CRM serves; `presence` builds lead keys with it unless the
+ *  caller names another fips. */
+export const DEFAULT_FIPS = "48453";
+
+export interface CreateManyResult {
+  created: { leadKey: string; leadId: string }[];
+  already: string[];
+  failed: { leadKey: string; code: string }[];
 }
 
 export type LeadView = StoredLead & { notInCurrentRun: boolean };
@@ -51,6 +73,14 @@ export interface LeadService {
   ): Promise<StoredLead>;
   addNote(key: string, text: string, by: string, expectedSequence?: number): Promise<StoredLead>;
   get(key: string): Promise<LeadDetailView | null>;
+  /** Deletes a lead the caller just created, only while it is untouched and recent. */
+  undoCreate(key: string, by: string, leadId?: string): Promise<UndoCreateResult>;
+  /** Each item goes through `create`; a duplicate is `already`, any other error is `failed`. */
+  createMany(inputs: readonly CreateLeadInput[], by: string): Promise<CreateManyResult>;
+  presence(
+    requestIdentifiers: readonly string[],
+    fips?: string,
+  ): Promise<(LeadPresenceRecord & { requestIdentifier: string })[]>;
   list(
     input: ListLeadsInput,
     by: string,
@@ -76,9 +106,16 @@ export function newUlid(nowMs: number = Date.now()): string {
   return time + suffix;
 }
 
+/** A stable, PII-free code for a failed item: the DynamoDB/SDK error name, else UNKNOWN. */
+function failureCode(error: unknown): string {
+  return error instanceof Error && error.name !== "" && error.name !== "Error"
+    ? error.name
+    : "UNKNOWN";
+}
+
 const DEFAULT_LIMIT = 50;
-/** The index search applies LIMIT 100 when no center+radius is given; a lead filter must see the
- *  whole index or it silently drops matching leads, so ask for effectively everything. */
+/** Fallback path only (an index without `matchingRequestIdentifiers`): the index search applies
+ *  LIMIT 100 when no center+radius is given, so ask for effectively everything. */
 const INDEX_SCAN_LIMIT = 1_000_000;
 
 export function createLeadService(
@@ -119,18 +156,38 @@ export function createLeadService(
     }
   }
 
-  /** Request identifiers of properties matching the roof-age/permit/radius filters, resolved by
-   *  the same LeadIndex calls the map's search.properties makes (AC-4). */
-  async function matchingRequestIdentifiers(filters: LeadFilters): Promise<Set<string>> {
+  /** The caller's request identifiers whose property passes the roof-age/permit/radius filters.
+   *  Resolved inside the index in SQL (same predicates as the map's search.properties, AC-4), so a
+   *  county-wide radius never lists properties in JavaScript. */
+  async function matchingRequestIdentifiers(
+    filters: LeadFilters,
+    candidateIds: readonly string[],
+  ): Promise<Set<string>> {
     if (leadIndex === undefined) throw new LeadIndexUnavailableError();
-    const query: SearchPropertiesQuery = { limit: INDEX_SCAN_LIMIT };
-    if (
+    const hasCircle =
       filters.radiusMi !== undefined &&
       filters.centerLat !== undefined &&
-      filters.centerLon !== undefined
-    ) {
-      query.center = { lat: filters.centerLat, lng: filters.centerLon };
-      query.radiusMi = filters.radiusMi;
+      filters.centerLon !== undefined;
+    if (leadIndex.matchingRequestIdentifiers !== undefined) {
+      return leadIndex.matchingRequestIdentifiers({
+        requestIdentifiers: candidateIds,
+        ...(hasCircle
+          ? {
+              center: { lat: filters.centerLat as number, lng: filters.centerLon as number },
+              radiusMi: filters.radiusMi as number,
+            }
+          : {}),
+        ...(filters.roofAgeMinYears === undefined
+          ? {}
+          : { roofAgeMinYears: filters.roofAgeMinYears }),
+        ...(filters.permitStatus === undefined ? {} : { permitStatus: filters.permitStatus }),
+      });
+    }
+    // Index without the SQL method (test doubles only): the original two-call path.
+    const query: SearchPropertiesQuery = { limit: INDEX_SCAN_LIMIT };
+    if (hasCircle) {
+      query.center = { lat: filters.centerLat as number, lng: filters.centerLon as number };
+      query.radiusMi = filters.radiusMi as number;
     }
     if (filters.roofAgeMinYears !== undefined) query.roofAgeMinYears = filters.roofAgeMinYears;
     let properties = await leadIndex.searchProperties(query);
@@ -146,7 +203,7 @@ export function createLeadService(
     return new Set(properties.map((p) => p.requestIdentifier));
   }
 
-  return {
+  const service: LeadService = {
     create(input, by) {
       const at = now().toISOString();
       return leadRepo.create({
@@ -181,6 +238,48 @@ export function createLeadService(
         at: now().toISOString(),
         ...(expectedSequence === undefined ? {} : { expectedSequence }),
       });
+    },
+
+    undoCreate(key, by, leadId) {
+      return leadRepo.undoCreate({
+        leadKey: key,
+        by,
+        leadId,
+        createdNotBefore: new Date(now().getTime() - UNDO_WINDOW_MS).toISOString(),
+      });
+    },
+
+    async createMany(inputs, by) {
+      const result: CreateManyResult = { created: [], already: [], failed: [] };
+      const outcomes: Array<() => void> = new Array(inputs.length);
+      let next = 0;
+      async function worker(): Promise<void> {
+        for (let i = next++; i < inputs.length; i = next++) {
+          const input = inputs[i] as CreateLeadInput;
+          let key = `${input.fips}:tcad:${input.requestIdentifier}`;
+          try {
+            const lead = await service.create(input, by);
+            key = lead.leadKey;
+            outcomes[i] = () => result.created.push({ leadKey: key, leadId: lead.leadId });
+          } catch (error) {
+            outcomes[i] =
+              error instanceof LeadAlreadyExistsError
+                ? () => result.already.push(key)
+                : () => result.failed.push({ leadKey: key, code: failureCode(error) });
+          }
+        }
+      }
+      await Promise.all(
+        Array.from({ length: Math.min(CREATE_MANY_CONCURRENCY, inputs.length) }, () => worker()),
+      );
+      for (const apply of outcomes) apply(); // input order, not completion order
+      return result;
+    },
+
+    async presence(requestIdentifiers, fips = DEFAULT_FIPS) {
+      const keys = [...new Set(requestIdentifiers)].map((id) => leadKey(fips, id));
+      const found = await leadRepo.presence(keys);
+      return found.map((p) => ({ ...p, requestIdentifier: requestIdentifierOf(p.leadKey) }));
     },
 
     async get(key) {
@@ -220,7 +319,7 @@ export function createLeadService(
         candidates = candidates.filter((l) => l.status === input.status);
 
       if (geo) {
-        const ids = await matchingRequestIdentifiers(filters);
+        const ids = await matchingRequestIdentifiers(filters, candidates.map(requestIdOf));
         candidates = candidates.filter((l) => ids.has(requestIdOf(l)));
       }
 
@@ -238,4 +337,5 @@ export function createLeadService(
       };
     },
   };
+  return service;
 }

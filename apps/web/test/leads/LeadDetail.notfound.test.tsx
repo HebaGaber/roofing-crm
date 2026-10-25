@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const useLead = vi.fn();
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: false }),
-  useAddLeadNote: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateLeadStatus: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
+  useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
@@ -54,7 +54,7 @@ describe("LeadDetail for an unknown lead", () => {
       refetch,
     });
     renderAt("/leads/48453%3Atcad%3A1");
-    expect(screen.getByText(/this lead could not be loaded/i)).toBeTruthy();
+    expect(screen.getByText(/this lead couldn.t load/i)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /lead not found/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);

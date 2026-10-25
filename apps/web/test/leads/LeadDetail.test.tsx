@@ -1,7 +1,7 @@
 // B-07 T021: LeadDetail (AC-5, FR-005, constitution XI). When the lead is not in the current run
 // the signals snapshot must NOT be rendered as current: a MissingValue-style "Not in Run" state
 // replaces it, with the snapshot's provenance still visible as history.
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,8 +9,8 @@ const useLead = vi.fn();
 let statusPending = false;
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: vi.fn(), isPending: statusPending }),
-  useAddLeadNote: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateLeadStatus: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: statusPending }),
+  useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
@@ -85,7 +85,7 @@ describe("LeadDetail", () => {
     expect(screen.getByText(/ACME ROOFING/)).toBeTruthy();
     expect(screen.queryByText(/not in the current run/i)).toBeNull();
     expect(screen.getByText("Called owner")).toBeTruthy();
-    expect(screen.getByText("new -> contacted")).toBeTruthy();
+    expect(screen.getByText("Status: New → Contacted")).toBeTruthy();
   });
 
   it("renders the not-in-run state and never renders the signals as current", () => {
@@ -119,11 +119,29 @@ describe("LeadDetail", () => {
   it("disables Add note while the status change is saving (race guard)", () => {
     useLead.mockReturnValue({ status: "success", data: base, refetch: vi.fn() });
     renderDetail();
+    fireEvent.change(screen.getByLabelText("Add a note"), { target: { value: "Called" } });
     expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(false);
     cleanup();
     statusPending = true;
     renderDetail();
+    fireEvent.change(screen.getByLabelText("Add a note"), { target: { value: "Called" } });
     expect(screen.getByRole("button", { name: "Add note" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  // Found removing the leadsApi double cast: the router's `leads.get` returns `signals` as
+  // `LeadSignals | undefined` (no SIGNALS item stored), which the hand-written type hid, so this
+  // case crashed the page. It now says why the snapshot is missing, with the manifest provenance.
+  it("says why when an in-run lead has no stored signals snapshot, instead of crashing", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...base, signals: undefined },
+      refetch: vi.fn(),
+    });
+    renderDetail();
+    const section = screen.getByRole("region", { name: "Current signals" });
+    expect(within(section).getByText("No signals snapshot stored for this lead")).toBeTruthy();
+    expect(screen.queryByText(/23 yrs/)).toBeNull();
+    expect(screen.getByText("Called owner")).toBeTruthy();
   });
 
   it("shows an error banner when the lead cannot be loaded", () => {

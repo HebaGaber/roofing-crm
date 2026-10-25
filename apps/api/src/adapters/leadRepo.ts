@@ -8,13 +8,20 @@
 // `status`/`assignee` on LEAD are written only inside these transactions (PO-approved ADR-04
 // deviation, architecture-constitution.md §13).
 import {
+  BatchGetCommand,
   DynamoDBDocumentClient,
   GetCommand,
   QueryCommand,
   TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { Lead, LeadEvent, LeadSignals, type LeadStatus } from "@crm/shared";
+import {
+  Lead,
+  LeadEvent,
+  LeadSignals,
+  LeadStatus as LeadStatusSchema,
+  type LeadStatus,
+} from "@crm/shared";
 import {
   LeadAlreadyExistsError,
   LeadNotFoundError,
@@ -52,12 +59,43 @@ interface WriteBase {
   readonly expectedSequence?: number;
 }
 
+export type UndoCreateReason = "NOT_UNDOABLE" | "NOT_FOUND" | "NOT_OWNER" | "TOO_OLD" | "CHANGED";
+
+export type UndoCreateResult =
+  | { readonly deleted: true }
+  | { readonly deleted: false; readonly reason: UndoCreateReason };
+
+export interface UndoCreateInput {
+  readonly leadKey: string;
+  /** The caller; must be the lead's assignee (the creator). */
+  readonly by: string;
+  /** When given, the lead must also carry this leadId (guards against a stale undo of a lead that
+   *  was undone and then created again). */
+  readonly leadId?: string | undefined;
+  /** ISO timestamp; the lead must have been created at or after it. */
+  readonly createdNotBefore: string;
+}
+
+/** Who-owns-what is deliberately absent: presence is shared across assignees (no owner, notes). */
+export interface LeadPresenceRecord {
+  readonly leadKey: string;
+  readonly leadId: string;
+  readonly status: LeadStatus;
+}
+
+/** DynamoDB BatchGetItem accepts at most 100 keys per call. */
+export const BATCH_GET_MAX_KEYS = 100;
+
 /** The port the Application layer is injected with (architecture-constitution.md §4). */
 export interface LeadRepo {
   create(record: NewLeadRecord): Promise<StoredLead>;
   updateStatus(input: WriteBase & { status: LeadStatus }): Promise<StoredLead>;
   addNote(input: WriteBase & { text: string }): Promise<StoredLead>;
   get(leadKey: string): Promise<LeadDetailRecord | null>;
+  /** Deletes LEAD + SIGNALS + EVT#0 in ONE conditional transaction, or nothing (see impl). */
+  undoCreate(input: UndoCreateInput): Promise<UndoCreateResult>;
+  /** Lead presence by key across all assignees, via BatchGetItem (LEAD items only). */
+  presence(leadKeys: readonly string[]): Promise<LeadPresenceRecord[]>;
   /** GSI1 (assignee), newest first (createdAt descending). */
   listByAssignee(assignee: string): Promise<StoredLead[]>;
   /** GSI2 (status), newest first (createdAt descending). */
@@ -286,7 +324,111 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     return toStoredLead(lead);
   }
 
+  /** Why an undo transaction was refused. Runs only AFTER the transaction failed, purely to name
+   *  the reason; it never decides whether to delete (the transaction's conditions did). */
+  async function diagnoseUndo(input: UndoCreateInput): Promise<UndoCreateResult> {
+    const item = await getLeadItem(input.leadKey);
+    if (item === undefined) return { deleted: false, reason: "NOT_FOUND" };
+    if (input.leadId !== undefined && item.leadId !== input.leadId)
+      return { deleted: false, reason: "NOT_FOUND" };
+    if (item.assignee !== input.by) return { deleted: false, reason: "NOT_OWNER" };
+    if (item.eventSequence !== 0) return { deleted: false, reason: "CHANGED" };
+    if (item.status !== "new") return { deleted: false, reason: "NOT_UNDOABLE" };
+    if (String(item.createdAt) < input.createdNotBefore)
+      return { deleted: false, reason: "TOO_OLD" };
+    return { deleted: false, reason: "CHANGED" };
+  }
+
+  async function undoOnce(input: UndoCreateInput): Promise<UndoCreateResult> {
+    const key = input.leadKey;
+    const leadValues: Record<string, unknown> = {
+      ":by": input.by,
+      ":new": "new",
+      ":zero": 0,
+      ":cutoff": input.createdNotBefore,
+    };
+    let leadCondition =
+      "attribute_exists(pk) AND assignee = :by AND #status = :new AND eventSequence = :zero AND createdAt >= :cutoff";
+    if (input.leadId !== undefined) {
+      leadCondition += " AND leadId = :leadId";
+      leadValues[":leadId"] = input.leadId;
+    }
+    try {
+      await client.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Delete: {
+                TableName: tableName,
+                Key: { pk: key, sk: "LEAD" },
+                ConditionExpression: leadCondition,
+                ExpressionAttributeNames: { "#status": "status" },
+                ExpressionAttributeValues: leadValues,
+              },
+            },
+            // Idempotent on purpose: a missing SIGNALS item is not a reason to keep the lead.
+            { Delete: { TableName: tableName, Key: { pk: key, sk: "SIGNALS" } } },
+            {
+              Delete: {
+                TableName: tableName,
+                Key: { pk: key, sk: evtSortKey(0) },
+                ConditionExpression: "attribute_exists(pk) AND #kind = :create AND #seq = :zero",
+                // "sequence" is a DynamoDB reserved word: it must go through a name placeholder.
+                ExpressionAttributeNames: { "#kind": "kind", "#seq": "sequence" },
+                ExpressionAttributeValues: { ":create": "create", ":zero": 0 },
+              },
+            },
+          ],
+        }),
+      );
+      return { deleted: true };
+    } catch (error) {
+      if (failedConditionIndex(error) >= 0) return diagnoseUndo(input);
+      throw error;
+    }
+  }
+
   return {
+    undoCreate(input) {
+      return withConflictRetry(() => undoOnce(input));
+    },
+
+    async presence(leadKeys) {
+      const unique = [...new Set(leadKeys)];
+      const out: LeadPresenceRecord[] = [];
+      for (let i = 0; i < unique.length; i += BATCH_GET_MAX_KEYS) {
+        let keys: Record<string, unknown>[] = unique
+          .slice(i, i + BATCH_GET_MAX_KEYS)
+          .map((pk) => ({ pk, sk: "LEAD" }));
+        // UnprocessedKeys (throttling) are retried a bounded number of times, then surfaced.
+        for (let attempt = 1; keys.length > 0; attempt++) {
+          if (attempt > MAX_CONFLICT_ATTEMPTS)
+            throw new Error("BatchGetItem left unprocessed keys");
+          if (attempt > 1) await sleep(20 * attempt);
+          const res = await client.send(
+            new BatchGetCommand({
+              RequestItems: {
+                [tableName]: {
+                  Keys: keys,
+                  ProjectionExpression: "pk, leadId, #status",
+                  ExpressionAttributeNames: { "#status": "status" },
+                },
+              },
+            }),
+          );
+          for (const item of res.Responses?.[tableName] ?? []) {
+            out.push({
+              leadKey: String(item.pk),
+              leadId: String(item.leadId),
+              status: LeadStatusSchema.parse(item.status),
+            });
+          }
+          keys = (res.UnprocessedKeys?.[tableName]?.Keys ?? []) as Record<string, unknown>[];
+        }
+      }
+      return out;
+    },
+
     create(r) {
       return withConflictRetry(() => createOnce(r));
     },

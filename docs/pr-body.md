@@ -37,7 +37,7 @@ The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/tracea
 | B-02 Lead search index | Done | `d01c06e` | G7 |
 | B-03 Map search (radius, roof age, permits, detail) | Done | `80873e1` | G7 |
 | B-07 Leads and lead list | Done | `8b13240` | G7 approved with exceptions (below) |
-| B-09 Agent and hardening | Not started | n/a | n/a |
+| B-09 Agent and hardening | In progress: built and unit-tested; live proof waits for Task A's Run 2 manifest | n/a | G4, G5 passed; G6 held for Run 2 data |
 
 ## Verification
 
@@ -81,4 +81,6 @@ Every recorded gap, with its cause and what closes it, is in [`specs/007-leads/k
 | `leads.create` trusts the property details the client sends; no per-lead ownership checks | Not decided or built yet | The follow-up story |
 | No street address, contractor name or BBB rating in the sample | Task A's contract v1 publishes none | Shown as "not available" with a reason; fills in when Task A publishes them |
 | B-07's logged-in end-to-end spec does not run on GitHub Actions | CI has no AWS credentials to clear its test leads, and the organization policy blocks the GitHub-to-AWS role | Its proof is the hosted run recorded in `docs/evidence/B-07.md`; revisit if the policy changes |
+| Run 3 handling and the release steps R1 to R7 (self-score, demo video, marking the PR ready) | Moved out of B-09 by the PO; the app serves Task A's Run 2 | Listed with their steps in [`docs/pending-items.md`](docs/pending-items.md), for the follow-up branch |
+| Incremental Task A runs (Run 3+) are not followed yet | Task A publishes only changed data groups per run, linked by `previousManifestCid`; the sync reads one manifest, so a delta-only run is held and the CRM stays on the last good run | Deferred by the PO: chain-following ships as an update after Tasks A and B, with the "coming soon" sections |
 | Lambda concurrency is 10 on this Free-plan account | Raising it needs a paid plan | The 20-concurrent-create test retries throttled calls and still proves exactly one winner |

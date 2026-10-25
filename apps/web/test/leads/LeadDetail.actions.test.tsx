@@ -11,8 +11,13 @@ let statusState: { isPending: boolean; error: unknown } = { isPending: false, er
 let noteState: { isPending: boolean; error: unknown } = { isPending: false, error: null };
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
-  useUpdateLeadStatus: () => ({ mutate: statusMutate, ...statusState }),
-  useAddLeadNote: () => ({ mutate: noteMutate, ...noteState }),
+  useUpdateLeadStatus: () => ({
+    mutate: statusMutate,
+    reset: vi.fn(),
+    isSuccess: false,
+    ...statusState,
+  }),
+  useAddLeadNote: () => ({ mutate: noteMutate, reset: vi.fn(), ...noteState }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
@@ -65,14 +70,17 @@ describe("LeadDetail load states", () => {
     renderDetail();
     expect(useLead).toHaveBeenCalledWith(KEY);
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByRole("heading", { name: "TCAD 0201885122" })).toBeNull();
+    // The title comes from the link while the data loads; no signals or notes are drawn yet.
+    expect(screen.getByRole("heading", { name: "TCAD 0201885122" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Notes" })).toBeNull();
+    expect(screen.getByRole("progressbar", { name: "Loading the lead" })).toBeTruthy();
   });
 
   it("shows a Retry banner for a lead that cannot be loaded (including not found)", () => {
     const refetch = vi.fn();
     useLead.mockReturnValue({ status: "error", error: new Error("NOT_FOUND"), refetch });
     renderDetail();
-    expect(screen.getByRole("alert").textContent).toMatch(/could not be loaded/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn.t load/i);
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(refetch).toHaveBeenCalledTimes(1);
   });
@@ -83,7 +91,7 @@ describe("LeadDetail status change", () => {
     show();
     renderDetail();
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "won" } });
-    expect(statusMutate).toHaveBeenCalledWith({ leadKey: KEY, status: "won" });
+    expect(statusMutate).toHaveBeenCalledWith({ leadKey: KEY, status: "won", expectedSequence: 0 });
   });
 
   it("disables the status select while a change is saving and shows no save error", () => {
@@ -98,7 +106,7 @@ describe("LeadDetail status change", () => {
     show();
     statusState = { isPending: false, error: new Error("CONFLICT") };
     renderDetail();
-    expect(screen.getByRole("alert").textContent).toMatch(/status could not be saved/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn.t save the status/i);
   });
 });
 
@@ -110,7 +118,11 @@ describe("LeadDetail notes", () => {
     fireEvent.change(box, { target: { value: "  Left voicemail  " } });
     fireEvent.click(screen.getByRole("button", { name: "Add note" }));
     expect(noteMutate).toHaveBeenCalledTimes(1);
-    expect(noteMutate.mock.calls[0]?.[0]).toEqual({ leadKey: KEY, text: "Left voicemail" });
+    expect(noteMutate.mock.calls[0]?.[0]).toEqual({
+      leadKey: KEY,
+      text: "Left voicemail",
+      expectedSequence: 0,
+    });
     expect(box.value).toBe("  Left voicemail  ");
     const options = noteMutate.mock.calls[0]?.[1] as { onSuccess: () => void };
     act(() => options.onSuccess());
@@ -142,7 +154,7 @@ describe("LeadDetail notes", () => {
     show();
     noteState = { isPending: false, error: new Error("x") };
     renderDetail();
-    expect(screen.getByRole("alert").textContent).toMatch(/note could not be saved/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/couldn.t save the note/i);
   });
 
   it("shows empty notes/history messages, and a stored note as the rep's own words", () => {
@@ -164,7 +176,7 @@ describe("LeadDetail notes", () => {
     });
     renderDetail();
     expect(screen.getByText('Said "call back" & left msg')).toBeTruthy();
-    expect(screen.getByText("rep@example.com · 2026-10-21 10:00 UTC")).toBeTruthy();
+    expect(screen.getByText("rep@example.com · Oct 21, 10:00 UTC")).toBeTruthy();
   });
 });
 
@@ -174,14 +186,13 @@ describe("LeadDetail signals", () => {
     renderDetail();
     for (const reason of [
       "Roof age not available",
-      "Basis not available",
       "No open permit at capture",
       "Contractor not published",
-      "BBB rating not available",
+      "Not checked · no name to look up",
     ]) {
       expect(screen.getByText(reason)).toBeTruthy();
     }
-    expect(screen.getByText(/Snapshot collected 2026-10-20 00:00:00 UTC/)).toBeTruthy();
+    expect(screen.getByText(/collected 2026-10-20 00:00:00 UTC/)).toBeTruthy();
   });
 
   it("shows present signals including permit age in days and BBB rating", () => {
@@ -198,9 +209,16 @@ describe("LeadDetail signals", () => {
     });
     renderDetail();
     expect(screen.getByText("23 yrs")).toBeTruthy();
-    expect(screen.getByText("permit")).toBeTruthy();
-    expect(screen.getByText("BP-9 · open 41 days")).toBeTruthy();
+    expect(screen.getByText("Basis: Last reroof permit")).toBeTruthy();
+    expect(screen.getByText("BP-9")).toBeTruthy();
+    expect(screen.getByText("open 41 days (0.1 yrs)")).toBeTruthy();
     expect(screen.getByText("A+")).toBeTruthy();
+  });
+
+  it("says the basis is missing when a roof age has none", () => {
+    show({ signals: { roofAgeYears: 23, capturedAt: "2026-10-20T00:00:00Z" } });
+    renderDetail();
+    expect(screen.getByText("Basis not available")).toBeTruthy();
   });
 
   it("shows an open permit without a day count when the age is unknown", () => {

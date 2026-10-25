@@ -84,9 +84,11 @@ describe("LeadsList", () => {
       refetch: vi.fn(),
     });
     renderAt("/leads");
-    expect(screen.getByText(/2 leads/i)).toBeTruthy();
+    expect(screen.getByText("2 leads")).toBeTruthy();
     expect(screen.getAllByRole("link", { name: /TCAD 0201885122/ })).toHaveLength(2);
-    expect(screen.getAllByText(/not in the current run/i)).toHaveLength(1);
+    // the row pill and the banner above the list
+    expect(screen.getAllByText(/not in the current run/i)).toHaveLength(2);
+    expect(screen.getByText(/1 lead keeps its snapshot/i)).toBeTruthy();
   });
 
   it("passes URL filters to leads.list", () => {

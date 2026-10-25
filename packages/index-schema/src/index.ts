@@ -96,8 +96,25 @@ export const IndexMetaHeldReason = z.enum([
   // with a failed part is never promoted" — even if every other part verified and the overall
   // count drop is within tolerance).
   "unverified_part",
+  // B-09: crm_permit's row count differs from the manifest's own `coverage.permits_emitted` —
+  // exactly Task A's publish gate (v_roofing_permit = permits_emitted), so no tolerance.
+  "permit_reconcile_mismatch",
+  // B-09 review fix: full-county manifests publish no parcel count, so on a first run (no
+  // previously promoted count either) these are the property-count checks that still run.
+  // crm_property has no rows at all — never a servable index, whatever the manifest says.
+  "zero_properties",
+  // A manifest batch holding a table the views read was never bound (query-core's bindManifest
+  // skips a batch whose data group it can't resolve rather than guess) — a partial index.
+  "unbound_batch",
+  // A county batch was bound but contributed no county.property rows — a partial index.
+  "empty_county_batch",
 ]);
 export type IndexMetaHeldReason = z.infer<typeof IndexMetaHeldReason>;
+
+/** B-09: whether a count reconcile ran, or Task A's manifest publishes no count to check against
+ *  (full-county manifests carry no `coverage.parcels_published`). Never a fake number. */
+export const CountCheck = z.enum(["reconciled", "not_published_by_task_a"]);
+export type CountCheck = z.infer<typeof CountCheck>;
 
 export const IndexMeta = z
   .object({
@@ -105,9 +122,15 @@ export const IndexMeta = z
     status: IndexMetaStatus,
     propertyCount: z.number().int().nonnegative(),
     permitCount: z.number().int().nonnegative(),
+    /** Property count vs `coverage.parcels_published`; null when Task A does not publish it. */
     reconcileDiff: z.number().int().nullable(),
     heldReason: IndexMetaHeldReason.nullable(),
     finishedAt: z.string(),
+    /** B-09: which count checks ran (absent on pre-B-09 records). */
+    propertyCountCheck: CountCheck.optional(),
+    permitCountCheck: CountCheck.optional(),
+    /** crm_permit rows minus `coverage.permits_emitted`; null when not published. */
+    permitReconcileDiff: z.number().int().nullable().optional(),
   })
   .strict();
 export type IndexMeta = z.infer<typeof IndexMeta>;

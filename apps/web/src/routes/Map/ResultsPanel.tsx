@@ -1,6 +1,7 @@
 // B-03 results sheet (CRM-HANDOFF §4.2/§9.1, board CrmMapPin390): the "Matches N" header with the
 // coverage-note info icon, wrapping the result card list. Replaces the bare `<ul>` the fixer pass
-// left in place. Render-only — Map.tsx still owns the query and the list of rows.
+// left in place. Render-only — Map.tsx still owns the query and the list of rows. The sheet
+// behaviour (peek/full, handle, pane from 1280 px) is ResultsSheet's; this is only its content.
 import { Icon, Popover } from "@crm/ui";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
 import styles from "./ResultsPanel.module.css";
@@ -8,6 +9,11 @@ import styles from "./ResultsPanel.module.css";
 export interface ResultsPanelProps {
   readonly count: number;
   readonly children: ReactNode;
+  /** Shows the filled "Triage n" action after the coverage info (the phone sheet, board
+   *  CrmMapPin390); absent from 1280 px, where the board has none. */
+  readonly onTriage?: () => void;
+  /** An honest line under the header when the server clipped a page. */
+  readonly note?: string | undefined;
 }
 
 /** CRM-HANDOFF §4.2 "Coverage note": the full text behind the results-header info icon. Static
@@ -17,12 +23,11 @@ export interface ResultsPanelProps {
 const COVERAGE_NOTE =
   "Permits are shown only where CountyLens publishes them. Part of this area may have no permit data.";
 
-export function ResultsPanel({ count, children }: ResultsPanelProps): ReactElement {
+export function ResultsPanel({ count, children, onTriage, note }: ResultsPanelProps): ReactElement {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
-    <section className={styles.sheet} aria-label="Results">
-      <div className={styles.handle} aria-hidden="true" />
+    <div className={styles.sheet}>
       <header className={styles.head}>
         <span className={styles.matches}>{`Matches ${count}`}</span>
         <span className={styles.infoWrap}>
@@ -47,8 +52,18 @@ export function ResultsPanel({ count, children }: ResultsPanelProps): ReactEleme
             </Popover>
           </div>
         </span>
+        {onTriage === undefined ? null : (
+          <button type="button" className={styles.triage} onClick={onTriage}>
+            {`Triage ${count}`}
+          </button>
+        )}
       </header>
+      {note === undefined ? null : (
+        <p className={styles.clipNote} role="status" data-state="CrmMapResultsClipped">
+          {note}
+        </p>
+      )}
       {children}
-    </section>
+    </div>
   );
 }

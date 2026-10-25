@@ -91,6 +91,25 @@ describe("FetchPart", () => {
     expect(pinata.fetch).not.toHaveBeenCalled();
   });
 
+  // Found on Task A's Run 2 (parts up to ~6 MB): a Lambda task result larger than Step Functions'
+  // 256 KB limit fails the whole execution with States.DataLimitExceeded. The verified bytes go to
+  // S3 and BuildIndex reads them from there, so the task result must never carry them.
+  it("returns a small result for a large part: the bytes are written to S3, not returned", async () => {
+    const body = Buffer.alloc(6 * 1024 * 1024, 7);
+    const part = { ...PART, sha256: createHash("sha256").update(body).digest("hex") };
+    const s3 = fakeS3Writer();
+
+    const result = await fetchPart(
+      { manifestCid: MANIFEST_CID, part },
+      deps([succeedingFetcher("cloudfront", body)], s3),
+    );
+
+    expect(result).toMatchObject({ status: "verified", partPath: part.path, sha256: part.sha256 });
+    expect(result).not.toHaveProperty("verifiedBytes");
+    expect(JSON.stringify(result).length).toBeLessThan(2048);
+    expect(s3.calls).toEqual([contentAddressedKey(MANIFEST_CID, part.path)]);
+  });
+
   it("falls back CloudFront -> Filebase -> Pinata on failure, never ipfs.io/dweb.link", async () => {
     const body = Buffer.from("real bytes");
     const cloudfront = alwaysFailingFetcher("cloudfront");

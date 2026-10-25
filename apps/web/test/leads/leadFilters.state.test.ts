@@ -4,6 +4,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_LEAD_RADIUS_MI,
+  activeFilterCount,
+  leadsMapHref,
   parseLeadQuery,
   patchLeadParams,
   toLeadsListInput,
@@ -75,5 +77,44 @@ describe("leadFilters.state", () => {
     });
     const noCenter = toLeadsListInput(parseLeadQuery(new URLSearchParams("r=5")));
     expect(noCenter.filters?.radiusMi).toBeUndefined();
+  });
+
+  it("drops permit=closed: the CRM's permit filter is Open, Stalled or Any (design-review-log row 6)", () => {
+    expect(parseLeadQuery(new URLSearchParams("permit=closed")).permitStatus).toBeUndefined();
+    expect(parseLeadQuery(new URLSearchParams("permit=open")).permitStatus).toBe("open");
+    expect(parseLeadQuery(new URLSearchParams("permit=stalled")).permitStatus).toBe("stalled");
+  });
+
+  it("counts active filters, the area and its radius counting once", () => {
+    expect(activeFilterCount(parseLeadQuery(new URLSearchParams()))).toBe(0);
+    expect(activeFilterCount(parseLeadQuery(new URLSearchParams("r=10")))).toBe(0);
+    expect(
+      activeFilterCount(
+        parseLeadQuery(
+          new URLSearchParams("status=new&assignee=a&roof=20&permit=open&lat=30.2&lng=-97.7&r=10"),
+        ),
+      ),
+    ).toBe(5);
+  });
+
+  it("Show on map carries only the keys the map reads: area, radius, roof age, permit layer", () => {
+    expect(leadsMapHref(parseLeadQuery(new URLSearchParams()))).toBe("/map");
+    const href = leadsMapHref(
+      parseLeadQuery(
+        new URLSearchParams("status=won&assignee=a&roof=20&permit=open&lat=30.2&lng=-97.7&r=10"),
+      ),
+    );
+    const [path, search] = href.split("?");
+    expect(path).toBe("/map");
+    const params = new URLSearchParams(search);
+    expect(Object.fromEntries(params)).toEqual({
+      lat: "30.2",
+      lng: "-97.7",
+      r: "10",
+      roof: "20",
+      permits: "1",
+    });
+    // No area: the radius is not sent on its own.
+    expect(leadsMapHref(parseLeadQuery(new URLSearchParams("r=10&roof=15")))).toBe("/map?roof=15");
   });
 });

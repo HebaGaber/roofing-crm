@@ -6,14 +6,28 @@
 // states, a source link per permit and "View lineage in Explorer". Lead creation is owned by B-07 and
 // added additively through `LeadCreateAction` (Leads/LeadCreateAction.tsx, B-07 T026): one for the
 // property and one per permit row, both making the same lead; it also shows "Already a lead".
+//
+// UI fix (2026-10-25, side-by-side audit vs CrmProperty1440/390): the property's Create lead is
+// full width right under the header (CRM-HANDOFF §4.3 "address and lead status on top; then
+// Create lead"), with View lineage beside it; every value goes through src/format (dates as
+// calendar days, enum codes and field names as plain labels). Placement (side sheet ≥ 1280 px,
+// full-height sheet below) is Map.module.css's `.drawerSlot`.
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
-import { Provenance, StatusPill } from "@crm/ui";
+import { IconButton, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import type { MissingReason as Reason } from "@crm/oracle-contract";
 import { useEffect, useId, useRef, type ReactElement } from "react";
+import {
+  formatDate,
+  humanizeCode,
+  missingReasonText,
+  permitStatusLabel,
+  roofAgeBasisLabel,
+  roofAgeConfidenceLabel,
+} from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
-import { MissingSummary, RowProvenance, RowTitle, TypePill } from "../ResultRow.js";
+import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import styles from "./PropertyDetail.module.css";
 
 /** The exact shape `property.get` returns (contracts/property-detail.md) — kept local rather
@@ -25,6 +39,17 @@ export interface PropertyDetailData {
   readonly bbbStatus: "not_checked" | null;
   readonly bbbStatusReason: string | null;
   readonly lineageUrl: string;
+  /** The nearest travis-places@1.0.0 place centroid, computed server-side by `property.get`;
+   *  absent when the property has no coordinates. */
+  readonly nearPlace?: NearPlace;
+}
+
+/** `property.get`'s `nearPlace` (apps/api services/agent/placeResolver.ts `NearestPlace`). */
+export interface NearPlace {
+  readonly name: string;
+  readonly distanceMi: number;
+  readonly source: string;
+  readonly sha256: string;
 }
 
 export interface PropertyDetailProps {
@@ -44,13 +69,7 @@ function BbbField({
   if (bbbStatus === null || bbbStatusReason === null) {
     return <StatusPill status="unavailable" text="BBB rating not available" />;
   }
-  const reasonLabel = ((): string => {
-    try {
-      return missingLabel("bbb_rating", bbbStatusReason as Reason);
-    } catch {
-      return bbbStatusReason;
-    }
-  })();
+  const reasonLabel = missingReasonText("bbb_rating", bbbStatusReason);
   return (
     <StatusPill
       status="unavailable"
@@ -71,7 +90,12 @@ function PermitDetail({
   readonly bbbStatus: "not_checked" | null;
   readonly bbbStatusReason: string | null;
 }): ReactElement {
-  const isStalled = permit.statusClass !== "open";
+  const issued = formatDate(permit.issueDate);
+  const finaled = formatDate(permit.finalDate);
+  const work = [permit.improvementType, permit.improvementAction]
+    .filter((w) => w !== "")
+    .map(humanizeCode)
+    .join(" · ");
   return (
     <article className={styles.permitCard} data-permit-cid={permit.permitCid}>
       <header className={styles.permitHead}>
@@ -80,24 +104,20 @@ function PermitDetail({
         </span>
         <StatusPill
           status={permit.statusClass === "open" ? "info" : "unavailable"}
-          text={
-            isStalled
-              ? "Stalled · derived: no status in source"
-              : (permit.statusClass ?? "status not available")
-          }
+          text={permitStatusLabel(permit.statusClass)}
           data={{ field: "status_class" }}
         />
       </header>
       <dl className={styles.permitFields}>
         <div className={styles.permitField}>
           <dt>Work</dt>
-          <dd>{permit.improvementType || permit.improvementAction || "not published"}</dd>
+          <dd>{work === "" ? "Work type not published" : work}</dd>
         </div>
         <div className={styles.permitField}>
           <dt>Issued</dt>
-          <dd>
-            {permit.issueDate ?? "not published"}
-            {permit.finalDate === null ? " · not finaled" : ` · finaled ${permit.finalDate}`}
+          <dd data-field="issue_date">
+            {issued ?? "Issue date not published"}
+            {finaled === null ? " · not finaled" : ` · finaled ${finaled}`}
           </dd>
         </div>
         <div className={styles.permitField}>
@@ -128,6 +148,81 @@ function PermitDetail({
   );
 }
 
+/** A null roof age with its reason from the row's own `missing` entry (P0-4). */
+function RoofAgeMissing({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const entry = property.missingReasons.find(
+    (m) => m.field === "roofAgeYears" || m.field === "roof_age_years",
+  );
+  if (entry === undefined) return <>Roof age not published (no reason recorded)</>;
+  return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+}
+
+/** "near {place}" with the gazetteer as its provenance on hover. The gazetteer holds centroid
+ *  points only, so the drawer never claims "in {place}". */
+function NearPlaceLabel({ nearPlace }: { readonly nearPlace: NearPlace }): ReactElement {
+  return (
+    <span
+      data-field="near_place"
+      title={`Nearest place centroid, ${nearPlace.distanceMi} mi away · ${nearPlace.source} · sha256 ${nearPlace.sha256}`}
+    >
+      {`near ${nearPlace.name}`}
+    </span>
+  );
+}
+
+/** No coordinates → no place, and the row's own `missing` reason says why (P0-4). */
+function NearPlaceMissing({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const entry = property.missingReasons.find((m) =>
+    ["latitude", "longitude", "lat_lon"].includes(m.field),
+  );
+  const reason = missingReasonText(entry?.field ?? "lat_lon", entry?.reason ?? "no_coordinates");
+  return (
+    <span className={styles.titleSub} data-field="near_place">
+      {`Nearest place not shown · ${reason}`}
+    </span>
+  );
+}
+
+/** Drawer header (E-93): "TCAD {id} · near {place}", then "Address not published in this run ·
+ *  lat, lon". */
+function DrawerTitle({
+  property,
+  nearPlace,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly nearPlace: NearPlace | undefined;
+}): ReactElement {
+  const hasCoords = property.latitude !== null && property.longitude !== null;
+  return (
+    <span className={styles.titleStack}>
+      <span>
+        {`TCAD ${property.requestIdentifier}`}
+        {nearPlace === undefined ? null : (
+          <>
+            {" · "}
+            <NearPlaceLabel nearPlace={nearPlace} />
+          </>
+        )}
+      </span>
+      <span className={styles.titleSub}>
+        Address not published in this run
+        {property.latitude === null || property.longitude === null
+          ? ""
+          : ` · ${property.latitude.toFixed(5)}, ${property.longitude.toFixed(5)}`}
+      </span>
+      {hasCoords ? null : <NearPlaceMissing property={property} />}
+    </span>
+  );
+}
+
 export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactElement {
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
@@ -153,9 +248,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           <h3 id={titleId} className={styles.drawerTitle}>
             Property not in this run
           </h3>
-          <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
-            <span aria-hidden="true">×</span>
-          </button>
+          <IconButton icon="close" label="Close" onClick={onClose} />
         </header>
       </aside>
     );
@@ -177,13 +270,25 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
     >
       <header className={styles.drawerHead}>
         <h3 id={titleId} className={styles.drawerTitle}>
-          <RowTitle row={property} />
+          <DrawerTitle property={property} nearPlace={data.nearPlace} />
         </h3>
-        <button type="button" className={styles.close} onClick={onClose} aria-label="Close">
-          <span aria-hidden="true">×</span>
-        </button>
+        <IconButton icon="close" label="Close" onClick={onClose} />
       </header>
-      <TypePill propertyType={property.propertyType} />
+      <div className={styles.pills}>
+        <TypePill usageType={property.propertyUsageType} />
+      </div>
+      <div className={styles.primaryAction}>
+        <LeadCreateAction property={property} permits={data.permits} />
+        <a
+          href={data.lineageUrl}
+          className={styles.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-lineage-link=""
+        >
+          View lineage in Explorer
+        </a>
+      </div>
 
       <section className={styles.section} aria-labelledby={`${titleId}-roof`}>
         <h4 id={`${titleId}-roof`} className={styles.sectionTitle}>
@@ -193,16 +298,22 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           <div className={styles.permitField}>
             <dt>Roof age</dt>
             <dd data-field="roof_age_years">
-              {property.roofAgeYears === null ? "not available" : `${property.roofAgeYears} yrs`}
+              {property.roofAgeYears === null ? (
+                <RoofAgeMissing property={property} />
+              ) : (
+                `${property.roofAgeYears} yrs`
+              )}
             </dd>
           </div>
           <div className={styles.permitField}>
             <dt>Basis</dt>
-            <dd data-field="roof_age_basis">{property.roofAgeBasis}</dd>
+            <dd data-field="roof_age_basis">{roofAgeBasisLabel(property.roofAgeBasis)}</dd>
           </div>
           <div className={styles.permitField}>
             <dt>Confidence</dt>
-            <dd data-field="roof_age_confidence">{property.roofAgeConfidence}</dd>
+            <dd data-field="roof_age_confidence">
+              {roofAgeConfidenceLabel(property.roofAgeConfidence)}
+            </dd>
           </div>
         </dl>
       </section>
@@ -228,17 +339,16 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
         )}
       </section>
 
-      <a
-        href={data.lineageUrl}
-        className={styles.link}
-        target="_blank"
-        rel="noopener noreferrer"
-        data-lineage-link=""
-      >
-        View lineage in Explorer
-      </a>
-      <LeadCreateAction property={property} permits={data.permits} />
-      <MissingSummary row={property} />
+      <section className={styles.section} aria-labelledby={`${titleId}-missing`}>
+        <h4 id={`${titleId}-missing`} className={styles.sectionTitle}>
+          Not published
+        </h4>
+        {property.missingReasons.length === 0 ? (
+          <p className={styles.empty}>Every field of this property is published in this run.</p>
+        ) : (
+          <MissingSummary row={property} />
+        )}
+      </section>
       <RowProvenance row={property} />
     </aside>
   );

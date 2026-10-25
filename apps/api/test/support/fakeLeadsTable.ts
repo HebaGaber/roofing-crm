@@ -5,7 +5,8 @@
 //   - TransactWriteItems is all-or-nothing: every item's ConditionExpression is evaluated against
 //     the pre-transaction state, and if any fails nothing is written and a
 //     TransactionCanceledException carrying per-item CancellationReasons is thrown.
-//   - Supported condition terms: attribute_exists(x), attribute_not_exists(x), `x = :v`.
+//   - Supported condition terms: attribute_exists(x), attribute_not_exists(x), `x = :v`, `x >= :v`.
+//   - Delete is supported inside TransactWriteItems; BatchGetCommand returns the requested keys.
 //   - GSI1 (assignee) / GSI2 (status) are sparse: only items carrying the key attribute appear.
 // Limitation: JS is single-threaded, so each transaction body is trivially serialisable; this
 // proves the repo issues the right conditions, not DynamoDB's own isolation (that is AWS's job).
@@ -27,6 +28,7 @@ function group(m: RegExpExecArray, i: number): string {
 
 export class FakeLeadsTable {
   readonly items = new Map<string, Item>();
+  readonly batchGets: Record<string, any>[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
   readonly transactions: Array<Record<string, any>[]> = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   private static keyOf(pk: unknown, sk: unknown): string {
@@ -58,6 +60,11 @@ export class FakeLeadsTable {
           existing !== undefined &&
           existing[names[group(m, 1)] ?? group(m, 1)] === values[group(m, 2)]
         );
+      m = /^(#?\w+)\s*>=\s*(:\w+)$/.exec(term.trim());
+      if (m) {
+        const have = existing?.[names[group(m, 1)] ?? group(m, 1)];
+        return have !== undefined && String(have) >= String(values[group(m, 2)]);
+      }
       throw new Error(`FakeLeadsTable: unsupported condition term "${term}"`);
     });
   }
@@ -89,7 +96,7 @@ export class FakeLeadsTable {
       case "TransactWriteCommand": {
         const txItems = input.TransactItems as Record<string, any>[]; // eslint-disable-line @typescript-eslint/no-explicit-any
         const reasons = txItems.map((t) => {
-          const op = t.Put ?? t.Update ?? t.ConditionCheck;
+          const op = t.Put ?? t.Update ?? t.ConditionCheck ?? t.Delete;
           const key = t.Put ? { pk: t.Put.Item.pk, sk: t.Put.Item.sk } : op.Key;
           const existing = this.items.get(FakeLeadsTable.keyOf(key.pk, key.sk));
           const ok = this.evalCondition(
@@ -111,6 +118,8 @@ export class FakeLeadsTable {
         for (const t of txItems) {
           if (t.Put) {
             this.items.set(FakeLeadsTable.keyOf(t.Put.Item.pk, t.Put.Item.sk), { ...t.Put.Item });
+          } else if (t.Delete) {
+            this.items.delete(FakeLeadsTable.keyOf(t.Delete.Key.pk, t.Delete.Key.sk));
           } else if (t.Update) {
             const k = FakeLeadsTable.keyOf(t.Update.Key.pk, t.Update.Key.sk);
             const existing = this.items.get(k) ?? { ...t.Update.Key };
@@ -126,6 +135,19 @@ export class FakeLeadsTable {
           }
         }
         return {};
+      }
+      case "BatchGetCommand": {
+        const out: Record<string, Item[]> = {};
+        for (const [table, req] of Object.entries(
+          input.RequestItems as Record<string, { Keys: Item[] }>,
+        )) {
+          out[table] = req.Keys.flatMap((k) => {
+            const item = this.items.get(FakeLeadsTable.keyOf(k.pk, k.sk));
+            return item === undefined ? [] : [{ ...item }];
+          });
+        }
+        this.batchGets.push(input.RequestItems);
+        return { Responses: out, UnprocessedKeys: {} };
       }
       case "QueryCommand": {
         const names: Record<string, string> = input.ExpressionAttributeNames ?? {};

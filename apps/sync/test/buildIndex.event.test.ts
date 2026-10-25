@@ -11,6 +11,15 @@ import { mockClient } from "aws-sdk-client-mock";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QueryEngine } from "@crm/oracle-views";
+import { createInMemoryConnection } from "../src/engine/duckdb.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+// How many rows each stubbed view yields. Defaults to 1 (the original fixture); the streaming
+// tests below raise it past DuckDB's 2,048-row vector size to prove BuildIndex writes every chunk,
+// and drop it to 0 to prove an empty view still produces a valid, correctly-typed Parquet file.
+const viewRows = vi.hoisted(() => ({ property: 1, permit: 1 }));
 
 const MANIFEST_CID = "baguqeeramjzy4a3oqe5sldka4hdbbm65xkbjh2yaxkb2j4dtqqkctodfxayq";
 const PROPERTY_CID = "baguqeeraqc3y3bh65rbd42zgdrkctaulckvvidmgb52pghyansb43vumoh6q";
@@ -49,6 +58,7 @@ vi.mock("@crm/oracle-views", async (importOriginal) => {
           TIMESTAMP '2026-10-21 10:35:59.798' AS captured_at,
           '${RUN_CID}' AS cid,
           'travis-202609-permits-20261021t103516z' AS run_id
+        FROM range(${viewRows.property})
       `);
         await engine.run(`
         CREATE VIEW v_roofing_permit AS SELECT
@@ -71,6 +81,7 @@ vi.mock("@crm/oracle-views", async (importOriginal) => {
           TIMESTAMP '2026-10-21 10:35:59.798' AS captured_at,
           '${RUN_CID}' AS cid,
           'travis-202609-permits-20261021t103516z' AS run_id
+        FROM range(${viewRows.permit})
       `);
         return {} as never;
       },
@@ -95,6 +106,8 @@ describe("BuildIndex: event-driven handler (S3 download/upload, real DuckDB, rea
 
   afterEach(() => {
     s3Mock.restore();
+    viewRows.property = 1;
+    viewRows.permit = 1;
   });
 
   it("downloads manifest+parts, maps/validates rows, writes real Parquet, and uploads both files", async () => {
@@ -165,6 +178,239 @@ describe("BuildIndex: event-driven handler (S3 download/upload, real DuckDB, rea
     } as never);
 
     expect(result.anyPartUnverified).toBe(false);
+  });
+});
+
+/** Reads an uploaded Parquet body back with DuckDB: its row count and its column names. */
+async function readUploadedParquet(body: Buffer): Promise<{ rows: number; columns: string[] }> {
+  const dir = mkdtempSync(join(tmpdir(), "build-index-readback-"));
+  const file = join(dir, "out.parquet");
+  writeFileSync(file, body);
+  const connection = await createInMemoryConnection();
+  try {
+    const count = await connection.runAndReadAll(
+      `SELECT count(*) AS n FROM read_parquet('${file}')`,
+    );
+    const [first] = count.getRowObjectsJS() as { n: bigint | number }[];
+    const describe = await connection.runAndReadAll(
+      `DESCRIBE SELECT * FROM read_parquet('${file}')`,
+    );
+    const columns = (describe.getRowObjectsJS() as { column_name: string }[]).map(
+      (r) => r.column_name,
+    );
+    return { rows: Number(first?.n ?? 0), columns };
+  } finally {
+    connection.closeSync();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function uploadedBody(key: string): Buffer {
+  const call = s3Mock.commandCalls(PutObjectCommand).find((c) => c.args[0].input.Key === key);
+  if (call === undefined) throw new Error(`no PutObject for ${key}`);
+  return call.args[0].input.Body as Buffer;
+}
+
+const STREAM_EVENT_BASE = {
+  bucket: "crm-index-test",
+  manifestCid: MANIFEST_CID,
+  manifestKey: `manifests/${MANIFEST_CID}.json`,
+  coverageParcelsPublished: 1,
+  finishedAt: "2026-10-21T10:40:04.525Z",
+  startedAt: "2026-10-21T10:30:00.000Z",
+};
+
+const STREAM_EVENT = {
+  bucket: "crm-index-test",
+  manifestCid: MANIFEST_CID,
+  manifestKey: `manifests/${MANIFEST_CID}.json`,
+  parts: [{ path: "tables/county/property/part-00000.parquet" }],
+  coverageParcelsPublished: 5000,
+  finishedAt: "2026-10-21T10:40:04.525Z",
+  startedAt: "2026-10-21T10:30:00.000Z",
+};
+
+describe("BuildIndex: binds full-county batched parts by explicit local path (B-09, query-core 1ef8bff)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(GetObjectCommand).callsFake(() => manifestGetResponse());
+    s3Mock.on(PutObjectCommand).resolves({});
+  });
+
+  afterEach(() => {
+    s3Mock.restore();
+  });
+
+  it("maps every batched part (tables/bNN/<table>/part) to its own downloaded file, never a shared <group>/<table> path, and binds only the two views it reads", async () => {
+    const oracleViews = await import("@crm/oracle-views");
+    const bind = vi.mocked(oracleViews.bindManifest);
+    bind.mockClear();
+    // Two batches carrying the same table and part file name: under bindManifest's default
+    // `<tablesDir>/<group>/<table>/<part>` layout both would resolve to one path and collide.
+    const parts = [
+      { path: "run/county-batched/tables/b01/address/part-00000.parquet" },
+      { path: "run/county-batched/tables/b03/address/part-00000.parquet" },
+    ];
+    const { contentAddressedKey } = await import("../handlers/fetchPart.js");
+
+    await buildIndexHandler({ ...STREAM_EVENT_BASE, parts } as never);
+
+    expect(bind).toHaveBeenCalledTimes(1);
+    const options = bind.mock.calls[0]?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string; views?: readonly string[] }
+      | undefined;
+    expect(options?.views).toEqual(["v_property", "v_roofing_permit"]);
+    const urls = parts.map((p) => options?.partUrl?.({ name: p.path, cid: "" }));
+    expect(new Set(urls).size).toBe(2);
+    urls.forEach((url, i) => {
+      expect(url).toMatch(
+        new RegExp(`${contentAddressedKey(MANIFEST_CID, parts[i]?.path ?? "")}\\.parquet$`),
+      );
+    });
+    // ...and each of those exact paths is where that part's S3 object was downloaded to.
+    const gets = s3Mock.commandCalls(GetObjectCommand).map((c) => c.args[0].input.Key);
+    for (const p of parts) expect(gets).toContain(contentAddressedKey(MANIFEST_CID, p.path));
+  });
+
+  it("fails loudly if bindManifest asks for a part Plan did not list (Plan and bind drifted apart)", async () => {
+    const parts = [{ path: "run/county-batched/tables/b01/property/part-00000.parquet" }];
+    await buildIndexHandler({ ...STREAM_EVENT_BASE, parts } as never);
+    const oracleViews = await import("@crm/oracle-views");
+    const options = vi.mocked(oracleViews.bindManifest).mock.calls.at(-1)?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string }
+      | undefined;
+    expect(options?.partUrl?.({ name: parts[0]?.path ?? "", cid: "" })).toMatch(/\.parquet$/);
+    expect(() =>
+      options?.partUrl?.({
+        name: "run/county-batched/tables/b01/address/part-00000.parquet",
+        cid: "",
+      }),
+    ).toThrow(/not in Plan's part list/);
+  });
+
+  it("names local part files by content hash, so a hostile part path never shapes a filesystem path", async () => {
+    await expect(
+      buildIndexHandler({
+        ...STREAM_EVENT_BASE,
+        parts: [{ path: "../../etc/tables/b01/address/part-00000.parquet" }],
+      } as never),
+    ).resolves.toBeDefined();
+    const oracleViews = await import("@crm/oracle-views");
+    const options = vi.mocked(oracleViews.bindManifest).mock.calls.at(-1)?.[3] as
+      | { partUrl?: (a: { name: string; cid: string }) => string }
+      | undefined;
+    const url = options?.partUrl?.({
+      name: "../../etc/tables/b01/address/part-00000.parquet",
+      cid: "",
+    });
+    expect(url).not.toContain("..");
+    expect(url).toMatch(/[0-9a-f]{64}\.parquet$/);
+  });
+});
+
+describe("BuildIndex: reports manifest batches missing from the bound index (B-09 review fix)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(PutObjectCommand).resolves({});
+  });
+
+  afterEach(() => {
+    s3Mock.restore();
+  });
+
+  it("names a manifest batch bindManifest did not bind, in its output for Validate", async () => {
+    const countyPart = "run/county-batched/tables/b01/property/part-00000.parquet";
+    const permitPart = "run/permits-batched/tables/b01/property_improvement/part-00000.parquet";
+    s3Mock.on(GetObjectCommand).callsFake(() => ({
+      Body: Readable.from([
+        Buffer.from(
+          JSON.stringify({
+            artifacts: [
+              { kind: "table", name: countyPart, cid: "a" },
+              { kind: "table", name: permitPart, cid: "b" },
+            ],
+          }),
+        ),
+      ]),
+    }));
+    const oracleViews = await import("@crm/oracle-views");
+    const bind = vi.mocked(oracleViews.bindManifest);
+    const realStub = bind.getMockImplementation();
+    bind.mockImplementationOnce(async (bytes, dir, engine, options) => {
+      await realStub?.(bytes, dir, engine, options);
+      // The county batch's group "could not be resolved": only the permit batch was bound.
+      return {
+        tables: [
+          {
+            group: "property_improvement",
+            table: "property_improvement",
+            emitted: true,
+            parts: [permitPart],
+          },
+        ],
+      } as never;
+    });
+
+    const result = await buildIndexHandler({
+      ...STREAM_EVENT_BASE,
+      parts: [{ path: countyPart }, { path: permitPart }],
+    } as never);
+
+    expect(result.batchCoverage).toEqual({
+      batchesListed: 2,
+      unboundBatches: ["run/county-batched/tables/b01"],
+      emptyCountyBatches: [],
+    });
+  });
+});
+
+describe("BuildIndex: streams rows to Parquet in chunks (full-county sizing, B-09)", () => {
+  beforeEach(() => {
+    s3Mock.reset();
+    s3Mock.on(GetObjectCommand).resolves(manifestGetResponse() as never);
+    s3Mock.on(PutObjectCommand).resolves({});
+  });
+
+  afterEach(() => {
+    s3Mock.restore();
+    viewRows.property = 1;
+    viewRows.permit = 1;
+  });
+
+  it("writes every row across many DuckDB chunks, with the unchanged crm_property/crm_permit schema", async () => {
+    // > 2 DuckDB vectors (2,048 rows each), so a chunk-boundary bug would drop or repeat rows.
+    viewRows.property = 5000;
+    viewRows.permit = 2049;
+    const {
+      buildIndexHandler: handler,
+      CRM_PROPERTY_COLUMNS,
+      CRM_PERMIT_COLUMNS,
+    } = await import("../handlers/buildIndex.js");
+
+    const result = await handler(STREAM_EVENT as never);
+
+    expect(result.propertyCount).toBe(5000);
+    expect(result.permitCount).toBe(2049);
+    const property = await readUploadedParquet(uploadedBody(result.propertyKey));
+    const permit = await readUploadedParquet(uploadedBody(result.permitKey));
+    expect(property.rows).toBe(5000);
+    expect(permit.rows).toBe(2049);
+    expect(property.columns).toEqual(Object.keys(CRM_PROPERTY_COLUMNS));
+    expect(permit.columns).toEqual(Object.keys(CRM_PERMIT_COLUMNS));
+  });
+
+  it("still writes a valid, correctly-typed Parquet file when a view has zero rows", async () => {
+    viewRows.permit = 0;
+    const { buildIndexHandler: handler, CRM_PERMIT_COLUMNS } = await import(
+      "../handlers/buildIndex.js"
+    );
+
+    const result = await handler(STREAM_EVENT as never);
+
+    expect(result.permitCount).toBe(0);
+    const permit = await readUploadedParquet(uploadedBody(result.permitKey));
+    expect(permit.rows).toBe(0);
+    expect(permit.columns).toEqual(Object.keys(CRM_PERMIT_COLUMNS));
   });
 });
 

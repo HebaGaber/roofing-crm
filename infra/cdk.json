@@ -9,9 +9,12 @@
       "002-lead-index",
       "003-map-search",
       "007-leads",
+      "009-agent-hardening",
       "feature/roofing-crm"
     ],
     "crm:allowedRegions": ["eu-north-1"],
+    "crm:alarmEmail": "eng.heba.gaber@gmail.com",
+    "crm:keepWarm": true,
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,

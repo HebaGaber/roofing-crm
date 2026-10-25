@@ -16,20 +16,24 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "5.0.123",
     "@aws-lambda-powertools/logger": "2.36.0",
     "@aws-lambda-powertools/metrics": "2.36.0",
     "@aws-lambda-powertools/tracer": "2.36.0",
     "@aws-sdk/client-dynamodb": "3.709.0",
     "@aws-sdk/client-s3": "3.709.0",
+    "@aws-sdk/client-secrets-manager": "3.709.0",
     "@aws-sdk/lib-dynamodb": "3.709.0",
-    "@duckdb/node-api": "1.5.6-r.2",
     "@crm/domain": "workspace:*",
     "@crm/index-schema": "workspace:*",
     "@crm/observability": "workspace:*",
     "@crm/oracle-contract": "workspace:*",
+    "@crm/oracle-views": "workspace:*",
     "@crm/shared": "workspace:*",
+    "@duckdb/node-api": "1.5.6-r.2",
     "@trpc/server": "11.19.0",
-    "zod": "3.24.1"
+    "ai": "7.0.152",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/aws-lambda": "8.10.147",

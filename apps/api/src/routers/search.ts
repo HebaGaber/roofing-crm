@@ -1,24 +1,31 @@
-// T013 (B-03, US1): search.properties per contracts/search-api.md. The radius math (bboxFor,
-// implicitly via the adapter) and the exact-circle cut live in the extended
-// `DuckDbParquetLeadIndex.searchProperties` (T012) — this router only validates input, calls the
-// port twice (with and without roofAgeMinYears, so `counts` is always fresh over the full
-// matching set, never a cached subset — FR-004/AC-4) and shapes the response.
+// T013 (B-03, US1): search.properties per contracts/search-api.md. Thin-router extraction
+// (tasks.md T012, agent-design.md alakazam §1): the radius/roof-age/permit business logic now
+// lives in ../services/search.ts, shared with the new agent tools (Phase 4) — this router only
+// validates input, calls the service, and shapes the tRPC response (manifestCid/traceId, typed
+// error mapping).
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { isLongOpen, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
-import { publicProcedure, requireLeadIndex, router } from "../trpc.js";
-import { IndexNotReadyError } from "../adapters/duckDbParquet.js";
+import { HEX_OVERVIEW_MAX_ZOOM, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
+import {
+  countyOverview as countyOverviewService,
+  CountyOverviewUnavailableError,
+  searchPermits as searchPermitsService,
+  searchProperties as searchPropertiesService,
+} from "../services/search.js";
 
-/** Same mapping as routers/property.ts: a typed, honest "index not ready" response (never a bare
- *  500) when no run has ever been promoted — found live (B-03): crm-leads is B-07's table
- *  (architecture-constitution.md §9) and doesn't exist in this environment yet, so every search
- *  currently hits this path, not just a rare edge case. */
-function mapIndexNotReady(error: unknown): never {
-  if (error instanceof IndexNotReadyError) {
-    throw new TRPCError({ code: "SERVICE_UNAVAILABLE", message: error.message, cause: error });
-  }
-  throw error;
-}
+const CountyOverviewInput = z.object({
+  zoom: z
+    .number()
+    .int()
+    .min(0)
+    .max(HEX_OVERVIEW_MAX_ZOOM - 1),
+  roofAgeMinYears: z.number().int().min(0).max(200).optional(),
+  propertyUsageType: z.string().min(1).max(64).optional(),
+  permits: z.boolean().optional(),
+  permitStatus: z.enum(["open", "stalled"]).optional(),
+  permitOpenDaysMin: z.number().int().min(0).max(36_500).optional(),
+});
 
 const LatLngInput = z.object({
   lat: z.number().min(-90).max(90),
@@ -38,75 +45,55 @@ export const searchRouter = router({
   properties: publicProcedure.input(SearchPropertiesInput).query(async ({ input, ctx }) => {
     const leadIndex = requireLeadIndex(ctx);
     try {
-      const { manifestCid } = await leadIndex.indexInfo();
-
-      // Both counts run over the full radius-matching set, with no SQL LIMIT applied (the
-      // adapter only applies `limit` to the final exact-circle-cut result) —
-      // contracts/search-api.md step 4.
-      const afterRadius = await leadIndex.searchProperties({
-        center: input.center,
-        radiusMi: input.radiusMi,
-      });
-      const afterRoofAge =
-        input.roofAgeMinYears === undefined
-          ? afterRadius
-          : await leadIndex.searchProperties({
-              center: input.center,
-              radiusMi: input.radiusMi,
-              roofAgeMinYears: input.roofAgeMinYears,
-            });
-
-      const properties = afterRoofAge.slice(0, input.limit ?? 100);
-
-      return {
-        properties,
-        counts: {
-          afterRadius: afterRadius.length,
-          afterRoofAge: afterRoofAge.length,
-        },
-        manifestCid,
-        traceId: ctx.requestId,
-      };
+      const result = await searchPropertiesService(leadIndex, input);
+      return { ...result, traceId: ctx.requestId };
     } catch (error) {
       mapIndexNotReady(error);
     }
   }),
 
-  // T028 (B-03, US3): search.permits per contracts/search-api.md. Joins through the same
-  // radius-filtered property set `properties` above computes (via one extra searchProperties
-  // call, not a separately-derived radius — SC-06), then attaches isLongOpen (packages/domain) as
-  // a display-layer flag, never stored or re-derived from issueDate (data-model.md).
+  // T028 (B-03, US3): search.permits per contracts/search-api.md. sort is fixed to "openDays".
   permits: publicProcedure
     .input(
       z.object({
         center: LatLngInput,
         radiusMi: z.number().min(MIN_RADIUS_MI).max(MAX_RADIUS_MI),
         sort: z.literal("openDays"),
+        // Page size (default and ceiling 500: a permit row is about 0.7 KB). The response carries
+        // `total` and `truncated`, so a clipped page is never presented as the whole set.
+        limit: z.number().int().positive().max(500).optional(),
+        // Server-side filters (previously applied by the client over every permit in the radius).
+        statusClass: z
+          .array(z.enum(["open", "stalled", "closed"]))
+          .min(1)
+          .optional(),
+        openDaysMin: z.number().int().min(0).max(36_500).optional(),
       }),
     )
     .query(async ({ input, ctx }) => {
       const leadIndex = requireLeadIndex(ctx);
       try {
-        const { manifestCid } = await leadIndex.indexInfo();
-
-        const inRadius = await leadIndex.searchProperties({
-          center: input.center,
-          radiusMi: input.radiusMi,
-        });
-        const propertyCids = inRadius.map((p) => p.propertyCid);
-
-        const permits = await leadIndex.searchPermits({ propertyCids, sort: "openDays" });
-
-        return {
-          permits: permits.map((permit) => ({
-            ...permit,
-            isLongOpen: isLongOpen(permit.openDays),
-          })),
-          manifestCid,
-          traceId: ctx.requestId,
-        };
+        const { sort: _sort, ...rest } = input;
+        const result = await searchPermitsService(leadIndex, rest);
+        return { ...result, traceId: ctx.requestId };
       } catch (error) {
         mapIndexNotReady(error);
       }
     }),
+
+  // design-review-log row 10: the whole-county hexagon aggregate for the map's zoomed-out view.
+  // Behind the same Cognito JWT authorizer as every route but health.ping/auth.reportFailedAttempt
+  // (infra/lib/crm-api-stack.ts). `zoom` is the whole-number map zoom, overview zooms only.
+  countyOverview: publicProcedure.input(CountyOverviewInput).query(async ({ input, ctx }) => {
+    const leadIndex = requireLeadIndex(ctx);
+    try {
+      const result = await countyOverviewService(leadIndex, input);
+      return { ...result, traceId: ctx.requestId };
+    } catch (error) {
+      if (error instanceof CountyOverviewUnavailableError) {
+        throw new TRPCError({ code: "NOT_IMPLEMENTED", message: error.message, cause: error });
+      }
+      mapIndexNotReady(error);
+    }
+  }),
 });
