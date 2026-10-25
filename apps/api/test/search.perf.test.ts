@@ -215,6 +215,52 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
         () => leadList({ filters: { permitStatus: "open" }, limit: 50 }),
       ],
       [
+        // The e2e NF-01 span on the server: leads.create then leads.list (page of 50 where 49
+        // leads come from an older manifest, so the presence check hits the 442k-row index), with
+        // 25 ms of simulated DynamoDB latency per repo call. Measured in the hosted Lambda: create
+        // about 30 ms, list about 45 ms (X-Ray); the rest of the 1.2 to 2.3 s the browser sees is
+        // outside the API.
+        "leads.create then leads.list (stale-manifest page, 25 ms per DynamoDB call)",
+        async () => {
+          const wait = () => new Promise((r) => setTimeout(r, 25));
+          const stored = leadRows()
+            .slice(0, 49)
+            .map((l) => ({ ...l, sourceManifestCid: "old-run" }));
+          const repo = {
+            create: async (lead: StoredLead) => {
+              await wait();
+              stored.unshift(lead);
+              return lead;
+            },
+            listByAssignee: async () => {
+              await wait();
+              return stored;
+            },
+          } as unknown as LeadRepo;
+          const svc = createLeadService(repo, { leadIndex: index });
+          const first = stored[0];
+          const id = leadIds[0] ?? "1";
+          await svc.create(
+            {
+              fips: "48453",
+              requestIdentifier: `${id}-new`,
+              address: "a",
+              lat: 30.27,
+              lon: -97.74,
+              signals: {},
+              sourceManifestCid: MANIFEST,
+              createdFrom: "map",
+            },
+            "rep-1",
+          );
+          stored.splice(stored.length > 50 ? 50 : stored.length);
+          const out = await svc.list({ limit: 50 }, "rep-1");
+          stored.shift();
+          if (first !== undefined) stored.unshift(first);
+          return { rows: out.leads.length, payload: { ...out, traceId: "t" } };
+        },
+      ],
+      [
         "county overview zoom 9 + permits",
         async () => {
           const r = await countyOverview(index, { zoom: 9, permits: true });
