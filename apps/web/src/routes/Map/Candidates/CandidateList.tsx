@@ -26,6 +26,7 @@ import {
   candidateTitle,
   defaultSort,
   lowerRoofPreset,
+  leadsNote,
   mainSignalText,
   permitNote,
   SORT_LABEL,
@@ -378,6 +379,12 @@ export function CandidateList({
         <p className={styles.partial} role="status" data-state="CrmCandidatesPartial390">
           <Icon name="block" size="medium" />
           Permit data couldn’t be read for this ring, so rows show the roof only. Try again shortly.
+        </p>
+      ) : null}
+      {data.status === "ready" && data.leadsUnavailable ? (
+        <p className={styles.partial} role="status" data-state="CrmCandidatesLeadsUnavailable">
+          <Icon name="info" size="medium" />
+          {leadsNote(data.leadsReason ?? "failed")}
         </p>
       ) : null}
       {data.status === "ready" && (data.permitsTruncated || data.propertiesTruncated) ? (

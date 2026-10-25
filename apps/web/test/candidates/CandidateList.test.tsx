@@ -33,6 +33,7 @@ const ready = (over: Partial<CandidatesResult> = {}): CandidatesResult => ({
   propertiesTruncated: false,
   propertiesShown: 3,
   leadsUnavailable: false,
+  leadsReason: null,
   refetch: vi.fn(),
   ...over,
 });
@@ -242,6 +243,30 @@ describe("CandidateList", () => {
     result = ready({ totalInRing: 340, propertiesTruncated: true, propertiesShown: 100 });
     mount();
     expect(screen.getByText(/Showing the nearest 100 of 340 properties/)).toBeTruthy();
+  });
+
+  it("says lead marks could not be checked when the presence read failed", () => {
+    result = ready({ leadsUnavailable: true, leadsReason: "failed" });
+    mount();
+    const note = document.querySelector('[data-state="CrmCandidatesLeadsUnavailable"]');
+    expect(note?.textContent).toContain(
+      "Lead marks couldn't be checked for this ring, so some properties already in Leads may not show a Lead pill. Duplicates are still refused on create.",
+    );
+  });
+
+  it("says why differently when the ring has more than 1,000 properties", () => {
+    result = ready({ leadsUnavailable: true, leadsReason: "tooMany" });
+    mount();
+    expect(
+      document.querySelector('[data-state="CrmCandidatesLeadsUnavailable"]')?.textContent,
+    ).toContain(
+      "More than 1,000 properties are in this ring, so lead marks are not shown; narrow the radius.",
+    );
+  });
+
+  it("shows no lead-marks note when the marks are all there", () => {
+    mount();
+    expect(document.querySelector('[data-state="CrmCandidatesLeadsUnavailable"]')).toBeNull();
   });
 
   it("says nothing about clipping when everything came back", () => {

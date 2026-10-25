@@ -219,3 +219,30 @@ describe("candidatesApi permits (server-side filters and honest totals)", () => 
     expect(result.current.propertiesTruncated).toBe(false);
   });
 });
+
+describe("candidatesApi lead marks unavailable (why)", () => {
+  it("says the presence read failed", async () => {
+    props = [property(1)];
+    presenceFn.mockRejectedValue(new Error("down"));
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.leadsUnavailable).toBe(true));
+    expect(result.current.leadsReason).toBe("failed");
+  });
+
+  it("says when the ring has more than 1,000 properties", async () => {
+    props = Array.from({ length: 1001 }, (_, i) => property(i + 1));
+    presenceFn.mockResolvedValue([]);
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.leadsUnavailable).toBe(true);
+    expect(result.current.leadsReason).toBe("tooMany");
+  });
+
+  it("has no reason when the marks are all there", async () => {
+    props = [property(1)];
+    presenceFn.mockResolvedValue([]);
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.leadsReason).toBeNull();
+  });
+});

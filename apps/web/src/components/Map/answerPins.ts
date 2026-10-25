@@ -24,11 +24,16 @@ export function pinElement(
   n: number,
   selected: boolean,
   onSelect: (n: number) => void,
+  label?: string,
 ): HTMLButtonElement {
   const el = document.createElement("button");
   el.type = "button";
   el.dataset.answerPin = String(n);
-  el.setAttribute("aria-label", `Source ${String(n)}`);
+  // "Source 3: TCAD 0201885122" when the property is known (never a bare number to a screen reader).
+  el.setAttribute(
+    "aria-label",
+    label === undefined || label === "" ? `Source ${String(n)}` : `Source ${String(n)}: ${label}`,
+  );
   el.style.width = HIT;
   el.style.height = HIT;
   el.style.padding = "0";

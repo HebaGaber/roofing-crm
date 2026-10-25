@@ -16,7 +16,14 @@
 // file this replaces). Atlas outlined text fields and chips, 48 px targets. Render-only.
 import { Icon, IconButton } from "@crm/ui";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
-import { useEffect, useId, useRef, useState, type ReactElement } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactElement,
+} from "react";
 import styles from "./FilterSheet.module.css";
 
 /** CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other'; default 15)". */
@@ -87,6 +94,30 @@ export function FilterSheet({
   const toggleRef = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
 
+  // aria-modal below 1280 px, so Tab must not leave the sheet: wrap from the last control to the
+  // first and back (the same trap as the Candidates ConfirmSheet).
+  const trapTab = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key !== "Tab" || !open || panelRef.current === null) return;
+    const focusable = [
+      ...panelRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), select:not([disabled])",
+      ),
+    ];
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (first === undefined || last === undefined) return;
+    if (
+      event.shiftKey &&
+      (document.activeElement === first || document.activeElement === panelRef.current)
+    ) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
   // The overlay is a dialog: focus moves into it when it opens and returns to the Filters button
   // when it closes (not for the always-visible panel at three-pane widths, which never takes focus).
   const wasOpen = useRef(false);
@@ -138,6 +169,7 @@ export function FilterSheet({
         aria-label="Filters"
         aria-modal={!inline && open ? true : undefined}
         tabIndex={-1}
+        onKeyDown={inline ? undefined : trapTab}
         className={`${styles.panel} ${open ? styles.open : ""}`}
       >
         <div className={styles.header}>

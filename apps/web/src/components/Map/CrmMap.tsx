@@ -262,7 +262,7 @@ export interface CrmMapProps {
   /** Field triage's current card (board CrmTriage390): its roof marker is ringed (`is-tri`). */
   readonly triageCid?: string | null;
   /** AI mode: the answer's cited properties, drawn as numbered pins (the citation number). */
-  readonly answerPins?: readonly AnswerPin[];
+  readonly answerPins?: readonly (AnswerPin & { readonly label?: string })[];
   /** The focused citation's number: its pin shows selected, and the map pans to it if needed. */
   readonly focusedPin?: number | null;
   /** A pin was clicked: the answer panel focuses that citation. */
@@ -596,7 +596,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     pinMarkerRefs.current = [];
     if (map === null || !styleReady) return;
     for (const pin of answerPins) {
-      const el = pinElement(pin.n, false, (n) => onPinSelectRef.current?.(n));
+      const el = pinElement(pin.n, false, (n) => onPinSelectRef.current?.(n), pin.label);
       const marker = new Marker({ element: el }).setLngLat([pin.lon, pin.lat]).addTo(map);
       pinMarkerRefs.current.push({ n: pin.n, marker, el });
     }

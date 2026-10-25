@@ -21,6 +21,7 @@ import {
 } from "../Candidates/candidatesApi.js";
 import {
   permitNote,
+  leadsNote,
   candidateTitle,
   defaultSort,
   lowerRoofPreset,
@@ -435,6 +436,12 @@ export function TriageStack({
         <p className={styles.offline} role="status" data-state="CrmTriagePartial">
           <Icon name="block" size="medium" />
           Permit data couldn’t be read here, so cards show the roof only.
+        </p>
+      ) : null}
+      {data.status === "ready" && data.leadsUnavailable ? (
+        <p className={styles.offline} role="status" data-state="CrmCandidatesLeadsUnavailable">
+          <Icon name="info" size="medium" />
+          {leadsNote(data.leadsReason ?? "failed")}
         </p>
       ) : null}
       {data.status === "ready" && (data.permitsTruncated || data.propertiesTruncated) ? (

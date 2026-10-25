@@ -138,7 +138,18 @@ export function Component(): ReactElement {
   const [threadId, setThreadId] = useState(readThreadId);
   const [answer, setAnswer] = useState<AgentAnswer | null>(null);
   const [focusedCitation, setFocusedCitation] = useState<number | null>(null);
-  const pins = useMemo(() => (answer === null ? [] : answerPins(answer)), [answer]);
+  // Each pin is named after its property ("Source 2: TCAD 0201885122") for screen readers.
+  const pins = useMemo(() => {
+    if (answer === null) return [];
+    const tcadByCid = new Map<string, string>();
+    for (const c of answer.citations)
+      if (c.propertyCid && c.tcadId) tcadByCid.set(c.propertyCid, c.tcadId);
+    for (const r of answer.rows ?? []) tcadByCid.set(r.propertyCid, r.tcadId);
+    return answerPins(answer).map((pin) => {
+      const tcad = tcadByCid.get(pin.propertyCid);
+      return tcad === undefined ? pin : { ...pin, label: `TCAD ${tcad}` };
+    });
+  }, [answer]);
   const hadAnswer = useRef(false);
   // Three-pane widths: each pane can be minimised (kept for the session); the Matches rows of an
   // AI answer render into the results pane (`matchesHost`) while the left pane shows the answer.

@@ -14,6 +14,13 @@ describe("pinElement", () => {
     expect(el.style.height).toBe("48px");
   });
 
+  it("names the property when it is known: Source N: TCAD id", () => {
+    const el = pinElement(3, false, vi.fn(), "TCAD 0201885122");
+    expect(el.getAttribute("aria-label")).toBe("Source 3: TCAD 0201885122");
+    expect(el.textContent).toBe("3");
+    expect(pinElement(2, false, vi.fn(), "").getAttribute("aria-label")).toBe("Source 2");
+  });
+
   it("uses Atlas tokens, never a colour literal", () => {
     const html = pinElement(1, false, vi.fn()).outerHTML;
     expect(html).toContain("var(--md-sys-color-primary)");

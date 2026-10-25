@@ -38,6 +38,7 @@ const ready = (over: Partial<CandidatesResult> = {}): CandidatesResult => ({
   candidates: FRESH(),
   totalInRing: 3,
   permitsUnavailable: false,
+  leadsReason: null,
   permitTotal: 3,
   permitsTruncated: false,
   propertiesTruncated: false,
@@ -239,6 +240,20 @@ describe("TriageStack", () => {
     expect(screen.getByRole("link", { name: "Open Leads" }).getAttribute("href")).toBe("/leads");
     fireEvent.click(must(screen.getAllByRole("button", { name: "Back to map" })[1]));
     expect(onBack).toHaveBeenCalled();
+  });
+
+  it("says lead marks could not be checked, with the reason", () => {
+    result = ready({ leadsUnavailable: true, leadsReason: "failed" });
+    mount();
+    expect(
+      document.querySelector('[data-state="CrmCandidatesLeadsUnavailable"]')?.textContent,
+    ).toContain("Lead marks couldn't be checked for this ring");
+    cleanup();
+    result = ready({ leadsUnavailable: true, leadsReason: "tooMany" });
+    mount();
+    expect(
+      document.querySelector('[data-state="CrmCandidatesLeadsUnavailable"]')?.textContent,
+    ).toContain("More than 1,000 properties are in this ring");
   });
 
   it("empty ring offers Widen and lower roof; loading and no-centre are honest", () => {

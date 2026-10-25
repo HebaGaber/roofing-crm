@@ -98,6 +98,16 @@ export function permitQueryInput(
   };
 }
 
+/** Why lead marks are missing, in words: the presence read failed, or the ring is too big to mark. */
+export type LeadsReason = "failed" | "tooMany";
+
+export function leadsNote(reason: LeadsReason | null): string | null {
+  if (reason === null) return null;
+  return reason === "tooMany"
+    ? "More than 1,000 properties are in this ring, so lead marks are not shown; narrow the radius."
+    : "Lead marks couldn't be checked for this ring, so some properties already in Leads may not show a Lead pill. Duplicates are still refused on create.";
+}
+
 /** The server's permit page ceiling (`search.permits` caps at 500). */
 export const PERMIT_PAGE_MAX = 500;
 

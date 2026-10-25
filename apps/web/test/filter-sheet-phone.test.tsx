@@ -68,6 +68,34 @@ describe("FilterSheet on phones and tablets", () => {
     expect(screen.getByRole("button", { name: "Show results" })).toBeTruthy();
   });
 
+  it("traps Tab inside the open sheet: it wraps from the last control to the first and back", () => {
+    renderSheet();
+    fireEvent.click(toggle());
+    const dialog = screen.getByRole("dialog", { name: "Filters" });
+    const focusable = [
+      ...dialog.querySelectorAll<HTMLElement>("button:not([disabled]), input, select"),
+    ];
+    const first = focusable[0] as HTMLElement;
+    const last = focusable[focusable.length - 1] as HTMLElement;
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab" });
+    expect(document.activeElement).toBe(first);
+    first.focus();
+    fireEvent.keyDown(first, { key: "Tab", shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("does not trap Tab for the always-visible panel (three-pane widths)", () => {
+    renderSheet({ inline: true, open: true });
+    const region = screen.getByRole("region", { name: "Filters" });
+    const buttons = region.querySelectorAll<HTMLElement>("button");
+    const last = buttons[buttons.length - 1] as HTMLElement;
+    last.focus();
+    const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    last.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   it("does not take focus when it is the always-visible panel (three-pane widths)", () => {
     renderSheet({ inline: true, open: true });
     expect(document.activeElement).toBe(document.body);

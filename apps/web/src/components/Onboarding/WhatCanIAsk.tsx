@@ -44,18 +44,13 @@ export function WhatCanIAsk(): ReactElement | null {
   }, []);
 
   // Non-modal, so focus is not trapped; but it moves into the card on open (named dialog, so a
-  // screen reader announces it), Escape closes it from anywhere, and focus goes back to where it
-  // came from on close.
+  // screen reader announces it), Escape closes it when focus is in the card (a menu or sheet
+  // elsewhere owns the key otherwise), and focus goes back to where it came from on close.
   useEffect(() => {
     if (!open) return;
     returnFocusRef.current = document.activeElement;
     cardRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") dismiss();
-    };
-    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
       const back = returnFocusRef.current;
       if (back instanceof HTMLElement && document.contains(back)) back.focus();
     };
@@ -68,6 +63,10 @@ export function WhatCanIAsk(): ReactElement | null {
       role="dialog"
       aria-labelledby={titleId}
       tabIndex={-1}
+      onKeyDown={(event) => {
+        // Only an Escape that happened inside the card and that no one else used.
+        if (event.key === "Escape" && !event.defaultPrevented) dismiss();
+      }}
       className={styles.card}
       data-testid="what-can-i-ask"
     >

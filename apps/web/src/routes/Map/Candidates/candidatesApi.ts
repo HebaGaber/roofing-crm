@@ -16,6 +16,7 @@ import {
   type Candidate,
   permitQueryInput,
   type CandidateFilters,
+  type LeadsReason,
 } from "./candidates.js";
 
 export type CreatedLead = ApiOutputs["leads"]["create"];
@@ -48,6 +49,8 @@ export interface CandidatesResult {
   readonly permitsUnavailable: boolean;
   /** leads.presence failed or the ring was too large to mark in full: marks may be missing; create still refuses duplicates server-side. */
   readonly leadsUnavailable: boolean;
+  /** Why (null when the marks are all there): the read failed, or the ring has over 1,000 properties. */
+  readonly leadsReason: LeadsReason | null;
   readonly refetch: () => void;
 }
 
@@ -96,8 +99,8 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     }),
   });
   const presenceRows = presence.rows;
-  const presenceError =
-    presence.failed || ids.length > LEAD_PRESENCE_LIMIT * LEAD_PRESENCE_MAX_CALLS;
+  const presenceTooMany = ids.length > LEAD_PRESENCE_LIMIT * LEAD_PRESENCE_MAX_CALLS;
+  const presenceError = presence.failed || presenceTooMany;
 
   const candidates = useMemo(() => {
     if (properties.data === undefined) return [];
@@ -135,6 +138,7 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     permitsTruncated: permits.data?.truncated === true,
     permitsUnavailable: permits.isError,
     leadsUnavailable: presenceError,
+    leadsReason: presenceTooMany ? "tooMany" : presence.failed ? "failed" : null,
     refetch,
   };
 }

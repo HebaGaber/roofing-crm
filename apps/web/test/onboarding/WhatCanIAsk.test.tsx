@@ -103,10 +103,34 @@ describe("WhatCanIAsk card", () => {
     expect(localStorage.getItem(WHAT_CAN_I_ASK_STORAGE_KEY)).toBe("dismissed");
   });
 
-  it("closes on Escape even when focus has left the card (non-modal)", () => {
+  it("Escape pressed elsewhere on the page does not dismiss it (a menu or sheet owns that key)", () => {
     renderAt();
-    fireEvent.keyDown(document.body, { key: "Escape" });
+    const outside = document.createElement("input");
+    document.body.appendChild(outside);
+    outside.focus();
+    fireEvent.keyDown(outside, { key: "Escape" });
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(localStorage.getItem(WHAT_CAN_I_ASK_STORAGE_KEY)).toBeNull();
+    outside.remove();
+  });
+
+  it("Escape another handler already used (defaultPrevented) does not dismiss it", () => {
+    renderAt();
+    const link = screen.getAllByRole("link")[0] as HTMLElement;
+    link.focus();
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    event.preventDefault();
+    link.dispatchEvent(event);
+    expect(screen.getByRole("dialog")).not.toBeNull();
+    expect(localStorage.getItem(WHAT_CAN_I_ASK_STORAGE_KEY)).toBeNull();
+  });
+
+  it("Escape with focus on a control inside the card dismisses it", () => {
+    renderAt();
+    (screen.getAllByRole("link")[0] as HTMLElement).focus();
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
+    expect(localStorage.getItem(WHAT_CAN_I_ASK_STORAGE_KEY)).toBe("dismissed");
   });
 
   it("following an example question counts as dismissed", () => {
