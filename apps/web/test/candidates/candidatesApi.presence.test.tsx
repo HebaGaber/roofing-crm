@@ -12,20 +12,31 @@ const listFn = vi.fn();
 const createManyFn = vi.fn();
 const undoFn = vi.fn();
 let props: ReturnType<typeof property>[] = [];
+let propertyCounts: { afterRadius: number; afterRoofAge: number } | undefined;
+let permitReply: { permits: ReturnType<typeof permit>[]; total?: number; truncated?: boolean } = {
+  permits: [permit(1)],
+};
+const permitInputs: unknown[] = [];
 
 const fakeTrpc = {
   search: {
     properties: {
       queryOptions: () => ({
         queryKey: [["search", "properties"]],
-        queryFn: () => ({ properties: props }),
+        queryFn: () => ({
+          properties: props,
+          ...(propertyCounts === undefined ? {} : { counts: propertyCounts }),
+        }),
       }),
     },
     permits: {
-      queryOptions: () => ({
-        queryKey: [["search", "permits"]],
-        queryFn: () => ({ permits: [permit(1)] }),
-      }),
+      queryOptions: (input: unknown) => {
+        permitInputs.push(input);
+        return {
+          queryKey: [["search", "permits"], input],
+          queryFn: () => permitReply,
+        };
+      },
     },
   },
   leads: {
@@ -67,6 +78,9 @@ const filters = { ...FILTERS, center: { lat: 30.4, lng: -97.6 } };
 
 beforeEach(() => {
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  propertyCounts = undefined;
+  permitReply = { permits: [permit(1)] };
+  permitInputs.length = 0;
   presenceFn.mockReset();
   listFn.mockReset();
   createManyFn.mockReset();
@@ -155,5 +169,53 @@ describe("candidatesApi bulk + undo hooks", () => {
     expect(undoFn).toHaveBeenCalledWith({ leadKey: "k1", leadId: "L1" });
     expect(undoFn).toHaveBeenCalledWith({ leadKey: "k2", leadId: "L2" });
     expect(tally).toEqual({ undone: 1, refused: ["TOO_OLD"], failed: 0 });
+  });
+});
+
+describe("candidatesApi permits (server-side filters and honest totals)", () => {
+  it("asks the server for the status and open years instead of filtering in JavaScript", async () => {
+    props = [property(1)];
+    presenceFn.mockResolvedValue([]);
+    const { result } = renderHook(
+      () => useCandidates({ ...filters, permitStatus: "stalled", permitOpenYrs: 5 }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(permitInputs[0]).toMatchObject({
+      radiusMi: 5,
+      sort: "openDays",
+      statusClass: ["stalled"],
+      openDaysMin: 1827,
+    });
+  });
+
+  it("reports the server's permit total and that the page was clipped", async () => {
+    props = [property(1)];
+    presenceFn.mockResolvedValue([]);
+    permitReply = { permits: [permit(1)], total: 1200, truncated: true };
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.permitTotal).toBe(1200);
+    expect(result.current.permitsTruncated).toBe(true);
+  });
+
+  it("counts the ring from the server's total, not the page length", async () => {
+    props = [property(1), property(2)];
+    propertyCounts = { afterRadius: 340, afterRoofAge: 212 };
+    presenceFn.mockResolvedValue([]);
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.totalInRing).toBe(212);
+    expect(result.current.propertiesTruncated).toBe(true);
+    expect(result.current.propertiesShown).toBe(2);
+  });
+
+  it("without counts (older reply) falls back to the rows it has", async () => {
+    props = [property(1), property(2)];
+    presenceFn.mockResolvedValue([]);
+    const { result } = renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(result.current.totalInRing).toBe(2);
+    expect(result.current.propertiesTruncated).toBe(false);
   });
 });

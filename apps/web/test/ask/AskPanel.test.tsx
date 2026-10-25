@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 // B-09 T039/T040 + review fixes (CR-B-09 finding 16/finding 20): the Ask screen. `askApi`'s hooks are mocked
 // (same pattern as test/leads/LeadDetail.test.tsx mocking leadsApi) so these tests exercise only
 // this screen's own rendering and the confirm-lead click guard (never an automatic write), not
@@ -896,6 +898,26 @@ describe("Ask screen", () => {
       ]);
     });
 
+    it("keeps an inline Created n leads row with Undo after the snackbar is dismissed", () => {
+      askState = { ...askState, data: three() };
+      confirmLeadsMutate.mockImplementation((_vars, options) =>
+        options.onSuccess({
+          created: [{ tcadId: "0201885122", leadKey: "48453:0201885122", leadId: "lead-7" }],
+          alreadyLeads: [],
+          failed: [],
+        }),
+      );
+      renderAsk();
+      fireEvent.click(screen.getByRole("button", { name: "Create leads for all 3" }));
+      fireEvent.click(screen.getByRole("button", { name: "Create 1 lead" }));
+      const snackbar = document.querySelector("[data-snackbar]") as HTMLElement;
+      expect(within(snackbar).queryByRole("button", { name: "Undo" })).toBeNull();
+      fireEvent.click(within(snackbar).getByRole("button", { name: "Dismiss" }));
+      expect(document.querySelector("[data-snackbar]")).toBeNull();
+      expect(screen.getByText(/^Created 1 lead/)).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    });
+
     it("keeps the sheet open with the typed reason when the server refuses", () => {
       askState = { ...askState, data: three() };
       confirmLeadsMutate.mockImplementation((_vars, options) =>
@@ -933,5 +955,26 @@ describe("Ask screen", () => {
       </MemoryRouter>,
     );
     expect(askReset).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("citation pills wrap without clipping (narrow 320 px left pane)", () => {
+  const css = readFileSync(join(__dirname, "../../src/routes/Ask/Ask.module.css"), "utf8");
+  const rule = (css.match(/\.citeRef \{[^}]*\}/) ?? [""])[0];
+
+  it("each pill is an atomic nowrap box, so the line wraps between pills, never through one", () => {
+    expect(rule).toMatch(/display:\s*inline-flex/);
+    expect(rule).toMatch(/white-space:\s*nowrap/);
+    expect(rule).toMatch(/align-items:\s*center/);
+  });
+
+  it("keeps the 48 px hit area through the pseudo-element", () => {
+    expect(css).toMatch(/\.citeRef::after \{[^}]*height:\s*var\(--space-9\)/);
+  });
+
+  it("lets the claim text wrap and never clips it", () => {
+    const claim = (css.match(/\.claim \{[^}]*\}/) ?? [""])[0];
+    expect(claim).toMatch(/overflow-wrap:\s*anywhere|min-width:\s*0/);
+    expect(claim).not.toMatch(/overflow:\s*hidden/);
   });
 });

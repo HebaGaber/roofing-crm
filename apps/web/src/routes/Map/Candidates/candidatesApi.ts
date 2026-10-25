@@ -14,6 +14,7 @@ import {
   buildCandidates,
   leadsByRequestIdentifier,
   type Candidate,
+  permitQueryInput,
   type CandidateFilters,
 } from "./candidates.js";
 
@@ -35,6 +36,14 @@ export interface CandidatesResult {
   readonly candidates: readonly Candidate[];
   /** Properties in the ring before the permit filter (the header's "{n} within …"). */
   readonly totalInRing: number;
+  /** The server's count of permits in range, before its 500-row page (never the page length). */
+  readonly permitTotal: number;
+  /** The server clipped the permits to its page: say so. */
+  readonly permitsTruncated: boolean;
+  /** The server has more properties than the page it returned (nearest first). */
+  readonly propertiesTruncated: boolean;
+  /** Properties in the page that came back. */
+  readonly propertiesShown: number;
   /** search.permits failed: rows still show, without permit signals (partial). */
   readonly permitsUnavailable: boolean;
   /** leads.presence failed or the ring was too large to mark in full: marks may be missing; create still refuses duplicates server-side. */
@@ -56,11 +65,9 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     enabled: center !== null,
   });
   const permits = useQuery({
-    ...trpc.search.permits.queryOptions({
-      center: center ?? { lat: 0, lng: 0 },
-      radiusMi,
-      sort: "openDays" as const,
-    }),
+    ...trpc.search.permits.queryOptions(
+      permitQueryInput(center, radiusMi, filters.permitStatus, filters.permitOpenYrs),
+    ),
     enabled: center !== null,
   });
   // Lead marks for every property in the ring, whoever owns the lead: chunks of 100 identifiers.
@@ -118,7 +125,14 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
   return {
     status,
     candidates,
-    totalInRing: properties.data?.properties.length ?? 0,
+    // The server's count of matches, not the page's length (an older reply without counts falls
+    // back to the rows it has).
+    totalInRing: properties.data?.counts?.afterRoofAge ?? properties.data?.properties.length ?? 0,
+    propertiesShown: properties.data?.properties.length ?? 0,
+    propertiesTruncated:
+      (properties.data?.counts?.afterRoofAge ?? 0) > (properties.data?.properties.length ?? 0),
+    permitTotal: permits.data?.total ?? permits.data?.permits.length ?? 0,
+    permitsTruncated: permits.data?.truncated === true,
     permitsUnavailable: permits.isError,
     leadsUnavailable: presenceError,
     refetch,

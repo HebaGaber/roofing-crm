@@ -64,9 +64,10 @@ describe("tap targets", () => {
     expect(css).toMatch(/\.cardLink::after \{[^}]*position: absolute;[^}]*inset: 0;/);
   });
 
-  it("the citation number is an inline link with a 48 px hit area", () => {
+  it("the citation number is an inline-level link (an atomic nowrap box, so it never clips) with a 48 px hit area", () => {
     const css = src("routes/Ask/Ask.module.css");
-    expect(css).toMatch(/\.citeRef \{[^}]*display: inline;/);
+    expect(css).toMatch(/\.citeRef \{[^}]*display: inline-flex;/);
+    expect(css).toMatch(/\.citeRef \{[^}]*white-space: nowrap;/);
     expect(css).toMatch(/\.citeRef::after \{[^}]*height: var\(--space-9\)/);
   });
 });

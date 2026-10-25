@@ -113,6 +113,34 @@ Fifth pass (PO review: three-pane panes, one toolbar, phone fixes):
   combinations) and at 360, 390, 430, 600 and 768 px plus landscape in the main states (33); no
   horizontal scroll in any. Phone before and after screenshots: scratchpad `board-match/map/phone`.
 
+Sixth pass (follow-up fixes):
+
+- **Permits from the server**: the map, the Candidate list and Field triage build the `search.permits`
+  input in one place (`permitQueryInput`: `statusClass`, `openDaysMin`), so they share one cache entry
+  and the server filters. When the server clips (500 longest open) every view says so ("Showing the
+  500 longest-open of {total} permits in range; narrow the radius or filters"); Matches and the
+  filter chip count come from the server's total, and a clipped property page says "Showing the
+  nearest N of M properties".
+- **Citation pills** are atomic inline boxes (`inline-flex`, `nowrap`), so a line wraps between
+  pills, never through one; the 48 px hit area stays on the pseudo-element.
+- **One AskPanel instance** per page, drawn into a host element that moves between the left pane and
+  the results sheet, so crossing 1280 px (resize, rotate, devtools) never drops the answer, the
+  question or the thread.
+- **Undo window**: an inline "Created n leads" row with Undo (candidate list and AI panel) stays for
+  `UNDO_WINDOW_MS` (15 minutes, in `@crm/shared`, checked against the API's constant by a test),
+  counted from the create time, until dismissed or undone; the snackbar is short (message and Open
+  Leads). After an undo the row shows the same honest kept-reasons as before.
+- **Phone Filters sheet (600 to 1279 px) audit.** Checked against the handoff Filters list and the
+  boards' sheet pattern: the sheet is a modal dialog, so focus now moves in and returns to the
+  Filters button on every close path (Close, backdrop, Escape, Show results); a filled "Show n
+  results" button (the match count, singular for one) closes it; the card is full width on phones and
+  a centred card up to 40 rem on tablets (it used to span the rail); bottom padding clears the safe
+  area; the sheet sits above the results sheet peek and the legend card (z order checked). The Filters
+  button's count chip and the single View control were rechecked. Token audit clean at 360, 390, 600,
+  768, 1280 and 1440 px in the changed states; no horizontal scroll.
+- The result snackbar's action wrapper and close button used an auto margin and the default button
+  padding, which the token audit flagged in every state that shows it; both use tokens now.
+
 ## Matrix
 
 | Board | Route + state | Status | Side-by-side | Notes |

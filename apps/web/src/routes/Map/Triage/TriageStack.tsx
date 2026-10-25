@@ -20,6 +20,7 @@ import {
   usePropertyDetail,
 } from "../Candidates/candidatesApi.js";
 import {
+  permitNote,
   candidateTitle,
   defaultSort,
   lowerRoofPreset,
@@ -434,6 +435,15 @@ export function TriageStack({
         <p className={styles.offline} role="status" data-state="CrmTriagePartial">
           <Icon name="block" size="medium" />
           Permit data couldn’t be read here, so cards show the roof only.
+        </p>
+      ) : null}
+      {data.status === "ready" && (data.permitsTruncated || data.propertiesTruncated) ? (
+        <p className={styles.offline} role="status" data-state="CrmTriageClipped">
+          <Icon name="info" size="medium" />
+          {data.propertiesTruncated
+            ? `The nearest ${String(data.propertiesShown)} of ${data.totalInRing.toLocaleString("en-US")} properties. `
+            : ""}
+          {permitNote({ total: data.permitTotal, truncated: data.permitsTruncated }) ?? ""}
         </p>
       ) : null}
       <div className={styles.live} aria-live="polite">

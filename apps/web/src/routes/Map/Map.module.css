@@ -227,6 +227,11 @@
   display: none;
 }
 
+/* The slot the one AskPanel host is moved into (no box of its own). */
+.aiSlot {
+  display: contents;
+}
+
 .resultsSlot[data-empty="true"] > .paneBody {
   display: none;
 }

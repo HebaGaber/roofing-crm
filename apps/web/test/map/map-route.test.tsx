@@ -5,7 +5,7 @@
 // (Map.module.css) and is proved live by the responsive Playwright specs.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { forwardRef, useEffect, useImperativeHandle, type ReactElement } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState, type ReactElement } from "react";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,9 @@ let lastMapProps: {
 /** The props the route last handed the committed Candidate list and Field triage components. */
 let lastListProps: Record<string, unknown> | null = null;
 let lastPanelProps: Record<string, unknown> | null = null;
+let panelInstances = 0;
+let panelMounts = 0;
+let panelUnmounts = 0;
 const fitPins = vi.fn();
 let lastTriageProps: Record<string, unknown> | null = null;
 let reportedMode: "overview" | "detail" = "overview";
@@ -80,7 +83,15 @@ vi.mock("../../src/routes/Map/Candidates/index.js", async () => {
 vi.mock("../../src/routes/Ask/AskPanel.js", () => ({
   AskPanel: (props: Record<string, unknown>) => {
     lastPanelProps = props;
-    return <div data-testid="ask-panel" />;
+    // Own state: it survives only while this one instance stays mounted.
+    const [id] = useState(() => `panel-${String(++panelInstances)}`);
+    useEffect(() => {
+      panelMounts += 1;
+      return () => {
+        panelUnmounts += 1;
+      };
+    }, []);
+    return <div data-testid="ask-panel" data-instance={id} />;
   },
 }));
 
@@ -113,7 +124,12 @@ const property = {
   runId: "run-3",
 };
 
-let searchResult: { properties: (typeof property)[] } = { properties: [property] };
+let searchResult: {
+  properties: (typeof property)[];
+  counts?: { afterRadius: number; afterRoofAge: number };
+} = { properties: [property] };
+let permitsReply: { permits: unknown[]; total?: number; truncated?: boolean } = { permits: [] };
+const permitInputs: unknown[] = [];
 
 const RUN = "travis-202609-permits-20261021t103516z";
 function overviewFor(input: { zoom: number; permits?: boolean }) {
@@ -167,7 +183,12 @@ vi.mock("@crm/api-client/react", () => ({
           return searchResult;
         }),
       },
-      permits: { queryOptions: opts("search.permits", () => ({ permits: [] })) },
+      permits: {
+        queryOptions: (input: unknown) => {
+          permitInputs.push(input);
+          return { queryKey: ["search.permits", input], queryFn: async () => permitsReply };
+        },
+      },
       countyOverview: {
         queryOptions: (input: { zoom: number; permits?: boolean }) => ({
           queryKey: ["search.countyOverview", input],
@@ -206,9 +227,14 @@ afterEach(() => {
   searchResult = { properties: [property] };
   lastListProps = null;
   lastPanelProps = null;
+  panelInstances = 0;
+  panelMounts = 0;
+  panelUnmounts = 0;
   fitPins.mockReset();
   sessionStorage.clear();
   lastTriageProps = null;
+  permitsReply = { permits: [] };
+  permitInputs.length = 0;
   placeAtCenter.mockReset();
   showCounty.mockReset();
   lastMapProps = {};
@@ -455,13 +481,25 @@ describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode
   });
 });
 
+/** A matchMedia whose three-pane (1280 px) answer can change while the page is mounted. */
+const mediaListeners = new Set<() => void>();
+let currentWide = false;
 function stubWide(wide: boolean): void {
+  currentWide = wide;
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide && query.includes("1280"),
+    get matches() {
+      return currentWide && query.includes("1280");
+    },
     media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
+    addEventListener: (_type: string, listener: () => void) => mediaListeners.add(listener),
+    removeEventListener: (_type: string, listener: () => void) => mediaListeners.delete(listener),
   }));
+}
+function resizeTo(wide: boolean): void {
+  currentWide = wide;
+  act(() => {
+    for (const listener of [...mediaListeners]) listener();
+  });
 }
 
 describe("Map route list view, triage and toolbar (committed Candidates and Triage components)", () => {
@@ -845,5 +883,95 @@ describe("Map route phone toolbar (one row under the search box)", () => {
     const ok = renderAt("/?lat=30.4394&lng=-97.62&r=5");
     await screen.findByTestId("search-results");
     expect(ok.querySelector("[data-sheet]")?.getAttribute("data-peek")).toBe("results");
+  });
+});
+
+describe("Map route permits from the server (item: permit cap)", () => {
+  const URL_PIN = "/?lat=30.4394&lng=-97.62&r=5";
+
+  it("asks the server for the status and open years, not for every permit", async () => {
+    renderAt(`${URL_PIN}&mode=filters`);
+    await screen.findByTestId("search-results");
+    expect(permitInputs[0]).toMatchObject({ radiusMi: 5, sort: "openDays" });
+    expect(permitInputs[0]).not.toHaveProperty("statusClass");
+    permitInputs.length = 0;
+    fireEvent.click(screen.getAllByRole("button", { name: "Stalled" })[0] as HTMLElement);
+    await vi.waitFor(() => expect(permitInputs.at(-1)).toMatchObject({ statusClass: ["stalled"] }));
+  });
+
+  it("says plainly when the server clipped the permits, with its total", async () => {
+    permitsReply = { permits: [], total: 1200, truncated: true };
+    renderAt(URL_PIN);
+    expect(
+      await screen.findByText(
+        "Showing the 500 longest-open of 1,200 permits in range; narrow the radius or filters.",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("counts matches from the server's total, and says when the nearest page is clipped", async () => {
+    searchResult = { properties: [property], counts: { afterRadius: 340, afterRoofAge: 212 } };
+    renderAt(URL_PIN);
+    await screen.findByTestId("search-results");
+    expect(screen.getByText("Matches 212")).not.toBeNull();
+    expect(screen.getByText(/Showing the nearest 1 of 212 properties/)).not.toBeNull();
+  });
+});
+
+describe("Map route keeps the answer across the 1280 px boundary (resize, rotate, devtools)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const URL_AI = "/?lat=30.4394&lng=-97.62&r=5&mode=ai";
+  const inLeft = (page: HTMLElement): boolean =>
+    (page.querySelector("[data-pane='left']") as HTMLElement).contains(
+      screen.getByTestId("ask-panel"),
+    );
+
+  it("one AskPanel instance is mounted once and survives 1300 to 1200 and back", async () => {
+    stubWide(true);
+    const page = renderAt(URL_AI);
+    await screen.findByTestId("ask-panel");
+    const first = screen.getByTestId("ask-panel").getAttribute("data-instance");
+    expect(inLeft(page)).toBe(true);
+    expect(lastPanelProps?.layout).toBe("pane");
+
+    resizeTo(false);
+    await vi.waitFor(() => expect(lastPanelProps?.layout).toBe("sheet"));
+    expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first);
+    expect(
+      (page.querySelector("[data-sheet]") as HTMLElement).contains(screen.getByTestId("ask-panel")),
+    ).toBe(true);
+
+    resizeTo(true);
+    await vi.waitFor(() => expect(lastPanelProps?.layout).toBe("pane"));
+    expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first);
+    expect(inLeft(page)).toBe(true);
+
+    expect(panelMounts).toBe(1);
+    expect(panelUnmounts).toBe(0);
+  });
+
+  it("starting narrow and widening keeps the same instance too", async () => {
+    stubWide(false);
+    renderAt(URL_AI);
+    await screen.findByTestId("ask-panel");
+    const first = screen.getByTestId("ask-panel").getAttribute("data-instance");
+    resizeTo(true);
+    await vi.waitFor(() => expect(lastPanelProps?.layout).toBe("pane"));
+    expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first);
+    expect(panelUnmounts).toBe(0);
+  });
+
+  it("leaving AI mode while narrow keeps the answer for when AI mode returns", async () => {
+    stubWide(false);
+    renderAt(URL_AI);
+    await screen.findByTestId("ask-panel");
+    const first = screen.getByTestId("ask-panel").getAttribute("data-instance");
+    fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
+    await screen.findByRole("region", { name: "Results" });
+    fireEvent.click(screen.getByRole("button", { name: "Ask AI" }));
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first),
+    );
+    expect(panelUnmounts).toBe(0);
   });
 });

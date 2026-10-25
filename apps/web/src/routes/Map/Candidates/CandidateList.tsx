@@ -27,6 +27,7 @@ import {
   defaultSort,
   lowerRoofPreset,
   mainSignalText,
+  permitNote,
   SORT_LABEL,
   sortCandidates,
   whyChips,
@@ -36,6 +37,7 @@ import {
 } from "./candidates.js";
 import { ConfirmSheet, type ConfirmRow } from "./ConfirmSheet.js";
 import { Snackbar, SnackbarAction } from "./Snackbar.js";
+import { UndoStatusRow } from "./UndoStatusRow.js";
 import styles from "./CandidateList.module.css";
 
 export const DEFAULT_PAGE_SIZE = 20;
@@ -67,8 +69,6 @@ export interface CandidateListProps {
 
 interface Result {
   readonly message: string;
-  /** The leads this create made; present only while Undo is still on offer. */
-  readonly undoable?: readonly { leadKey: string; leadId: string }[];
 }
 
 function headerSummary(count: number, filters: CandidateFilters, originLabel: string): string {
@@ -106,6 +106,11 @@ export function CandidateList({
   const [result, setResult] = useState<Result | null>(null);
   const [noteOpen, setNoteOpen] = useState(false);
   const closeResult = useCallback(() => setResult(null), []);
+  const [undoRow, setUndoRow] = useState<{
+    leads: readonly { leadKey: string; leadId: string }[];
+    createdAt: number;
+    summary?: string;
+  } | null>(null);
 
   const effectiveSort = sort ?? defaultSort(filters);
   const sorted = useMemo(
@@ -169,8 +174,13 @@ export function CandidateList({
     const outcome = await bulk.run(items);
     setConfirming(false);
     setSelection(outcome.failed);
+    // The snackbar stays short; Undo lives on the inline row for the server's whole undo window.
+    setUndoRow(
+      outcome.created.length > 0
+        ? { leads: outcome.created.map((c) => c.result), createdAt: Date.now() }
+        : null,
+    );
     setResult({
-      ...(outcome.created.length > 0 ? { undoable: outcome.created.map((c) => c.result) } : {}),
       message: bulkSummary(
         outcome.created.length,
         knownLeads + outcome.already.length,
@@ -180,15 +190,18 @@ export function CandidateList({
   };
 
   const undo = async (): Promise<void> => {
-    const leads = result?.undoable;
-    if (leads === undefined || undoing) return;
+    const row = undoRow;
+    if (row === null || row.summary !== undefined || undoing) return;
     setUndoing(true);
     try {
-      setResult({ message: undoSummary(await undoCreated(leads)) });
+      const summary = undoSummary(await undoCreated(row.leads));
+      setUndoRow({ ...row, summary });
+      setResult(null);
     } finally {
       setUndoing(false);
     }
   };
+  const dismissUndoRow = useCallback(() => setUndoRow(null), []);
 
   const widenTo =
     filters.radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? filters.radiusMi + WIDEN_STEP_MI : null;
@@ -367,6 +380,27 @@ export function CandidateList({
           Permit data couldn’t be read for this ring, so rows show the roof only. Try again shortly.
         </p>
       ) : null}
+      {data.status === "ready" && (data.permitsTruncated || data.propertiesTruncated) ? (
+        <p className={styles.clipped} role="status" data-state="CrmCandidatesClipped">
+          <Icon name="info" size="medium" />
+          <span>
+            {data.propertiesTruncated
+              ? `Showing the nearest ${String(data.propertiesShown)} of ${data.totalInRing.toLocaleString("en-US")} properties; narrow the radius or raise the roof age. `
+              : ""}
+            {permitNote({ total: data.permitTotal, truncated: data.permitsTruncated }) ?? ""}
+          </span>
+        </p>
+      ) : null}
+      {undoRow === null ? null : (
+        <UndoStatusRow
+          count={undoRow.leads.length}
+          createdAt={undoRow.createdAt}
+          undoing={undoing}
+          summary={undoRow.summary}
+          onUndo={() => void undo()}
+          onDismiss={dismissUndoRow}
+        />
+      )}
       {selected.length > 0 ? (
         <div className={styles.selectionBar} data-selection-bar="">
           <span className={styles.selectedCount}>{`${String(selected.length)} selected`}</span>
@@ -432,11 +466,6 @@ export function CandidateList({
           onClose={closeResult}
           actions={
             <>
-              {result.undoable === undefined ? null : (
-                <SnackbarAction onClick={() => void undo()}>
-                  {undoing ? "Undoing…" : "Undo"}
-                </SnackbarAction>
-              )}
               <SnackbarAction onClick={() => void navigate("/leads")}>Open Leads</SnackbarAction>
             </>
           }

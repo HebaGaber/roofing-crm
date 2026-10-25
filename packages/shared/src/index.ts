@@ -8,6 +8,7 @@
 // nothing in this story needs those provenance-label helpers. They are removed here, not ported,
 // and return when the story that actually vendors `packages/oracle-contract` needs them.
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
+export { UNDO_WINDOW_MS } from "./leads/undoWindow.js";
 export { Session } from "./schemas/session.js";
 export {
   ROADMAP_SECTIONS,

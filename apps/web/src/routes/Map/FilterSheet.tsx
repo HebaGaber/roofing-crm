@@ -84,7 +84,18 @@ export function FilterSheet({
   // pattern so a half-typed value is never clobbered by the committed one re-rendering).
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
+
+  // The overlay is a dialog: focus moves into it when it opens and returns to the Filters button
+  // when it closes (not for the always-visible panel at three-pane widths, which never takes focus).
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (inline) return;
+    if (open && !wasOpen.current) panelRef.current?.focus();
+    if (!open && wasOpen.current) toggleRef.current?.focus();
+    wasOpen.current = open;
+  }, [open, inline]);
 
   // Below 1280px the panel is a dismissible overlay: Escape closes it (same contract as
   // `@crm/ui`'s `Popover`), and so does a click on the backdrop rendered behind it. From 1280px
@@ -102,6 +113,7 @@ export function FilterSheet({
   return (
     <div className={styles.sheet}>
       <button
+        ref={toggleRef}
         type="button"
         className={styles.toggle}
         aria-expanded={open}
@@ -125,6 +137,7 @@ export function FilterSheet({
         role={inline ? "region" : "dialog"}
         aria-label="Filters"
         aria-modal={!inline && open ? true : undefined}
+        tabIndex={-1}
         className={`${styles.panel} ${open ? styles.open : ""}`}
       >
         <div className={styles.header}>
@@ -215,6 +228,13 @@ export function FilterSheet({
               </option>
             ))}
           </select>
+        </div>
+        <div className={styles.footer}>
+          <button type="button" className={styles.showResults} onClick={close}>
+            {matchCount === undefined
+              ? "Show results"
+              : `Show ${String(matchCount)} ${matchCount === 1 ? "result" : "results"}`}
+          </button>
         </div>
       </div>
     </div>

@@ -33,6 +33,7 @@ import { answerPins, type AgentAnswer } from "@crm/shared";
 import { missingReasonLabel } from "@crm/oracle-contract";
 import { CidDisplay, formatUtc, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -53,7 +54,8 @@ import {
   useUndoCreatedLeads,
 } from "./askApi.js";
 import { bulkSummary } from "../Map/Candidates/bulkCreate.js";
-import { Snackbar, SnackbarAction, snackbarActionClass } from "../Map/Candidates/Snackbar.js";
+import { Snackbar, snackbarActionClass } from "../Map/Candidates/Snackbar.js";
+import { UndoStatusRow } from "../Map/Candidates/UndoStatusRow.js";
 import { undoOneText, undoSummary } from "../Map/Candidates/undoCopy.js";
 import { AskConfirmSheet, type AskConfirmRow } from "./AskConfirmSheet.js";
 import {
@@ -557,9 +559,13 @@ function AnsweredBody({
   const tab = matchesHost === null ? tabState : "answer";
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetError, setSheetError] = useState<string | undefined>(undefined);
-  const [snack, setSnack] = useState<
-    { message: string; undoable?: readonly { leadKey: string; leadId: string }[] } | undefined
-  >(undefined);
+  const [snack, setSnack] = useState<{ message: string } | undefined>(undefined);
+  // The inline undo row outlives the 10 s snackbar: it stays for the server's undo window.
+  const [undoRow, setUndoRow] = useState<{
+    leads: readonly { leadKey: string; leadId: string }[];
+    createdAt: number;
+    summary?: string;
+  } | null>(null);
   const [undoing, setUndoing] = useState(false);
   const confirmLeads = useConfirmLeads();
   const undoCreated = useUndoCreatedLeads();
@@ -601,15 +607,20 @@ function AnsweredBody({
           ctx.addBulkCreated(result.created.map((c) => c.tcadId));
           const skipped = sheetRows.filter((r) => r.state === "already").length;
           setSheetOpen(false);
+          setUndoRow(
+            result.created.length > 0
+              ? {
+                  leads: result.created.map((c) => ({ leadKey: c.leadKey, leadId: c.leadId })),
+                  createdAt: Date.now(),
+                }
+              : null,
+          );
           setSnack({
             message: bulkSummary(
               result.created.length,
               result.alreadyLeads.length + skipped,
               result.failed.length,
             ),
-            ...(result.created.length > 0
-              ? { undoable: result.created.map((c) => ({ leadKey: c.leadKey, leadId: c.leadId })) }
-              : {}),
           });
         },
         onError: (error) => setSheetError(confirmErrorCopy(error).text),
@@ -618,15 +629,18 @@ function AnsweredBody({
   };
 
   const undo = async (): Promise<void> => {
-    const leads = snack?.undoable;
-    if (leads === undefined || undoing) return;
+    const row = undoRow;
+    if (row === null || row.summary !== undefined || undoing) return;
     setUndoing(true);
     try {
-      setSnack({ message: undoSummary(await undoCreated(leads)) });
+      const summary = undoSummary(await undoCreated(row.leads));
+      setUndoRow({ ...row, summary });
+      setSnack(undefined);
     } finally {
       setUndoing(false);
     }
   };
+  const dismissUndoRow = useCallback(() => setUndoRow(null), []);
 
   const matchCount = rows?.length ?? 0;
   return (
@@ -749,6 +763,16 @@ function AnsweredBody({
           Show on map
         </button>
       </div>
+      {undoRow === null ? null : (
+        <UndoStatusRow
+          count={undoRow.leads.length}
+          createdAt={undoRow.createdAt}
+          undoing={undoing}
+          summary={undoRow.summary}
+          onUndo={() => void undo()}
+          onDismiss={dismissUndoRow}
+        />
+      )}
       {pinText === undefined ? null : <p className={styles.pinNote}>{pinText}</p>}
       {tab === "answer" && sources.length > 0 ? (
         <ol className={styles.sources} aria-label="Sources">
@@ -794,19 +818,11 @@ function AnsweredBody({
       {snack === undefined ? null : (
         <Snackbar
           message={snack.message}
-          timeoutMs={0}
           onClose={() => setSnack(undefined)}
           actions={
-            <>
-              {snack.undoable === undefined ? null : (
-                <SnackbarAction onClick={() => void undo()}>
-                  {undoing ? "Undoing…" : "Undo"}
-                </SnackbarAction>
-              )}
-              <Link to="/leads" className={snackbarActionClass}>
-                Open Leads
-              </Link>
-            </>
+            <Link to="/leads" className={snackbarActionClass}>
+              Open Leads
+            </Link>
           }
         />
       )}

@@ -71,6 +71,44 @@ function permitPasses(permit: CandidatePermit, filters: CandidateFilters): boole
   return true;
 }
 
+/** The `search.permits` input for the map's filters. The server filters (status and open days) and
+ *  pages (500 longest open first); the map, the Candidate list and Field triage all build their
+ *  input here, so they share one React Query cache entry. */
+export function permitQueryInput(
+  center: LatLng | null,
+  radiusMi: number,
+  permitStatus: PermitStatusFilter | undefined,
+  permitOpenYrs: number | undefined,
+): {
+  center: LatLng;
+  radiusMi: number;
+  sort: "openDays";
+  statusClass?: ("open" | "stalled")[];
+  openDaysMin?: number;
+} {
+  const status = permitStatus ?? "any";
+  return {
+    center: center ?? { lat: 0, lng: 0 },
+    radiusMi,
+    sort: "openDays",
+    ...(status === "any" ? {} : { statusClass: [status] }),
+    // The same cut the map's own "Permit open at least N yrs" filter always made: openDays is a
+    // whole number, so at least ceil(N years in days).
+    ...(permitOpenYrs === undefined ? {} : { openDaysMin: Math.ceil(permitOpenYrs * YEAR_DAYS) }),
+  };
+}
+
+/** The server's permit page ceiling (`search.permits` caps at 500). */
+export const PERMIT_PAGE_MAX = 500;
+
+/** The honest line when the server clipped the permits: never a page presented as the whole set. */
+export function permitNote(
+  page: { total: number; truncated: boolean; shown?: number } | undefined,
+): string | null {
+  if (page === undefined || !page.truncated) return null;
+  return `Showing the ${String(page.shown ?? PERMIT_PAGE_MAX)} longest-open of ${page.total.toLocaleString("en-US")} permits in range; narrow the radius or filters.`;
+}
+
 /** True when a permit filter narrows the matches to properties with a matching permit. */
 export function hasPermitFilter(filters: CandidateFilters): boolean {
   return (filters.permitStatus ?? "any") !== "any" || filters.permitOpenYrs !== undefined;

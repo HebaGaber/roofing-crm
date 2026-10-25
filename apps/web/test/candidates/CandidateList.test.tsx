@@ -28,6 +28,10 @@ const ready = (over: Partial<CandidatesResult> = {}): CandidatesResult => ({
   ),
   totalInRing: 3,
   permitsUnavailable: false,
+  permitTotal: 3,
+  permitsTruncated: false,
+  propertiesTruncated: false,
+  propertiesShown: 3,
   leadsUnavailable: false,
   refetch: vi.fn(),
   ...over,
@@ -152,6 +156,31 @@ describe("CandidateList", () => {
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 
+  it("keeps an inline Created n leads row with Undo after the snackbar is gone (15 min window)", async () => {
+    run.mockResolvedValue({
+      created: [{ id: "a", result: { leadKey: "48453:tcad:0201885122", leadId: "L-9" } }],
+      already: [],
+      failed: [],
+    });
+    mount();
+    for (const box of screen.getAllByRole("checkbox", { name: /Select TCAD/ }))
+      fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Create 3 leads" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Create 2 leads" }),
+    );
+    const row = await screen.findByText(/^Created 1 lead/);
+    // The snackbar is short and has no Undo of its own; Open Leads stays on it.
+    const snackbar = document.querySelector("[data-snackbar]") as HTMLElement;
+    expect(within(snackbar).queryByRole("button", { name: "Undo" })).toBeNull();
+    fireEvent.click(within(snackbar).getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByText("1 lead created · 0 already leads")).toBeNull();
+    expect(row.isConnected).toBe(true);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hide undo" }));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
   it("offers no Undo when nothing was created", async () => {
     run.mockResolvedValue({ created: [], already: ["y"], failed: [] });
     mount();
@@ -197,6 +226,28 @@ describe("CandidateList", () => {
     mount();
     expect(screen.getByText(/Permit data couldn’t be read/)).toBeTruthy();
     expect(screen.getAllByText("Permits not loaded").length).toBe(3);
+  });
+
+  it("says so when the server clipped the permits, with the server's total", () => {
+    result = ready({ permitTotal: 12345, permitsTruncated: true });
+    mount();
+    expect(
+      screen.getByText(
+        "Showing the 500 longest-open of 12,345 permits in range; narrow the radius or filters.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("says so when the nearest properties are clipped, with the server's total", () => {
+    result = ready({ totalInRing: 340, propertiesTruncated: true, propertiesShown: 100 });
+    mount();
+    expect(screen.getByText(/Showing the nearest 100 of 340 properties/)).toBeTruthy();
+  });
+
+  it("says nothing about clipping when everything came back", () => {
+    mount();
+    expect(screen.queryByText(/longest-open of/)).toBeNull();
+    expect(screen.queryByText(/nearest/)).toBeNull();
   });
 
   it("with no centre says why there are no candidates", () => {

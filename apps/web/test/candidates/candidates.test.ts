@@ -6,6 +6,8 @@ import {
   leadsByRequestIdentifier,
   lowerRoofPreset,
   mainSignalText,
+  permitNote,
+  permitQueryInput,
   permitSignalText,
   sortCandidates,
   whyChips,
@@ -138,5 +140,48 @@ describe("lowerRoofPreset", () => {
     expect(lowerRoofPreset(15)).toBe(13);
     expect(lowerRoofPreset(10)).toBeNull();
     expect(lowerRoofPreset(undefined)).toBeNull();
+  });
+});
+
+describe("permitQueryInput (the server filters the permits)", () => {
+  const center = { lat: 30.4, lng: -97.6 };
+
+  it("with no permit filter asks for every permit in range, longest open first", () => {
+    expect(permitQueryInput(center, 5, "any", undefined)).toEqual({
+      center,
+      radiusMi: 5,
+      sort: "openDays",
+    });
+  });
+
+  it("passes the status and the open years as the server's statusClass and openDaysMin", () => {
+    expect(permitQueryInput(center, 5, "open", undefined)).toMatchObject({ statusClass: ["open"] });
+    expect(permitQueryInput(center, 5, "stalled", 5)).toMatchObject({
+      statusClass: ["stalled"],
+      openDaysMin: 1827,
+    });
+    expect(permitQueryInput(center, 2.5, "any", 1)).toEqual({
+      center,
+      radiusMi: 2.5,
+      sort: "openDays",
+      openDaysMin: 366,
+    });
+  });
+
+  it("has no centre without a ring", () => {
+    expect(permitQueryInput(null, 5, "any", undefined).center).toEqual({ lat: 0, lng: 0 });
+  });
+});
+
+describe("permitNote (a clipped permit page is never the whole set)", () => {
+  it("is empty when every permit came back", () => {
+    expect(permitNote({ total: 40, truncated: false })).toBeNull();
+    expect(permitNote(undefined)).toBeNull();
+  });
+
+  it("says how many came back of the server total, and what to do", () => {
+    expect(permitNote({ total: 12345, truncated: true, shown: 500 })).toBe(
+      "Showing the 500 longest-open of 12,345 permits in range; narrow the radius or filters.",
+    );
   });
 });

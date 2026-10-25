@@ -12,6 +12,8 @@ export interface ResultsPanelProps {
   /** Shows the filled "Triage n" action after the coverage info (the phone sheet, board
    *  CrmMapPin390); absent from 1280 px, where the board has none. */
   readonly onTriage?: () => void;
+  /** An honest line under the header when the server clipped a page. */
+  readonly note?: string | undefined;
 }
 
 /** CRM-HANDOFF §4.2 "Coverage note": the full text behind the results-header info icon. Static
@@ -21,7 +23,7 @@ export interface ResultsPanelProps {
 const COVERAGE_NOTE =
   "Permits are shown only where CountyLens publishes them. Part of this area may have no permit data.";
 
-export function ResultsPanel({ count, children, onTriage }: ResultsPanelProps): ReactElement {
+export function ResultsPanel({ count, children, onTriage, note }: ResultsPanelProps): ReactElement {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
@@ -56,6 +58,11 @@ export function ResultsPanel({ count, children, onTriage }: ResultsPanelProps): 
           </button>
         )}
       </header>
+      {note === undefined ? null : (
+        <p className={styles.clipNote} role="status" data-state="CrmMapResultsClipped">
+          {note}
+        </p>
+      )}
       {children}
     </div>
   );

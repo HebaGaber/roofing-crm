@@ -146,6 +146,21 @@
   line-height: var(--md-sys-typescale-body-medium-line-height);
 }
 
+/* The server clipped a page (properties or permits): an honest line, not a warning. */
+.clipped {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin: var(--space-2) var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--md-sys-shape-corner-medium);
+  color: var(--md-sys-color-on-surface-variant);
+  background: var(--md-sys-color-surface-container);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
 .selectionBar {
   display: flex;
   align-items: center;

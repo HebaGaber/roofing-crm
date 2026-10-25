@@ -2,10 +2,13 @@
 // `{ deleted: false, reason }`; a refusal is an outcome to explain, never a failure to hide. Pure,
 // shared by the candidate list's bulk Undo and the triage Undo.
 
+import { UNDO_WINDOW_MS } from "@crm/shared";
+
 export type UndoReason = "NOT_UNDOABLE" | "NOT_FOUND" | "NOT_OWNER" | "TOO_OLD" | "CHANGED";
 
-/** Mirrors UNDO_WINDOW_MS in apps/api/src/services/leads.ts (15 minutes). */
-export const UNDO_WINDOW_MINUTES = 15;
+/** The window `leads.undoCreate` allows, in minutes: `UNDO_WINDOW_MS` from `@crm/shared`, which
+ *  mirrors apps/api/src/services/leads.ts (a web test fails if the two drift). */
+export const UNDO_WINDOW_MINUTES = UNDO_WINDOW_MS / 60_000;
 
 export interface UndoAnswer {
   readonly deleted: boolean;

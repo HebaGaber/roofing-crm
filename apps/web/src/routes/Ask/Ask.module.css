@@ -246,13 +246,18 @@
 
 .claim {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .citeRef {
-  /* A link inside a sentence: inline, so it is sized by its line of text (WCAG 2.5.8 inline
-     exception) and the line height does not grow. The pill is the number plus side padding. */
+  /* A link inside a sentence, sized by its line of text (WCAG 2.5.8 inline exception) so the line
+     height does not grow. An atomic inline box (inline-flex, nowrap): the line wraps between pills,
+     never through one, so a pill cannot be cut at a narrow pane's edge. */
   position: relative;
-  display: inline;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: baseline;
+  white-space: nowrap;
   box-sizing: border-box;
   margin-left: var(--space-1);
   padding: 0 var(--space-2);

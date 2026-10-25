@@ -56,6 +56,7 @@ import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
+import { permitNote, permitQueryInput } from "./Candidates/candidates.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
@@ -152,6 +153,24 @@ export function Component(): ReactElement {
   useEffect(() => {
     if (ai) setAiOpened(true);
   }, [ai]);
+  // ONE AskPanel instance for the whole page. It renders into a detached host element through a
+  // portal and that host is moved into the current slot (the left pane from 1280 px, the results
+  // sheet below), so resizing, rotating or opening devtools changes where it is drawn, never
+  // whether it is mounted: the answer, the question and the thread are never dropped.
+  const panelHost = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const el = document.createElement("div");
+    el.dataset.askHost = "";
+    return el;
+  }, []);
+  const [leftSlot, setLeftSlot] = useState<HTMLDivElement | null>(null);
+  const [sheetSlot, setSheetSlot] = useState<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (panelHost === null) return;
+    const target = wide ? leftSlot : sheetSlot;
+    if (target !== null && panelHost.parentElement !== target) target.appendChild(panelHost);
+    else if (target === null && panelHost.parentElement !== null) panelHost.remove();
+  }, [panelHost, wide, leftSlot, sheetSlot]);
   const onAnswer = useCallback((next: AgentAnswer | null) => {
     // "New question" clears the answer: that starts a new agent thread (no carried-over memory).
     if (next === null && hadAnswer.current) setThreadId(newThreadId());
@@ -229,29 +248,30 @@ export function Component(): ReactElement {
   // the permit-view toggle (results list) or the Layers popover's "permits" marker layer is on —
   // the two controls share one request, never two separately-derived ones.
   const wantPermits = permitView || layers.permits;
+  // The server filters (status, open years) and pages (the 500 longest open); the input is built
+  // by the same helper the Candidate list and Field triage use, so all three share one cache entry.
   const permitsQuery = useQuery({
     ...trpc.search.permits.queryOptions(
-      searchInput === null
-        ? { center: { lat: 0, lng: 0 }, radiusMi, sort: "openDays" as const }
-        : { center: searchInput.center, radiusMi: searchInput.radiusMi, sort: "openDays" as const },
+      permitQueryInput(
+        searchInput === null ? null : searchInput.center,
+        searchInput === null ? radiusMi : searchInput.radiusMi,
+        permitStatus,
+        permitOpenYrs,
+      ),
     ),
     enabled: searchInput !== null && wantPermits,
   });
-
-  // The permit-status / permit-open-years filters (new in the structural rebuild) are applied
-  // client-side — `search.permits` has no status filter of its own (contracts/search-api.md); it
-  // always returns every permit in the radius, sorted by open duration.
-  const filteredPermits = useMemo(() => {
-    const permits = permitsQuery.data?.permits ?? [];
-    return permits.filter((permit) => {
-      if (permitStatus !== "any" && permit.statusClass !== permitStatus) return false;
-      if (permitOpenYrs !== undefined) {
-        const openYears = (permit.openDays ?? 0) / 365.25;
-        if (openYears < permitOpenYrs) return false;
-      }
-      return true;
-    });
-  }, [permitsQuery.data, permitStatus, permitOpenYrs]);
+  const filteredPermits = useMemo(() => permitsQuery.data?.permits ?? [], [permitsQuery.data]);
+  const permitClipNote = wantPermits
+    ? permitNote(
+        permitsQuery.data === undefined
+          ? undefined
+          : {
+              total: permitsQuery.data.total ?? permitsQuery.data.permits.length,
+              truncated: permitsQuery.data.truncated === true,
+            },
+      )
+    : null;
 
   const permitsByPropertyCid = useMemo(() => {
     const map = new Map<string, typeof filteredPermits>();
@@ -401,6 +421,20 @@ export function Component(): ReactElement {
     !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
   // A sheet that only holds a notice (no pin, loading, failed, or nothing found) peeks small.
   const compactPeek = pinOutsideCounty || isLoading || isIndexDown || isZeroResult || sheetEmpty;
+  // Counts come from the server's totals; a clipped page says so (never a page as the whole set).
+  const matchTotal = query.data?.counts?.afterRoofAge ?? query.data?.properties.length ?? 0;
+  const propertiesClipped = query.data !== undefined && matchTotal > query.data.properties.length;
+  const resultsNote =
+    propertiesClipped || permitClipNote !== null
+      ? [
+          propertiesClipped
+            ? `Showing the nearest ${String(query.data?.properties.length ?? 0)} of ${matchTotal.toLocaleString("en-US")} properties; narrow the radius or raise the roof age.`
+            : null,
+          permitClipNote,
+        ]
+          .filter((line): line is string => line !== null)
+          .join(" ")
+      : undefined;
   const showOverviewChip =
     viewMode === "overview" &&
     layers.roofs &&
@@ -418,6 +452,10 @@ export function Component(): ReactElement {
       {...(layout === "pane" ? { matchesHost } : {})}
     />
   );
+  const askPanelPortal =
+    aiOpened && panelHost !== null
+      ? createPortal(askPanel(wide ? "pane" : "sheet"), panelHost)
+      : null;
   const topChoice: MapViewChoice = view === "list" ? "list" : ai ? "ai" : "cards";
   const matchCountInAnswer = answer?.rows?.length ?? 0;
 
@@ -485,7 +523,7 @@ export function Component(): ReactElement {
               onPermitStatusChange={setPermitStatus}
               permitOpenYrs={permitOpenYrs}
               onPermitOpenYrsChange={setPermitOpenYrs}
-              matchCount={searchInput === null ? undefined : query.data?.properties.length}
+              matchCount={searchInput === null || query.data === undefined ? undefined : matchTotal}
               open={mode === "filters"}
               onOpenChange={(open) => setMode(open ? "filters" : "map")}
               inline={wide}
@@ -494,7 +532,7 @@ export function Component(): ReactElement {
           </div>
           {wide && aiOpened ? (
             <div className={styles.aiLeft} hidden={!ai}>
-              {askPanel("pane")}
+              <div ref={setLeftSlot} className={styles.aiSlot} />
             </div>
           ) : null}
         </div>
@@ -675,7 +713,9 @@ export function Component(): ReactElement {
                   <div ref={setMatchesHost} className={styles.matchesHost} />
                 </div>
               ) : (
-                <ResultsSheet>{askPanel("sheet")}</ResultsSheet>
+                <ResultsSheet>
+                  <div ref={setSheetSlot} className={styles.aiSlot} />
+                </ResultsSheet>
               )
             ) : triage ? (
               <div className={styles.triageDock}>
@@ -742,7 +782,8 @@ export function Component(): ReactElement {
                 ) : null}
                 {query.data !== undefined && hasResults ? (
                   <ResultsPanel
-                    count={query.data.properties.length}
+                    count={matchTotal}
+                    note={resultsNote}
                     {...(wide ? {} : { onTriage: () => setTriage(true) })}
                   >
                     <ul
@@ -771,6 +812,7 @@ export function Component(): ReactElement {
           </div>
         </div>
       ) : null}
+      {askPanelPortal}
       {sel !== null && detailQuery.data !== undefined ? (
         <div className={styles.drawerSlot}>
           <PropertyDetail
