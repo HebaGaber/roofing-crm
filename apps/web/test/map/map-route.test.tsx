@@ -214,8 +214,11 @@ vi.mock("@crm/api-client/react", () => ({
   }),
 }));
 
+const prefetchLeads = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, error: null }),
+  usePrefetchLeadsList: () => prefetchLeads,
 }));
 
 import { Component as MapRoute } from "../../src/routes/Map/Map";
@@ -227,6 +230,7 @@ afterEach(() => {
   searchResult = { properties: [property] };
   lastListProps = null;
   lastPanelProps = null;
+  prefetchLeads.mockClear();
   panelInstances = 0;
   panelMounts = 0;
   panelUnmounts = 0;
@@ -973,5 +977,29 @@ describe("Map route keeps the answer across the 1280 px boundary (resize, rotate
       expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first),
     );
     expect(panelUnmounts).toBe(0);
+  });
+});
+
+describe("Map route prefetches the Leads list once a lead can be created", () => {
+  const PIN = "/?lat=30.4394&lng=-97.62&r=5";
+
+  it("not on the plain map", async () => {
+    renderAt(PIN);
+    await screen.findByTestId("search-results");
+    expect(prefetchLeads).not.toHaveBeenCalled();
+  });
+
+  it("when a property drawer is open (?sel=)", async () => {
+    renderAt(`${PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(prefetchLeads).toHaveBeenCalledTimes(1));
+  });
+
+  it("when the candidate list or triage is showing", async () => {
+    renderAt(`${PIN}&view=list`);
+    await vi.waitFor(() => expect(prefetchLeads).toHaveBeenCalledTimes(1));
+    cleanup();
+    prefetchLeads.mockClear();
+    renderAt(`${PIN}&triage=1`);
+    await vi.waitFor(() => expect(prefetchLeads).toHaveBeenCalledTimes(1));
   });
 });

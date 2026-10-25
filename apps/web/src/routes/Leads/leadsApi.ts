@@ -8,7 +8,7 @@ import { useTRPC } from "@crm/api-client/react";
 import type { LeadFilters } from "@crm/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import type { LeadsListInput } from "./leadFilters.state.js";
+import { parseLeadQuery, toLeadsListInput, type LeadsListInput } from "./leadFilters.state.js";
 import { retryUnlessNotFound } from "./leadErrors.js";
 import { addCreatedLead, overlayLeadsList } from "./leadsListCache.js";
 
@@ -18,6 +18,32 @@ export type LeadDetailData = ApiOutputs["leads"]["get"];
 export type LeadCreateInput = ApiInputs["leads"]["create"];
 
 export type { LeadFilters };
+
+/** The input /leads asks for with no filters (its first page). Built by the page's own functions, so
+ *  a prefetch and the page share one cache entry. */
+export const DEFAULT_LEADS_LIST_INPUT: LeadsListInput = toLeadsListInput(
+  parseLeadQuery(new URLSearchParams()),
+);
+
+/** How long a fetched first page counts as fresh: /leads opened inside it does not refetch at once. */
+export const LEADS_LIST_STALE_MS = 60_000;
+
+/** Fetches the unfiltered first page of `leads.list` ahead of time (the map calls it as soon as a
+ *  lead can be created: a drawer open, the candidate list, triage). A created lead is then inserted
+ *  into a real cached page and /leads paints it without waiting for its own round trip. Resolves
+ *  when the page is cached; never throws (a failed prefetch just means /leads fetches as before). */
+export function usePrefetchLeadsList(): () => Promise<void> {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  return useCallback(
+    () =>
+      queryClient.prefetchQuery({
+        ...trpc.leads.list.queryOptions(DEFAULT_LEADS_LIST_INPUT),
+        staleTime: LEADS_LIST_STALE_MS,
+      }),
+    [queryClient, trpc],
+  );
+}
 
 export function useLeadsList(input: LeadsListInput, options: { readonly enabled?: boolean } = {}) {
   const trpc = useTRPC();
@@ -32,6 +58,7 @@ export function useLeadsList(input: LeadsListInput, options: { readonly enabled?
   return useQuery({
     ...trpc.leads.list.queryOptions(input),
     select,
+    staleTime: LEADS_LIST_STALE_MS,
     enabled: options.enabled ?? true,
   });
 }

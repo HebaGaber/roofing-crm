@@ -57,6 +57,7 @@ import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.s
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
 import { permitNote, permitQueryInput } from "./Candidates/candidates.js";
+import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
@@ -124,6 +125,14 @@ export function Component(): ReactElement {
   // centre, radius and filters, so reload, back and a shared link reopen the same view.
   const { view, triage, setTriage } = useMapViewParam();
   const [triageCid, setTriageCid] = useState<string | null>(null);
+  // As soon as a lead can be created (a drawer is open, the candidate list or triage is showing),
+  // fetch the first page of the Leads list, so a created lead is inserted into a real cached page
+  // and /leads paints at once instead of waiting for its own round trip.
+  const prefetchLeads = usePrefetchLeadsList();
+  const canCreateLead = sel !== null || triage || view === "list";
+  useEffect(() => {
+    if (canCreateLead) void prefetchLeads();
+  }, [canCreateLead, prefetchLeads]);
   // AI mode (`mode=ai&q=`): the agent answers inside the map; its cited properties are numbered pins.
   const { mode, q, setMode, clearQuestion } = useMapMode();
   // The question in `?q=` only prefills the box. Keep what the panel should show in state, and take
