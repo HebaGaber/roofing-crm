@@ -51,6 +51,7 @@ import { LayersPopover, type LayersState } from "../../components/Map/LayersPopo
 import { MapControls } from "../../components/Map/MapControls.js";
 import { MapStatusCard } from "../../components/Map/MapStatusCard.js";
 import { MapLegend } from "../../components/Map/MapLegend.js";
+import { useLegendOpen } from "../../components/Map/legendState.js";
 import type { MapViewMode } from "../../components/Map/CrmMap.js";
 import {
   OVERVIEW_MAX_ZOOM,
@@ -66,8 +67,7 @@ import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index
 import { permitNote, permitQueryInput } from "./Candidates/candidates.js";
 import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
-import { ResultRow } from "./ResultRow.js";
-import { ResultsPanel } from "./ResultsPanel.js";
+import { ResultsList } from "./ResultsList.js";
 import { ResultsSheet } from "./ResultsSheet.js";
 import { TopBar } from "./TopBar.js";
 import { TriageStack } from "./Triage/index.js";
@@ -114,6 +114,15 @@ function drawerOverlap(mapEl: HTMLElement | null): number {
   return Math.max(0, Math.round(rect.right - drawerLeft));
 }
 
+/** Pixels of the map the results sheet covers: the phone's bottom sheet floats over the map, the
+ *  tablet's docked panel sits below it and covers none. Measured, so it stays right at any width. */
+function sheetOverlap(mapEl: HTMLElement | null, sheet: HTMLElement | null | undefined): number {
+  if (mapEl === null || sheet === null || sheet === undefined) return 0;
+  const map = mapEl.getBoundingClientRect();
+  const top = sheet.getBoundingClientRect().top;
+  return Math.max(0, Math.round(map.bottom - top));
+}
+
 export function Component(): ReactElement {
   const trpc = useTRPC();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -127,6 +136,7 @@ export function Component(): ReactElement {
   const mapHandleRef = useRef<CrmMapHandle | null>(null);
   const mapAreaRef = useRef<HTMLDivElement | null>(null);
   const [layers, setLayers] = useState<LayersState>(DEFAULT_LAYERS);
+  const [legendOpen, setLegendOpen] = useLegendOpen();
   const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
   const [viewMode, setViewMode] = useState<MapViewMode>("overview");
@@ -404,7 +414,7 @@ export function Component(): ReactElement {
           mapWidth: mapEl?.clientWidth ?? 0,
           mapHeight: mapEl?.clientHeight ?? 0,
           drawerOverlap: drawerOverlap(mapEl),
-          sheetHeight: wide ? 0 : (sheet?.getBoundingClientRect().height ?? 0),
+          sheetHeight: wide ? 0 : sheetOverlap(mapEl, sheet),
         }),
         instant,
       );
@@ -449,6 +459,7 @@ export function Component(): ReactElement {
     },
     [setSearchParams],
   );
+  const openTriage = useCallback(() => setTriage(true), [setTriage]);
   const closeTriage = useCallback(() => {
     setTriage(false);
     setTriageCid(null);
@@ -730,9 +741,13 @@ export function Component(): ReactElement {
             pinMode={pinMode}
             onDropPin={() => setPinMode((on) => !on)}
           />
-          <div className={styles.overlay}>
+          <div className={styles.overlay} data-centre={center === null ? "none" : "set"}>
             <div className={styles.layersRow}>
-              <LayersPopover value={layers} onChange={setLayers} />
+              <LayersPopover
+                value={layers}
+                onChange={setLayers}
+                legend={{ open: legendOpen, onChange: setLegendOpen }}
+              />
               <div className={styles.legendSlot}>
                 <MapLegend
                   mode={viewMode}
@@ -740,6 +755,7 @@ export function Component(): ReactElement {
                   permits={layers.permits}
                   loadedCount={roofMarkers.length}
                   county={countyStatus}
+                  toggle="none"
                 />
               </div>
             </div>
@@ -764,10 +780,10 @@ export function Component(): ReactElement {
                   onChange={setRadiusMi}
                   originLabel={
                     !fromGps
-                      ? "Dropped pin"
+                      ? "the pin"
                       : accuracyM !== null && accuracyM > LOW_ACCURACY_M
-                        ? "Your location (approximate)"
-                        : "Your location (GPS)"
+                        ? "your location (approximate)"
+                        : "your location (GPS)"
                   }
                 />
               </div>
@@ -930,31 +946,19 @@ export function Component(): ReactElement {
                   </p>
                 ) : null}
                 {query.data !== undefined && hasResults ? (
-                  <ResultsPanel
-                    count={matchTotal}
+                  <ResultsList
+                    rows={query.data.properties}
+                    total={matchTotal}
+                    clipped={propertiesClipped}
                     note={resultsNote}
-                    {...(wide ? {} : { onTriage: () => setTriage(true) })}
-                  >
-                    <ul
-                      className={styles.results}
-                      aria-label="Results"
-                      data-testid="search-results"
-                    >
-                      {query.data.properties.map((property) => (
-                        <li key={property.propertyCid}>
-                          <ResultRow
-                            row={property}
-                            selected={sel === property.propertyCid}
-                            onSelect={selectProperty}
-                            {...(center === null ? {} : { center })}
-                            {...(permitView
-                              ? { permits: permitsByPropertyCid.get(property.propertyCid) ?? [] }
-                              : {})}
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  </ResultsPanel>
+                    center={center}
+                    selectedCid={sel}
+                    onSelect={selectProperty}
+                    permitsByPropertyCid={
+                      permitsQuery.data === undefined ? null : permitsByPropertyCid
+                    }
+                    onTriage={wide ? undefined : openTriage}
+                  />
                 ) : null}
               </ResultsSheet>
             )}

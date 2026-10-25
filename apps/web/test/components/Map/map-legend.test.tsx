@@ -1,11 +1,12 @@
 // MapLegend (CRM-HANDOFF E-72 "Legend per layer"; prototype Explore1440 `atlas-legend`).
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readLegendChoice, writeLegendChoice } from "../../../src/components/Map/legendState.js";
 import { MapLegend } from "../../../src/components/Map/MapLegend.js";
 
 function stubWidth(wide: boolean): void {
   vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide && query.includes("1280"),
+    matches: wide && query.includes("600"),
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
@@ -166,8 +167,8 @@ describe("MapLegend", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  describe("the Legend button and card (phones)", () => {
-    it("is collapsed behind a named Legend button until opened, below the three-pane width", () => {
+  describe("the Legend button and card", () => {
+    it("is collapsed behind a named Legend button until opened on a phone (below 600 px)", () => {
       stubWidth(false);
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
       const button = screen.getByRole("button", { name: "Legend" });
@@ -180,7 +181,7 @@ describe("MapLegend", () => {
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
     });
 
-    it("is open by default from the three-pane width, and can be closed", () => {
+    it("is open by default from 600 px (tablets and up), and can be closed", () => {
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Close legend" }));
@@ -213,6 +214,28 @@ describe("MapLegend", () => {
       stubWidth(false);
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+    });
+
+    it("from 600 px a tap on the map does not close the docked card", () => {
+      render(
+        <div>
+          <MapLegend mode="overview" roofs permits loadedCount={0} />
+          <p data-testid="elsewhere">map</p>
+        </div>,
+      );
+      fireEvent.pointerDown(screen.getByTestId("elsewhere"));
+      expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+    });
+
+    it("with toggle none it has no Legend button of its own and follows the shared state", () => {
+      stubWidth(false);
+      render(<MapLegend mode="overview" roofs permits loadedCount={0} toggle="none" />);
+      expect(screen.queryByRole("button", { name: "Legend" })).toBeNull();
+      expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
+      act(() => writeLegendChoice(true));
+      expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close legend" }));
+      expect(readLegendChoice()).toBe(false);
     });
 
     it("a tap inside the card does not close it", () => {

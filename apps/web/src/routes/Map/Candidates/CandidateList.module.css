@@ -1,7 +1,7 @@
 /* Candidate list (CrmCandidates1440/768/390): an outlined surface card holding the list header
    (summary, Hide existing leads, Matches n, coverage info), the selection bar (secondary
    container), the table and the footer (Showing … · sort, pager). One DOM: Basis, bearing and
-   Show on map from 1240 px; #, Permit, Mi and Lat, lon from 768 px; below 768 the table keeps
+   Show on map from 1240 px; Permit and Mi from 768 px, # from 840 px and Lat, lon from 1032 px; below 768 the table keeps
    checkbox, Address, Roof, Conf. and the row actions. Atlas tokens only. */
 
 .list {
@@ -560,6 +560,17 @@
   .wide768 {
     display: table-cell;
   }
+}
+
+/* Lat, lon is its own column from 1032 px; below it the coordinates ride on the address line. */
+.wide1032 {
+  display: none;
+}
+
+@media (min-width: 1032px) {
+  .wide1032 {
+    display: table-cell;
+  }
 
   .narrowOnly {
     display: none;
@@ -607,5 +618,45 @@
 @media (min-width: 768px) {
   .title {
     white-space: nowrap;
+  }
+}
+
+/* "#" (the selection order) needs the room only a wider tablet has. */
+.wide840 {
+  display: none;
+}
+
+@media (min-width: 840px) {
+  .wide840 {
+    display: table-cell;
+  }
+}
+
+/* 768-1239 px (board CrmCandidates768): the table fits the width the list pane has, so Mi and
+   the row actions are never pushed off screen. Cells give up their one-line minimums: the
+   address note and the permit text wrap onto more lines instead. */
+@media (min-width: 768px) and (max-width: 1239.98px) {
+  .table th,
+  .table td {
+    padding-right: var(--space-1);
+    padding-left: var(--space-1);
+  }
+
+  .table .cCheck {
+    width: var(--space-8);
+    padding-left: var(--space-2) !important;
+  }
+
+  .cAddress {
+    min-width: 0;
+  }
+
+  .sub {
+    white-space: normal;
+  }
+
+  .cPermit {
+    min-width: 0;
+    width: 132px;
   }
 }

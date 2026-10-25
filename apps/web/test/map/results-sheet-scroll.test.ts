@@ -31,7 +31,8 @@ describe("ResultsSheet scroll container", () => {
       expect(rule, selector).toMatch(/--sheet-cap:\s*[^;]*dvh/);
       expect(rule, selector).toMatch(/max-height:/);
     }
-    expect(css).toMatch(/\.sheet\[data-sheet="peek"\] \{\s*--sheet-cap:\s*50dvh/);
+    // The phone's peek is the base 40 percent; tablets dock the panel instead of a 50 percent peek.
+    expect(css).not.toMatch(/--sheet-cap:\s*50dvh/);
   });
 
   it("the short-landscape peek keeps a cap too", () => {
@@ -41,6 +42,20 @@ describe("ResultsSheet scroll container", () => {
   it("from 1280 px the sheet is the static pane and the body is not capped", () => {
     const wide = css.slice(css.indexOf("@media (min-width: 1280px)"));
     expect(wide).toMatch(/\.body \{[^}]*max-height:\s*none/);
+  });
+
+  it("from 600 px the panel is docked under the map: not capped, scrolling in its own body", () => {
+    const docked = css.slice(
+      css.indexOf("@media (min-width: 600px) and (max-width: 1279.98px)"),
+      css.indexOf("@media (min-width: 1280px)"),
+    );
+    expect(docked).toMatch(/\.body \{[^}]*max-height:\s*none/);
+    expect(docked).toMatch(/\.body \{[^}]*flex:\s*1 1 0/);
+    expect(docked).toMatch(/grid-area:\s*results/);
+    expect(docked).toMatch(/position:\s*static/);
+    expect(docked).toMatch(/\.handle \{[^}]*display:\s*none/);
+    // The body keeps its own overflow rule from the base block.
+    expect(block(".body")).toMatch(/overflow-y:\s*auto/);
   });
 });
 

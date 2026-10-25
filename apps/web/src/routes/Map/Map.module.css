@@ -2,9 +2,13 @@
    Atlas tokens only (constitution P0-14); Material window classes: compact < 600, medium
    600–1279, expanded ≥ 1280 (the app's rail switches at 600).
 
-   < 1280 px: top bar, a one-row toolbar (Use my location, Filters sheet), then the map filling the
+   < 600 px: top bar, a one-row toolbar (Use my location, Filters sheet), then the map filling the
    rest. Results are a bottom sheet over the map (ResultsSheet; absolute to .page). The drawer is
    a full-height sheet over everything.
+   600–1279 px (boards CrmMap768, CrmCandidates768): a docked split. The map takes about 45 percent
+   of the height under the toolbar and the results panel is docked below it, always visible and
+   scrolling on its own; Field triage and the Ask AI panel take the same docked area. The Radius
+   card sits bottom-right of the map and the legend card bottom-left, open by default.
    ≥ 1280 px: three panes — Filters 320 px | map | results 360 px — with the top bar over map and
    results; the drawer is a 440 px side sheet on the right edge (prototype drawer 1000→1440). */
 
@@ -273,24 +277,112 @@
   cursor: pointer;
 }
 
-.results {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0 var(--space-4) var(--space-4);
-  list-style: none;
-  color: var(--md-sys-color-on-surface);
-  font-family: var(--md-sys-typescale-body-medium-font);
-  font-size: var(--md-sys-typescale-body-medium-size);
-}
-
-/* Compact: the legend sits collapsed beside Layers; the zoomed-out chip and the radius card
-   stack below them. */
+/* Compact: the zoomed-out chip and the radius card stack under the Layers button. */
 @media (max-width: 599.98px) {
   .chip {
     font-family: var(--md-sys-typescale-label-medium-font);
     font-size: var(--md-sys-typescale-label-medium-size);
+  }
+}
+
+/* From 600 px the overlay spans the map: Layers and the chip top-left, the legend bottom-left and
+   the radius card bottom-right (prototype radL = map right − 284). The legend and the radius share
+   the last row, which takes whatever height the map leaves, so a short map shortens the legend
+   (it scrolls inside) instead of running over the controls above it. */
+@media (min-width: 600px) {
+  .overlay {
+    inset: var(--space-4);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-areas:
+      "layers ."
+      "status ."
+      "chip ."
+      "legend radius";
+    align-items: start;
+  }
+
+  .statusStack {
+    grid-area: status;
+    justify-self: start;
+  }
+
+  .layersRow {
+    display: contents;
+  }
+
+  .layersRow > :first-child {
+    grid-area: layers;
+    justify-self: start;
+  }
+
+  .legendSlot {
+    grid-area: legend;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-self: stretch;
+    justify-self: start;
+    min-height: 0;
+    max-width: 100%;
+  }
+
+  .chip {
+    grid-area: chip;
+    justify-self: start;
+    max-width: calc(var(--space-9) * 8);
+  }
+
+  .radiusOverlay {
+    grid-area: radius;
+    align-self: end;
+    justify-self: end;
+    width: 268px;
+  }
+
+  /* With no centre yet there is no radius card: its corner holds the "Whole county" card instead,
+     so the legend gives that column up (it never sits under the card). */
+  .overlay[data-centre="none"] {
+    grid-template-columns: minmax(0, 1fr) 268px;
+  }
+
+  .countyCard {
+    right: var(--space-4);
+    left: auto;
+    width: 268px;
+    transform: none;
+  }
+}
+
+/* Medium (tablets): the docked split. One grid, four rows: top bar, toolbar, map, results. */
+@media (min-width: 600px) and (max-width: 1279.98px) {
+  .page[data-view="map"] {
+    grid-template-rows: auto auto minmax(0, 11fr) minmax(0, 10fr);
+    grid-template-areas:
+      "top"
+      "controls"
+      "map"
+      "results";
+  }
+
+  .page[data-view="map"] .mapArea {
+    min-height: 0;
+  }
+
+  /* The panel is always there: with no centre it holds the explanation, not a blank gap. */
+  .resultsSlot[data-empty="true"] > .paneBody {
+    display: contents;
+  }
+
+  /* Field triage takes the docked area too (the phone's floating dock is the < 600 px one). */
+  .triageDock {
+    position: static;
+    grid-area: results;
+    height: 100%;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
@@ -407,54 +499,6 @@
 
   .mapArea {
     min-height: 0;
-  }
-
-  /* The overlay spans the map: Layers and the chip top-left, the legend bottom-left and the
-     radius card bottom-right (prototype radL = map right − 284). */
-  .overlay {
-    inset: var(--space-4);
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-    grid-template-areas:
-      "layers ."
-      "status ."
-      "chip ."
-      ". ."
-      "legend radius";
-    align-items: start;
-  }
-
-  .statusStack {
-    grid-area: status;
-    justify-self: start;
-  }
-
-  .layersRow {
-    display: contents;
-  }
-
-  .layersRow > :first-child {
-    grid-area: layers;
-    justify-self: start;
-  }
-
-  .legendSlot {
-    grid-area: legend;
-    align-self: end;
-    justify-self: start;
-  }
-
-  .chip {
-    grid-area: chip;
-    justify-self: start;
-  }
-
-  .radiusOverlay {
-    grid-area: radius;
-    align-self: end;
-    justify-self: end;
-    width: 268px;
   }
 
   .resultsSlot {

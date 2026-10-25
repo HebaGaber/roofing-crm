@@ -96,13 +96,13 @@ Fifth pass (PO review: three-pane panes, one toolbar, phone fixes):
   words from 600 px). The phone toolbar is one row under the search box: Use my location (icon-only
   under 430 px, name kept), Filters with the match count, and that control. The Travis County chip is
   dropped on phones.
-- **Legend**: a 48 px button (collapsed by default below 1280 px); open it is a card, at most 60% of
+- **Legend** (superseded by the ninth pass: open by default from 600 px, switch inside Layers): a 48 px button (collapsed by default below 1280 px); open it is a card, at most 60% of
   the map's width, with Close, Escape and tap outside; the choice is kept for the session. Root cause
   of "open on a phone": the default came from a one-off media check at first render (and, before
   that, a 600 px breakpoint), so a viewport that became narrow afterwards (device emulation, rotating)
   kept an open legend. It now follows the live viewport until a choice is made.
 - **Radius card**: one row; the "From ... all query modes" line is its tooltip and screen reader text
-  below 1280 px, and a second line from there.
+  below 600 px (ninth pass; was 1280 px), and a second line from there.
 - **Results sheet**: a sheet that only holds a notice (index unavailable, nothing found, loading)
   peeks at about a quarter of the page (measured visible map 48 to 71% of the viewport at 360 to 768
   px); with results it keeps the 40% peek. In short landscape (844 by 390) the peek is the handle and
@@ -180,16 +180,57 @@ Eighth pass (latency regression and the sheet scroll):
   screen for 2 s, jumps instead of flying, and is cancelled by the first press on the drawer or the
   map, so it cannot compete with Create lead.
 
+Ninth pass (tablet alignment, boards CrmMap768 and CrmCandidates768; PO scope, 2026-10-25;
+review-log row 83):
+
+- **Docked split from 600 to 1279 px** (A1): the map takes about 45 percent of the height under the
+  toolbar and the results panel is docked below it, always visible, with its own scroll; header
+  (Matches, info, collapse all, expand all, Triage) and pager stay in view while the rows scroll.
+  Below 600 px the phone keeps the peeking bottom sheet (board CrmMapPin390 shows one). Field triage
+  and the Ask AI panel take the same docked area (one AskPanel instance, same portal; only the
+  slot's place changed). With no centre the docked area holds the explanation instead of a blank
+  gap. From 1280 px the three panes are unchanged.
+- **Radius card** bottom-right of the map from 600 px with the caption "From the pin · all query
+  modes" (or "your location (GPS)" / "(approximate)"); with no centre its corner holds the Whole
+  county card (the board's place for it). Phones keep it at the top (the sheet covers the bottom).
+- **Legend** open by default from 600 px (collapsible by its own Close button; the session choice is
+  kept); collapsed on phones. **One Layers button** (icon and word) replaces the layers icon and the
+  separate Legend button; the Legend switch is a row inside its popover.
+- **Fit control**: the existing Recentre control (fits the ring, or the county with no pin) now has
+  the fit icon, as on the board; it was drawn with the locate icon before. Locate stays the
+  toolbar's Use my location, not moved.
+- **Collapsed rows** (C1): address (or "TCAD id · Address not published in this run"), distance and
+  compass direction from the search centre ("2.8 mi NW", `distanceFromCentre`), chips (roof age and
+  confidence, or the honest "No roof date found"; the first permit with its open duration and
+  "+n more"; property type), Open details and an expand chevron. The detail card (CID, basis,
+  confidence, coordinates, source and provenance) is drawn only when expanded; every row starts
+  collapsed, state is per row, and the header has collapse all and expand all (600 px and up).
+- **Pager** (C6): ten rows a page over the rows the search loaded (at most 100, nearest first),
+  numbered pages "1 2 ... 10", "Showing 1-10 of the nearest 100" when the server clipped the set,
+  and the existing line "Showing the nearest 100 of N properties" stays. Only a page's rows are
+  drawn.
+- **Triage** (C5): the filled "Triage n" button is the phone's; from 768 px it is an icon button
+  (same name, the word stays for screen readers) in the panel header. Not shown from 1280 px (as
+  before: the board has none there either; reachable by `triage=1`).
+- **Candidate list at 768 px** (D1): the table fits the 656 px pane. The "#" column waits for 840 px,
+  Lat, lon for 1032 px (below it the coordinates ride on the address line, so nothing is dropped),
+  the address note and the permit text wrap. Board 768 shows Lat, lon; we trade that column for a
+  list that does not scroll sideways.
+
+Stays out (recorded): Area menu, Sort menu, Close tab, coverage hatching and the "no permit data"
+chip, place picker, the in-ring count chip, the lead-status chip on map rows (the map's rows carry no
+lead marks by design), and the board's search box inside the app bar.
+
 ## Matrix
 
 | Board                                                                                                                                           | Route + state                | Status                                           | Side-by-side                           | Notes                                                                                                                                                                                                                                                                            |
 | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Welcome1440 / 768 / 390                                                                                                                         | `/?first=1`                  | Matched, data differs                            | Welcome1440, Welcome768, Welcome390    | Card position (16 px in from the map's left at 1440, x 96 at 768, full width at 390), header, intro line, three rows, Got it. The boards are the CountyLens shell; only the card is compared. Intro line and questions differ on purpose: the CRM's data and the golden queries. |
 | CrmMap1440                                                                                                                                      | `/`, county view             | Deviation: Area, Sort not built                  | CrmMap1440                             | Whole-county hexagons, chip, legend, controls and the Map + cards / List toggle match. Area and Sort menus, Matches and Close tabs with no centre: not built. Hexagon size can look up to 2x the board's (drawn at the whole-number zoom). County outline: review-log row 9.     |
-| CrmMap768                                                                                                                                       | `/`, county view             | Deviation: as 1440                               | CrmMap768 (first pass)                 | Same components.                                                                                                                                                                                                                                                                 |
+| CrmMap768 | `/`, county view; pin, 5 mi ring | Matched, data differs (ninth pass) | CrmMap768 | Docked split (map about 45 percent, results panel below, always visible), Layers button, open legend, Radius card bottom-right with its caption, fit control, collapsed rows with distance and direction, numbered pager. Not built: Area and Sort menus, Close tab, hatching and the no-permit chip, the in-ring count chip, the search box in the app bar. |
 | CrmMap390                                                                                                                                       | `/`, county view             | Deviation: Area, Sort not built                  | CrmMap390                              | Phone toolbar: Use my location, Filters chip with count, Map/List toggle (board: filter count chip, toggle, locate chip, Area, Sort).                                                                                                                                            |
 | CrmMapPin1440                                                                                                                                   | pin, 5 mi ring               | Matched, data differs                            | CrmMapPin1440                          | Result cards use the honest published-data layout (review-log row 1).                                                                                                                                                                                                            |
-| CrmMapPin390                                                                                                                                    | pin, 5 mi ring               | Deviation: radius card position, explainer toast | CrmMapPin390                           | Toolbar, results sheet header with Matches, coverage info and the filled Triage n match. Radius card at the top, not the bottom (the results sheet covers the bottom on phones). Pin explainer toast not built.                                                                  |
+| CrmMapPin390 | pin, 5 mi ring | Deviation: radius card position, explainer toast | CrmMapPin390 | Toolbar, results sheet header with Matches, coverage info and the filled Triage n match; rows are collapsed with distance and direction. Radius card at the top, not the bottom (the results sheet covers the bottom on phones). Pin explainer toast not built. |
 | CrmMapPinMode1440                                                                                                                               | pin mode                     | Matched                                          | CrmMapPinMode1440                      | Card, Cancel, pressed control.                                                                                                                                                                                                                                                   |
 | CrmMapPinMode390                                                                                                                                | pin mode                     | Matched, one deviation                           | CrmMapPinMode390                       | Crosshair, Place pin here, Cancel. The board also says a long-press drops the pin: not built, so the card does not claim it.                                                                                                                                                     |
 | CrmMapPinMove1440                                                                                                                               | drag the pin                 | Matched in behaviour                             | none (a drag, not a state)             | The pin is draggable and re-centres the search. Not captured as an image.                                                                                                                                                                                                        |

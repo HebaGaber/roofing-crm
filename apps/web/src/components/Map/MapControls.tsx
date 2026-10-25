@@ -9,8 +9,8 @@ import styles from "./MapControls.module.css";
 
 export interface MapControlsProps {
   readonly mapRef: { readonly current: CrmMapHandle | null };
-  /** "Recentre" — E-67: with a pin/GPS point, re-fits that view; with none, returns to the
-   *  whole-county view. */
+  /** "Recentre" (the board's fit control, E-67): with a pin/GPS point, fits the search ring; with
+   *  none, returns to the whole-county view. */
   readonly recenterLabel?: string;
   /** "Drop pin" (boards CrmMap*, last control): starts pin mode. Hidden when not given. */
   readonly onDropPin?: () => void;
@@ -29,7 +29,7 @@ export function MapControls({
       <IconButton icon="add" label="Zoom in" onClick={() => mapRef.current?.zoomIn()} />
       <IconButton icon="remove" label="Zoom out" onClick={() => mapRef.current?.zoomOut()} />
       <IconButton
-        icon="my_location"
+        icon="center_focus_strong"
         label={recenterLabel}
         onClick={() => mapRef.current?.recenter()}
       />

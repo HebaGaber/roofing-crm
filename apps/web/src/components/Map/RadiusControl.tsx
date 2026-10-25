@@ -16,8 +16,8 @@ export interface RadiusControlProps {
   readonly onChange: (radiusMi: number) => void;
   readonly min?: number;
   readonly max?: number;
-  /** The card caption, e.g. "From Dropped pin" / "From Your location" (CrmMapPin390's "From
-   *  Dropped pin · all query modes"). Omitted renders no caption line. */
+  /** Where the search starts, for the caption "From {originLabel} · all query modes" (boards
+   *  CrmMap768 / CrmMapPin390): "the pin", "your location (GPS)". Omitted renders no caption. */
   readonly originLabel?: string;
 }
 

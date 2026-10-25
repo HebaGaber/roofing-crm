@@ -6,11 +6,19 @@
 // recomputed, data-model.md) — plus provenance (constitution XI) via the copied `@crm/ui`
 // components. A missing roof age always shows its stated reason (constitution P0-4), never `0`,
 // blank or `null`.
-import { distanceMeters, type LatLng } from "@crm/domain";
+import type { LatLng } from "@crm/domain";
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
 import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
 import { CidDisplay, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
-import type { KeyboardEvent, MouseEvent, ReactElement, ReactNode } from "react";
+import {
+  memo,
+  useId,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import {
   coordinateSourceLabel,
   groupMissing,
@@ -19,9 +27,8 @@ import {
   roofAgeConfidenceLabel,
 } from "../../format/index.js";
 import { PermitChip } from "./PermitChip.js";
+import { directionLabel, distanceFromCentre } from "./resultsView.js";
 import styles from "./ResultRow.module.css";
-
-const METERS_PER_MILE = 1609.344;
 
 /** The card's title: this contract never publishes a street address (§9.1/E-93 — no lexicon
  *  carrier for it yet, FU-A-01), so every row shows its TCAD account id instead of a fabricated
@@ -31,18 +38,13 @@ export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): R
   return (
     <span className={styles.titleStack}>
       <span className={styles.titleMain}>{`TCAD ${row.requestIdentifier}`}</span>
-      <span className={styles.titleSub}>
-        Address not published in this run
-        {row.latitude === null || row.longitude === null
-          ? ""
-          : ` · ${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)}`}
-      </span>
+      <span className={styles.titleSub}>Address not published in this run</span>
     </span>
   );
 }
 
-/** Distance from the search centre (AC-1: "we DO have lat/lon, so real distance via
- *  packages/domain's distanceMeters is fine" — never the display-only ring math in CrmMap.tsx). */
+/** Distance and compass direction from the search centre ("2.8 mi NW"; AC-1: real distance via
+ *  packages/domain's distanceMeters, never the display-only ring math in CrmMap.tsx). */
 function RowDistance({
   row,
   center,
@@ -50,9 +52,16 @@ function RowDistance({
   readonly row: Provenanced<CrmProperty>;
   readonly center: LatLng;
 }): ReactElement | null {
-  if (row.latitude === null || row.longitude === null) return null;
-  const miles = distanceMeters(center, { lat: row.latitude, lng: row.longitude }) / METERS_PER_MILE;
-  return <span className={styles.distance}>{`${miles.toFixed(1)} mi`}</span>;
+  const from = distanceFromCentre(center, row.latitude, row.longitude);
+  if (from === null) return null;
+  return (
+    <span
+      className={styles.distance}
+      title="Straight-line distance and direction from the search centre"
+    >
+      {directionLabel(from)}
+    </span>
+  );
 }
 
 /** E-51 Residential / Commercial from the published usage type; "Type not published" when it
@@ -192,22 +201,37 @@ export interface ResultRowProps {
   readonly row: Provenanced<CrmProperty>;
   readonly onSelect?: (propertyCid: string) => void;
   readonly selected?: boolean;
-  /** B-03 permit-view (AC-5, FR-005): this property's permits, rendered via `PermitChip` when
-   *  the permit-view toggle is on. `undefined`/empty renders nothing extra — permit view off
-   *  never fetches or shows permits at all. */
-  readonly permits?: readonly Provenanced<CrmPermit>[];
-  /** The current search centre, for the card's distance line (AC-1). `undefined` renders no
-   *  distance (no centre has been chosen yet). */
-  readonly center?: LatLng;
+  /** This property's permits (longest open first), shown as chips: the first one in the collapsed
+   *  line, all of them once expanded. `undefined` or empty renders nothing: a permit is never
+   *  implied for a property the permit query did not return. */
+  readonly permits?: readonly Provenanced<CrmPermit>[] | undefined;
+  /** The current search centre, for the card's distance and direction (AC-1). `undefined`
+   *  renders no distance (no centre has been chosen yet). */
+  readonly center?: LatLng | undefined;
+  /** Controlled expanded state (the results panel owns it, for collapse all and expand all).
+   *  Left out, the row keeps its own state and starts collapsed. */
+  readonly expanded?: boolean;
+  readonly onToggleExpanded?: (propertyCid: string) => void;
 }
 
-export function ResultRow({
+/** One result: a collapsed line (address or TCAD id, distance and direction, chips, expand) and,
+ *  once expanded, the full detail card (CID, basis, confidence, coordinates, source). The detail is
+ *  not rendered while collapsed, so a page of rows stays cheap to draw. */
+function ResultRowView({
   row,
   onSelect,
   selected = false,
   permits,
   center,
+  expanded: expandedProp,
+  onToggleExpanded,
 }: ResultRowProps): ReactElement {
+  const [ownExpanded, setOwnExpanded] = useState(false);
+  const expanded = expandedProp ?? ownExpanded;
+  const toggle = (): void => {
+    if (onToggleExpanded !== undefined) onToggleExpanded(row.propertyCid);
+    else setOwnExpanded((open) => !open);
+  };
   const select = (): void => onSelect?.(row.propertyCid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     if ((event.target as Element).closest("a, button") !== null) return;
@@ -221,10 +245,14 @@ export function ResultRow({
     }
   };
   const titleId = `row-${row.propertyCid}`;
+  const detailId = useId();
+  const firstPermit = permits?.[0];
+  const morePermits = (permits?.length ?? 0) - 1;
   return (
     <article
       className={`${styles.row} ${selected ? styles.selected : ""}`}
       data-result-row=""
+      data-expanded={expanded ? "true" : "false"}
       data-property-cid={row.propertyCid}
       aria-labelledby={titleId}
       tabIndex={0}
@@ -239,36 +267,66 @@ export function ResultRow({
         {onSelect === undefined ? null : (
           <button
             type="button"
-            className={styles.details}
+            className={styles.iconAction}
             onClick={select}
             aria-label="Open details"
+            title="Open the property"
           >
-            <Icon name="chevron_right" size="medium" />
+            <Icon name="open_in_new" size="medium" />
           </button>
         )}
+        <button
+          type="button"
+          className={styles.iconAction}
+          onClick={toggle}
+          aria-expanded={expanded}
+          aria-controls={expanded ? detailId : undefined}
+          aria-label={expanded ? "Collapse details" : "Expand details"}
+          title={expanded ? "Show less" : "Show more"}
+        >
+          <Icon name={expanded ? "expand_less" : "expand_more"} size="medium" />
+        </button>
       </header>
       <div className={styles.badgeRow}>
         <RoofBadge row={row} />
+        {firstPermit === undefined ? null : (
+          <ul className={styles.permits} aria-label="Permits">
+            <li className={styles.permitItem}>
+              <PermitChip permit={firstPermit} />
+            </li>
+            {morePermits > 0 ? (
+              <li className={styles.permitItem}>
+                <span className={styles.more}>{`+${String(morePermits)} more`}</span>
+              </li>
+            ) : null}
+          </ul>
+        )}
         <TypePill usageType={row.propertyUsageType} />
       </div>
-      <p className={styles.cidLine}>
-        Property <CidDisplay cid={row.propertyCid} />
-      </p>
-      <PropertyFields row={row} />
-      {permits !== undefined && permits.length > 0 ? (
-        <ul className={styles.permits} aria-label="Permits">
-          {permits.map((permit) => (
-            <li key={permit.permitCid} className={styles.permitItem}>
-              <PermitChip permit={permit} />
-            </li>
-          ))}
-        </ul>
+      {expanded ? (
+        <div id={detailId} className={styles.detail}>
+          <p className={styles.cidLine}>
+            Property <CidDisplay cid={row.propertyCid} />
+          </p>
+          <PropertyFields row={row} />
+          {permits !== undefined && permits.length > 1 ? (
+            <ul className={styles.permits} aria-label="All permits">
+              {permits.map((permit) => (
+                <li key={permit.permitCid} className={styles.permitItem}>
+                  <PermitChip permit={permit} />
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <MissingSummary row={row} />
+          <RowProvenance row={row} />
+        </div>
       ) : null}
-      <MissingSummary row={row} />
-      <RowProvenance row={row} />
     </article>
   );
 }
+
+export const ResultRow = memo(ResultRowView);
 
 // Re-exported for FilterSheet.test fixtures/other callers expecting a single wording source
 // (matches the original file's intent; this story's wording is confirmed against the design

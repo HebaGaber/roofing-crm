@@ -76,9 +76,10 @@
   line-height: var(--md-sys-typescale-body-small-line-height);
 }
 
-/* Phones and tablets: one compact row. Where the pin came from is the card's tooltip and stays in
-   the page for screen readers; the second line shows from 1280 px, where there is room. */
-@media (max-width: 1279.98px) {
+/* Phones: one compact row. Where the pin came from is the card's tooltip and stays in the page for
+   screen readers; the caption shows from 600 px, where the card has its own bottom-right corner of
+   the map. */
+@media (max-width: 599.98px) {
   .origin {
     position: absolute;
     width: 1px;

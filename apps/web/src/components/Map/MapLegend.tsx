@@ -3,21 +3,14 @@
 // open-duration scale, what the shapes mean, and — in the overview — what the hexagons cover:
 // the whole county from `search.countyOverview` (design-review-log row 10), with what it leaves
 // out and why and the run it read; while it loads or if it fails, says so (and, on failure, that
-// the hexagons cover only the properties loaded around a pin). A collapsible <details>: open by
-// default from 1280 px (where the legend has its own corner of the map), collapsed below it: open
-// it covers a large part of the map and sits over the points a pin is dropped on.
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactElement,
-} from "react";
+// the hexagons cover only the properties loaded around a pin). A collapsible card: open by
+// default from 600 px (where the legend has its own corner of the map), collapsed on phones: open
+// it covers a large part of a small map and sits over the points a pin is dropped on.
+import { useEffect, useId, useRef, type ReactElement } from "react";
 import { Icon } from "@crm/ui";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
+import { useLegendDocked, useLegendOpen } from "./legendState.js";
 import styles from "./MapLegend.module.css";
 
 export interface MapLegendProps {
@@ -28,6 +21,9 @@ export interface MapLegendProps {
   readonly loadedCount: number;
   /** The whole-county overview's state; absent = not requested (hexagons from loaded results). */
   readonly county?: CountyOverviewStatus;
+  /** `none`: no button of its own; the Layers button's "Legend" switch opens and closes the card
+   *  (one Layers control, as on the boards). The default keeps the labelled Legend button. */
+  readonly toggle?: "button" | "none";
 }
 
 export type CountyOverviewStatus =
@@ -118,47 +114,6 @@ const SWATCH_CLASS: Readonly<Record<string, string>> = {
   "--viz-permit-open-gt-5y": "open5",
 };
 
-const WIDE_QUERY = "(min-width: 1280px)";
-const LEGEND_KEY = "crm.legend.v1";
-
-/** From the three-pane width the legend opens by itself; below it (phones, tablets) it is a
- *  button and opens on request, so it never covers the map. A person's own choice (kept for the
- *  session) wins over this default; with no choice the default follows the live viewport. */
-function useWideViewport(): boolean {
-  return useSyncExternalStore(
-    (onChange) => {
-      if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-        return () => undefined;
-      }
-      const list = window.matchMedia(WIDE_QUERY);
-      list.addEventListener("change", onChange);
-      return () => list.removeEventListener("change", onChange);
-    },
-    () =>
-      typeof window === "undefined" || typeof window.matchMedia !== "function"
-        ? true
-        : window.matchMedia(WIDE_QUERY).matches,
-    () => true,
-  );
-}
-
-function readChoice(): boolean | null {
-  try {
-    const stored = sessionStorage.getItem(LEGEND_KEY);
-    return stored === "open" ? true : stored === "closed" ? false : null;
-  } catch {
-    return null;
-  }
-}
-
-function writeChoice(open: boolean): void {
-  try {
-    sessionStorage.setItem(LEGEND_KEY, open ? "open" : "closed");
-  } catch {
-    // Storage blocked: the choice lasts for this page only (component state).
-  }
-}
-
 function Scale({
   steps,
 }: {
@@ -186,16 +141,12 @@ export function MapLegend({
   permits,
   loadedCount,
   county,
+  toggle = "button",
 }: MapLegendProps): ReactElement | null {
-  const wide = useWideViewport();
-  const [choice, setChoice] = useState<boolean | null>(readChoice);
-  const open = choice ?? wide;
+  const docked = useLegendDocked();
+  const [open, set] = useLegendOpen();
   const id = useId();
   const root = useRef<HTMLDivElement | null>(null);
-  const set = useCallback((next: boolean) => {
-    setChoice(next);
-    writeChoice(next);
-  }, []);
 
   // Escape closes it everywhere; a tap outside closes it below the three-pane width, where the
   // card floats over the map (from there on it stays until closed).
@@ -205,7 +156,7 @@ export function MapLegend({
       if (event.key === "Escape") set(false);
     };
     const onPointerDown = (event: Event): void => {
-      if (wide) return;
+      if (docked) return;
       if (
         root.current !== null &&
         event.target instanceof Node &&
@@ -220,23 +171,29 @@ export function MapLegend({
       document.removeEventListener("keydown", onKeyDown);
       document.removeEventListener("pointerdown", onPointerDown);
     };
-  }, [open, wide, set]);
+  }, [open, docked, set]);
 
   if (!roofs && !permits) return null;
   const overview = mode === "overview";
   return (
-    <div ref={root} className={styles.root} data-legend-root="">
-      <button
-        type="button"
-        className={styles.button}
-        aria-expanded={open}
-        aria-controls={`${id}-card`}
-        aria-label="Legend"
-        onClick={() => set(!open)}
-      >
-        <Icon name="legend_toggle" size="medium" />
-        <span className={styles.buttonText}>Legend</span>
-      </button>
+    <div
+      ref={root}
+      className={`${styles.root} ${toggle === "none" ? styles.cardOnly : ""}`}
+      data-legend-root=""
+    >
+      {toggle === "none" ? null : (
+        <button
+          type="button"
+          className={styles.button}
+          aria-expanded={open}
+          aria-controls={`${id}-card`}
+          aria-label="Legend"
+          onClick={() => set(!open)}
+        >
+          <Icon name="legend_toggle" size="medium" />
+          <span className={styles.buttonText}>Legend</span>
+        </button>
+      )}
       {open ? (
         <section
           id={`${id}-card`}

@@ -1,7 +1,9 @@
 /* Results sheet / pane (CRM-HANDOFF §4.2; prototype `cards`, `sheet-handle`). Atlas tokens only.
-   Compact and medium (< 1280 px): a bottom sheet over the map — peek shows the header and the
-   first card, full leaves the map's top strip visible. Expanded (≥ 1280 px): the static right
-   pane of the three-pane layout (Map.module.css places it), no handle. */
+   Compact (< 600 px): a bottom sheet over the map — peek shows the header and the first card, full
+   leaves the map's top strip visible. Medium (600–1279 px, boards CrmMap768 and CrmCandidates768):
+   the panel docked below the map, always visible, scrolling on its own, no handle. Expanded
+   (≥ 1280 px): the static right pane of the three-pane layout (Map.module.css places it), no
+   handle. */
 .sheet {
   position: absolute;
   inset: auto 0 0 0;
@@ -22,7 +24,7 @@
 }
 
 /* A sheet that only holds a notice peeks at about a quarter of the page, so the map keeps the rest.
-   More specific than the 600 to 839 px peek below, so it wins there too. */
+   The docked tablet panel below overrides it. */
 .sheet[data-peek="compact"][data-sheet="peek"] {
   --sheet-cap: 25dvh;
   max-height: 25%;
@@ -33,16 +35,8 @@
   max-height: calc(100% - var(--space-10));
 }
 
-/* 600–1279 px (prototype 768: the cards take about half the height). */
-@media (min-width: 600px) and (max-width: 1279.98px) {
-  .sheet[data-sheet="peek"] {
-    --sheet-cap: 50dvh;
-    max-height: 50%;
-  }
-}
-
-/* Short landscape: the peek is the handle and the header row, never a quarter of a 390 px screen. */
-@media (max-height: 500px) and (max-width: 1279.98px) {
+/* Short landscape phone: the peek is the handle and the header row, never a quarter of the screen. */
+@media (max-height: 500px) and (max-width: 599.98px) {
   .sheet[data-sheet="peek"],
   .sheet[data-peek="compact"][data-sheet="peek"] {
     --sheet-cap: calc(var(--space-9) * 2 + var(--space-2));
@@ -88,6 +82,36 @@
   max-height: calc(var(--sheet-cap) - var(--space-9));
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+/* Medium: the panel docked under the map (the page grid's last row). Same one DOM; the handle and
+   the peek and full states only exist on phones. Its header and pager stay in view while the rows
+   (or the Ask AI answer) scroll in the body. */
+@media (min-width: 600px) and (max-width: 1279.98px) {
+  .sheet,
+  .sheet[data-sheet="peek"],
+  .sheet[data-sheet="full"],
+  .sheet[data-peek="compact"][data-sheet="peek"] {
+    position: static;
+    z-index: auto;
+    grid-area: results;
+    height: 100%;
+    max-height: none;
+    overflow: hidden;
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    border-radius: 0;
+    box-shadow: none;
+    transition: none;
+  }
+
+  .handle {
+    display: none;
+  }
+
+  .body {
+    flex: 1 1 0;
+    max-height: none;
+  }
 }
 
 @media (min-width: 1280px) {

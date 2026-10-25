@@ -142,7 +142,7 @@ export function CandidateRow({
           aria-label={`Select ${title}`}
         />
       </td>
-      <td className={`${styles.cNum} ${styles.wide768}`}>
+      <td className={`${styles.cNum} ${styles.wide840}`}>
         {order === null ? null : <span className={styles.order}>{order}</span>}
       </td>
       <td className={styles.cAddress}>
@@ -193,7 +193,7 @@ export function CandidateRow({
           </>
         )}
       </td>
-      <td className={`${styles.cLatLon} ${styles.wide768}`}>
+      <td className={`${styles.cLatLon} ${styles.wide1032}`}>
         {property.latitude === null || property.longitude === null ? (
           <span className={styles.muted}>Not published</span>
         ) : (

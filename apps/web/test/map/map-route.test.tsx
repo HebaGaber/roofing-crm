@@ -367,6 +367,75 @@ describe("Map route layout", () => {
   });
 });
 
+describe("Map route tablet alignment (A3, A4, C1, C6)", () => {
+  it("Layers is the one map-layers control: the Legend switch lives in it, there is no Legend button", () => {
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    expect(screen.queryByRole("button", { name: "Legend" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Layers" }));
+    const legend = screen.getByRole("checkbox", { name: /Legend/ }) as HTMLInputElement;
+    // jsdom has no matchMedia: the legend follows its default (open from 600 px).
+    expect(legend.checked).toBe(true);
+    expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+    fireEvent.click(legend);
+    expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
+    fireEvent.click(legend);
+    expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+  });
+
+  it("the radius card says where the ring starts, from the pin", () => {
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    expect(screen.getByText("From the pin · all query modes")).not.toBeNull();
+  });
+
+  it("results rows are collapsed with their distance and direction, and the panel pages the loaded rows", async () => {
+    searchResult = {
+      properties: Array.from({ length: 12 }, (_, i) => ({
+        ...property,
+        propertyCid: `bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa${String(1000 + i)}`,
+        requestIdentifier: `02018851${String(10 + i)}`,
+        latitude: 30.44 + i / 1000,
+      })),
+      counts: { afterRadius: 340, afterRoofAge: 340 },
+    };
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    const list = await screen.findByTestId("search-results");
+    expect(within(list).getAllByRole("article")).toHaveLength(10);
+    expect(within(list).getAllByRole("article")[0]?.getAttribute("data-expanded")).toBe("false");
+    expect(within(list).getAllByText(/ mi [NSEW]{1,2}$/)).toHaveLength(10);
+    expect(screen.getByText("Matches 340")).not.toBeNull();
+    expect(screen.getByText("Showing 1–10 of the nearest 12")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
+    expect(within(list).getAllByRole("article")).toHaveLength(2);
+    // The honest clip note stays: 12 loaded of 340.
+    expect(screen.getByText(/Showing the nearest 12 of 340 properties/)).not.toBeNull();
+  });
+
+  it("shows a permit chip on a row only when the permit query returned that property", async () => {
+    permitsReply = {
+      permits: [
+        {
+          propertyCid: property.propertyCid,
+          permitCid: "bafkreipermit",
+          statusClass: "open",
+          openDays: 803,
+          permitNumber: "2024-1",
+          isLongOpen: false,
+        },
+      ],
+    };
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    const list = await screen.findByTestId("search-results");
+    await vi.waitFor(() => expect(within(list).getByLabelText("Permits")).not.toBeNull());
+    expect(within(list).getAllByLabelText("Permits")).toHaveLength(1);
+  });
+
+  it("the Triage entry still opens triage (phones: filled button; 768 px and up: icon, same name)", async () => {
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    await screen.findByTestId("search-results");
+    expect(screen.getByRole("button", { name: "Triage 1" })).not.toBeNull();
+  });
+});
+
 describe("Map route first-visit card", () => {
   it("shows What can I ask? over the map area on the first visit, not once dismissed", async () => {
     localStorage.clear();
@@ -488,7 +557,7 @@ describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode
       /You are here \(±12 m\)/,
     );
     expect(lastMapProps.accuracy).toEqual({ meters: 12 });
-    expect(screen.getByText(/From Your location \(GPS\)/)).not.toBeNull();
+    expect(screen.getByText(/From your location \(GPS\)/)).not.toBeNull();
     // A pin dropped by hand is not a GPS fix: its accuracy circle goes away.
     delete (navigator as { geolocation?: unknown }).geolocation;
   });
@@ -505,7 +574,7 @@ describe("Map route pin mode, GPS and outside-county cards (boards CrmMapPinMode
     });
     renderAt("/");
     fireEvent.click(screen.getByRole("button", { name: "Use my location" }));
-    expect(screen.getByText(/From Your location \(approximate\)/)).not.toBeNull();
+    expect(screen.getByText(/From your location \(approximate\)/)).not.toBeNull();
     delete (navigator as { geolocation?: unknown }).geolocation;
   });
 });

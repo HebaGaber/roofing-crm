@@ -315,7 +315,7 @@ export function CandidateList({
                 aria-label="Select all on this page"
               />
             </th>
-            <th scope="col" className={`${styles.cNum} ${styles.wide768}`}>
+            <th scope="col" className={`${styles.cNum} ${styles.wide840}`}>
               #
             </th>
             <th scope="col">Address</th>
@@ -330,7 +330,7 @@ export function CandidateList({
             <th scope="col" className={styles.wide768}>
               Mi
             </th>
-            <th scope="col" className={styles.wide768}>
+            <th scope="col" className={styles.wide1032}>
               Lat, lon
             </th>
             <th scope="col">

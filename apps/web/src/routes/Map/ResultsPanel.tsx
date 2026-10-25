@@ -1,7 +1,8 @@
-// B-03 results sheet (CRM-HANDOFF §4.2/§9.1, board CrmMapPin390): the "Matches N" header with the
-// coverage-note info icon, wrapping the result card list. Replaces the bare `<ul>` the fixer pass
-// left in place. Render-only — Map.tsx still owns the query and the list of rows. The sheet
-// behaviour (peek/full, handle, pane from 1280 px) is ResultsSheet's; this is only its content.
+// B-03 results panel header (CRM-HANDOFF §4.2/§9.1, boards CrmMapPin390 and CrmMap768): the
+// "Matches N" count, the coverage-note info icon, collapse-all and expand-all for the rows, and the
+// Triage entry. Wraps the rows (children) and the pager (footer). Render-only: ResultsList owns the
+// rows and their state, Map.tsx owns the query. The sheet behaviour (peek/full on phones, docked
+// below the map on tablets, the right pane from 1280 px) is ResultsSheet's.
 import { Icon, Popover } from "@crm/ui";
 import { useId, useState, type ReactElement, type ReactNode } from "react";
 import styles from "./ResultsPanel.module.css";
@@ -9,9 +10,15 @@ import styles from "./ResultsPanel.module.css";
 export interface ResultsPanelProps {
   readonly count: number;
   readonly children: ReactNode;
-  /** Shows the filled "Triage n" action after the coverage info (the phone sheet, board
-   *  CrmMapPin390); absent from 1280 px, where the board has none. */
+  /** The pager, drawn under the rows. */
+  readonly footer?: ReactNode;
+  /** Shows the "Triage n" action after the header icons: the filled button on phones (board
+   *  CrmMapPin390), an icon-only button from 768 px (the tablet board has none; the feature stays
+   *  reachable). Absent from 1280 px. */
   readonly onTriage?: () => void;
+  /** Collapse all / expand all (boards CrmMap768): absent, the two icons are not drawn. */
+  readonly onCollapseAll?: () => void;
+  readonly onExpandAll?: () => void;
   /** An honest line under the header when the server clipped a page. */
   readonly note?: string | undefined;
 }
@@ -23,13 +30,22 @@ export interface ResultsPanelProps {
 const COVERAGE_NOTE =
   "Permits are shown only where CountyLens publishes them. Part of this area may have no permit data.";
 
-export function ResultsPanel({ count, children, onTriage, note }: ResultsPanelProps): ReactElement {
+export function ResultsPanel({
+  count,
+  children,
+  footer,
+  onTriage,
+  onCollapseAll,
+  onExpandAll,
+  note,
+}: ResultsPanelProps): ReactElement {
   const [open, setOpen] = useState(false);
   const id = useId();
   return (
     <div className={styles.sheet}>
       <header className={styles.head}>
         <span className={styles.matches}>{`Matches ${count}`}</span>
+        <span className={styles.spacer} />
         <span className={styles.infoWrap}>
           <button
             type="button"
@@ -52,9 +68,32 @@ export function ResultsPanel({ count, children, onTriage, note }: ResultsPanelPr
             </Popover>
           </div>
         </span>
+        {onCollapseAll === undefined ? null : (
+          <button
+            type="button"
+            className={styles.bulk}
+            aria-label="Collapse all"
+            title="Collapse all"
+            onClick={onCollapseAll}
+          >
+            <Icon name="unfold_less" size="medium" />
+          </button>
+        )}
+        {onExpandAll === undefined ? null : (
+          <button
+            type="button"
+            className={styles.bulk}
+            aria-label="Expand all"
+            title="Expand all"
+            onClick={onExpandAll}
+          >
+            <Icon name="unfold_more" size="medium" />
+          </button>
+        )}
         {onTriage === undefined ? null : (
           <button type="button" className={styles.triage} onClick={onTriage}>
-            {`Triage ${count}`}
+            <Icon name="swipe" size="medium" />
+            <span className={styles.triageText}>{`Triage ${count}`}</span>
           </button>
         )}
       </header>
@@ -64,6 +103,7 @@ export function ResultsPanel({ count, children, onTriage, note }: ResultsPanelPr
         </p>
       )}
       {children}
+      {footer}
     </div>
   );
 }

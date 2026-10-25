@@ -51,4 +51,33 @@ describe("LayersPopover", () => {
     expect((leads as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByText(/not drawn on the map yet/)).not.toBeNull();
   });
+
+  it("is one button with the layers icon and the word Layers", () => {
+    render(<LayersPopover value={ON} onChange={() => undefined} />);
+    const button = screen.getByRole("button", { name: "Layers" });
+    expect(button.textContent).toBe("Layers");
+    expect(button.querySelector('[data-icon="layers"]')).not.toBeNull();
+  });
+
+  it("holds the Legend switch when given the legend state, so Layers is the only map control", () => {
+    const onLegend = vi.fn();
+    render(
+      <LayersPopover
+        value={ON}
+        onChange={() => undefined}
+        legend={{ open: true, onChange: onLegend }}
+      />,
+    );
+    open();
+    const legend = screen.getByRole("checkbox", { name: /Legend/ }) as HTMLInputElement;
+    expect(legend.checked).toBe(true);
+    fireEvent.click(legend);
+    expect(onLegend).toHaveBeenCalledWith(false);
+  });
+
+  it("has no Legend switch without the legend state", () => {
+    render(<LayersPopover value={ON} onChange={() => undefined} />);
+    open();
+    expect(screen.queryByRole("checkbox", { name: /Legend/ })).toBeNull();
+  });
 });

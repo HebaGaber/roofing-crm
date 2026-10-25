@@ -5,7 +5,7 @@
 // shown disabled with the reason instead of being hidden or faked: Permit coverage gaps (contract/v1
 // publishes no coverage areas) and My leads (lead markers are not built on the map yet).
 // Render-only; the caller (Map.tsx) owns the on/off state.
-import { Icon, IconButton, Popover } from "@crm/ui";
+import { Icon, Popover } from "@crm/ui";
 import { useId, useState, type ReactElement } from "react";
 import styles from "./LayersPopover.module.css";
 
@@ -19,6 +19,9 @@ export interface LayersState {
 export interface LayersPopoverProps {
   readonly value: LayersState;
   readonly onChange: (value: LayersState) => void;
+  /** The legend card's open state. Given, the popover also holds the "Legend" switch, so Layers is
+   *  the one control for what the map shows and explains (boards CrmMap390/768). */
+  readonly legend?: { readonly open: boolean; readonly onChange: (open: boolean) => void };
 }
 
 const LIVE: readonly {
@@ -55,20 +58,24 @@ const UNAVAILABLE: readonly {
   },
 ];
 
-export function LayersPopover({ value, onChange }: LayersPopoverProps): ReactElement {
+export function LayersPopover({ value, onChange, legend }: LayersPopoverProps): ReactElement {
   const [open, setOpen] = useState(false);
   const id = useId();
 
   return (
     <div className={styles.wrapper}>
-      <IconButton
-        icon="layers"
-        label="Layers"
-        active={open}
+      <button
+        type="button"
+        className={`${styles.button} ${open ? styles.active : ""}`}
+        aria-label="Layers"
+        title="Layers"
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
-      />
+      >
+        <Icon name="layers" size="medium" />
+        <span className={styles.buttonText}>Layers</span>
+      </button>
       <div id={id}>
         <Popover open={open} onClose={() => setOpen(false)} label="Layers">
           <h4 className={styles.heading}>
@@ -106,6 +113,22 @@ export function LayersPopover({ value, onChange }: LayersPopoverProps): ReactEle
               </span>
             </label>
           ))}
+          {legend === undefined ? null : (
+            <label className={`${styles.row} ${styles.legendRow}`}>
+              <input
+                type="checkbox"
+                className={styles.checkbox}
+                checked={legend.open}
+                onChange={(e) => legend.onChange(e.target.checked)}
+              />
+              <span>
+                <span className={styles.label}>Legend</span>
+                <span className={styles.hint}>
+                  The colour scales and what the shapes on the map mean
+                </span>
+              </span>
+            </label>
+          )}
         </Popover>
       </div>
     </div>
