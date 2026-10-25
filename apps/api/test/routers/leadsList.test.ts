@@ -31,6 +31,8 @@ function repo(): LeadRepo {
     get: vi.fn(),
     listByAssignee: vi.fn(async () => leads),
     listByStatus: vi.fn(async () => leads.filter((l) => l.status === "won")),
+    signalsFor: vi.fn(async () => new Map()),
+    latestEvents: vi.fn(async () => new Map()),
   } as unknown as LeadRepo;
 }
 function index(): LeadIndex {
@@ -180,5 +182,31 @@ describe("leads.list (T011)", () => {
     const p2 = await c(r).leads.list({ limit: 2, cursor });
     expect(p2.leads).toHaveLength(1);
     expect(p2.nextCursor).toBeUndefined();
+  });
+});
+
+describe("leads.list permitOpenDaysMin and the new output fields", () => {
+  it.each([0, 3651, 1.5, -1])("rejects permitOpenDaysMin %s", async (bad) => {
+    await expect(
+      c(repo(), index()).leads.list({ filters: { permitOpenDaysMin: bad } }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it.each([1, 365, 3650])("accepts permitOpenDaysMin %s", async (ok) => {
+    const i = index();
+    i.matchingRequestIdentifiers = vi.fn(async () => new Set(["1"]));
+    const out = await c(repo(), i).leads.list({ filters: { permitOpenDaysMin: ok } });
+    expect(out.leads.map((l) => l.leadKey)).toEqual(["48453:tcad:1"]);
+  });
+
+  it("every item carries signals and lastActivity (null when unknown), existing fields kept", async () => {
+    const out = await c(repo()).leads.list({});
+    expect(out.leads[0]).toMatchObject({
+      leadKey: "48453:tcad:1",
+      status: "new",
+      notInCurrentRun: false,
+      signals: null,
+      lastActivity: { kind: "created" },
+    });
   });
 });

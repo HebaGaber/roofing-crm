@@ -20,6 +20,7 @@ export {
   Lead,
   LeadEvent,
   LeadFilters,
+  LeadLastActivity,
   LeadSignals,
   LeadStatus,
 } from "./schemas/lead.js";

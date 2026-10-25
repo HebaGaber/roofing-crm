@@ -181,6 +181,9 @@ export interface MatchingRequestIdentifiersQuery {
   roofAgeMinYears?: number;
   /** Keep a property only if it has at least one permit with this `statusClass`. */
   permitStatus?: string;
+  /** Keep a property only if it has a permit open at least this many days. With `permitStatus`
+   *  both must hold on the SAME permit. */
+  permitOpenDaysMin?: number;
 }
 
 /** Candidate identifiers per statement: keeps the SQL text small for a very long lead list. */
@@ -792,10 +795,17 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
         }
         if (query.roofAgeMinYears !== undefined)
           filters.push(`p."roofAgeYears" >= ${sqlNumber(query.roofAgeMinYears)}`);
-        if (query.permitStatus !== undefined) {
+        if (query.permitStatus !== undefined || query.permitOpenDaysMin !== undefined) {
+          // Same predicates as the permit search (permitConditions), joined to the property.
+          const permitFilters = permitConditions({
+            ...(query.permitStatus === undefined ? {} : { statusClass: [query.permitStatus] }),
+            ...(query.permitOpenDaysMin === undefined
+              ? {}
+              : { openDaysMinimum: query.permitOpenDaysMin }),
+          });
           filters.push(
             `EXISTS (SELECT 1 FROM crm_permit pm WHERE pm."propertyCid" = p."propertyCid" ` +
-              `AND pm."statusClass" = '${sqlEscapeString(query.permitStatus)}')`,
+              `AND ${permitFilters.join(" AND ")})`,
           );
         }
         const extra = filters.length === 0 ? "" : ` AND ${filters.join(" AND ")}`;

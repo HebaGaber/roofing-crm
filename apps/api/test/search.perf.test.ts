@@ -124,7 +124,11 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
     const leadList = async (
       filters: Parameters<ReturnType<typeof createLeadService>["list"]>[0],
     ) => {
-      const repo = { listByAssignee: async () => leadRows() } as unknown as LeadRepo;
+      const repo = {
+        listByAssignee: async () => leadRows(),
+        signalsFor: async () => new Map(),
+        latestEvents: async () => new Map(),
+      } as unknown as LeadRepo;
       const out = await createLeadService(repo, { leadIndex: index }).list(filters, "rep-1");
       return { rows: out.leads.length, payload: { ...out, traceId: "t" } };
     };
@@ -214,6 +218,26 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
         "leads.list permit open only (no radius)",
         () => leadList({ filters: { permitStatus: "open" }, limit: 50 }),
       ],
+      ...([365, 1825, 3650] as const).map(
+        (days): [string, () => Promise<{ rows: number; payload: unknown }>] => [
+          `leads.list permitOpenDaysMin ${String(days)} (county-wide, ~2,900 leads)`,
+          () => leadList({ filters: { permitOpenDaysMin: days }, limit: 25 }),
+        ],
+      ),
+      [
+        "leads.list permitOpenDaysMin 1825 + permit open + 5 mi Austin",
+        () =>
+          leadList({
+            filters: {
+              permitOpenDaysMin: 1825,
+              permitStatus: "open",
+              radiusMi: 5,
+              centerLat: AUSTIN.lat,
+              centerLon: AUSTIN.lng,
+            },
+            limit: 25,
+          }),
+      ],
       [
         // The e2e NF-01 span on the server: leads.create then leads.list (page of 50 where 49
         // leads come from an older manifest, so the presence check hits the 442k-row index), with
@@ -236,6 +260,11 @@ describe.skipIf(process.env.CRM_PERF !== "1" || !HAVE_DATA)(
               await wait();
               return stored;
             },
+            signalsFor: async () => {
+              await wait();
+              return new Map();
+            },
+            latestEvents: async () => new Map(),
           } as unknown as LeadRepo;
           const svc = createLeadService(repo, { leadIndex: index });
           const first = stored[0];

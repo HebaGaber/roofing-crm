@@ -29,6 +29,7 @@ function group(m: RegExpExecArray, i: number): string {
 export class FakeLeadsTable {
   readonly items = new Map<string, Item>();
   readonly batchGets: Record<string, any>[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
+  readonly queries: Record<string, any>[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
   readonly transactions: Array<Record<string, any>[]> = []; // eslint-disable-line @typescript-eslint/no-explicit-any
 
   private static keyOf(pk: unknown, sk: unknown): string {
@@ -152,12 +153,18 @@ export class FakeLeadsTable {
       case "QueryCommand": {
         const names: Record<string, string> = input.ExpressionAttributeNames ?? {};
         const values: Record<string, unknown> = input.ExpressionAttributeValues ?? {};
-        const m = /^(#?\w+)\s*=\s*(:\w+)$/.exec(String(input.KeyConditionExpression).trim());
+        const m = /^(#?\w+)\s*=\s*(:\w+)(?:\s+AND\s+begins_with\(\s*sk\s*,\s*(:\w+)\s*\))?$/.exec(
+          String(input.KeyConditionExpression).trim(),
+        );
         if (!m) throw new Error("FakeLeadsTable: unsupported KeyConditionExpression");
         const attr = names[group(m, 1)] ?? group(m, 1);
         const want = values[group(m, 2)];
+        const skPrefix = m[3] === undefined ? undefined : String(values[m[3]]);
         const sortAttr = input.IndexName === undefined ? "sk" : "createdAt"; // both GSIs sort on createdAt
-        let rows = [...this.items.values()].filter((i) => i[attr] === want);
+        let rows = [...this.items.values()].filter(
+          (i) => i[attr] === want && (skPrefix === undefined || String(i.sk).startsWith(skPrefix)),
+        );
+        this.queries.push(input);
         rows.sort((a, b) => String(a[sortAttr]).localeCompare(String(b[sortAttr])));
         if (input.ScanIndexForward === false) rows.reverse();
         if (input.ExclusiveStartKey) {

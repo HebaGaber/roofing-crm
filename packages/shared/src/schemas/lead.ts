@@ -44,8 +44,21 @@ export type LeadEvent = z.infer<typeof LeadEvent>;
 export const LeadFilters = z.object({
   roofAgeMinYears: z.number().nonnegative().optional(),
   permitStatus: z.enum(["open", "closed", "stalled"]).optional(),
+  /** Only leads whose property has a permit open at least this many days in the CURRENT index
+   *  (same SQL path as permitStatus; combined with it on the same permit when both are given). */
+  permitOpenDaysMin: z.number().int().min(1).max(3650).optional(),
   radiusMi: z.number().positive().optional(),
   centerLat: z.number().min(-90).max(90).optional(),
   centerLon: z.number().min(-180).max(180).optional(),
 });
 export type LeadFilters = z.infer<typeof LeadFilters>;
+
+/** What happened last on a lead, for the Leads table "Last activity" column. */
+export const LeadLastActivity = z.object({
+  /** ISO timestamp of the latest event. */
+  at: z.string(),
+  kind: z.enum(["created", "status", "note", "assignee", "other"]),
+  /** Note text only: trimmed, whitespace collapsed, at most 120 characters. */
+  excerpt: z.string().max(120).optional(),
+});
+export type LeadLastActivity = z.infer<typeof LeadLastActivity>;

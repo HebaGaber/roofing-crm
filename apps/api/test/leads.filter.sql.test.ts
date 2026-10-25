@@ -33,7 +33,7 @@ interface P {
   roofAgeYears: number | null;
 }
 let properties: P[] = [];
-let permits: { propertyCid: string; statusClass: string }[] = [];
+let permits: { propertyCid: string; statusClass: string; openDays: number | null }[] = [];
 
 beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "crm-leads-filter-"));
@@ -56,7 +56,7 @@ beforeAll(async () => {
     `SELECT "propertyCid", "requestIdentifier", latitude, longitude, "roofAgeYears" FROM read_parquet('${join(dir, "crm_property.parquet")}')`,
   )) as unknown as P[];
   permits = (await readAll(
-    `SELECT "propertyCid", "statusClass" FROM read_parquet('${join(dir, "crm_permit.parquet")}')`,
+    `SELECT "propertyCid", "statusClass", "openDays" FROM read_parquet('${join(dir, "crm_permit.parquet")}')`,
   )) as unknown as typeof permits;
 
   ddbMock.on(GetCommand).resolves({
@@ -95,14 +95,25 @@ interface Filters {
   radiusMi?: number;
   roofAgeMinYears?: number;
   permitStatus?: string;
+  permitOpenDaysMin?: number;
 }
 
 function oracle(ids: readonly string[], f: Filters): string[] {
   const want = new Set(ids);
+  // One permit must satisfy status AND open-days together when both are given.
   const withStatus =
-    f.permitStatus === undefined
+    f.permitStatus === undefined && f.permitOpenDaysMin === undefined
       ? undefined
-      : new Set(permits.filter((m) => m.statusClass === f.permitStatus).map((m) => m.propertyCid));
+      : new Set(
+          permits
+            .filter(
+              (m) =>
+                (f.permitStatus === undefined || m.statusClass === f.permitStatus) &&
+                (f.permitOpenDaysMin === undefined ||
+                  (m.openDays !== null && m.openDays >= f.permitOpenDaysMin)),
+            )
+            .map((m) => m.propertyCid),
+        );
   return properties
     .filter((p) => want.has(p.requestIdentifier))
     .filter(
@@ -132,6 +143,17 @@ describe("LeadIndex.matchingRequestIdentifiers (SQL pushdown for leads.list)", (
     ["permit open only", { permitStatus: "open" }],
     ["permit closed only", { permitStatus: "closed" }],
     ["permit stalled only", { permitStatus: "stalled" }],
+    ["permit open >= 1 year", { permitOpenDaysMin: 365 }],
+    ["permit open >= 10 years", { permitOpenDaysMin: 3650 }],
+    ["permit open >= 1 day (the minimum)", { permitOpenDaysMin: 1 }],
+    [
+      "open status AND open >= 5 years on the same permit",
+      { permitStatus: "open", permitOpenDaysMin: 1825 },
+    ],
+    [
+      "radius + roof + open >= 3 years",
+      { center: AUSTIN, radiusMi: 10, roofAgeMinYears: 15, permitOpenDaysMin: 1095 },
+    ],
     [
       "radius + roof + permit open",
       { center: AUSTIN, radiusMi: 10, roofAgeMinYears: 15, permitStatus: "open" },

@@ -5,13 +5,20 @@
 // `isNotInCurrentRun()` plus an index presence check, and all duplicate/sequence enforcement is the repo's DynamoDB conditions.
 import { randomBytes } from "node:crypto";
 import { isNotInCurrentRun, leadKey, requestIdentifierOf } from "@crm/domain";
-import type { LeadEvent, LeadFilters, LeadSignals, LeadStatus } from "@crm/shared";
-import type { LeadIndex, SearchPropertiesQuery } from "../adapters/duckDbParquet.js";
 import type {
-  LeadPresenceRecord,
-  LeadRepo,
-  StoredLead,
-  UndoCreateResult,
+  LeadEvent,
+  LeadFilters,
+  LeadLastActivity,
+  LeadSignals,
+  LeadStatus,
+} from "@crm/shared";
+import type { LeadIndex, SearchPropertiesQuery } from "../adapters/duckDbParquet.js";
+import {
+  noteExcerpt,
+  type LeadPresenceRecord,
+  type LeadRepo,
+  type StoredLead,
+  type UndoCreateResult,
 } from "../adapters/leadRepo.js";
 import { LeadAlreadyExistsError, LeadIndexUnavailableError } from "../leadErrors.js";
 
@@ -52,6 +59,12 @@ export interface CreateManyResult {
 }
 
 export type LeadView = StoredLead & { notInCurrentRun: boolean };
+/** One `leads.list` item: the lead, the AC-5 flag, the stored SIGNALS snapshot (null when the
+ *  lead has none) and its last activity (null when it cannot be known cheaply). */
+export type ListedLead = Omit<LeadView, "lastActivity"> & {
+  signals: LeadSignals | null;
+  lastActivity: LeadLastActivity | null;
+};
 export type LeadDetailView = LeadView & {
   /** Manifest CID of the run now served: the provenance shown beside "not in the current run".
    *  Undefined when no run is promoted. */
@@ -84,7 +97,7 @@ export interface LeadService {
   list(
     input: ListLeadsInput,
     by: string,
-  ): Promise<{ leads: LeadView[]; nextCursor?: string; totalCount: number }>;
+  ): Promise<{ leads: ListedLead[]; nextCursor?: string; totalCount: number }>;
 }
 
 export interface LeadServiceOptions {
@@ -114,6 +127,29 @@ function failureCode(error: unknown): string {
 }
 
 const DEFAULT_LIMIT = 50;
+/** Most leads per page whose last activity is read from their event log (leads written before the
+ *  denormalised attributes existed and that have had events). The rest show no last activity. */
+export const LAST_ACTIVITY_FALLBACK_MAX = 25;
+
+/** `note: "<json string>"` (leadRepo) -> the note text; anything else -> undefined. */
+function noteTextOf(change: string): string | undefined {
+  if (!change.startsWith("note: ")) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(change.slice("note: ".length));
+    return typeof parsed === "string" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function activityFromEvent(event: LeadEvent): LeadLastActivity {
+  if (event.kind === "note") {
+    const text = noteTextOf(event.change);
+    const excerpt = text === undefined ? "" : noteExcerpt(text);
+    return { at: event.at, kind: "note", ...(excerpt === "" ? {} : { excerpt }) };
+  }
+  return { at: event.at, kind: event.kind === "create" ? "created" : "status" };
+}
 /** Fallback path only (an index without `matchingRequestIdentifiers`): the index search applies
  *  LIMIT 100 when no center+radius is given, so ask for effectively everything. */
 const INDEX_SCAN_LIMIT = 1_000_000;
@@ -181,6 +217,9 @@ export function createLeadService(
           ? {}
           : { roofAgeMinYears: filters.roofAgeMinYears }),
         ...(filters.permitStatus === undefined ? {} : { permitStatus: filters.permitStatus }),
+        ...(filters.permitOpenDaysMin === undefined
+          ? {}
+          : { permitOpenDaysMin: filters.permitOpenDaysMin }),
       });
     }
     // Index without the SQL method (test doubles only): the original two-call path.
@@ -191,12 +230,19 @@ export function createLeadService(
     }
     if (filters.roofAgeMinYears !== undefined) query.roofAgeMinYears = filters.roofAgeMinYears;
     let properties = await leadIndex.searchProperties(query);
-    if (filters.permitStatus !== undefined) {
+    if (filters.permitStatus !== undefined || filters.permitOpenDaysMin !== undefined) {
       const permits = await leadIndex.searchPermits({
         propertyCids: properties.map((p) => p.propertyCid),
+        ...(filters.permitOpenDaysMin === undefined
+          ? {}
+          : { openDaysMinimum: filters.permitOpenDaysMin }),
       });
       const withMatch = new Set(
-        permits.filter((p) => p.statusClass === filters.permitStatus).map((p) => p.propertyCid),
+        permits
+          .filter(
+            (p) => filters.permitStatus === undefined || p.statusClass === filters.permitStatus,
+          )
+          .map((p) => p.propertyCid),
       );
       properties = properties.filter((p) => withMatch.has(p.propertyCid));
     }
@@ -306,12 +352,19 @@ export function createLeadService(
       };
     },
 
+    /** Consistency: the assignee/status GSIs are eventually consistent, so a lead created a moment
+     *  ago may be missing here for a short while. The web overlays a just-created lead on the
+     *  first page itself; the server does not paper over it (a consistent read of a GSI does not
+     *  exist). `cursor` is a plain numeric offset into the newest-first list and `totalCount` is
+     *  the full filtered count (capped at MAX_LISTED_LEADS by the repo), so page n starts at
+     *  (n - 1) * limit and "Showing 1-25 of N" needs no extra call. */
     async list(input, by) {
       const filters = input.filters ?? {};
       const geo =
         filters.roofAgeMinYears !== undefined ||
         filters.radiusMi !== undefined ||
-        filters.permitStatus !== undefined;
+        filters.permitStatus !== undefined ||
+        filters.permitOpenDaysMin !== undefined;
 
       // The default scope is always the caller's own leads (GSI1); status filters in memory.
       let candidates = await leadRepo.listByAssignee(input.assignee ?? by);
@@ -329,9 +382,34 @@ export function createLeadService(
       const limit = input.limit ?? DEFAULT_LIMIT;
       const page = candidates.slice(start, start + limit);
       const end = start + page.length;
-      const flagged = await notInRunKeys(page, current);
+      const pageKeys = page.map((l) => l.leadKey);
+      // Legacy leads (no denormalised attributes) that have had events: read the newest event,
+      // for at most LAST_ACTIVITY_FALLBACK_MAX of the page. Untouched legacy leads need no read.
+      const needEvent = page
+        .filter((l) => l.lastActivity === undefined && l.eventSequence > 0)
+        .slice(0, LAST_ACTIVITY_FALLBACK_MAX)
+        .map((l) => l.leadKey);
+      const [flagged, signals, events] = await Promise.all([
+        notInRunKeys(page, current),
+        page.length === 0 ? new Map<string, LeadSignals>() : leadRepo.signalsFor(pageKeys),
+        needEvent.length === 0 ? new Map<string, LeadEvent>() : leadRepo.latestEvents(needEvent),
+      ]);
+      const lastActivityOf = (l: StoredLead): LeadLastActivity | null => {
+        if (l.lastActivity !== undefined) return l.lastActivity;
+        if (l.eventSequence === 0) return { at: l.createdAt, kind: "created" };
+        const event = events.get(l.leadKey);
+        return event === undefined ? null : activityFromEvent(event);
+      };
       return {
-        leads: page.map((l) => ({ ...l, notInCurrentRun: flagged.has(l.leadKey) })),
+        leads: page.map((l) => {
+          const { lastActivity: _stored, ...rest } = l;
+          return {
+            ...rest,
+            notInCurrentRun: flagged.has(l.leadKey),
+            signals: signals.get(l.leadKey) ?? null,
+            lastActivity: lastActivityOf(l),
+          };
+        }),
         ...(end < candidates.length ? { nextCursor: String(end) } : {}),
         totalCount: candidates.length,
       };

@@ -18,6 +18,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   Lead,
   LeadEvent,
+  LeadLastActivity,
   LeadSignals,
   LeadStatus as LeadStatusSchema,
   type LeadStatus,
@@ -30,7 +31,10 @@ import {
 
 export { LeadAlreadyExistsError, LeadNotFoundError, LeadSequenceConflictError };
 
-export type StoredLead = Lead & { leadKey: string };
+/** `lastActivity` is denormalised on the LEAD item by the same conditional transaction that
+ *  appends each event (attributes `lastActivityAt/Kind/Excerpt`). Absent on leads written before
+ *  it existed; the service then falls back to the lead's latest event. */
+export type StoredLead = Lead & { leadKey: string; lastActivity?: LeadLastActivity };
 
 export interface NewLeadRecord {
   readonly leadKey: string;
@@ -96,6 +100,12 @@ export interface LeadRepo {
   undoCreate(input: UndoCreateInput): Promise<UndoCreateResult>;
   /** Lead presence by key across all assignees, via BatchGetItem (LEAD items only). */
   presence(leadKeys: readonly string[]): Promise<LeadPresenceRecord[]>;
+  /** SIGNALS snapshots of many leads: BatchGetItem, 100 keys per call, never a per-lead loop.
+   *  Leads without a SIGNALS item are simply absent from the map. */
+  signalsFor(leadKeys: readonly string[]): Promise<Map<string, LeadSignals>>;
+  /** Newest event of each lead (descending limit-1 query, bounded parallelism). Fallback for
+   *  leads that predate the denormalised last activity. */
+  latestEvents(leadKeys: readonly string[]): Promise<Map<string, LeadEvent>>;
   /** GSI1 (assignee), newest first (createdAt descending). */
   listByAssignee(assignee: string): Promise<StoredLead[]>;
   /** GSI2 (status), newest first (createdAt descending). */
@@ -119,9 +129,52 @@ export function evtSortKey(sequence: number): string {
   return `EVT#${String(sequence).padStart(10, "0")}`;
 }
 
+/** Parallel reads one `latestEvents` call runs at once. */
+export const LATEST_EVENTS_CONCURRENCY = 5;
+export const LAST_ACTIVITY_EXCERPT_MAX = 120;
+
+/** Note text -> list excerpt: whitespace collapsed, trimmed, at most 120 characters. */
+export function noteExcerpt(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length <= LAST_ACTIVITY_EXCERPT_MAX
+    ? flat
+    : `${flat.slice(0, LAST_ACTIVITY_EXCERPT_MAX - 1).trimEnd()}\u2026`;
+}
+
+/** The three LEAD attributes for one activity. The excerpt is "" (not absent) for non-notes so a
+ *  plain SET overwrites a stale note excerpt. */
+function activityAttributes(
+  at: string,
+  kind: "created" | "status" | "note",
+  excerpt = "",
+): { lastActivityAt: string; lastActivityKind: string; lastActivityExcerpt: string } {
+  return { lastActivityAt: at, lastActivityKind: kind, lastActivityExcerpt: excerpt };
+}
+
+function activityOf(
+  at: string,
+  kind: "created" | "status" | "note",
+  excerpt: string,
+): LeadLastActivity {
+  return { at, kind, ...(excerpt === "" ? {} : { excerpt }) };
+}
+
+const ACTIVITY_KINDS = new Set(["created", "status", "note", "assignee", "other"]);
+
 function toStoredLead(item: Record<string, unknown>): StoredLead {
   // Lead is not .strict(): pk/sk/GSI keys are stripped; the pk becomes the exposed leadKey.
-  return { ...Lead.parse(item), leadKey: String(item.pk) };
+  const base: StoredLead = { ...Lead.parse(item), leadKey: String(item.pk) };
+  const at = item.lastActivityAt;
+  const kind = item.lastActivityKind;
+  if (typeof at === "string" && typeof kind === "string" && ACTIVITY_KINDS.has(kind)) {
+    const excerpt = typeof item.lastActivityExcerpt === "string" ? item.lastActivityExcerpt : "";
+    base.lastActivity = {
+      at,
+      kind: kind as LeadLastActivity["kind"],
+      ...(excerpt === "" ? {} : { excerpt }),
+    };
+  }
+  return base;
 }
 
 /** Index of the first failed item in a cancelled transaction, or -1 when it was not a condition
@@ -178,6 +231,33 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     return res.Item;
   }
 
+  /** BatchGetItem over `keys`, 100 per call. UnprocessedKeys (throttling) are retried a bounded
+   *  number of times, then surfaced. */
+  async function batchGetAll(
+    allKeys: readonly Record<string, unknown>[],
+    projection: {
+      ProjectionExpression?: string;
+      ExpressionAttributeNames?: Record<string, string>;
+    } = {},
+  ): Promise<Record<string, unknown>[]> {
+    const out: Record<string, unknown>[] = [];
+    for (let i = 0; i < allKeys.length; i += BATCH_GET_MAX_KEYS) {
+      let keys: Record<string, unknown>[] = allKeys
+        .slice(i, i + BATCH_GET_MAX_KEYS)
+        .map((k) => ({ ...k }));
+      for (let attempt = 1; keys.length > 0; attempt++) {
+        if (attempt > MAX_CONFLICT_ATTEMPTS) throw new Error("BatchGetItem left unprocessed keys");
+        if (attempt > 1) await sleep(20 * attempt);
+        const res = await client.send(
+          new BatchGetCommand({ RequestItems: { [tableName]: { Keys: keys, ...projection } } }),
+        );
+        out.push(...(res.Responses?.[tableName] ?? []));
+        keys = (res.UnprocessedKeys?.[tableName]?.Keys ?? []) as Record<string, unknown>[];
+      }
+    }
+    return out;
+  }
+
   async function queryAll(
     indexName: "GSI1" | "GSI2",
     attr: "assignee" | "status",
@@ -206,7 +286,12 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
   /** Shared append: bump LEAD (and optionally its status) and put EVT#{n} in one transaction. */
   async function append(
     input: WriteBase,
-    event: { kind: LeadEvent["kind"]; change: (current: StoredLead) => string },
+    event: {
+      kind: LeadEvent["kind"];
+      change: (current: StoredLead) => string;
+      /** Note text; becomes the list excerpt. */
+      excerptOf?: string;
+    },
     nextStatus?: LeadStatus,
   ): Promise<StoredLead> {
     const item = await getLeadItem(input.leadKey);
@@ -216,7 +301,18 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     const next = expected + 1;
     const names: Record<string, string> = { "#seq": "eventSequence" };
     const values: Record<string, unknown> = { ":expected": expected, ":next": next };
-    let update = "SET #seq = :next";
+    // Last activity rides in the SAME conditional Update as the sequence bump, so it is written
+    // atomically with the event (or not at all when the sequence/duplicate condition fails).
+    const activity = activityAttributes(
+      input.at,
+      event.kind === "note" ? "note" : "status",
+      event.excerptOf === undefined ? "" : noteExcerpt(event.excerptOf),
+    );
+    values[":laAt"] = activity.lastActivityAt;
+    values[":laKind"] = activity.lastActivityKind;
+    values[":laExcerpt"] = activity.lastActivityExcerpt;
+    let update =
+      "SET #seq = :next, lastActivityAt = :laAt, lastActivityKind = :laKind, lastActivityExcerpt = :laExcerpt";
     if (nextStatus !== undefined) {
       update += ", #status = :status";
       names["#status"] = "status";
@@ -258,7 +354,16 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
       if (failedConditionIndex(error) >= 0) throw new LeadSequenceConflictError(input.leadKey);
       throw error;
     }
-    return { ...current, eventSequence: next, status: nextStatus ?? current.status };
+    return {
+      ...current,
+      eventSequence: next,
+      status: nextStatus ?? current.status,
+      lastActivity: activityOf(
+        activity.lastActivityAt,
+        event.kind === "note" ? "note" : "status",
+        activity.lastActivityExcerpt,
+      ),
+    };
   }
 
   async function createOnce(r: Parameters<LeadRepo["create"]>[0]): Promise<StoredLead> {
@@ -275,6 +380,7 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
       sourceManifestCid: r.sourceManifestCid,
       createdAt: r.createdAt,
       eventSequence: 0,
+      ...activityAttributes(r.createdAt, "created"),
     };
     try {
       await client.send(
@@ -394,38 +500,48 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     },
 
     async presence(leadKeys) {
-      const unique = [...new Set(leadKeys)];
-      const out: LeadPresenceRecord[] = [];
-      for (let i = 0; i < unique.length; i += BATCH_GET_MAX_KEYS) {
-        let keys: Record<string, unknown>[] = unique
-          .slice(i, i + BATCH_GET_MAX_KEYS)
-          .map((pk) => ({ pk, sk: "LEAD" }));
-        // UnprocessedKeys (throttling) are retried a bounded number of times, then surfaced.
-        for (let attempt = 1; keys.length > 0; attempt++) {
-          if (attempt > MAX_CONFLICT_ATTEMPTS)
-            throw new Error("BatchGetItem left unprocessed keys");
-          if (attempt > 1) await sleep(20 * attempt);
+      const items = await batchGetAll(
+        [...new Set(leadKeys)].map((pk) => ({ pk, sk: "LEAD" })),
+        {
+          ProjectionExpression: "pk, leadId, #status",
+          ExpressionAttributeNames: { "#status": "status" },
+        },
+      );
+      return items.map((item) => ({
+        leadKey: String(item.pk),
+        leadId: String(item.leadId),
+        status: LeadStatusSchema.parse(item.status),
+      }));
+    },
+
+    async signalsFor(leadKeys) {
+      const items = await batchGetAll([...new Set(leadKeys)].map((pk) => ({ pk, sk: "SIGNALS" })));
+      return new Map(items.map((item) => [String(item.pk), LeadSignals.parse(item)]));
+    },
+
+    async latestEvents(leadKeys) {
+      const keys = [...new Set(leadKeys)];
+      const out = new Map<string, LeadEvent>();
+      let next = 0;
+      async function worker(): Promise<void> {
+        for (let i = next++; i < keys.length; i = next++) {
+          const pk = keys[i] as string;
           const res = await client.send(
-            new BatchGetCommand({
-              RequestItems: {
-                [tableName]: {
-                  Keys: keys,
-                  ProjectionExpression: "pk, leadId, #status",
-                  ExpressionAttributeNames: { "#status": "status" },
-                },
-              },
+            new QueryCommand({
+              TableName: tableName,
+              KeyConditionExpression: "pk = :pk AND begins_with(sk, :evt)",
+              ExpressionAttributeValues: { ":pk": pk, ":evt": "EVT#" },
+              ScanIndexForward: false, // EVT# keys are zero-padded, so descending = newest first
+              Limit: 1,
             }),
           );
-          for (const item of res.Responses?.[tableName] ?? []) {
-            out.push({
-              leadKey: String(item.pk),
-              leadId: String(item.leadId),
-              status: LeadStatusSchema.parse(item.status),
-            });
-          }
-          keys = (res.UnprocessedKeys?.[tableName]?.Keys ?? []) as Record<string, unknown>[];
+          const item = res.Items?.[0];
+          if (item !== undefined) out.set(pk, LeadEvent.parse(item));
         }
       }
+      await Promise.all(
+        Array.from({ length: Math.min(LATEST_EVENTS_CONCURRENCY, keys.length) }, () => worker()),
+      );
       return out;
     },
 
@@ -445,7 +561,11 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
 
     addNote(input) {
       return withConflictRetry(() =>
-        append(input, { kind: "note", change: () => `note: ${JSON.stringify(input.text)}` }),
+        append(input, {
+          kind: "note",
+          change: () => `note: ${JSON.stringify(input.text)}`,
+          excerptOf: input.text,
+        }),
       );
     },
 
