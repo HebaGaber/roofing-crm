@@ -51,6 +51,7 @@ import {
   evaluateQuery,
   haversineMi,
   honestEmptyFailures,
+  ownerLocationFlagged,
   percentile,
   type AnswerLike,
   type QuerySpec,
@@ -383,6 +384,9 @@ export interface QueryRecord {
   readonly intent: string | undefined;
   readonly modelCalls: number | undefined;
   readonly failures: string[];
+  /** GAP-3: why an empty answer was empty, and whether it said owner location is not published. */
+  readonly emptyReason?: string;
+  readonly ownerLocationFlagged?: boolean;
   /** What the agent said it did, so a failure can be read without re-asking (no secrets). */
   readonly detail?: {
     readonly area: string;
@@ -457,6 +461,18 @@ async function runPlainQuery(
     intent: answer.plan.intent,
     modelCalls: answer.trace.modelCalls,
     failures,
+    ...(["empty_in_scope", "field_not_published"].includes(answer.outcome)
+      ? {
+          emptyReason: [
+            `outcome ${answer.outcome}`,
+            `matched ${answer.counts.matched}`,
+            `no roof date ${answer.counts.excludedNoRoofDate}`,
+            `unsupported: ${answer.plan.unsupported.map((u) => `${u.constraint} (${u.reason})`).join(", ") || "none"}`,
+            `missing: ${answer.missing.map((m) => `${m.field} (${m.reason}${m.count === undefined ? "" : ` x${m.count}`})`).join(", ") || "none"}`,
+          ].join("; "),
+        }
+      : {}),
+    ownerLocationFlagged: ownerLocationFlagged(answer as unknown as AnswerLike),
     detail: {
       area: `${answer.plan.area.kind} "${answer.plan.area.query}" -> ${answer.plan.area.resolved?.name ?? "unresolved"} (${answer.plan.area.resolved?.lat}, ${answer.plan.area.resolved?.lon}) radius ${answer.plan.area.radiusMi} mi`,
       filters: answer.plan.filters as Record<string, unknown>,

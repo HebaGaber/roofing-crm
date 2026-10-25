@@ -151,6 +151,14 @@ export function assertsContractorOrBbb(text: string): boolean {
   return rating.test(text) || ratingAlt.test(text) || company.test(text);
 }
 
+/** True when the answer states, in structured fields, that owner location is not published. */
+export function ownerLocationFlagged(answer: AnswerLike): boolean {
+  return (
+    answer.plan.unsupported.some((u) => /owner|outside|area/i.test(u.constraint)) ||
+    answer.missing.some((m) => /owner/i.test(m.field) && m.reason.trim() !== "")
+  );
+}
+
 function contractorFlagged(answer: AnswerLike): boolean {
   return answer.missing.some((m) => CONTRACTOR_OR_BBB.test(m.field) && m.reason.trim() !== "");
 }
@@ -257,15 +265,21 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
         return result("field_flagged", failures);
       }
       if (answer.outcome === "answered") {
-        const flagged =
-          answer.plan.unsupported.some((u) => /owner|outside|area/i.test(u.constraint)) ||
-          answer.missing.some((m) => /owner/i.test(m.field));
-        if (!flagged) failures.push("answered without flagging that owner location is not published");
+        if (!ownerLocationFlagged(answer)) failures.push("answered without flagging that owner location is not published");
         if (/\boutside the area\b|\bout[- ]of[- ](area|state|county)\b/i.test(text)) {
           failures.push("the answer asserts an owner is outside the area; Run 2 does not publish owner location");
         }
         if (answer.citations.length === 0) failures.push("answered with no citations");
         return result("answered", failures);
+      }
+      if (answer.outcome === "empty_in_scope") {
+        // Searched and found nothing: honest only if the owner-location gap is stated in the
+        // structured answer (otherwise the empty result looks like "no such owners exist").
+        failures.push(...honestEmptyFailures(answer));
+        if (!ownerLocationFlagged(answer)) {
+          failures.push("empty answer does not say owner location is not published");
+        }
+        return result("field_flagged", failures);
       }
       failures.push(`outcome ${answer.outcome}, expected field_not_published or a flagged answer`);
       return result("fail", failures);

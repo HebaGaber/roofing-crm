@@ -97,7 +97,8 @@ export const AgentAnswer = z.object({
   missing: z.array(MissingEntry),
   // Up to 25 rows, the same ones the compose step saw (Matches tab). Optional and additive.
   rows: z.array(AnswerRow).max(25).optional(),
-  // B-09 review (CR finding 7): set only on `needs_clarification` — the resolver's top places
+  // B-09 review (CR finding 7): set on `needs_clarification` (and on a `not_found` place, as the
+  // closest known places to offer) — the resolver's top places
   // (best first, at most 3) so the Ask screen can offer them as choices. `match` is the
   // `QueryPlan.area.resolved.match` kind. Optional and additive.
   candidates: z
@@ -137,6 +138,9 @@ export const AgentAnswer = z.object({
     cacheStrategy: z.string().optional(),
     cacheReadTokens: z.number().optional(),
     cacheWriteTokens: z.number().optional(),
+    // GAP-2: what the server repaired in the model's plan from the question text (a place or ZIP
+    // taken from the gazetteer scan, a stated radius). Absent when nothing was repaired.
+    planRepairs: z.array(z.string()).optional(),
   }),
 });
 export type AgentAnswer = z.infer<typeof AgentAnswer>;

@@ -44,7 +44,13 @@ import type {
   PropertyResult,
 } from "../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../adapters/leadRepo.js";
-import { nearestPlace } from "../services/agent/placeResolver.js";
+import { nearestPlace, rankCandidates } from "../services/agent/placeResolver.js";
+import {
+  extractJsonObject,
+  narrowedPlace,
+  scanQuestionForArea,
+  scanQuestionForRadius,
+} from "./placeScan.js";
 import { verifyCitations, type CitationFacts } from "../services/agent/verifyCitations.js";
 import { createAgentDispatch, type AgentDispatch } from "../services/agent/tools.js";
 import { generateOnce, withAgentTimeout, type CacheStrategy } from "./runAgent.js";
@@ -64,7 +70,7 @@ const TEMPLATE_ROWS = 3;
 /** ADR §4 governance: source text sent to the model is capped and stripped of control chars. */
 const MAX_SOURCE_TEXT = 120;
 
-const PROMPT_VERSION = "2026-10-24.2";
+const PROMPT_VERSION = "2026-10-25.1";
 const RANK_VERSION = "2026-10-24";
 
 /** Travis County's bounding box (Census TIGER county extent, rounded outward to 4 dp). A point
@@ -117,7 +123,24 @@ export const PLAN_SYSTEM_PROMPT =
   "area.query; for lookup_permit put the permit number in filters.permitNumber; coverage needs " +
   "no area. Default radiusMi to 5 and roofAgeMinYears to 15 when the rep didn't state them, and " +
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
-  "unsupported. Never invent a place outside Travis County.";
+  "unsupported. Never invent a place outside Travis County. " +
+  'area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; ' +
+  "the radius goes in radiusMi and everything else in filters. Examples (question -> plan " +
+  "fields): " +
+  '"Show me open roofing permits older than five years within five miles of Manor" -> ' +
+  '{"intent":"find_permits","area":{"kind":"place","query":"Manor","radiusMi":5},' +
+  '"filters":{"statusClass":["open"],"openYearsMin":5},"slotSources":{"statusClass":"stated",' +
+  '"openYearsMin":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
+  '"Which homes near Lakeway haven\'t changed owners in 10+ years and have owners outside the area?" -> ' +
+  '{"intent":"find_properties","area":{"kind":"place","query":"Lakeway","radiusMi":5},' +
+  '"filters":{"tenureYearsMin":10,"ownerAreaClass":["out_of_area"]},"slotSources":{"tenureYearsMin":"stated",' +
+  '"ownerAreaClass":"stated","radiusMi":"default"},"unsupported":[]}; ' +
+  '"How many properties have roofs older than 20 years in ZIP 78701?" -> ' +
+  '{"intent":"find_properties","area":{"kind":"zip","query":"78701","radiusMi":5},' +
+  '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"default"},"unsupported":[]}; ' +
+  '"Which properties within 3 miles of Austin have roofs older than 20 years?" -> ' +
+  '{"intent":"find_properties","area":{"kind":"place","query":"Austin","radiusMi":3},' +
+  '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"stated"},"unsupported":[]}.';
 
 function buildPlanPrompt(question: string, previousPlan: QueryPlan | undefined): string {
   if (previousPlan === undefined) return question;
@@ -148,7 +171,8 @@ const COMPOSE_SYSTEM_PROMPT =
   "permit, address, contractor name, rating or number. Reply with ONLY a single JSON object: " +
   '{"claims":[{"text":"<=400 chars","citationIds":[<citationId>,...]}]}. ' +
   "Each claim cites the citationId of every DATA row it relies on, and every number in a claim " +
-  "must be one of that row's values or one of the DATA counts.";
+  "must be one of that row's values or one of the DATA counts. When DATA.area.note is present, " +
+  "your first claim states it in your own words.";
 
 /** ADR §4 governance: source text is untrusted data — control characters stripped, capped. */
 function sourceText(value: string | null): string | null {
@@ -196,6 +220,9 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
     area: {
       name: plan.area.resolved?.name ?? plan.area.query,
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
+      ...(plan.area.kind === "zip" && !gathered.countyWide
+        ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
+        : {}),
     },
     filters: plan.filters,
     counts: gathered.counts,
@@ -222,7 +249,8 @@ export interface ScopePoint {
 
 export type ScopeOutcome =
   | { readonly status: "in_scope"; readonly point: ScopePoint; readonly countyWide: boolean }
-  | { readonly status: "out_of_scope" | "not_found" }
+  | { readonly status: "out_of_scope" }
+  | { readonly status: "not_found"; readonly candidates?: readonly Candidate[] }
   | { readonly status: "needs_clarification"; readonly candidates: readonly Candidate[] };
 
 const POINT_QUERY = /^\s*(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$/;
@@ -287,6 +315,25 @@ export async function checkScope(
   // A place area with no name (e.g. a follow-up with nothing to inherit): ask which area.
   if (query === "") return { status: "needs_clarification", candidates: [] };
 
+  // "downtown Austin": a narrowing word plus a known place. The gazetteer has city-level centres
+  // only, so ask which place is meant instead of guessing a centre (GAP-2 honesty rule). The
+  // score is the real string similarity of what was typed to the place name.
+  const narrowed = narrowedPlace(query);
+  if (narrowed !== undefined) {
+    const resolvedNarrow = await deps.placeResolver.resolve(narrowed);
+    const [whole, ...others] = resolvedNarrow.candidates;
+    if (whole !== undefined) {
+      const similarity = rankCandidates(query, [narrowed])[0]?.score ?? 0;
+      return {
+        status: "needs_clarification",
+        candidates: [
+          { name: whole.name, score: similarity, match: "fuzzy" as const },
+          ...others.slice(0, 2).map((c) => ({ name: c.name, score: c.score, match: c.match })),
+        ],
+      };
+    }
+  }
+
   const resolution = await deps.placeResolver.resolve(query);
   if (resolution.status === "out_of_scope") return { status: "out_of_scope" };
   const [top, ...rest] = resolution.candidates;
@@ -301,7 +348,17 @@ export async function checkScope(
   const runnerUp = rest.find((c) => c.lat !== top.lat || c.lon !== top.lon);
   const margin = runnerUp === undefined ? 1 : top.score - runnerUp.score;
   const band = classifyPlaceConfidence(top.score, margin);
-  if (band === "refuse") return { status: "not_found" };
+  if (band === "refuse") {
+    // Offer the closest known places (honest similarity scores) so the rep can pick one.
+    return {
+      status: "not_found",
+      candidates: resolution.candidates.slice(0, 3).map((c) => ({
+        name: c.name,
+        score: c.score,
+        match: c.match,
+      })),
+    };
+  }
   if (band === "clarify") {
     return {
       status: "needs_clarification",
@@ -787,6 +844,10 @@ function buildAnswerRows(
  *  reported, and every evidence row's own `missingReasons` aggregated per field + reason. */
 function deriveMissing(plan: QueryPlan, gathered: Gathered | undefined): Missing[] {
   const out: Missing[] = plan.unsupported.map((u) => ({ field: u.constraint, reason: u.reason }));
+  // A ZIP is a radius around the ZCTA centre: say so in the structured answer, never silently.
+  if (plan.area.kind === "zip" && plan.area.resolved !== undefined) {
+    out.push({ field: "postal_code", reason: "not_in_export" });
+  }
   if (gathered === undefined) return out;
   const byKey = new Map<string, Missing>();
   for (const m of gathered.countMissing) byKey.set(`${m.field}|${m.reason}`, { ...m });
@@ -806,6 +867,11 @@ function plural(n: number, one: string, many: string): string {
 
 /** The deterministic answer used when rows matched but no model claim verified (or compose
  *  output didn't parse). Built from server-computed counts and rows only. */
+function zipSuffix(plan: QueryPlan, gathered: Gathered): string {
+  if (plan.area.kind !== "zip" || gathered.countyWide) return "";
+  return ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
+}
+
 function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly EvidenceRow[]): string {
   const where = gathered.countyWide
     ? "in Travis County"
@@ -831,7 +897,7 @@ function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly Evide
     case "permits":
       return (
         `Found ${plural(gathered.counts.matched, "matching permit", "matching permits")} ${where}; ` +
-        `showing the top ${cited.length}, longest open first.`
+        `showing the top ${cited.length}, longest open first.${zipSuffix(plan, gathered)}`
       );
     case "properties": {
       const roof =
@@ -840,7 +906,7 @@ function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly Evide
           : ` with a roof at least ${plan.filters.roofAgeMinYears} years old`;
       return (
         `Found ${plural(gathered.counts.matched, "matching property", "matching properties")} ` +
-        `${where}${roof}; showing the top ${cited.length}.`
+        `${where}${roof}; showing the top ${cited.length}.${zipSuffix(plan, gathered)}`
       );
     }
   }
@@ -873,15 +939,91 @@ function allowedNumbers(plan: QueryPlan, gathered: Gathered): number[] {
 function tryParsePlan(text: string): { ok: true; plan: QueryPlan } | { ok: false; error: string } {
   let json: unknown;
   try {
-    json = JSON.parse(text);
+    // Tolerate a code fence or a sentence around the object: the content is still validated in
+    // full below, so only the wrapping is forgiven.
+    json = JSON.parse(extractJsonObject(text));
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : "invalid JSON" };
+  }
+  // An area.query longer than a place name is the model echoing the sentence (the schema caps it
+  // at 80 characters and would reject the whole plan): blank it so the server-side place scan,
+  // not a second model call, finds the place the rep typed.
+  if (typeof json === "object" && json !== null) {
+    const area = (json as { area?: unknown }).area;
+    if (typeof area === "object" && area !== null) {
+      const a = area as { kind?: unknown; query?: unknown };
+      if (a.kind !== "point" && typeof a.query === "string" && a.query.length > 80) a.query = "";
+    }
   }
   const parsed = QueryPlanSchema.safeParse(json);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.message };
   }
   return { ok: true, plan: parsed.data };
+}
+
+/** A ZIP is answered as a radius around the ZCTA's centre (Run 2 has no postal codes), and a ZIP
+ *  is a few miles across, so an unstated radius defaults to 2 mi, not the 5 mi of a town. */
+export const ZIP_DEFAULT_RADIUS_MI = 2;
+
+/** The sentence that says what a ZIP area means in this data. */
+export function zipMeaning(radiusMi: number, name: string): string {
+  return (
+    `Postal codes are not published in this data, so ${name} means every property within ` +
+    `${radiusMi} mi of that ZIP's centre point, not the ZIP's boundary.`
+  );
+}
+
+const REPAIR_INTENTS = new Set(["find_properties", "find_permits", "propose_leads"]);
+
+/** GAP-2: when the plan's area is unusable (blank, the sentence, not a gazetteer name or ZIP) but
+ *  the question itself names a gazetteer place or a ZIP, take the area from the question. Never
+ *  overrides an area the plan resolved to a real place, never fires for an "inherited" area, and
+ *  never matches a narrowed place such as "downtown Austin" (placeScan). Also takes a radius the
+ *  rep stated in the text when the plan did not mark one stated. Returns what it repaired. */
+export function repairPlanFromQuestion(
+  plan: QueryPlan,
+  question: string,
+): { plan: QueryPlan; repairs: string[] } {
+  const repairs: string[] = [];
+  if (!REPAIR_INTENTS.has(plan.intent)) return { plan, repairs };
+  let next = plan;
+
+  if (plan.slotSources.area !== "inherited" && (plan.area.kind === "place" || plan.area.kind === "zip")) {
+    const q = plan.area.query.trim();
+    const found = q === "" ? undefined : gazetteer.lookup(q);
+    const usable =
+      found !== undefined &&
+      found.status === "found" &&
+      (plan.area.kind === "zip" ? found.kind === "zcta" : true);
+    if (!usable) {
+      const scanned = scanQuestionForArea(question);
+      // A typo'd or narrowed name the model kept ("Pflugervile", "downtown Austin") is left for
+      // the resolver's confidence bands; only a blank or non-name query is replaced.
+      const looksLikeName = q !== "" && q.length <= 40 && !/\b(show|which|what|how|permits?|roofs?|homes?|properties)\b/i.test(q);
+      if (scanned !== undefined && !looksLikeName) {
+        repairs.push(`area "${q.slice(0, 40)}" -> ${scanned.kind} "${scanned.query}"`);
+        next = {
+          ...next,
+          area: { ...next.area, kind: scanned.kind, query: scanned.query },
+          slotSources: { ...next.slotSources, area: "stated" },
+        };
+      }
+    }
+  }
+
+  if (next.slotSources.radiusMi !== "stated") {
+    const radius = scanQuestionForRadius(question);
+    if (radius !== undefined && radius.radiusMi !== next.area.radiusMi) {
+      repairs.push(`radiusMi ${next.area.radiusMi} -> ${radius.radiusMi}`);
+      next = {
+        ...next,
+        area: { ...next.area, radiusMi: radius.radiusMi },
+        slotSources: { ...next.slotSources, radiusMi: "stated" },
+      };
+    }
+  }
+  return { plan: next, repairs };
 }
 
 /** The model's compose-step output: claims plus the citation labels they rely on. The optional
@@ -993,6 +1135,7 @@ function trace(
   toolSteps: number,
   cacheReadTokens?: number,
   cacheWriteTokens?: number,
+  planRepairs: readonly string[] = [],
 ): AgentAnswer["trace"] {
   return {
     traceId,
@@ -1004,6 +1147,7 @@ function trace(
     cacheStrategy,
     ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
     ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    ...(planRepairs.length === 0 ? {} : { planRepairs: [...planRepairs] }),
   };
 }
 
@@ -1017,7 +1161,12 @@ export function emptyAnswer(
   modelCalls: number,
   modelId = "n/a",
   cacheStrategy: string = "none",
-  extra: { missing?: Missing[]; candidates?: readonly Candidate[]; toolSteps?: number } = {},
+  extra: {
+    missing?: Missing[];
+    candidates?: readonly Candidate[];
+    toolSteps?: number;
+    planRepairs?: readonly string[];
+  } = {},
 ): AgentAnswer {
   return {
     outcome,
@@ -1028,7 +1177,16 @@ export function emptyAnswer(
     counts: EMPTY_COUNTS,
     missing: extra.missing ?? [],
     ...(extra.candidates === undefined ? {} : { candidates: [...extra.candidates] }),
-    trace: trace(traceId, modelId, modelCalls, cacheStrategy, extra.toolSteps ?? 0),
+    trace: trace(
+      traceId,
+      modelId,
+      modelCalls,
+      cacheStrategy,
+      extra.toolSteps ?? 0,
+      undefined,
+      undefined,
+      extra.planRepairs,
+    ),
   };
 }
 
@@ -1049,6 +1207,7 @@ export interface RunAskInput {
 }
 
 interface CallStats {
+  readonly planRepairs: readonly string[];
   readonly modelCalls: number;
   readonly cacheStrategy: CacheStrategy;
   readonly cacheReadTokens?: number;
@@ -1113,6 +1272,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     let cacheReadTokens = planCall.cacheReadTokens;
     let cacheWriteTokens = planCall.cacheWriteTokens;
     let parsed = tryParsePlan(planCall.text);
+    let planRepairs: string[] = [];
 
     if (!parsed.ok) {
       const repairCall = await generateOnce(
@@ -1131,6 +1291,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     }
 
     const stats = (): CallStats => ({
+      planRepairs,
       modelCalls,
       cacheStrategy,
       ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
@@ -1138,7 +1299,23 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     });
     if (!parsed.ok) return { kind: "invalid_plan", ...stats() };
 
-    let plan = applyInheritance(parsed.plan, input.previousPlan);
+    const repaired: { plan: QueryPlan; repairs: string[] } = repairPlanFromQuestion(
+      parsed.plan,
+      question,
+    );
+    planRepairs = repaired.repairs;
+    if (
+      repaired.plan.area.kind === "zip" &&
+      repaired.plan.slotSources.radiusMi !== "stated" &&
+      REPAIR_INTENTS.has(repaired.plan.intent)
+    ) {
+      repaired.plan = {
+        ...repaired.plan,
+        area: { ...repaired.plan.area, radiusMi: ZIP_DEFAULT_RADIUS_MI },
+        slotSources: { ...repaired.plan.slotSources, radiusMi: "default" },
+      };
+    }
+    let plan = applyInheritance(repaired.plan, input.previousPlan);
     const blocked = (
       outcome: "out_of_scope" | "not_found" | "needs_clarification" | "field_not_published",
       toolSteps: number,
@@ -1172,6 +1349,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       if (scope.status === "needs_clarification") {
         return blocked("needs_clarification", 0, scope.candidates);
       }
+      if (scope.status === "not_found") return blocked("not_found", 0, scope.candidates);
       if (scope.status !== "in_scope") return blocked(scope.status, 0);
       if (!scope.countyWide) {
         plan = { ...plan, area: { ...plan.area, resolved: resolvedArea(scope.point) } };
@@ -1242,7 +1420,12 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       {
         missing: deriveMissing(turn.plan, undefined),
         toolSteps: turn.toolSteps,
-        ...(turn.outcome === "needs_clarification" ? { candidates: turn.candidates ?? [] } : {}),
+        ...(turn.outcome === "needs_clarification"
+          ? { candidates: turn.candidates ?? [] }
+          : turn.outcome === "not_found" && (turn.candidates?.length ?? 0) > 0
+            ? { candidates: turn.candidates ?? [] }
+            : {}),
+        planRepairs: turn.planRepairs,
       },
     );
   }
@@ -1363,6 +1546,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       gathered.toolSteps,
       turn.cacheReadTokens,
       turn.cacheWriteTokens,
+      turn.planRepairs,
     ),
   };
 }
