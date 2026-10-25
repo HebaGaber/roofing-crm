@@ -21,6 +21,24 @@
   padding: var(--space-1) 0;
 }
 
+/* Compact: the icon alone, the text kept for screen readers (and the title tooltip on hover). */
+.compact {
+  padding: 0 var(--space-1);
+  cursor: help;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .verified {
   color: var(--status-success);
   background-color: var(--status-success-container);

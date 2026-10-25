@@ -27,16 +27,30 @@ export interface StatusPillProps {
   readonly icon?: string;
   /** Extra `data-*` attributes on the pill (MissingReason adds `field` and `reason`). */
   readonly data?: Readonly<Record<string, string>>;
+  /** Icon only: the text stays in the page for screen readers and shows as a tooltip on hover,
+   *  so a notice that repeats on every row does not take a line of visible text each time. */
+  readonly compact?: boolean;
 }
 
-export function StatusPill({ status, text, icon, data = {} }: StatusPillProps): ReactElement {
+export function StatusPill({
+  status,
+  text,
+  icon,
+  data = {},
+  compact = false,
+}: StatusPillProps): ReactElement {
   const dataAttributes = Object.fromEntries(
     Object.entries(data).map(([key, value]) => [`data-${key}`, value]),
   );
   return (
-    <span className={`${styles.pill} ${styles[status]}`} data-status={status} {...dataAttributes}>
+    <span
+      className={`${styles.pill} ${styles[status]}${compact ? ` ${styles.compact}` : ""}`}
+      data-status={status}
+      {...(compact ? { title: text } : {})}
+      {...dataAttributes}
+    >
       <Icon name={icon ?? STATUS_ICONS[status]} size="small" />
-      <span className={styles.text}>{text}</span>
+      <span className={compact ? `${styles.text} ${styles.srOnly}` : styles.text}>{text}</span>
     </span>
   );
 }

@@ -35,6 +35,10 @@ export function MissingReason({ field, reason, label }: MissingReasonProps): Rea
     <StatusPill
       status="unavailable"
       text={label ?? safeMissingLabel(field, reason)}
+      // `not_in_export` repeats on every property (the same fields, the same reason), so it shows
+      // as the icon with the reason on hover; every other reason stays visible text (the
+      // reason is still in the page for screen readers: constitution XI, "missing says why").
+      compact={reason === "not_in_export"}
       data={{ field, reason }}
     />
   );
