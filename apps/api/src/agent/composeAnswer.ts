@@ -121,7 +121,7 @@ export const PLAN_SYSTEM_PROMPT =
   'area.query is a place name for kind "place", a 5-digit ZIP for "zip", "lat, lon" for ' +
   '"point", and the county name for "county". For lookup_property put the TCAD property id in ' +
   "area.query; for lookup_permit put the permit number in filters.permitNumber; coverage needs " +
-  "no area. Default radiusMi to 5 and roofAgeMinYears to 15 when the rep didn't state them, and " +
+  "no area. Default radiusMi to 5, and roofAgeMinYears to 15 only when the question is about roofs and the rep didn't state it, and " +
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
   "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
@@ -222,7 +222,7 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
     area: {
       name: plan.area.resolved?.name ?? plan.area.query,
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
-      ...(unpublishedNote(plan) === "" ? {} : { notApplied: unpublishedNote(plan) }),
+      ...(answerNotes(plan).length === 0 ? {} : { notApplied: answerNotes(plan).join(" ") }),
       ...(plan.area.kind === "zip" && !gathered.countyWide
         ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
         : {}),
@@ -875,11 +875,11 @@ function zipSuffix(plan: QueryPlan, gathered: Gathered): string {
     plan.area.kind !== "zip" || gathered.countyWide
       ? ""
       : ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
-  const note = unpublishedNote(plan);
-  return note === "" ? zip : `${zip} ${note}`;
+  const notes = answerNotes(plan).join(" ");
+  return notes === "" ? zip : `${zip} ${notes}`;
 }
 
-function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly EvidenceRow[]): string {
+function templateText(plan: QueryPlan, gathered: Gathered): string {
   const where = gathered.countyWide
     ? "in Travis County"
     : `within ${plan.area.radiusMi} mi of ${plan.area.resolved?.name ?? plan.area.query}`;
@@ -904,7 +904,7 @@ function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly Evide
     case "permits":
       return (
         `Found ${plural(gathered.counts.matched, "matching permit", "matching permits")} ${where}; ` +
-        `showing the top ${cited.length}, longest open first.${zipSuffix(plan, gathered)}`
+        `showing the top ${gathered.counts.shown}, longest open first.${zipSuffix(plan, gathered)}`
       );
     case "properties": {
       const roof =
@@ -913,7 +913,7 @@ function templateText(plan: QueryPlan, gathered: Gathered, cited: readonly Evide
           : ` with a roof at least ${plan.filters.roofAgeMinYears} years old`;
       return (
         `Found ${plural(gathered.counts.matched, "matching property", "matching properties")} ` +
-        `${where}${roof}; showing the top ${cited.length}.${zipSuffix(plan, gathered)}`
+        `${where}${roof}; showing the top ${gathered.counts.shown}.${zipSuffix(plan, gathered)}`
       );
     }
   }
@@ -935,6 +935,7 @@ function allowedNumbers(plan: QueryPlan, gathered: Gathered): number[] {
     plan.filters.roofAgeMinYears,
     plan.filters.openYearsMin,
     plan.filters.tenureYearsMin,
+    tenureNote(plan) === "" ? undefined : 10,
     gathered.proposals.length,
   ]);
 }
@@ -1012,6 +1013,21 @@ export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
   return next;
 }
 
+/** The index stores only whether a property's tenure exceeds 10 years, so any tenureYearsMin is
+ *  answered at that one cutoff. Say so when the rep asked for a different number. */
+const TENURE_NOTE =
+  "Tenure is answered as more than 10 years, the only tenure cutoff this data holds.";
+
+function tenureNote(plan: QueryPlan): string {
+  const asked = plan.filters.tenureYearsMin;
+  return asked !== undefined && asked !== 10 ? TENURE_NOTE : "";
+}
+
+/** Every plain-words label this answer must carry. */
+function answerNotes(plan: QueryPlan): string[] {
+  return [unpublishedNote(plan), tenureNote(plan)].filter((n) => n !== "");
+}
+
 /** The plain-words label for an answer that was not narrowed by an unpublished field, or "". */
 function unpublishedNote(plan: QueryPlan): string {
   const gaps = UNPUBLISHED_FILTERS.filter((_gap) =>
@@ -1023,6 +1039,20 @@ function unpublishedNote(plan: QueryPlan): string {
   return (
     "These matches are not narrowed by owner location; " + `${gaps.map((g) => g.plain).join("; ")}.`
   );
+}
+
+const ROOF_WORDS = /\b(roofs?|roofing|shingles?|reroof\w*)\b/i;
+
+/** The plan prompt tells the model to default roofAgeMinYears to 15; that default only makes sense
+ *  for a question about roofs. A tenure or permit question must not be silently narrowed by a
+ *  roof-age filter the rep never asked for, so a defaulted one is dropped otherwise. */
+export function dropDefaultRoofFilter(plan: QueryPlan, question: string): QueryPlan {
+  if (plan.filters.roofAgeMinYears === undefined) return plan;
+  if (plan.slotSources.roofAgeMinYears !== "default") return plan;
+  if (ROOF_WORDS.test(question)) return plan;
+  const { roofAgeMinYears: _f, ...filters } = plan.filters;
+  const { roofAgeMinYears: _s, ...slotSources } = plan.slotSources;
+  return { ...plan, filters, slotSources };
 }
 
 /** A ZIP is answered as a radius around the ZCTA's centre (Run 2 has no postal codes), and a ZIP
@@ -1384,7 +1414,9 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
         slotSources: { ...repaired.plan.slotSources, radiusMi: "default" },
       };
     }
-    let plan = dropUnpublishedFilters(applyInheritance(repaired.plan, input.previousPlan));
+    let plan = dropUnpublishedFilters(
+      dropDefaultRoofFilter(applyInheritance(repaired.plan, input.previousPlan), question),
+    );
     const blocked = (
       outcome: "out_of_scope" | "not_found" | "needs_clarification" | "field_not_published",
       toolSteps: number,
@@ -1558,7 +1590,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     const template = await verifyCitations({
       claims: [
         {
-          text: templateText(plan, gathered, evidence.slice(0, TEMPLATE_ROWS)),
+          text: templateText(plan, gathered),
           citationIds: templateCitations.map((c) => c.id),
         },
       ],

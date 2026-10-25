@@ -1060,6 +1060,41 @@ describe("golden pass rules (local)", () => {
     ).toBe(false);
   });
 
+  it("an empty answer needs a reason that explains the emptiness; a generic missing entry is not one", () => {
+    const g3 = queryById("G3");
+    const noFilters = (extra: Partial<AnswerLike>) =>
+      answerLike({
+        outcome: "empty_in_scope",
+        plan: {
+          intent: "find_permits",
+          area: { radiusMi: 5, resolved: { name: "Manor city" } },
+          filters: {},
+          unsupported: [],
+        },
+        counts: { matched: 0, shown: 0, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+        ...extra,
+      });
+    // only the always-present "coordinates" entry: not an explanation
+    const generic = noFilters({ missing: [{ field: "coordinates", reason: "no_coordinates" }] });
+    expect(evaluateQuery(g3, generic, okCtx).pass).toBe(false);
+    // a status/threshold filter in the plan explains it
+    const withFilter = noFilters({
+      plan: { ...generic.plan, filters: { statusClass: ["open"], openYearsMin: 5 } },
+      missing: [{ field: "coordinates", reason: "no_coordinates" }],
+    });
+    expect(evaluateQuery(g3, withFilter, okCtx).pass).toBe(true);
+    // an unsupported entry explains it
+    const withUnsupported = noFilters({
+      plan: { ...generic.plan, unsupported: [{ constraint: "x", reason: "not_in_export" }] },
+    });
+    expect(evaluateQuery(g3, withUnsupported, okCtx).pass).toBe(true);
+    // rows excluded for no roof date explain it
+    const noRoof = noFilters({
+      counts: { matched: 0, shown: 0, excludedNoCoordinates: 0, excludedNoRoofDate: 47269 },
+    });
+    expect(honestEmptyFailures(noRoof)).toEqual([]);
+  });
+
   it("an honest empty about the wrong place fails (G3 must be about Manor)", () => {
     const g3 = queryById("G3");
     const about = (name?: string) =>

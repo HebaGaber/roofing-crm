@@ -43,6 +43,7 @@ export interface AnswerLike {
       readonly resolved?: { readonly name: string } | undefined;
     };
     readonly filters: {
+      readonly tenureYearsMin?: number | undefined;
       readonly roofAgeMinYears?: number | undefined;
       readonly openYearsMin?: number | undefined;
       readonly statusClass?: readonly string[] | undefined;
@@ -128,13 +129,17 @@ export function honestEmptyFailures(answer: AnswerLike): string[] {
   if (answer.citations.length > 0) failures.push("an empty answer carries citations");
   if ((answer.rows?.length ?? 0) > 0) failures.push("an empty answer carries rows");
   if (answer.counts.matched !== 0) failures.push("an empty answer reports matched > 0");
+  // Only a reason that explains the emptiness counts: a generic missing entry (for example
+  // "coordinates") is attached to nearly every answer and explains nothing.
+  const f = answer.plan.filters;
   const stated =
     answer.outcome === "field_not_published"
-      ? answer.plan.unsupported.length > 0 || answer.missing.length > 0
+      ? answer.plan.unsupported.length > 0
       : answer.counts.excludedNoRoofDate > 0 ||
-        answer.counts.excludedNoCoordinates > 0 ||
-        answer.missing.length > 0 ||
-        answer.plan.filters.roofAgeMinYears === undefined;
+        answer.plan.unsupported.length > 0 ||
+        f.statusClass !== undefined ||
+        f.openYearsMin !== undefined ||
+        f.roofAgeMinYears !== undefined;
   if (!stated) failures.push("an empty answer states no count or reason for the emptiness");
   return failures;
 }
