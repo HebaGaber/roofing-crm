@@ -21,7 +21,7 @@ test.use({ storageState: AUTH_STATE_PATH });
 
 async function gotoLeadsList(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/leads");
-  await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
   await page.evaluate(() => document.fonts.ready);
 }
 
@@ -106,7 +106,7 @@ test.describe("Responsive design: LeadDetail screen", () => {
     test.skip((await firstCard.count()) === 0, "No lead exists yet on the deployed index");
 
     await firstCard.click();
-    await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+    await expect(page.locator("#lead-title")).toBeVisible(); // not "any h2": the desktop layout keeps the Leads list pane beside the lead
     await page.evaluate(() => document.fonts.ready);
 
     const { scrollWidth, clientWidth } = await page.evaluate(() => ({

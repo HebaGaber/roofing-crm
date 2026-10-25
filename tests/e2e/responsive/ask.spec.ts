@@ -40,7 +40,7 @@ async function gotoAsk(page: Page): Promise<void> {
 
 async function ask(page: Page, question: string): Promise<void> {
   await page.getByLabel("Question").fill(question);
-  await page.getByRole("button", { name: "Ask" }).click();
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
 }
 
 /** Waits for a terminal state. Returns the state, accepting `throttled` as honest: in that case
@@ -159,7 +159,8 @@ test.describe("Responsive design: Ask screen", () => {
     const state = await settledState(page, /out_of_scope/);
     const heading = page.locator("#ask-result-heading");
     await expect(heading).toBeFocused();
-    await expect(page.getByRole("status")).toHaveText(await heading.innerText());
+    // Scoped to the Ask panel: the map beside it has its own status chip (a second role=status).
+    await expect(root.getByRole("status")).toHaveText(await heading.innerText());
     if (state === "out_of_scope") {
       await expect(page.getByText(/is outside the area this CRM covers/)).toBeVisible();
     } else {

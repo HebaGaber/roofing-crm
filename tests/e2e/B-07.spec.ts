@@ -25,6 +25,13 @@ import { expect, test, type APIResponse, type Locator, type Page } from "@playwr
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
 import {
+  LEAD_FIXTURES,
+  LEADS_AREA,
+  OLD_MANIFEST_CID,
+  FIXTURES_MANIFEST_CID,
+  STALE_REQUEST_ID,
+} from "./lib/run-fixtures.js";
+import {
   awsCredentialsAvailable,
   createLeadsCleanup,
   type LeadsCleanup,
@@ -32,19 +39,25 @@ import {
 
 /** A saved note shows once the save and the page's refetch complete. */
 const NOTE_VISIBLE_MS = 15_000;
+/** A radius filter makes the lead list wait for the index, which can take several seconds. */
+const FILTERED_LIST_MS = 30_000;
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
 const CLEANUP_AFTER = process.env.CRM_E2E_CLEANUP === "1";
 
-// testplans/B-07-test-cases.md § 5 (real records, confirmed live).
-const P_5_52 = "baguqeera6sd3t5tdfy7xzfaycmcggimk6nzqv7prlcwvbqebohurx37cnpha";
-const P_AGE48 = "baguqeerakmixkpatzw4wbiqtxcqbewecmgrzcw3j4vcm3skbe7zofycy5daq";
-const P_5_89 = "baguqeeraowktgtrrqrvysxggav2z6sxl5jzy4y5ql43c4ye5mivxphj7p3na";
-const MANIFEST_CID = "bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i";
-/** A published manifest that is NOT the served one, and a request identifier absent from the index. */
-const OLD_MANIFEST_CID = "bafkreiddef7ssybq6m4wpmah7adposaxbiawaxcmqndzk36wyhd7k4h6gu";
-const STALE_REQUEST_ID = "B07STALE";
+// Real Austin properties of Run 2 (tests/e2e/lib/run-fixtures.ts says how each was read). The old
+// names are kept so the case bodies read as before: P_5_52 = the property with an open permit,
+// P_AGE48 = roof age only (no open permit), P_5_89 = the third.
+const P_5_52 = LEAD_FIXTURES.openPermit.cid;
+const P_AGE48 = LEAD_FIXTURES.roofOnly.cid;
+const P_5_89 = LEAD_FIXTURES.third.cid;
+const MANIFEST_CID = FIXTURES_MANIFEST_CID;
+const FIXTURE_IDS: Record<string, string> = {
+  [P_5_52]: LEAD_FIXTURES.openPermit.requestIdentifier,
+  [P_AGE48]: LEAD_FIXTURES.roofOnly.requestIdentifier,
+  [P_5_89]: LEAD_FIXTURES.third.requestIdentifier,
+};
 
 /** The lead page shows the roof-age basis in words (apps/web/src/format/labels.ts). */
 const BASIS_LABEL: Record<string, string> = {
@@ -54,7 +67,7 @@ const BASIS_LABEL: Record<string, string> = {
   unknown: "Basis unknown",
 };
 const TRAVIS_FIPS = "48453";
-const ROUND_ROCK = { lat: 30.5083, lng: -97.6789 };
+const AREA_CENTRE = LEADS_AREA;
 /** Prefix for every note this suite writes, so one run can be told apart from another. */
 const RUN_TAG = `B07-${new Date().toISOString().replace(/\D/g, "").slice(0, 14)}-`;
 
@@ -125,6 +138,12 @@ async function loadFacts(page: Page, cid: string): Promise<Facts> {
     permits: { statusClass: string | null; permitNumber: string | null; openDays: number | null }[];
   }>(page, "property.get", { propertyCid: cid });
   const p = data.property;
+  const expectedId = FIXTURE_IDS[cid];
+  if (p !== null && expectedId !== undefined && p.requestIdentifier !== expectedId) {
+    throw new Error(
+      `fixture drift: ${cid} now has request identifier ${p.requestIdentifier}, expected ${expectedId} (re-read tests/e2e/lib/run-fixtures.ts)`,
+    );
+  }
   const open = data.permits.find((permit) => permit.statusClass === "open");
   if (p === null || p.latitude === null || p.longitude === null) {
     throw new Error(`property ${cid} is not in the served run or has no location`);
@@ -314,7 +333,7 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-001 create lead from property drawer", async ({ page }) => {
     const f = factsOf(P_5_52);
     const drawer = await openDrawer(page, P_5_52);
-    await expect(drawer.locator('[data-field="roof_age_years"]')).toHaveText(
+    await expect(drawer.locator('dd[data-field="roof_age_years"]')).toHaveText(
       `${f.roofAgeYears} yrs`,
     );
     const state = await createFromDrawer(drawer);
@@ -570,14 +589,14 @@ test.describe("B-07 leads", () => {
     await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
     await expect(drawer.getByRole("status")).toContainText(/Lead created|Already a lead/);
 
-    // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of Round Rock).
+    // Expected set from the index itself (roof >= 20, an open permit, <= 10 mi of the Central Austin area centre).
     const expected = [P_5_52, P_AGE48, P_5_89]
       .map(factsOf)
       .filter(
         (f) =>
           (f.roofAgeYears ?? 0) >= 20 &&
           f.hasOpenPermit &&
-          milesBetween(ROUND_ROCK, { lat: f.latitude, lng: f.longitude }) <= 10,
+          milesBetween(AREA_CENTRE, { lat: f.latitude, lng: f.longitude }) <= 10,
       );
 
     await page.goto("/leads");
@@ -590,13 +609,16 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await setLeadArea(page, ROUND_ROCK.lat, ROUND_ROCK.lng, "10");
+    await setLeadArea(page, AREA_CENTRE.lat, AREA_CENTRE.lng, "10");
 
     if (expected.length === 0) {
-      await expect(page.getByText("No leads match these filters")).toBeVisible();
+      await expect(page.getByText("No leads match these filters")).toBeVisible({
+        timeout: FILTERED_LIST_MS,
+      });
     } else {
       await expect(leadCount(page)).toHaveText(
         `${expected.length} ${expected.length === 1 ? "lead" : "leads"}`,
+        { timeout: FILTERED_LIST_MS },
       );
       for (const f of expected) await expect(leadLink(page, f)).toHaveCount(1);
     }
@@ -622,20 +644,20 @@ test.describe("B-07 leads", () => {
       .getByRole("group", { name: "Permit status" })
       .getByRole("button", { name: "Open" })
       .click();
-    await setLeadArea(page, ROUND_ROCK.lat, ROUND_ROCK.lng, "10");
+    await setLeadArea(page, AREA_CENTRE.lat, AREA_CENTRE.lng, "10");
     await expect(page).toHaveURL(/roof=20/);
     const url = new URL(page.url());
     for (const [key, value] of [
       ["roof", "20"],
       ["permit", "open"],
-      ["lat", String(ROUND_ROCK.lat)],
-      ["lng", String(ROUND_ROCK.lng)],
+      ["lat", String(AREA_CENTRE.lat)],
+      ["lng", String(AREA_CENTRE.lng)],
       ["r", "10"],
     ] as const) {
       expect(url.searchParams.get(key), `URL param ${key}`).toBe(value);
     }
     const countText = await leadCount(page)
-      .textContent({ timeout: 5_000 })
+      .textContent({ timeout: FILTERED_LIST_MS })
       .catch(() => null);
 
     // A second, fresh browser context stands in for "a new private window".
@@ -658,9 +680,11 @@ test.describe("B-07 leads", () => {
       ).toHaveAttribute("aria-pressed", "true");
       await expect(second.getByLabel("Radius, mi")).toHaveValue("10");
       if (countText === null) {
-        await expect(second.getByText("No leads match these filters")).toBeVisible();
+        await expect(second.getByText("No leads match these filters")).toBeVisible({
+          timeout: FILTERED_LIST_MS,
+        });
       } else {
-        await expect(leadCount(second)).toHaveText(countText);
+        await expect(leadCount(second)).toHaveText(countText, { timeout: FILTERED_LIST_MS });
       }
       await shot(second, "012", "reopened");
     } finally {
@@ -671,7 +695,7 @@ test.describe("B-07 leads", () => {
   test("B-07-TC-013 no-match state", async ({ page }) => {
     // 60 yr is not a chip, so the combination is set through the URL (the same state the chips write).
     await page.goto(
-      `/leads?roof=60&permit=closed&lat=${ROUND_ROCK.lat}&lng=${ROUND_ROCK.lng}&r=0.5`,
+      `/leads?roof=60&permit=closed&lat=${AREA_CENTRE.lat}&lng=${AREA_CENTRE.lng}&r=0.5`,
     );
     await expect(page.getByText("No leads match these filters")).toBeVisible();
     await expect(page.getByRole("alert")).toHaveCount(0);

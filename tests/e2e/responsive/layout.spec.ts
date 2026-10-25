@@ -9,6 +9,7 @@
 // or signed out (the Sign out control is shown, never pressed). Read-only browsing as the seeded
 // admin with the saved session; runs in the parallel phase.
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { LAYOUT_SEARCH_PATH } from "../lib/run-fixtures.js";
 import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "../lib/auth.js";
 
 test.use({ storageState: AUTH_STATE_PATH });
@@ -19,13 +20,13 @@ type DrawerLayout = "side" | "full";
 interface Layout {
   /** Primary navigation: bottom bar below 600 px, rail from 600 px (AppShell.module.css). */
   readonly nav: "bottom" | "rail";
-  /** Map screen: three panes from 840 px, map plus results bottom sheet below (Map.module.css). */
+  /** Map screen: three panes from 1280 px, map plus results sheet below (Map.module.css, ResultsSheet.module.css). */
   readonly map: MapLayout;
-  /** Property drawer: side sheet from 840 px, full-height sheet below. */
+  /** Property drawer: side sheet in the three-pane layout (from 1280 px), full-height sheet below. */
   readonly drawer: DrawerLayout;
   /** Leads filters: a sheet behind a Filters button below 600 px, inline from 600 px. */
   readonly leadsFilters: "sheet" | "inline";
-  /** Top bar: the county label and the long data text need 840 px; below, the chip is short. */
+  /** Top bar: the county label and the long data text need 840 px; below, the chip is short (the top bar keeps its own 840 px break). */
   readonly topBar: "compact" | "full";
 }
 
@@ -61,11 +62,13 @@ const DESIGN = {
   drawerMaxWidth: 480,
   /** On a sheet layout the map should own at least half of the window's height. */
   mapMinHeightShare: 0.5,
+  /** At 1024 px (below the 1280 px three-pane break) the map must keep at least this width. */
+  mapMinWidthAt1024: 520,
 } as const;
 
-/** A Travis County pin with properties within the radius on the sample slice
- *  (testplans/B-03-test-cases.md § 5) and on the full county alike. */
-const SEARCH_PATH = "/?lat=30.4394&lng=-97.62&r=10";
+/** An east Travis County pin that has result rows under Run 2 at 3 mi and answers in about 2 s;
+ *  see lib/run-fixtures.ts for how it was read. */
+const SEARCH_PATH = LAYOUT_SEARCH_PATH;
 
 /** ISO date-times and snake_case codes must never reach the screen (design-review-log row 68). */
 const RAW_ISO = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
@@ -127,7 +130,11 @@ const shell = (page: Page) => ({
 const mapScreen = (page: Page) => ({
   region: page.locator('[data-route="map"]'),
   canvas: page.getByTestId("crm-map"),
-  filters: page.locator('[data-route="map"]').getByRole("dialog", { name: "Filters" }),
+  // A pane (role region) from 1280 px, a sheet (role dialog, closed until opened) below.
+  filters: page
+    .locator('[data-route="map"]')
+    .getByRole("region", { name: "Filters" })
+    .or(page.locator('[data-route="map"]').getByRole("dialog", { name: "Filters" })),
   results: page.getByRole("region", { name: "Results", exact: true }),
   handle: page.getByRole("button", { name: /results sheet/ }),
   firstRow: page.locator("[data-result-row]").first(),
@@ -190,7 +197,7 @@ test.describe("Layout: Map screen", () => {
   test("desktop: filters left, map centre, results right, all in the first viewport, no overlap", async ({
     page,
   }, testInfo) => {
-    test.skip(layoutFor(testInfo.project.name).map !== "panes", "three panes from 840 px only");
+    test.skip(layoutFor(testInfo.project.name).map !== "panes", "three panes from 1280 px only");
     const screen = mapScreen(page);
     const filters = await ensureBox(screen.filters);
     const canvas = await ensureBox(screen.canvas);
@@ -223,7 +230,7 @@ test.describe("Layout: Map screen", () => {
   test("compact and medium: the map fills the width under the toolbar, the results handle is in view", async ({
     page,
   }, testInfo) => {
-    test.skip(layoutFor(testInfo.project.name).map !== "sheet", "bottom sheet below 840 px only");
+    test.skip(layoutFor(testInfo.project.name).map !== "sheet", "results sheet below 1280 px only");
     const screen = mapScreen(page);
     const region = await ensureBox(screen.region);
     const canvas = await ensureBox(screen.canvas);
@@ -250,6 +257,29 @@ test.describe("Layout: Map screen", () => {
     expect(bottom(handle), "the handle is above the bottom of the map").toBeLessThanOrEqual(
       bottom(region) + DESIGN.edge,
     );
+  });
+
+  test("1024 px: the map keeps at least 520 px of width next to the rail, the results stay a sheet", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-1440", "one extra width, checked once");
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await ready(page);
+    const screen = mapScreen(page);
+    await expect(screen.canvas).toBeVisible();
+    const canvas = await ensureBox(screen.canvas);
+    expect(canvas.width, "the map keeps its working width at 1024 px").toBeGreaterThanOrEqual(
+      DESIGN.mapMinWidthAt1024,
+    );
+    expect(await screen.filters.isVisible(), "no filters pane squeezes the map below 1280 px").toBe(
+      false,
+    );
+    await expect(screen.handle).toBeVisible();
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth, "no horizontal overflow at 1024 px").toBeLessThanOrEqual(clientWidth);
   });
 
   test("opening a result shows the property drawer in the shape this width owns", async ({
@@ -374,8 +404,11 @@ test.describe("Layout: app shell", () => {
 test.describe("Layout: Leads filters", () => {
   test.beforeEach(async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
-    await page.goto("/leads");
-    await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
+    // With filters in the URL the panel is shown whether or not this user has leads (with no
+    // leads at all and no filter, the page shows "No leads yet" and hides the panel by design), so
+    // the layout check does not depend on what other specs have created.
+    await page.goto("/leads?roof=20&permit=open");
+    await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
     await ready(page);
   });
 
@@ -411,7 +444,7 @@ test.describe("Layout: top bar below 840 px and the open Coming-soon page", () =
   test.beforeEach(async ({ page }) => {
     test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     await page.goto("/leads");
-    await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
     await ready(page);
   });
 
@@ -424,18 +457,22 @@ test.describe("Layout: top bar below 840 px and the open Coming-soon page", () =
     const account = bar.getByRole("button", { name: "Account" });
     const county = bar.locator("[data-county]");
     await expect(chip).toBeVisible();
+    // The label depends on the run being read, so wait for it before judging what the chip shows.
+    await expect(chip).toHaveAttribute("data-state", "ready");
 
     if (layout.topBar === "compact") {
       await expect(county, "county label is dropped below 840 px").toBeHidden();
       // The chip reads like "Run 3" or "Data", never the long "Data: CountyLens run ..." text.
-      await expect(chip).not.toContainText("CountyLens");
+      // Visible text only: the long label stays in the DOM, hidden, for the accessible name.
+      await expect(chip).not.toContainText("CountyLens", { useInnerText: true });
       await expect(chip, "the full run stays in the tooltip").toHaveAttribute(
         "title",
         /CountyLens/,
       );
     } else {
       await expect(county).toBeVisible();
-      await expect(chip).toContainText("CountyLens");
+      // The wide chip names the run in words ("Run 24 Oct 2026", earlier "Data: CountyLens run ...").
+      await expect(chip).toContainText(/run/i, { useInnerText: true });
     }
 
     const chipBox = await ensureBox(chip);
