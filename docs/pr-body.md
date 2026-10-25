@@ -12,7 +12,7 @@ A Roofing CRM that turns published Travis County property and permit data into r
 | --- | --- |
 | Runtime (all five stories) | **https://crm.aldarraj.com** (Amplify, `eu-north-1`; certificate issued by Amazon, DNS at Namecheap). The build it serves is named at `/build.json`. Branch preview of the story branch: https://009-agent-hardening.d1zmhc6kkyzsbe.amplifyapp.com |
 | Test credentials | Username `admin@roofing-crm.test`. The password is in AWS Secrets Manager (`roofing-crm/admin-user`, `eu-north-1`) and is shared privately with the assessor, never in this PR |
-| Demo video | Not recorded yet (release step, listed in [`docs/pending-items.md`](docs/pending-items.md)) |
+| Demo video | Not recorded yet (release step, listed in [`docs/pending-items.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/pending-items.md)) |
 | Data source (Task A) | Run 2 manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` (441,961 properties, 15,025 roofing permits equal to Task A's `permits_emitted`). The sync reads the manifest named by `DATA_MANIFEST_CID`, checks every part's SHA-256 against it, and promotes the index only if the checks pass. Requests never go to Task A at run time |
 | CI | GitHub Actions runs on the fork, so they do not appear in this PR's checks list: [all runs on `feature/roofing-crm`](https://github.com/HebaGaber/roofing-crm/actions?query=branch%3Afeature%2Froofing-crm). The last full run on the story branch (lint, type-check, unit tests, secret scan, and Playwright on the hosted URL: 152 passed in the parallel phase, 80 in the isolated phase, 0 failed) is [40167849532](https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532) |
 
@@ -20,14 +20,14 @@ A Roofing CRM that turns published Travis County property and permit data into r
 
 | Point | Story | Status | Evidence |
 | --- | --- | --- | --- |
-| B1 Location search | B-01, B-03 | Built and proven | [`docs/evidence/B-01.md`](docs/evidence/B-01.md), [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
-| B2 Aged-roof leads | B-02, B-03 | Built and proven. On Run 2 only about 2 % of properties have a roof age (Task A leaves `structure.roof_date` empty), and the app says so | [`docs/evidence/B-02.md`](docs/evidence/B-02.md), [`docs/evidence/B-03.md`](docs/evidence/B-03.md), [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
-| B3 Open permits, contractor, BBB | B-02, B-03 | Built and proven; contractor name and BBB rating show "not published / not available" with a reason because Run 2 carries none | [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
-| B4 CRM leads (create, no duplicates, status, notes) | B-07 | Built and proven: 20 of 20 executed cases pass; 20 concurrent creates give exactly 1 lead; lead creation, bulk create and Undo also work from the agent | [`docs/evidence/B-07.md`](docs/evidence/B-07.md), [`docs/reports/TR-B-07.md`](docs/reports/TR-B-07.md) |
-| B5 RAG agent | B-09 | Built and proven on Run 2: golden queries G1 to G7 and A1 to A5 pass (several as honest answers, for example "owner location is not published"); every cited row was checked against the index; p95 11.5 s on the timed asks | [`docs/evidence/B-09.md`](docs/evidence/B-09.md), [`docs/reports/TR-B-09.md`](docs/reports/TR-B-09.md) |
-| B6 Candidate list, combined filters, scale, responsive, observable | B-07, B-09, B-01 | List and filters proven on the full county; radius searches take about 1 s at p50 and 1.3 s at p95 (6 to 25 mi); responsive checks at 360, 390, 600, 768, 1280 and 1440 px; DLQ alarm fired and recovered. The test cases that are not proven are listed in Known gaps | [`docs/evidence/B-07.md`](docs/evidence/B-07.md), [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
+| B1 Location search | B-01, B-03 | Built and proven | [`docs/evidence/B-01.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-01.md), [`docs/evidence/B-03.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-03.md) |
+| B2 Aged-roof leads | B-02, B-03 | Built and proven. On Run 2 only about 2 % of properties have a roof age (Task A leaves `structure.roof_date` empty), and the app says so | [`docs/evidence/B-02.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-02.md), [`docs/evidence/B-03.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-03.md), [`docs/evidence/B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-09.md) |
+| B3 Open permits, contractor, BBB | B-02, B-03 | Built and proven; contractor name and BBB rating show "not published / not available" with a reason because Run 2 carries none | [`docs/evidence/B-03.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-03.md) |
+| B4 CRM leads (create, no duplicates, status, notes) | B-07 | Built and proven: 20 of 20 executed cases pass; 20 concurrent creates give exactly 1 lead; lead creation, bulk create and Undo also work from the agent | [`docs/evidence/B-07.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-07.md), [`docs/reports/TR-B-07.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reports/TR-B-07.md) |
+| B5 RAG agent | B-09 | Built and proven on Run 2: golden queries G1 to G7 and A1 to A5 pass (several as honest answers, for example "owner location is not published"); every cited row was checked against the index; p95 11.5 s on the timed asks | [`docs/evidence/B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-09.md), [`docs/reports/TR-B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reports/TR-B-09.md) |
+| B6 Candidate list, combined filters, scale, responsive, observable | B-07, B-09, B-01 | List and filters proven on the full county; radius searches take about 1 s at p50 and 1.3 s at p95 (6 to 25 mi); responsive checks at 360, 390, 600, 768, 1280 and 1440 px; DLQ alarm fired and recovered. The test cases that are not proven are listed in Known gaps | [`docs/evidence/B-07.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-07.md), [`docs/evidence/B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-09.md) |
 
-The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/traceability.md).
+The README criterion-by-criterion matrix is [`docs/traceability.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/traceability.md).
 
 ## Story status
 
@@ -43,15 +43,15 @@ The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/tracea
 
 | What | Result |
 | --- | --- |
-| Unit and integration tests | 1,743 passed, 0 failed across 179 test files; new code at or above 80 % coverage ([`docs/reports/UT-B-09.md`](docs/reports/UT-B-09.md)) |
+| Unit and integration tests | 1,743 passed, 0 failed across 179 test files; new code at or above 80 % coverage ([`docs/reports/UT-B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reports/UT-B-09.md)) |
 | Hosted end-to-end, mobile 390 / tablet 768 / desktop 1440 | 152 passed in the parallel phase and 80 in the isolated phase, 0 failed (run 40167849532); fixtures are tied to Run 2 and a fixture-validity spec fails with refresh steps if the served data changes |
-| Golden queries on the deployed agent | G1 to G7 and A1 to A5 pass on Run 2 after six passes; latency p95 11.5 s on 7 timed asks; the details and the answers that are honest empties are in [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
-| Code review | B-09 final re-score: `alakazam` 84, `ash` 87, `metagross` 88, `audino` 82, `porygon` 84, plus `/code-review medium` on the final code (8 follow-ups, none Critical); no open Critical ([`docs/reviews/CR-B-09.md`](docs/reviews/CR-B-09.md)) |
-| Defects | Every recorded defect is closed ([`docs/defects/`](docs/defects/)). Found only on the live stack and fixed in this round: lead Undo failed on the real table (a DynamoDB reserved word), the agent could not check or propose leads (lead repository missing from the Lambda context), the sync failed on a result-size limit, and whole-county searches ran out of memory |
+| Golden queries on the deployed agent | G1 to G7 and A1 to A5 pass on Run 2 after six passes; latency p95 11.5 s on 7 timed asks; the details and the answers that are honest empties are in [`docs/evidence/B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/evidence/B-09.md) |
+| Code review | B-09 final re-score: `alakazam` 84, `ash` 87, `metagross` 88, `audino` 82, `porygon` 84, plus `/code-review medium` on the final code (8 follow-ups, none Critical); no open Critical ([`docs/reviews/CR-B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reviews/CR-B-09.md)) |
+| Defects | Every recorded defect is closed ([`docs/defects/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/defects/)). Found only on the live stack and fixed in this round: lead Undo failed on the real table (a DynamoDB reserved word), the agent could not check or propose leads (lead repository missing from the Lambda context), the sync failed on a result-size limit, and whole-county searches ran out of memory |
 
 ## Architecture
 
-Decided and approved at G3: [`docs/architecture-constitution.md`](docs/architecture-constitution.md). Search runs in DuckDB over a CRM-owned Parquet index built by a Step Functions sync from Task A's published data; leads live in DynamoDB with a conditional-write transaction that refuses duplicates (key `{fips}:tcad:{request_identifier}`).
+Decided and approved at G3: [`docs/architecture-constitution.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/architecture-constitution.md). Search runs in DuckDB over a CRM-owned Parquet index built by a Step Functions sync from Task A's published data; leads live in DynamoDB with a conditional-write transaction that refuses duplicates (key `{fips}:tcad:{request_identifier}`).
 
 Golden Path: TypeScript · CDK (region from config; demo in `eu-north-1` because the demo AWS project is region-locked, company default `us-east-2`) · Turborepo · tRPC + Zod · Vercel AI SDK · Powertools + X-Ray · Vitest + Playwright in GitHub Actions.
 
@@ -59,32 +59,32 @@ Golden Path: TypeScript · CDK (region from config; demo in `eu-north-1` because
 
 | What | Where |
 | --- | --- |
-| Vision, feature list, plan, architecture (G0 to G3, approved) | [`docs/01-intent.md`](docs/01-intent.md), [`docs/feature-list.md`](docs/feature-list.md), [`docs/plan.md`](docs/plan.md), [`docs/architecture-constitution.md`](docs/architecture-constitution.md) |
-| Gate log | [`docs/traceability.md`](docs/traceability.md) § 3, pre-checks in [`docs/gates/`](docs/gates/) |
-| Story progress and git graph | [`docs/progress.md`](docs/progress.md) |
-| Test cases and execution reports | [`testplans/`](testplans/), [`docs/reports/`](docs/reports/) |
-| Code review logs and defects | [`docs/reviews/`](docs/reviews/), [`docs/defects/`](docs/defects/) |
-| Per-story evidence | [`docs/evidence/`](docs/evidence/) |
+| Vision, feature list, plan, architecture (G0 to G3, approved) | [`docs/01-intent.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/01-intent.md), [`docs/feature-list.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/feature-list.md), [`docs/plan.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/plan.md), [`docs/architecture-constitution.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/architecture-constitution.md) |
+| Gate log | [`docs/traceability.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/traceability.md) § 3, pre-checks in [`docs/gates/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/gates/) |
+| Story progress and git graph | [`docs/progress.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/progress.md) |
+| Test cases and execution reports | [`testplans/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/testplans/), [`docs/reports/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/reports/) |
+| Code review logs and defects | [`docs/reviews/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/reviews/), [`docs/defects/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/defects/) |
+| Per-story evidence | [`docs/evidence/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/evidence/) |
 
 ## Kit usage
 
-See [`docs/kit-usage.md`](docs/kit-usage.md).
+See [`docs/kit-usage.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/kit-usage.md).
 
 ## Known gaps
 
-Every recorded gap, with its cause and what closes it, is in [`specs/007-leads/known-gaps.md`](specs/007-leads/known-gaps.md) and [`docs/pending-items.md`](docs/pending-items.md). The ones that matter most:
+Every recorded gap, with its cause and what closes it, is in [`specs/007-leads/known-gaps.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/specs/007-leads/known-gaps.md) and [`docs/pending-items.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/pending-items.md). The ones that matter most:
 
 | Gap | Why | Next step |
 | --- | --- | --- |
 | Demo video and self-score | Not recorded or written yet | Release steps R1 to R7 on the follow-up branch |
-| Test cases not proven (9 of 33 in B-09): TC-002 Open on map, TC-017 throttled and paused states at three widths, TC-019b, TC-024 timeout state in the browser, TC-NF-01 as specified (39 asks times 3 repeats; run once per query), and four design sign-offs | Approved as exceptions by the PO on 2026-10-25 | Listed in [`docs/reports/TR-B-09.md`](docs/reports/TR-B-09.md) |
+| Test cases not proven (9 of 33 in B-09): TC-002 Open on map, TC-017 throttled and paused states at three widths, TC-019b, TC-024 timeout state in the browser, TC-NF-01 as specified (39 asks times 3 repeats; run once per query), and four design sign-offs | Approved as exceptions by the PO on 2026-10-25 | Listed in [`docs/reports/TR-B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reports/TR-B-09.md) |
 | Task A data gaps in Run 2: roof date empty (only about 2 % of properties have a roof age), owner location and tenure largely missing, 51,900 properties without coordinates, no contractors or BBB | Task A's published data | Reported to the Task A session; the app shows "not published" with a reason, and the agent says so instead of guessing (golden query G4) |
-| Final code review follow-ups (8): query timeout shares one database connection, four index methods without a time limit, and smaller items | Found by `/code-review medium` on the final code; none Critical | [`docs/reviews/CR-B-09.md`](docs/reviews/CR-B-09.md), [`docs/pending-items.md`](docs/pending-items.md) |
+| Final code review follow-ups (8): query timeout shares one database connection, four index methods without a time limit, and smaller items | Found by `/code-review medium` on the final code; none Critical | [`docs/reviews/CR-B-09.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/reviews/CR-B-09.md), [`docs/pending-items.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/pending-items.md) |
 | Scale: AC-4 at 50+ leads and list-load timing with 50+ leads | Decided by the PO as deferred, not passed; the full county is now loaded, so these can be run | Run them on the follow-up branch |
 | `leads.create` trusts the property details the client sends; no per-lead ownership checks | Not decided or built yet | The follow-up story |
 | No street address, contractor name or BBB rating in Run 2 | Task A's published data carries none | Shown as "not available" with a reason; fills in when Task A publishes them |
-| CI reaches AWS with a long-lived access key of a narrowly scoped IAM user (`crm-ci`) | The organization policy blocks the GitHub-to-AWS role, so OIDC is not possible | The key can only read and delete test leads and publish metrics; it is retired after the final CI run (listed in [`docs/pending-items.md`](docs/pending-items.md)) |
-| Run 3 handling and the release steps R1 to R7 (self-score, demo video, marking the PR ready) | Moved out of B-09 by the PO; the app serves Task A's Run 2 | Listed with their steps in [`docs/pending-items.md`](docs/pending-items.md), for the follow-up branch |
+| CI reaches AWS with a long-lived access key of a narrowly scoped IAM user (`crm-ci`) | The organization policy blocks the GitHub-to-AWS role, so OIDC is not possible | The key can only read and delete test leads and publish metrics; it is retired after the final CI run (listed in [`docs/pending-items.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/pending-items.md)) |
+| Run 3 handling and the release steps R1 to R7 (self-score, demo video, marking the PR ready) | Moved out of B-09 by the PO; the app serves Task A's Run 2 | Listed with their steps in [`docs/pending-items.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/pending-items.md), for the follow-up branch |
 | Incremental Task A runs (Run 3+) are not followed yet | Task A publishes only changed data groups per run, linked by `previousManifestCid`; the sync reads one manifest, so a delta-only run is held and the CRM stays on the last good run | Deferred by the PO: chain-following ships as an update after Tasks A and B, with the "coming soon" sections |
 | Lambda concurrency is 10 on this Free-plan account | Raising it needs a paid plan | The 20-concurrent-create test retries throttled calls and still proves exactly one winner |
 
