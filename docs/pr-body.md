@@ -1,31 +1,31 @@
-# Roofing CRM, Travis County TX: four of five stories built and proven on a hosted URL
+# Roofing CRM, Travis County TX: all five stories built and proven on a hosted URL
 
-> **Draft.** Stories B-01, B-02, B-03 and B-07 are built, reviewed and merged (`--no-ff`, one merge per story). **B-09 (the source-backed agent) is not started**, and there is no demo video yet. Not ready for final review.
+> **Draft.** Stories B-01, B-02, B-03, B-07 and B-09 are built, reviewed and merged (`--no-ff`, one merge per story). The app serves Task A's full-county Run 2 at **https://crm.aldarraj.com**. Still to do before this is ready for final review: the demo video, the self-score, and Task A's Run 3 (see Known gaps).
 
-## Outcome so far
+## Outcome
 
-A Roofing CRM that turns published Travis County property and permit data into roofing leads: a map with radius search, aged-roof and open-permit filters, saved leads with status and notes, and a browsable lead list. Every value comes from the Oracle task's (Task A's) published CIDs, with provenance; a missing value says why. Live at **https://crm.aldarraj.com** on real published data (14 properties, 35 permits).
+A Roofing CRM that turns published Travis County property and permit data into roofing leads: a three-pane map with radius search, aged-roof and open-permit filters, a county overview, saved leads with status and notes, a browsable candidate and lead list, and an AI agent inside the map that answers plain-language questions with numbered, verified citations. Every value comes from the Oracle task's (Task A's) published CIDs, with provenance; a missing value says why. Live on real published data: **441,961 properties and 15,025 Austin roofing permits** (Task A run `travis-full-run2-20261024`).
 
 ## Links
 
 | What | Where |
 | --- | --- |
-| Runtime (contains B-01, B-02, B-03 and B-07) | **https://crm.aldarraj.com** (Amplify, `eu-north-1`; certificate issued by Amazon, DNS at Namecheap). Fallback: https://feature-roofing-crm.d1zmhc6kkyzsbe.amplifyapp.com, the same build of this PR's branch |
+| Runtime (all five stories) | **https://crm.aldarraj.com** (Amplify, `eu-north-1`; certificate issued by Amazon, DNS at Namecheap). The build it serves is named at `/build.json`. Branch preview of the story branch: https://009-agent-hardening.d1zmhc6kkyzsbe.amplifyapp.com |
 | Test credentials | Username `admin@roofing-crm.test`. The password is in AWS Secrets Manager (`roofing-crm/admin-user`, `eu-north-1`) and is shared privately with the assessor, never in this PR |
-| Demo video | Not recorded yet (release) |
-| Data source (Task A) | Oracle manifest CID `bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsk5i` (run `travis-202609-permits-20261021t103516z`: 35 Austin reroof permits on 14 TCAD parcels). Task A's full-county run (A-11) is not picked up yet: that switch is a later story |
-| CI | GitHub Actions run on the fork, so they do not appear in this PR's checks list: [all runs on `feature/roofing-crm`](https://github.com/HebaGaber/roofing-crm/actions?query=branch%3Afeature%2Froofing-crm), green on this branch: lint, type-check and unit tests; secret scan (gitleaks); and Playwright on the hosted URL (run [40087783428](https://github.com/HebaGaber/roofing-crm/actions/runs/40087783428)) |
+| Demo video | Not recorded yet (release step, listed in [`docs/pending-items.md`](docs/pending-items.md)) |
+| Data source (Task A) | Run 2 manifest CID `bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute` (441,961 properties, 15,025 roofing permits equal to Task A's `permits_emitted`). The sync reads the manifest named by `DATA_MANIFEST_CID`, checks every part's SHA-256 against it, and promotes the index only if the checks pass. Requests never go to Task A at run time |
+| CI | GitHub Actions runs on the fork, so they do not appear in this PR's checks list: [all runs on `feature/roofing-crm`](https://github.com/HebaGaber/roofing-crm/actions?query=branch%3Afeature%2Froofing-crm). The last full run on the story branch (lint, type-check, unit tests, secret scan, and Playwright on the hosted URL: 152 passed in the parallel phase, 80 in the isolated phase, 0 failed) is [40167849532](https://github.com/HebaGaber/roofing-crm/actions/runs/40167849532) |
 
 ## Evaluation points
 
 | Point | Story | Status | Evidence |
 | --- | --- | --- | --- |
 | B1 Location search | B-01, B-03 | Built and proven | [`docs/evidence/B-01.md`](docs/evidence/B-01.md), [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
-| B2 Aged-roof leads | B-02, B-03 | Built and proven on the 14-property sample | [`docs/evidence/B-02.md`](docs/evidence/B-02.md), [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
-| B3 Open permits, contractor, BBB | B-02, B-03 | Built and proven; contractor name and BBB rating show "not published / not available" with a reason because the sample carries none | [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
-| B4 CRM leads (create, no duplicates, status, notes) | B-07 | Built and proven: 20 of 20 executed cases pass; 20 concurrent creates give exactly 1 lead | [`docs/evidence/B-07.md`](docs/evidence/B-07.md), [`docs/reports/TR-B-07.md`](docs/reports/TR-B-07.md) |
-| B5 RAG agent | B-09 | **Not started** | n/a |
-| B6 Candidate list, combined filters, scale | B-07 (lead list), B-01 (disabled roadmap sections) | List and filters proven; **scale (50+ leads) is deferred**, see Known gaps | [`docs/evidence/B-07.md`](docs/evidence/B-07.md) |
+| B2 Aged-roof leads | B-02, B-03 | Built and proven. On Run 2 only about 2 % of properties have a roof age (Task A leaves `structure.roof_date` empty), and the app says so | [`docs/evidence/B-02.md`](docs/evidence/B-02.md), [`docs/evidence/B-03.md`](docs/evidence/B-03.md), [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
+| B3 Open permits, contractor, BBB | B-02, B-03 | Built and proven; contractor name and BBB rating show "not published / not available" with a reason because Run 2 carries none | [`docs/evidence/B-03.md`](docs/evidence/B-03.md) |
+| B4 CRM leads (create, no duplicates, status, notes) | B-07 | Built and proven: 20 of 20 executed cases pass; 20 concurrent creates give exactly 1 lead; lead creation, bulk create and Undo also work from the agent | [`docs/evidence/B-07.md`](docs/evidence/B-07.md), [`docs/reports/TR-B-07.md`](docs/reports/TR-B-07.md) |
+| B5 RAG agent | B-09 | Built and proven on Run 2: golden queries G1 to G7 and A1 to A5 pass (several as honest answers, for example "owner location is not published"); every cited row was checked against the index; p95 11.5 s on the timed asks | [`docs/evidence/B-09.md`](docs/evidence/B-09.md), [`docs/reports/TR-B-09.md`](docs/reports/TR-B-09.md) |
+| B6 Candidate list, combined filters, scale, responsive, observable | B-07, B-09, B-01 | List and filters proven on the full county; radius searches take about 1 s at p50 and 1.3 s at p95 (6 to 25 mi); responsive checks at 360, 390, 600, 768, 1280 and 1440 px; DLQ alarm fired and recovered. The test cases that are not proven are listed in Known gaps | [`docs/evidence/B-07.md`](docs/evidence/B-07.md), [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
 
 The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/traceability.md).
 
@@ -36,18 +36,18 @@ The README criterion-by-criterion matrix is [`docs/traceability.md`](docs/tracea
 | B-01 CRM shell | Done | `fcd6d6a` | G7 |
 | B-02 Lead search index | Done | `d01c06e` | G7 |
 | B-03 Map search (radius, roof age, permits, detail) | Done | `80873e1` | G7 |
-| B-07 Leads and lead list | Done | `8b13240` | G7 approved with exceptions (below) |
-| B-09 Agent and hardening | In progress: built and unit-tested; live proof waits for Task A's Run 2 manifest | n/a | G4, G5 passed; G6 held for Run 2 data |
+| B-07 Leads and lead list | Done | `8b13240` | G7 approved with exceptions |
+| B-09 Agent and hardening | Done | `ab6f520` | G6 and G7 approved with exceptions (below) |
 
 ## Verification
 
 | What | Result |
 | --- | --- |
-| Unit and integration tests | 845 passed, 0 failed, every B-07 lead file at or above 80 % coverage ([`docs/reports/UT-B-07.md`](docs/reports/UT-B-07.md)) |
-| Hosted end-to-end, every story, mobile 390 / tablet 768 / desktop 1440 | 136 passed, 17 skipped (documented), 0 failed |
-| CI on this branch | Green on all three jobs (lint, type-check and unit tests; gitleaks; Playwright on the hosted URL). The logged-in lead tests (B-07) skip on GitHub Actions by design, see Known gaps, and are proven by the hosted run above |
-| Code review | B-07: `metagross` 85, `audino` 86 (both re-scored after fixes), `/code-review medium`; no open Critical ([`docs/reviews/CR-B-07.md`](docs/reviews/CR-B-07.md)) |
-| Defects | 20 recorded and closed for B-07's round ([`docs/defects/`](docs/defects/)), including a real bug found only on the live site (the map covered the "Widen" button on a 1440×900 screen) |
+| Unit and integration tests | 1,743 passed, 0 failed across 179 test files; new code at or above 80 % coverage ([`docs/reports/UT-B-09.md`](docs/reports/UT-B-09.md)) |
+| Hosted end-to-end, mobile 390 / tablet 768 / desktop 1440 | 152 passed in the parallel phase and 80 in the isolated phase, 0 failed (run 40167849532); fixtures are tied to Run 2 and a fixture-validity spec fails with refresh steps if the served data changes |
+| Golden queries on the deployed agent | G1 to G7 and A1 to A5 pass on Run 2 after six passes; latency p95 11.5 s on 7 timed asks; the details and the answers that are honest empties are in [`docs/evidence/B-09.md`](docs/evidence/B-09.md) |
+| Code review | B-09 final re-score: `alakazam` 84, `ash` 87, `metagross` 88, `audino` 82, `porygon` 84, plus `/code-review medium` on the final code (8 follow-ups, none Critical); no open Critical ([`docs/reviews/CR-B-09.md`](docs/reviews/CR-B-09.md)) |
+| Defects | Every recorded defect is closed ([`docs/defects/`](docs/defects/)). Found only on the live stack and fixed in this round: lead Undo failed on the real table (a DynamoDB reserved word), the agent could not check or propose leads (lead repository missing from the Lambda context), the sync failed on a result-size limit, and whole-county searches ran out of memory |
 
 ## Architecture
 
@@ -72,15 +72,20 @@ See [`docs/kit-usage.md`](docs/kit-usage.md).
 
 ## Known gaps
 
-Every recorded gap, with its cause and what closes it, is in [`specs/007-leads/known-gaps.md`](specs/007-leads/known-gaps.md). The ones that matter most:
+Every recorded gap, with its cause and what closes it, is in [`specs/007-leads/known-gaps.md`](specs/007-leads/known-gaps.md) and [`docs/pending-items.md`](docs/pending-items.md). The ones that matter most:
 
 | Gap | Why | Next step |
 | --- | --- | --- |
-| B-09 agent (B5) and the demo video | Not built or recorded yet | B-09, then release |
-| Scale: AC-4 at 50+ leads and list-load timing with 50+ leads (decided by the PO as deferred, not passed) | The sample holds 14 properties; the full county comes with Task A's A-11, whose manifest is not yet verified | A later story: verify the A-11 manifest, re-sync, re-run those cases |
+| Demo video and self-score | Not recorded or written yet | Release steps R1 to R7 on the follow-up branch |
+| Test cases not proven (9 of 33 in B-09): TC-002 Open on map, TC-017 throttled and paused states at three widths, TC-019b, TC-024 timeout state in the browser, TC-NF-01 as specified (39 asks times 3 repeats; run once per query), and four design sign-offs | Approved as exceptions by the PO on 2026-10-25 | Listed in [`docs/reports/TR-B-09.md`](docs/reports/TR-B-09.md) |
+| Task A data gaps in Run 2: roof date empty (only about 2 % of properties have a roof age), owner location and tenure largely missing, 51,900 properties without coordinates, no contractors or BBB | Task A's published data | Reported to the Task A session; the app shows "not published" with a reason, and the agent says so instead of guessing (golden query G4) |
+| Final code review follow-ups (8): query timeout shares one database connection, four index methods without a time limit, and smaller items | Found by `/code-review medium` on the final code; none Critical | [`docs/reviews/CR-B-09.md`](docs/reviews/CR-B-09.md), [`docs/pending-items.md`](docs/pending-items.md) |
+| Scale: AC-4 at 50+ leads and list-load timing with 50+ leads | Decided by the PO as deferred, not passed; the full county is now loaded, so these can be run | Run them on the follow-up branch |
 | `leads.create` trusts the property details the client sends; no per-lead ownership checks | Not decided or built yet | The follow-up story |
-| No street address, contractor name or BBB rating in the sample | Task A's contract v1 publishes none | Shown as "not available" with a reason; fills in when Task A publishes them |
-| B-07's logged-in end-to-end spec does not run on GitHub Actions | CI has no AWS credentials to clear its test leads, and the organization policy blocks the GitHub-to-AWS role | Its proof is the hosted run recorded in `docs/evidence/B-07.md`; revisit if the policy changes |
+| No street address, contractor name or BBB rating in Run 2 | Task A's published data carries none | Shown as "not available" with a reason; fills in when Task A publishes them |
+| CI reaches AWS with a long-lived access key of a narrowly scoped IAM user (`crm-ci`) | The organization policy blocks the GitHub-to-AWS role, so OIDC is not possible | The key can only read and delete test leads and publish metrics; it is retired after the final CI run (listed in [`docs/pending-items.md`](docs/pending-items.md)) |
 | Run 3 handling and the release steps R1 to R7 (self-score, demo video, marking the PR ready) | Moved out of B-09 by the PO; the app serves Task A's Run 2 | Listed with their steps in [`docs/pending-items.md`](docs/pending-items.md), for the follow-up branch |
 | Incremental Task A runs (Run 3+) are not followed yet | Task A publishes only changed data groups per run, linked by `previousManifestCid`; the sync reads one manifest, so a delta-only run is held and the CRM stays on the last good run | Deferred by the PO: chain-following ships as an update after Tasks A and B, with the "coming soon" sections |
 | Lambda concurrency is 10 on this Free-plan account | Raising it needs a paid plan | The 20-concurrent-create test retries throttled calls and still proves exactly one winner |
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
