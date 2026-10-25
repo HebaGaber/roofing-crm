@@ -532,7 +532,9 @@ async function expectNoSideScroll(page: Page, what: string): Promise<void> {
 }
 
 test.describe("Layout: no horizontal scroll at 360, 600 and 1280 px", () => {
-  test.beforeEach((_fixtures, testInfo) => {
+  // Playwright requires the first argument to be a destructuring pattern, even an empty one.
+  // eslint-disable-next-line no-empty-pattern
+  test.beforeEach(async ({}, testInfo) => {
     test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
     test.skip(testInfo.project.name !== "desktop-1440", "viewport is set per case; run once");
   });
