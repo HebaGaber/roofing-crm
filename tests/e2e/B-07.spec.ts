@@ -369,6 +369,13 @@ test.describe("B-07 leads", () => {
     expect(createdAt, "created-at is on the row").not.toBeNull();
     const ageMs = Date.now() - Date.parse(createdAt ?? "");
     expect(Math.abs(ageMs)).toBeLessThan(3 * 60_000);
+    // The row's columns are Lead (with where it came from), Status, Roof, Main permit and Last
+    // activity; the created time sits in the last one.
+    await expect(first).toContainText(/From Map/i);
+    for (const column of ["Roof", "Main permit", "Last activity"]) {
+      await expect(first.locator(`[data-field="${column}"]`), `${column} column`).toBeVisible();
+    }
+    await expect(first.locator('[data-field="Last activity"]')).toContainText(/Created/);
     await shot(page, "001", "top-of-list");
   });
 
@@ -808,6 +815,37 @@ test.describe("B-07 leads", () => {
   });
 
   // ---- NFRs --------------------------------------------------------------------------------
+
+  test("B-07-TC-018 permit open chip filters the list through the URL", async ({ page }) => {
+    // The open permit of the first fixture is 37 days old (run-fixtures.ts), so a filter of
+    // "open at least 1 yr" must drop it, and the chip must show as pressed from the URL alone.
+    // Needs the API that returns the permit age with each lead (permitOpenDaysMin).
+    const f = factsOf(P_5_52);
+    await page.goto("/leads");
+    await expect(leadLink(page, f)).toHaveCount(1);
+
+    await page.goto("/leads?permitOpen=1");
+    await openLeadFilters(page);
+    const group = page.getByRole("group", { name: "Permit open at least" });
+    await expect(group.getByRole("button", { name: "1 yr", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    // "Any" exists in several groups; only this group's chip is meant.
+    await expect(group.getByRole("button", { name: "Any", exact: true })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    await expect(page.getByText("No leads match these filters")).toBeVisible({
+      timeout: FILTERED_LIST_MS,
+    });
+    await expect(leadLink(page, f)).toHaveCount(0);
+
+    await group.getByRole("button", { name: "Any", exact: true }).click();
+    await expect(page).not.toHaveURL(/permitOpen=/);
+    await expect(leadLink(page, f)).toHaveCount(1, { timeout: FILTERED_LIST_MS });
+    await shot(page, "018", "permit-open-chip");
+  });
 
   test("B-07-TC-NF-04 responsive and tokens", async ({ page }) => {
     const f = factsOf(P_5_52);

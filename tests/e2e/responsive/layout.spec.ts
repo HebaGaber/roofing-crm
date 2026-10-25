@@ -14,13 +14,13 @@ import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "../lib/aut
 
 test.use({ storageState: AUTH_STATE_PATH });
 
-type MapLayout = "panes" | "sheet";
+type MapLayout = "panes" | "docked" | "sheet";
 type DrawerLayout = "side" | "full";
 
 interface Layout {
   /** Primary navigation: bottom bar below 600 px, rail from 600 px (AppShell.module.css). */
   readonly nav: "bottom" | "rail";
-  /** Map screen: three panes from 1280 px, map plus results sheet below (Map.module.css, ResultsSheet.module.css). */
+  /** Map screen: three panes from 1280 px; a docked split (map above, results panel below, no sheet handle) from 600 to 1279 px; map plus results bottom sheet below 600 px (Map.module.css, ResultsSheet.module.css). */
   readonly map: MapLayout;
   /** Property drawer: side sheet in the three-pane layout (from 1280 px), full-height sheet below. */
   readonly drawer: DrawerLayout;
@@ -41,7 +41,7 @@ const LAYOUTS: Record<string, Layout> = {
   },
   "tablet-768": {
     nav: "rail",
-    map: "sheet",
+    map: "docked",
     drawer: "full",
     leadsFilters: "inline",
     topBar: "compact",
@@ -62,8 +62,8 @@ const DESIGN = {
   drawerMaxWidth: 480,
   /** On a sheet layout the map should own at least half of the window's height. */
   mapMinHeightShare: 0.5,
-  /** At 1024 px (below the 1280 px three-pane break) the map must keep at least this width. */
-  mapMinWidthAt1024: 520,
+  /** In the docked split (below the 1280 px three-pane break) the map must keep at least this width. */
+  mapMinWidthDocked: 520,
 } as const;
 
 /** An east Travis County pin that has result rows under Run 2 at 3 mi and answers in about 2 s;
@@ -227,10 +227,10 @@ test.describe("Layout: Map screen", () => {
     );
   });
 
-  test("compact and medium: the map fills the width under the toolbar, the results handle is in view", async ({
+  test("phone: the map fills the width under the toolbar, the results handle is in view", async ({
     page,
   }, testInfo) => {
-    test.skip(layoutFor(testInfo.project.name).map !== "sheet", "results sheet below 1280 px only");
+    test.skip(layoutFor(testInfo.project.name).map !== "sheet", "results sheet below 600 px only");
     const screen = mapScreen(page);
     const region = await ensureBox(screen.region);
     const canvas = await ensureBox(screen.canvas);
@@ -259,27 +259,49 @@ test.describe("Layout: Map screen", () => {
     );
   });
 
-  test("1024 px: the map keeps at least 520 px of width next to the rail, the results stay a sheet", async ({
-    page,
-  }, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop-1440", "one extra width, checked once");
-    await page.setViewportSize({ width: 1024, height: 800 });
-    await ready(page);
+  /** The docked split from 600 to 1279 px: the map above, the results panel below it, both inside
+   *  the window, no sheet handle, no sideways scroll. */
+  async function expectDockedSplit(page: Page, what: string): Promise<void> {
     const screen = mapScreen(page);
     await expect(screen.canvas).toBeVisible();
+    await expect(
+      screen.results,
+      `${what}: the results panel is visible without a handle`,
+    ).toBeVisible();
+    await expect(screen.handle, `${what}: no results sheet handle`).toBeHidden();
     const canvas = await ensureBox(screen.canvas);
-    expect(canvas.width, "the map keeps its working width at 1024 px").toBeGreaterThanOrEqual(
-      DESIGN.mapMinWidthAt1024,
+    const results = await ensureBox(screen.results);
+    expectInsideViewport(canvas, page, `${what}: map`);
+    expectInsideViewport(results, page, `${what}: results panel`);
+    expect(bottom(canvas), `${what}: the map sits above the results`).toBeLessThanOrEqual(
+      results.y + DESIGN.edge,
     );
-    expect(await screen.filters.isVisible(), "no filters pane squeezes the map below 1280 px").toBe(
-      false,
+    expect(overlapArea(canvas, results), `${what}: map and results do not overlap`).toBe(0);
+    expect(canvas.width, `${what}: the map keeps its working width`).toBeGreaterThanOrEqual(
+      DESIGN.mapMinWidthDocked,
     );
-    await expect(screen.handle).toBeVisible();
+    expect(await screen.filters.isVisible(), `${what}: no filters pane below 1280 px`).toBe(false);
     const { scrollWidth, clientWidth } = await page.evaluate(() => ({
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
     }));
-    expect(scrollWidth, "no horizontal overflow at 1024 px").toBeLessThanOrEqual(clientWidth);
+    expect(scrollWidth, `${what}: no horizontal overflow`).toBeLessThanOrEqual(clientWidth);
+  }
+
+  test("tablet: docked split, the map above the results, no sheet handle", async ({
+    page,
+  }, testInfo) => {
+    test.skip(layoutFor(testInfo.project.name).map !== "docked", "docked split at 600 to 1279 px");
+    await expectDockedSplit(page, "768 px");
+  });
+
+  test("1032 px: docked split, the map keeps at least 520 px, no sheet handle", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop-1440", "one extra width, checked once");
+    await page.setViewportSize({ width: 1032, height: 800 });
+    await ready(page);
+    await expectDockedSplit(page, "1032 px");
   });
 
   test("opening a result shows the property drawer in the shape this width owns", async ({
