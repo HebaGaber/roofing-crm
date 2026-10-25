@@ -1014,7 +1014,7 @@ export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
 
 /** The plain-words label for an answer that was not narrowed by an unpublished field, or "". */
 function unpublishedNote(plan: QueryPlan): string {
-  const gaps = UNPUBLISHED_FILTERS.filter((gap) =>
+  const gaps = UNPUBLISHED_FILTERS.filter((_gap) =>
     plan.unsupported.some(
       (u) => u.reason === "not_in_export" && OWNER_CONSTRAINT.test(u.constraint),
     ),
