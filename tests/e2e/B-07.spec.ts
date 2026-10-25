@@ -790,8 +790,13 @@ test.describe("B-07 leads", () => {
       try {
         await cleanup?.deleteLeads([f.leadKey]);
         const drawer = await openDrawer(page, P_5_89);
+        // The drawer shows a disabled "Checking Leads…" button until its lead lookup answers.
+        // That is drawer readiness, not create latency, so the clock starts once the real
+        // button is there (a person cannot click it earlier either).
+        const createButton = drawer.getByRole("button", { name: "Create lead", exact: true });
+        await createButton.waitFor({ state: "visible", timeout: 15_000 });
         const startedAt = Date.now();
-        await drawer.getByRole("button", { name: "Create lead", exact: true }).click();
+        await createButton.click();
         await drawer.getByRole("link", { name: "View leads" }).click();
         // Poll on every animation frame: expect().toContainText rechecks on a coarse back-off
         // schedule, which rounded these samples up in steps (found live: ~700 ms became 1200 or

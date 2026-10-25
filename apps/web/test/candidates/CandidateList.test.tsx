@@ -275,6 +275,75 @@ describe("CandidateList", () => {
     expect(screen.queryByText(/nearest/)).toBeNull();
   });
 
+  describe("empty states and the header count", () => {
+    const PERMIT_FILTERS = {
+      ...FILTERS,
+      roofAgeMinYears: undefined,
+      permitStatus: "open" as const,
+      permitOpenYrs: 5,
+    };
+
+    it("permit-only empty: names the permit filter, says why, and the header count is 0, not the old total", () => {
+      result = ready({ candidates: [], totalInRing: 23775 });
+      mount({ filters: PERMIT_FILTERS });
+      const empty = document.querySelector('[data-state="CrmCandidatesEmpty390"]') as HTMLElement;
+      expect(empty.textContent).toContain(
+        "No properties with an open permit (open 5+ yrs) within 5 mi.",
+      );
+      expect(empty.textContent).not.toMatch(/roofs match/);
+      expect(empty.textContent).toContain("carry no open status; stalled permits are derived");
+      expect(
+        document.querySelector(".num, [data-matches]")?.getAttribute("data-matches") ?? "0",
+      ).toBe("0");
+      expect(screen.queryByText(/23,?775/)).toBeNull();
+      expect(document.body.textContent).toContain("0 within 5 mi");
+    });
+
+    it("permit-only empty offers a one-tap way to relax each permit filter", () => {
+      const onPermitStatusChange = vi.fn();
+      const onPermitOpenYrsChange = vi.fn();
+      result = ready({ candidates: [] });
+      mount({ filters: PERMIT_FILTERS, onPermitStatusChange, onPermitOpenYrsChange });
+      fireEvent.click(screen.getByRole("button", { name: "Any permit status" }));
+      expect(onPermitStatusChange).toHaveBeenCalledWith("any");
+      fireEvent.click(screen.getByRole("button", { name: "Any open time" }));
+      expect(onPermitOpenYrsChange).toHaveBeenCalledWith(undefined);
+    });
+
+    it("roof-only empty keeps the roof wording and no permit chips", () => {
+      result = ready({ candidates: [], totalInRing: 0 });
+      mount({ onPermitStatusChange: vi.fn(), onPermitOpenYrsChange: vi.fn() });
+      expect(screen.getByText("No roofs match within 5 mi.")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Any permit status" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Any open time" })).toBeNull();
+    });
+
+    it("both filters: names both and offers both ways out", () => {
+      result = ready({ candidates: [] });
+      mount({
+        filters: { ...PERMIT_FILTERS, roofAgeMinYears: 20 },
+        onRoofChange: vi.fn(),
+        onPermitStatusChange: vi.fn(),
+      });
+      expect(
+        screen.getByText("No roofs of 20+ yrs have an open permit (open 5+ yrs) within 5 mi."),
+      ).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Any permit status" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Roof ≥/ })).toBeTruthy();
+    });
+
+    it("the header count equals the rows listed: with a permit filter the page length, else the server total", () => {
+      result = ready({ totalInRing: 340 });
+      mount({ filters: PERMIT_FILTERS });
+      expect(document.body.textContent).toContain("3 within 5 mi");
+      expect(document.body.textContent).not.toContain("340 within");
+      cleanup();
+      result = ready({ totalInRing: 340, propertiesTruncated: true, propertiesShown: 3 });
+      mount();
+      expect(document.body.textContent).toContain("340 within 5 mi");
+    });
+  });
+
   it("with no centre says why there are no candidates", () => {
     result = ready({ status: "idle", candidates: [] });
     mount();

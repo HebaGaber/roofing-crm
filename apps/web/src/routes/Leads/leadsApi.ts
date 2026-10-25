@@ -63,6 +63,19 @@ export function useLeadsList(input: LeadsListInput, options: { readonly enabled?
   });
 }
 
+/** Whether this property is already a lead (`leads.presence`, any assignee). Resolves to the lead's
+ *  key and status, or `null` for none; the drawer shows a neutral state until it has resolved. */
+export function useLeadPresence(requestIdentifier: string, fips: string) {
+  const trpc = useTRPC();
+  return useQuery({
+    ...trpc.leads.presence.queryOptions({ requestIdentifiers: [requestIdentifier], fips }),
+    select: (rows) => rows.find((r) => r.requestIdentifier === requestIdentifier) ?? null,
+    // A lookup that fails must not block creating: a duplicate is still refused on create (409).
+    retry: false,
+    staleTime: 0,
+  });
+}
+
 export function useLead(leadKey: string) {
   const trpc = useTRPC();
   return useQuery({ ...trpc.leads.get.queryOptions({ leadKey }), retry: retryUnlessNotFound });
@@ -76,7 +89,11 @@ export function useCreateLead() {
   const queryClient = useQueryClient();
   return useMutation({
     ...trpc.leads.create.mutationOptions(),
-    onSuccess: (lead) => addCreatedLead(queryClient, trpc.leads.list.queryKey(), lead),
+    onSuccess: (lead) => {
+      addCreatedLead(queryClient, trpc.leads.list.queryKey(), lead);
+      // The drawer's "already a lead" check reads presence: bring it in line, not awaited.
+      void queryClient.invalidateQueries({ queryKey: trpc.leads.presence.queryKey() });
+    },
   });
 }
 

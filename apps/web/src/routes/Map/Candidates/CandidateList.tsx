@@ -26,7 +26,9 @@ import {
   candidateTitle,
   defaultSort,
   lowerRoofPreset,
+  emptyStateCopy,
   leadsNote,
+  listedCount,
   mainSignalText,
   permitNote,
   SORT_LABEL,
@@ -65,6 +67,10 @@ export interface CandidateListProps {
   readonly onRadiusChange?: ((radiusMi: number) => void) | undefined;
   /** Empty state "Roof ≥ M yrs". */
   readonly onRoofChange?: ((years: number) => void) | undefined;
+  /** Empty state "Any permit status": relaxes the permit status filter. */
+  readonly onPermitStatusChange?: ((status: "any") => void) | undefined;
+  /** Empty state "Any open time": clears the permit open-years filter. */
+  readonly onPermitOpenYrsChange?: ((years: undefined) => void) | undefined;
   readonly pageSize?: number | undefined;
 }
 
@@ -92,6 +98,8 @@ export function CandidateList({
   onShowOnMap,
   onRadiusChange,
   onRoofChange,
+  onPermitStatusChange,
+  onPermitOpenYrsChange,
   pageSize = DEFAULT_PAGE_SIZE,
 }: CandidateListProps): ReactElement {
   const data = useCandidates(filters);
@@ -208,6 +216,8 @@ export function CandidateList({
     filters.radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? filters.radiusMi + WIDEN_STEP_MI : null;
   const lowerRoof = lowerRoofPreset(filters.roofAgeMinYears);
   const countText = data.status === "loading" ? "…" : String(visible.length);
+  // The header's number is the rows listed (the server's total when the page is clipped).
+  const headerCount = listedCount(filters, data.totalInRing, sorted.length);
 
   let body: ReactElement;
   if (data.status === "idle") {
@@ -239,12 +249,11 @@ export function CandidateList({
       </div>
     );
   } else if (sorted.length === 0) {
+    const copy = emptyStateCopy(filters);
     body = (
       <div className={styles.state} data-state="CrmCandidatesEmpty390">
-        <p
-          className={styles.stateTitle}
-        >{`No roofs match within ${String(filters.radiusMi)} mi.`}</p>
-        <p className={styles.stateText}>Try a bigger radius or a lower roof age.</p>
+        <p className={styles.stateTitle}>{copy.title}</p>
+        <p className={styles.stateText}>{copy.text}</p>
         <div className={styles.chips}>
           {widenTo === null || onRadiusChange === undefined ? null : (
             <button type="button" className={styles.chip} onClick={() => onRadiusChange(widenTo)}>
@@ -256,6 +265,28 @@ export function CandidateList({
             <button type="button" className={styles.chip} onClick={() => onRoofChange(lowerRoof)}>
               <Icon name="roofing" size="small" />
               {`Roof ≥ ${String(lowerRoof)} yrs`}
+            </button>
+          )}
+          {!copy.permitFilter ||
+          (filters.permitStatus ?? "any") === "any" ||
+          onPermitStatusChange === undefined ? null : (
+            <button
+              type="button"
+              className={styles.chip}
+              onClick={() => onPermitStatusChange("any")}
+            >
+              <Icon name="description" size="small" />
+              Any permit status
+            </button>
+          )}
+          {filters.permitOpenYrs === undefined || onPermitOpenYrsChange === undefined ? null : (
+            <button
+              type="button"
+              className={styles.chip}
+              onClick={() => onPermitOpenYrsChange(undefined)}
+            >
+              <Icon name="schedule" size="small" />
+              Any open time
             </button>
           )}
         </div>
@@ -334,8 +365,8 @@ export function CandidateList({
   return (
     <section className={styles.list} aria-label="Candidate list" data-candidate-list="">
       <header className={styles.head}>
-        <p className={styles.summary} title={headerSummary(data.totalInRing, filters, originLabel)}>
-          {headerSummary(data.status === "ready" ? data.totalInRing : 0, filters, originLabel)}
+        <p className={styles.summary} title={headerSummary(headerCount, filters, originLabel)}>
+          {headerSummary(data.status === "ready" ? headerCount : 0, filters, originLabel)}
         </p>
         <button
           type="button"

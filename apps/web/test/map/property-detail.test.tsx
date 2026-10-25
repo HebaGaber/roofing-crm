@@ -8,6 +8,7 @@ import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, error: null }),
+  useLeadPresence: () => ({ isPending: false, data: null }),
   usePrefetchLeadsList: () => () => Promise.resolve(),
 }));
 

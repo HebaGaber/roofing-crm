@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCandidates,
+  emptyStateCopy,
+  listedCount,
   compassBearing,
   defaultSort,
   leadsByRequestIdentifier,
@@ -183,5 +185,62 @@ describe("permitNote (a clipped permit page is never the whole set)", () => {
     expect(permitNote({ total: 12345, truncated: true, shown: 500 })).toBe(
       "Showing the 500 longest-open of 12,345 permits in range; narrow the radius or filters.",
     );
+  });
+});
+
+describe("emptyStateCopy (names what was filtered)", () => {
+  const base = { center: { lat: 30.4, lng: -97.6 }, radiusMi: 5 };
+
+  it("roof only: roofs", () => {
+    const c = emptyStateCopy({ ...base, roofAgeMinYears: 15 });
+    expect(c.title).toBe("No roofs match within 5 mi.");
+    expect(c.text).toBe("Try a bigger radius or a lower roof age.");
+    expect(c.permitFilter).toBe(false);
+  });
+
+  it("permit only (open, 5+ yrs): names the permit filter, not roofs, and says why", () => {
+    const c = emptyStateCopy({ ...base, permitStatus: "open", permitOpenYrs: 5 });
+    expect(c.title).toBe("No properties with an open permit (open 5+ yrs) within 5 mi.");
+    expect(c.title).not.toMatch(/roof/i);
+    expect(c.text).toContain(
+      "This run's permits carry no open status; stalled permits are derived.",
+    );
+    expect(c.text).toContain("Try a bigger radius or relax the permit filter.");
+    expect(c.permitFilter).toBe(true);
+  });
+
+  it("permit only without a status: no open-status reason", () => {
+    const c = emptyStateCopy({ ...base, permitOpenYrs: 10 });
+    expect(c.title).toBe("No properties with a permit (open 10+ yrs) within 5 mi.");
+    expect(c.text).not.toMatch(/no open status/);
+  });
+
+  it("a stalled permit", () => {
+    expect(emptyStateCopy({ ...base, permitStatus: "stalled" }).title).toBe(
+      "No properties with a stalled permit within 5 mi.",
+    );
+  });
+
+  it("both: names both", () => {
+    const c = emptyStateCopy({
+      ...base,
+      roofAgeMinYears: 20,
+      permitStatus: "open",
+      permitOpenYrs: 5,
+    });
+    expect(c.title).toBe("No roofs of 20+ yrs have an open permit (open 5+ yrs) within 5 mi.");
+    expect(c.text).toContain("a lower roof age");
+    expect(c.text).toContain("permit filter");
+  });
+});
+
+describe("listedCount (the header equals the rows)", () => {
+  it("without a permit filter it is the server's total of properties", () => {
+    expect(listedCount({ center: null, radiusMi: 5 }, 23775, 100)).toBe(23775);
+  });
+
+  it("with a permit filter the rows are the properties with a matching permit, so it is the rows", () => {
+    expect(listedCount({ center: null, radiusMi: 5, permitStatus: "open" }, 23775, 0)).toBe(0);
+    expect(listedCount({ center: null, radiusMi: 5, permitOpenYrs: 5 }, 23775, 12)).toBe(12);
   });
 });

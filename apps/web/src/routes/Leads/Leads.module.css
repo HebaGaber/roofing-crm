@@ -390,6 +390,15 @@
   cursor: not-allowed;
 }
 
+/* "Open lead" in the drawer: the action look on a link. */
+.actionLink {
+  composes: action;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .section {
   display: grid;
   gap: var(--space-2);

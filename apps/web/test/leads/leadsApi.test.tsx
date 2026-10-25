@@ -17,6 +17,7 @@ import {
 
 const LIST_KEY = ["leads", "list"] as const;
 const GET_KEY = ["leads", "get"] as const;
+const PRESENCE_KEY = ["leads", "presence"] as const;
 
 const listFn = vi.fn();
 const getFn = vi.fn();
@@ -42,6 +43,7 @@ const fakeTrpc = {
       },
       queryKey: () => GET_KEY,
     },
+    presence: { queryKey: () => PRESENCE_KEY },
     create: { mutationOptions: () => ({ mutationFn: (v: unknown) => createFn(v) }) },
     updateStatus: { mutationOptions: () => ({ mutationFn: (v: unknown) => statusFn(v) }) },
     addNote: { mutationOptions: () => ({ mutationFn: (v: unknown) => noteFn(v) }) },
@@ -116,12 +118,12 @@ describe("leads queries", () => {
 });
 
 describe("leads mutations", () => {
-  it("useCreateLead sends the input and refreshes only the list queries", async () => {
+  it("useCreateLead sends the input and refreshes the list and the lead-presence queries", async () => {
     createFn.mockResolvedValue({ leadId: "L1" });
     const { result } = renderHook(() => useCreateLead(), { wrapper });
     await act(() => result.current.mutateAsync({ address: "1 Main" } as never));
     expect(createFn).toHaveBeenCalledWith({ address: "1 Main" });
-    expect(invalidatedKeys()).toEqual([LIST_KEY]);
+    expect(invalidatedKeys()).toEqual([LIST_KEY, PRESENCE_KEY]);
   });
 
   it("useUpdateLeadStatus sends the change and refreshes the detail then the list", async () => {

@@ -23,6 +23,7 @@ let mutationState: {
 };
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate, ...mutationState }),
+  useLeadPresence: () => ({ isPending: false, data: null }),
   useAddLeadNote: () => ({ mutate: noteMutate, isPending: false, isSuccess: false, error: null }),
 }));
 

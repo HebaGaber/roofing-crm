@@ -572,6 +572,8 @@ export function Component(): ReactElement {
             onShowOnMap={showOnMap}
             onRadiusChange={setRadiusMi}
             onRoofChange={setRoofAgeMinYears}
+            onPermitStatusChange={setPermitStatus}
+            onPermitOpenYrsChange={setPermitOpenYrs}
           />
         </div>
       ) : null}

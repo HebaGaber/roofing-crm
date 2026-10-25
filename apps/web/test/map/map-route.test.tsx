@@ -218,6 +218,7 @@ const prefetchLeads = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, error: null }),
+  useLeadPresence: () => ({ isPending: false, data: null }),
   usePrefetchLeadsList: () => prefetchLeads,
 }));
 

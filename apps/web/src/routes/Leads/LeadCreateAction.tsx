@@ -13,7 +13,13 @@ import { Link } from "react-router";
 import { useUndoCreateLead } from "../Map/Candidates/candidatesApi.js";
 import { undoOneText, type UndoAnswer } from "../Map/Candidates/undoCopy.js";
 import { LeadBanner } from "./LeadBanner.js";
-import { useAddLeadNote, useCreateLead, type LeadCreateInput } from "./leadsApi.js";
+import {
+  useAddLeadNote,
+  useCreateLead,
+  useLeadPresence,
+  type LeadCreateInput,
+} from "./leadsApi.js";
+import { STATUS_LABEL } from "./LeadFilters.js";
 import styles from "./Leads.module.css";
 
 /** Travis County, TX (the only county this CRM serves); part of the lead dedupe key. */
@@ -189,6 +195,7 @@ export function LeadCreateAction({
   readonly permit?: Provenanced<CrmPermit>;
 }): ReactElement | null {
   const create = useCreateLead();
+  const presence = useLeadPresence(property.requestIdentifier, TRAVIS_FIPS);
   const [dismissed, setDismissed] = useState(false);
   /** What Undo answered: the lead was removed, or why it was kept. */
   const [removed, setRemoved] = useState<string | null>(null);
@@ -252,6 +259,35 @@ export function LeadCreateAction({
             onDismiss={() => setDismissed(true)}
           />
         )}
+      </div>
+    );
+  }
+  // After a reload the drawer does not yet know whether this property is already a lead: until the
+  // presence lookup has resolved it shows a neutral, disabled state (never an actionable Create
+  // button that would turn into "Already a lead" a moment later).
+  if (presence.isPending) {
+    return (
+      <div className={styles.createState}>
+        <button type="button" className={styles.action} disabled aria-busy="true">
+          Checking Leads…
+        </button>
+      </div>
+    );
+  }
+  const existing = presence.data;
+  if (existing !== null && existing !== undefined) {
+    // The header says it; a permit row stays quiet.
+    if (permit !== undefined) return null;
+    return (
+      <div className={styles.createState}>
+        <StatusPill
+          status="info"
+          text={`Already a lead · ${STATUS_LABEL[existing.status]}`}
+          icon="description"
+        />
+        <Link className={styles.actionLink} to={`/leads/${encodeURIComponent(existing.leadKey)}`}>
+          Open lead
+        </Link>
       </div>
     );
   }

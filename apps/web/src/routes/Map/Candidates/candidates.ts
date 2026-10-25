@@ -124,6 +124,52 @@ export function hasPermitFilter(filters: CandidateFilters): boolean {
   return (filters.permitStatus ?? "any") !== "any" || filters.permitOpenYrs !== undefined;
 }
 
+/** What an empty candidate list says: it names what was filtered (the roof age, the permit, or
+ *  both), says why when the data cannot satisfy an "open" status, and what to relax. */
+export function emptyStateCopy(filters: CandidateFilters): {
+  title: string;
+  text: string;
+  permitFilter: boolean;
+  roofFilter: boolean;
+} {
+  const roof = filters.roofAgeMinYears;
+  const status = filters.permitStatus ?? "any";
+  const years = filters.permitOpenYrs;
+  const permitFilter = hasPermitFilter(filters);
+  const roofFilter = roof !== undefined;
+  const radius = String(filters.radiusMi);
+  const noun =
+    status === "open" ? "an open permit" : status === "stalled" ? "a stalled permit" : "a permit";
+  const phrase = years === undefined ? noun : `${noun} (open ${String(years)}+ yrs)`;
+  if (!permitFilter) {
+    return {
+      title: `No roofs match within ${radius} mi.`,
+      text: "Try a bigger radius or a lower roof age.",
+      permitFilter,
+      roofFilter,
+    };
+  }
+  const why =
+    status === "open"
+      ? "This run's permits carry no open status; stalled permits are derived. "
+      : "";
+  return {
+    title: roofFilter
+      ? `No roofs of ${String(roof)}+ yrs have ${phrase} within ${radius} mi.`
+      : `No properties with ${phrase} within ${radius} mi.`,
+    text: `${why}Try a bigger radius${roofFilter ? ", a lower roof age" : ""} or relax the permit filter.`,
+    permitFilter,
+    roofFilter,
+  };
+}
+
+/** The header's count: it must equal the rows listed. Without a permit filter the rows are the
+ *  properties in range, so the server's total (the page may be clipped); with one they are the
+ *  properties with a matching permit, so the rows themselves. */
+export function listedCount(filters: CandidateFilters, serverTotal: number, rows: number): number {
+  return hasPermitFilter(filters) ? rows : serverTotal;
+}
+
 /** Index of lead presence by the property's TCAD request identifier (`{fips}:tcad:{id}`). */
 export function leadsByRequestIdentifier(
   leads: readonly CandidateLead[],

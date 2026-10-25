@@ -20,6 +20,7 @@ const fakeTrpc = {
       }),
       queryKey: () => LIST_KEY,
     },
+    presence: { queryKey: () => ["leads", "presence"] },
     create: { mutationOptions: () => ({ mutationFn: (v: unknown) => createFn(v) }) },
   },
 };
