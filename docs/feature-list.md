@@ -1,7 +1,7 @@
 ---
 id: FL-B
 type: feature-list
-title: Roofing CRM: Initial Feature List
+title: "Roofing CRM: Initial Feature List"
 parent: VIS-B
 owner: HebaGaber           # PO
 status: Approved                # Draft → In Review → Approved → Returned

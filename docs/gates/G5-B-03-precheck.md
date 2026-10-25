@@ -1,7 +1,7 @@
 ---
 gate: G5
 artifact: specs/003-map-search/plan.md, specs/003-map-search/tasks.md
-artifact_version: f6f2fe6 (B-03: plan, tasks and analyze)
+artifact_version: "f6f2fe6 (B-03: plan, tasks and analyze)"
 run_date: 2026-10-23
 tool: Claude
 verdict: FAIL

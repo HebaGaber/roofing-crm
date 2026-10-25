@@ -1,7 +1,7 @@
 ---
 id: PROJ-B
 type: high-level-plan
-title: Roofing CRM: High-Level Implementation Plan
+title: "Roofing CRM: High-Level Implementation Plan"
 parent: FL-B
 vision: VIS-B
 classification: Project      # both assessment apps are Project-sized (new system, ≥ 4 weeks of normal effort)
