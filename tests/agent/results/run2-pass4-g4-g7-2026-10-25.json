@@ -16,9 +16,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        5197
-      ],
+      "latencyMs": [5197],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,

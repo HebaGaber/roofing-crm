@@ -16,9 +16,7 @@
       "outcome": "empty_in_scope",
       "mode": "honest_empty",
       "pass": true,
-      "latencyMs": [
-        11158
-      ],
+      "latencyMs": [11158],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -37,9 +35,7 @@
       "outcome": "empty_in_scope",
       "mode": "honest_empty",
       "pass": true,
-      "latencyMs": [
-        15903
-      ],
+      "latencyMs": [15903],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -58,9 +54,7 @@
       "outcome": "empty_in_scope",
       "mode": "honest_empty",
       "pass": true,
-      "latencyMs": [
-        8472
-      ],
+      "latencyMs": [8472],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -79,9 +73,7 @@
       "outcome": "empty_in_scope",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        10313
-      ],
+      "latencyMs": [10313],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -92,9 +84,7 @@
       "countCheck": "not applicable",
       "intent": "find_properties",
       "modelCalls": 2,
-      "failures": [
-        "outcome empty_in_scope, expected field_not_published or a flagged answer"
-      ]
+      "failures": ["outcome empty_in_scope, expected field_not_published or a flagged answer"]
     },
     {
       "repeat": 0,
@@ -102,16 +92,12 @@
       "outcome": "error",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        2827
-      ],
+      "latencyMs": [2827],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
       "countCheck": "not applicable",
-      "failures": [
-        "ask failed: Unable to transform response from server"
-      ]
+      "failures": ["ask failed: Unable to transform response from server"]
     },
     {
       "repeat": 0,
@@ -119,9 +105,7 @@
       "outcome": "out_of_scope",
       "mode": "refused",
       "pass": true,
-      "latencyMs": [
-        1842
-      ],
+      "latencyMs": [1842],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -156,9 +140,7 @@
       "outcome": "not_found",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        1533
-      ],
+      "latencyMs": [1533],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -181,9 +163,7 @@
       "outcome": "needs_clarification",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        3119
-      ],
+      "latencyMs": [3119],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -206,9 +186,7 @@
       "outcome": "needs_clarification",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        3666
-      ],
+      "latencyMs": [3666],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -231,9 +209,7 @@
       "outcome": "not_found",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        2417
-      ],
+      "latencyMs": [2417],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -256,9 +232,7 @@
       "outcome": "timed_out",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        23694
-      ],
+      "latencyMs": [23694],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,

@@ -16,9 +16,7 @@
       "outcome": "empty_in_scope",
       "mode": "honest_empty",
       "pass": true,
-      "latencyMs": [
-        1544
-      ],
+      "latencyMs": [1544],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -35,9 +33,7 @@
       "detail": {
         "area": "place \"Manor\" -> Manor city (30.354228, -97.558259) radius 5 mi",
         "filters": {
-          "statusClass": [
-            "open"
-          ],
+          "statusClass": ["open"],
           "openYearsMin": 5
         },
         "unsupported": [],
@@ -51,9 +47,7 @@
       "outcome": "empty_in_scope",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        1453
-      ],
+      "latencyMs": [1453],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -64,18 +58,14 @@
       "countCheck": "not applicable",
       "intent": "find_properties",
       "modelCalls": 1,
-      "failures": [
-        "empty answer does not say owner location is not published"
-      ],
+      "failures": ["empty answer does not say owner location is not published"],
       "emptyReason": "outcome empty_in_scope; matched 0; no roof date 0; unsupported: none; missing: coordinates (no_coordinates)",
       "ownerLocationFlagged": false,
       "detail": {
         "area": "place \"Lakeway\" -> Lakeway city (30.354982, -97.986269) radius 5 mi",
         "filters": {
           "tenureYearsMin": 10,
-          "ownerAreaClass": [
-            "out_of_area"
-          ]
+          "ownerAreaClass": ["out_of_area"]
         },
         "unsupported": [],
         "missing": [
@@ -93,9 +83,7 @@
       "outcome": "answered",
       "mode": "unavailable",
       "pass": true,
-      "latencyMs": [
-        3324
-      ],
+      "latencyMs": [3324],
       "citations": 1,
       "rowsChecked": 1,
       "rowsVerified": 1,
@@ -197,9 +185,7 @@
       "mode": "fail",
       "pass": false,
       "latencyMs": [],
-      "failures": [
-        "LeadRepo not wired into this Lambda's tRPC context"
-      ]
+      "failures": ["LeadRepo not wired into this Lambda's tRPC context"]
     },
     {
       "repeat": 0,
@@ -207,9 +193,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        8496
-      ],
+      "latencyMs": [8496],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -225,10 +209,7 @@
       "detail": {
         "area": "place \"Austin\" -> Austin city (30.298622, -97.754134) radius 5 mi",
         "filters": {
-          "statusClass": [
-            "open",
-            "stalled"
-          ],
+          "statusClass": ["open", "stalled"],
           "openYearsMin": 5
         },
         "unsupported": [
@@ -314,9 +295,7 @@
       "outcome": "answered",
       "mode": "unavailable",
       "pass": true,
-      "latencyMs": [
-        11515
-      ],
+      "latencyMs": [11515],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -332,9 +311,7 @@
       "detail": {
         "area": "place \"Austin\" -> Austin city (30.298622, -97.754134) radius 2 mi",
         "filters": {
-          "statusClass": [
-            "stalled"
-          ]
+          "statusClass": ["stalled"]
         },
         "unsupported": [
           {
@@ -427,9 +404,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        10883
-      ],
+      "latencyMs": [10883],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -516,9 +491,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        8830
-      ],
+      "latencyMs": [8830],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,

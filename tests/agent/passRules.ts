@@ -95,12 +95,14 @@ function result(mode: RuleResult["mode"], failures: string[]): RuleResult {
 export function sharedChecks(answer: AnswerLike, ctx: RuleContext): string[] {
   const failures: string[] = [];
   for (const c of answer.citations) {
-    if (c.manifestCid !== ctx.manifestCid) failures.push(`citation ${c.id} is not on the pinned manifest`);
+    if (c.manifestCid !== ctx.manifestCid)
+      failures.push(`citation ${c.id} is not on the pinned manifest`);
   }
   for (const claim of answer.claims) {
     if (claim.citationIds.length === 0) failures.push("a claim has no citation");
     for (const id of claim.citationIds) {
-      if (!answer.citations.some((c) => c.id === id)) failures.push(`claim cites unknown citation ${id}`);
+      if (!answer.citations.some((c) => c.id === id))
+        failures.push(`claim cites unknown citation ${id}`);
     }
   }
   if (!(answer.plan.area.radiusMi > 0)) failures.push("the plan states no radius");
@@ -144,7 +146,8 @@ function claimsText(answer: AnswerLike): string {
 /** A contractor or BBB value stated as fact. "not available" wording is fine; a rating letter or
  *  a company-style name next to the word contractor is not. */
 export function assertsContractorOrBbb(text: string): boolean {
-  const rating = /\bBBB\b[^.\n]{0,40}\b(rating|rated|grade)\b[^.\n]{0,30}\b(is|of|:)\s*[A-F][+-]?\b/i;
+  const rating =
+    /\bBBB\b[^.\n]{0,40}\b(rating|rated|grade)\b[^.\n]{0,30}\b(is|of|:)\s*[A-F][+-]?\b/i;
   const ratingAlt = /\b(rated|rating of|accredited)\s+[A-F][+-]?\b(?!\w)/i;
   const company =
     /\bcontractor\b[^.\n]{0,30}\b(is|was|:)\s+(?!not\b|unknown\b|unresolved\b|unavailable\b)[A-Z][\w&.'-]*(\s+[A-Z][\w&.'-]*){0,4}\s+(LLC|Inc\.?|Co\.?|Corp\.?|Roofing|Construction|Builders)\b/;
@@ -175,13 +178,18 @@ function permitRowFailures(answer: AnswerLike, query: QuerySpec): string[] {
   for (const row of rows) {
     const p = row.permit as NonNullable<typeof row.permit>;
     if (wanted !== undefined && wanted.length > 0 && !wanted.includes(p.statusClass ?? "")) {
-      failures.push(`permit ${p.number ?? p.permitCid} is ${p.statusClass}, outside the stated status filter`);
+      failures.push(
+        `permit ${p.number ?? p.permitCid} is ${p.statusClass}, outside the stated status filter`,
+      );
     }
     if (minDays !== undefined && (p.openDays ?? 0) < minDays) {
-      failures.push(`permit ${p.number ?? p.permitCid} is open ${p.openDays} days, below the stated threshold`);
+      failures.push(
+        `permit ${p.number ?? p.permitCid} is open ${p.openDays} days, below the stated threshold`,
+      );
     }
     if (p.openDays !== undefined) {
-      if (p.openDays > previous) failures.push("permits are not sorted by open duration, longest first");
+      if (p.openDays > previous)
+        failures.push("permits are not sorted by open duration, longest first");
       previous = p.openDays;
     }
   }
@@ -209,7 +217,9 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
   if (query.contractorMustBeUnavailable === true) {
     for (const row of answer.rows ?? []) {
       if (row.contractorResolution !== undefined && row.contractorResolution !== "unresolved") {
-        failures.push(`row shows contractorResolution ${row.contractorResolution}; Run 2 has only unresolved`);
+        failures.push(
+          `row shows contractorResolution ${row.contractorResolution}; Run 2 has only unresolved`,
+        );
       }
     }
   }
@@ -238,14 +248,16 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
       return result("refused", failures);
     }
     case "answered": {
-      if (answer.outcome !== "answered") failures.push(`outcome ${answer.outcome}, expected answered`);
+      if (answer.outcome !== "answered")
+        failures.push(`outcome ${answer.outcome}, expected answered`);
       if (answer.citations.length === 0) failures.push("answered with no citations");
       if (answer.counts.matched <= 0) failures.push("answered with matched 0");
       if (answer.plan.intent === "find_permits") failures.push(...permitRowFailures(answer, query));
       return result("answered", failures);
     }
     case "answered_unavailable": {
-      if (answer.outcome !== "answered") failures.push(`outcome ${answer.outcome}, expected answered`);
+      if (answer.outcome !== "answered")
+        failures.push(`outcome ${answer.outcome}, expected answered`);
       if (answer.citations.length === 0) failures.push("answered with no citations");
       if (!contractorFlagged(answer)) {
         failures.push("the missing contractor/BBB data is not flagged in missing");
@@ -261,13 +273,17 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
     case "answered_or_field_flagged": {
       if (answer.outcome === "field_not_published") {
         failures.push(...honestEmptyFailures(answer));
-        if (answer.plan.unsupported.length === 0) failures.push("field_not_published without an unsupported constraint");
+        if (answer.plan.unsupported.length === 0)
+          failures.push("field_not_published without an unsupported constraint");
         return result("field_flagged", failures);
       }
       if (answer.outcome === "answered") {
-        if (!ownerLocationFlagged(answer)) failures.push("answered without flagging that owner location is not published");
+        if (!ownerLocationFlagged(answer))
+          failures.push("answered without flagging that owner location is not published");
         if (/\boutside the area\b|\bout[- ]of[- ](area|state|county)\b/i.test(text)) {
-          failures.push("the answer asserts an owner is outside the area; Run 2 does not publish owner location");
+          failures.push(
+            "the answer asserts an owner is outside the area; Run 2 does not publish owner location",
+          );
         }
         if (answer.citations.length === 0) failures.push("answered with no citations");
         return result("answered", failures);
@@ -291,7 +307,8 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
         if (query.contractorMustBeUnavailable === true && !contractorFlagged(answer)) {
           failures.push("the missing contractor/BBB data is not flagged in missing");
         }
-        if (answer.plan.intent === "find_permits") failures.push(...permitRowFailures(answer, query));
+        if (answer.plan.intent === "find_permits")
+          failures.push(...permitRowFailures(answer, query));
         return result("answered", failures);
       }
       failures.push(...honestEmptyFailures(answer));
@@ -312,12 +329,16 @@ export function percentile(values: readonly number[], p: number): number | undef
 }
 
 /** Great-circle distance in miles. */
-export function haversineMi(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+export function haversineMi(
+  a: { lat: number; lon: number },
+  b: { lat: number; lon: number },
+): number {
   const R = 3958.8;
   const toRad = (d: number): number => (d * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLon = toRad(b.lon - a.lon);
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }

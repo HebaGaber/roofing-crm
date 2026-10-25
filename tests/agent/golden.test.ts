@@ -338,7 +338,9 @@ async function verifyAnswerRows(
         }
       }
     } catch (error) {
-      failures.push(`property.get ${cid} failed: ${error instanceof Error ? error.message : "error"}`);
+      failures.push(
+        `property.get ${cid} failed: ${error instanceof Error ? error.message : "error"}`,
+      );
       ok = false;
     }
     if (ok) verified += 1;
@@ -499,7 +501,11 @@ async function runPlainQuery(
   };
 }
 
-async function runG7Record(client: ApiClient, threadId: string, repeat: number): Promise<QueryRecord> {
+async function runG7Record(
+  client: ApiClient,
+  threadId: string,
+  repeat: number,
+): Promise<QueryRecord> {
   const base = {
     repeat,
     id: "G7",
@@ -522,15 +528,22 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
       sleep(golden.grading.pacingSeconds * 1000),
     );
     if (g7.created !== undefined) createdKeys.push(g7.created);
-    notes.push(`confirmLead created ${g7.created === undefined ? "nothing (already a lead)" : g7.created.leadKey}`);
+    notes.push(
+      `confirmLead created ${g7.created === undefined ? "nothing (already a lead)" : g7.created.leadKey}`,
+    );
 
     // confirmLeads (batch) on up to two more proposals from the same thread.
     const batchIds = g7.otherProposed.slice(0, 2);
     if (batchIds.length > 0) {
-      const batch = await client.agent.confirmLeads.mutate({ threadId: g7Thread, tcadIds: batchIds });
+      const batch = await client.agent.confirmLeads.mutate({
+        threadId: g7Thread,
+        tcadIds: batchIds,
+      });
       expect(batch.failed, "confirmLeads must not fail proposed ids").toEqual([]);
       createdKeys.push(...batch.created.map((c) => ({ leadKey: c.leadKey, leadId: c.leadId })));
-      notes.push(`confirmLeads created ${batch.created.length}, already ${batch.alreadyLeads.length}`);
+      notes.push(
+        `confirmLeads created ${batch.created.length}, already ${batch.alreadyLeads.length}`,
+      );
     } else {
       notes.push("confirmLeads not exercised: no further proposals");
     }
@@ -538,7 +551,10 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
     // The created leads are real; remove exactly those this run created, via undo, and check.
     const before = await client.leads.list.query({});
     for (const c of createdKeys) {
-      expect(before.leads.some((l) => l.leadKey === c.leadKey), "created lead is listed").toBe(true);
+      expect(
+        before.leads.some((l) => l.leadKey === c.leadKey),
+        "created lead is listed",
+      ).toBe(true);
     }
     for (const c of createdKeys) {
       const undone = await client.leads.undoCreate.mutate({ leadKey: c.leadKey, leadId: c.leadId });
@@ -546,7 +562,10 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
     }
     const after = await client.leads.list.query({});
     for (const c of createdKeys) {
-      expect(after.leads.some((l) => l.leadKey === c.leadKey), "undone lead is gone").toBe(false);
+      expect(
+        after.leads.some((l) => l.leadKey === c.leadKey),
+        "undone lead is gone",
+      ).toBe(false);
     }
     notes.push(`undo removed ${createdKeys.length} lead(s); none remain in leads.list`);
     return {
@@ -561,7 +580,9 @@ async function runG7Record(client: ApiClient, threadId: string, repeat: number):
   } catch (error) {
     // Best effort: never leave this run's leads behind.
     for (const c of createdKeys) {
-      await client.leads.undoCreate.mutate({ leadKey: c.leadKey, leadId: c.leadId }).catch(() => undefined);
+      await client.leads.undoCreate
+        .mutate({ leadKey: c.leadKey, leadId: c.leadId })
+        .catch(() => undefined);
     }
     return {
       ...base,
@@ -584,7 +605,9 @@ async function runOneRepeat(client: ApiClient, repeat: number): Promise<QueryRec
     if (query.id === "G7") {
       records.push(await runG7Record(client, `golden-${stamp}-${repeat}`, repeat));
     } else {
-      const thread = query.id.startsWith("A") ? `golden-${stamp}-${repeat}-austin` : `golden-${stamp}-${repeat}`;
+      const thread = query.id.startsWith("A")
+        ? `golden-${stamp}-${repeat}-austin`
+        : `golden-${stamp}-${repeat}`;
       records.push(await runPlainQuery(client, query, thread, repeat));
     }
     await sleep(golden.grading.pacingSeconds * 1000);
@@ -638,11 +661,18 @@ describe.skipIf(!canRun)("golden queries against the deployed agent (RUNTIME_URL
       if (GOLDEN_RESULTS_PATH !== undefined) {
         writeFileSync(
           GOLDEN_RESULTS_PATH,
-          JSON.stringify({ manifestCid: golden.manifestCid, runId: golden.runId, stopped, summary, records }, null, 2),
+          JSON.stringify(
+            { manifestCid: golden.manifestCid, runId: golden.runId, stopped, summary, records },
+            null,
+            2,
+          ),
         );
       }
       if (PUBLISH_GOLDEN_QUERY_PASS_RATE && summary.total > 0) {
-        await publishGoldenQueryPassRate({ passedCount: summary.passed, totalCount: summary.total });
+        await publishGoldenQueryPassRate({
+          passedCount: summary.passed,
+          totalCount: summary.total,
+        });
       }
     }
     expect(stopped, "the run was stopped early").toBeUndefined();
@@ -653,8 +683,10 @@ describe.skipIf(!canRun)("golden queries against the deployed agent (RUNTIME_URL
     ).toEqual([]);
     const summary = summarize(records);
     expect(summary.groundednessPct).toBeGreaterThanOrEqual(golden.grading.groundednessTargetPct);
-    if (summary.p95Ms !== undefined) expect(summary.p95Ms).toBeLessThan(golden.grading.latencyP95Ms);
-    if (summary.maxMs !== undefined) expect(summary.maxMs).toBeLessThan(golden.grading.latencyMaxMs);
+    if (summary.p95Ms !== undefined)
+      expect(summary.p95Ms).toBeLessThan(golden.grading.latencyP95Ms);
+    if (summary.maxMs !== undefined)
+      expect(summary.maxMs).toBeLessThan(golden.grading.latencyMaxMs);
   });
 });
 
@@ -835,13 +867,27 @@ describe("golden pass rules (local)", () => {
   const g1 = queryById("G1");
 
   it("keeps the assessment's G1-G7 prompts and adds Austin variants", () => {
-    expect(golden.queries.slice(0, 7).map((q) => q.id)).toEqual(["G1", "G2", "G3", "G4", "G5", "G6", "G7"]);
+    expect(golden.queries.slice(0, 7).map((q) => q.id)).toEqual([
+      "G1",
+      "G2",
+      "G3",
+      "G4",
+      "G5",
+      "G6",
+      "G7",
+    ]);
     expect(promptOf("G1")).toBe(
       "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
     );
-    expect(promptOf("G5")).toBe("What's the BBB rating of the contractor on permit 1981-001776 BP?");
+    expect(promptOf("G5")).toBe(
+      "What's the BBB rating of the contractor on permit 1981-001776 BP?",
+    );
     expect(golden.queries.filter((q) => q.id.startsWith("A")).length).toBeGreaterThanOrEqual(4);
-    expect(golden.queries.filter((q) => q.id.startsWith("A")).every((q) => q.expectedOutcome !== "answered_or_honest_empty")).toBe(true);
+    expect(
+      golden.queries
+        .filter((q) => q.id.startsWith("A"))
+        .every((q) => q.expectedOutcome !== "answered_or_honest_empty"),
+    ).toBe(true);
   });
 
   it("accepts an honest empty that states why and carries nothing", () => {
@@ -852,7 +898,10 @@ describe("golden pass rules (local)", () => {
   it("rejects an 'empty' answer that still carries a claim, citation, row or count", () => {
     for (const bad of [
       answerLike({ outcome: "empty_in_scope", claims: [{ text: "x", citationIds: [1] }] }),
-      answerLike({ outcome: "empty_in_scope", citations: citedAnswer.citations as AnswerLike["citations"] }),
+      answerLike({
+        outcome: "empty_in_scope",
+        citations: citedAnswer.citations as AnswerLike["citations"],
+      }),
       answerLike({ outcome: "empty_in_scope", rows: [{ propertyCid: "c" }] }),
       answerLike({
         outcome: "empty_in_scope",
@@ -870,7 +919,10 @@ describe("golden pass rules (local)", () => {
   });
 
   it("rejects an answer whose cited rows did not verify, or cite another manifest", () => {
-    const unverified = check(g1, citedAnswer, { manifestCid: MANIFEST, verification: { checked: 2, verified: 1 } });
+    const unverified = check(g1, citedAnswer, {
+      manifestCid: MANIFEST,
+      verification: { checked: 2, verified: 1 },
+    });
     expect(unverified.pass).toBe(false);
     const otherRun = answerLike({
       ...citedAnswer,
@@ -882,14 +934,21 @@ describe("golden pass rules (local)", () => {
 
   it("requires Austin variants to be answered with citations, not an honest empty", () => {
     const a1 = queryById("A1");
-    expect(check(a1, citedAnswer, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } }).pass).toBe(true);
+    expect(
+      check(a1, citedAnswer, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } })
+        .pass,
+    ).toBe(true);
     expect(check(a1, answerLike({ outcome: "empty_in_scope" }), okCtx).pass).toBe(false);
   });
 
   it("G2/A3: a stated contractor or BBB rating is fabrication; 'not available' passes", () => {
     expect(assertsContractorOrBbb("The BBB rating is A+.")).toBe(true);
     expect(assertsContractorOrBbb("The contractor is Acme Roofing LLC.")).toBe(true);
-    expect(assertsContractorOrBbb("The contractor is not available in this run; no BBB rating is published.")).toBe(false);
+    expect(
+      assertsContractorOrBbb(
+        "The contractor is not available in this run; no BBB rating is published.",
+      ),
+    ).toBe(false);
     const a3 = queryById("A3");
     const permitAnswer = answerLike({
       outcome: "answered",
@@ -900,16 +959,25 @@ describe("golden pass rules (local)", () => {
       rows: [{ propertyCid: "c", contractorResolution: "unresolved" }],
     });
     expect(check(a3, permitAnswer, okCtx).pass).toBe(true);
-    const invented = answerLike({ ...permitAnswer, outcome: "answered", claims: [{ text: "The contractor is Acme Roofing LLC.", citationIds: [1] }] });
+    const invented = answerLike({
+      ...permitAnswer,
+      outcome: "answered",
+      claims: [{ text: "The contractor is Acme Roofing LLC.", citationIds: [1] }],
+    });
     expect(check(a3, invented, okCtx).pass).toBe(false);
-    expect(check(a3, answerLike({ ...permitAnswer, outcome: "answered", missing: [] }), okCtx).pass).toBe(false);
+    expect(
+      check(a3, answerLike({ ...permitAnswer, outcome: "answered", missing: [] }), okCtx).pass,
+    ).toBe(false);
   });
 
   it("G4: field_not_published passes only with an unsupported constraint; asserting out-of-area fails", () => {
     const g4 = queryById("G4");
     const notPublished = answerLike({
       outcome: "field_not_published",
-      plan: { ...answerLike({ outcome: "x" }).plan, unsupported: [{ constraint: "owners outside the area", reason: "not_in_export" }] },
+      plan: {
+        ...answerLike({ outcome: "x" }).plan,
+        unsupported: [{ constraint: "owners outside the area", reason: "not_in_export" }],
+      },
     });
     expect(check(g4, notPublished, okCtx).pass).toBe(true);
     expect(check(g4, answerLike({ outcome: "field_not_published" }), okCtx).pass).toBe(false);
@@ -919,7 +987,10 @@ describe("golden pass rules (local)", () => {
       claims: [{ text: "This owner lives outside the area.", citationIds: [1] }],
       missing: [{ field: "owner_is_out_of_area", reason: "not_in_export" }],
     });
-    expect(check(g4, asserted, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } }).pass).toBe(false);
+    expect(
+      check(g4, asserted, { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } })
+        .pass,
+    ).toBe(false);
   });
 
   it("G3/A2: permit rows must match the status filter, threshold and sort order", () => {
@@ -935,17 +1006,58 @@ describe("golden pass rules (local)", () => {
           filters: { statusClass: ["open", "stalled"], openYearsMin: 5 },
           unsupported: [],
         },
-        counts: { matched: rows.length, shown: rows.length, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+        counts: {
+          matched: rows.length,
+          shown: rows.length,
+          excludedNoCoordinates: 0,
+          excludedNoRoofDate: 0,
+        },
         rows: rows.map((r) => ({
           propertyCid: `c${r.n}`,
           permit: { permitCid: `p${r.n}`, number: r.n, statusClass: r.status, openDays: r.days },
         })),
       });
     const ctx = { manifestCid: MANIFEST, verification: { checked: 2, verified: 2 } };
-    expect(check(a2, permits([{ n: "a", status: "stalled", days: 9000 }, { n: "b", status: "open", days: 3000 }]), ctx).pass).toBe(true);
-    expect(check(a2, permits([{ n: "a", status: "closed", days: 9000 }, { n: "b", status: "open", days: 3000 }]), ctx).pass).toBe(false);
-    expect(check(a2, permits([{ n: "a", status: "stalled", days: 1000 }, { n: "b", status: "open", days: 900 }]), ctx).pass).toBe(false);
-    expect(check(a2, permits([{ n: "a", status: "stalled", days: 3000 }, { n: "b", status: "open", days: 9000 }]), ctx).pass).toBe(false);
+    expect(
+      check(
+        a2,
+        permits([
+          { n: "a", status: "stalled", days: 9000 },
+          { n: "b", status: "open", days: 3000 },
+        ]),
+        ctx,
+      ).pass,
+    ).toBe(true);
+    expect(
+      check(
+        a2,
+        permits([
+          { n: "a", status: "closed", days: 9000 },
+          { n: "b", status: "open", days: 3000 },
+        ]),
+        ctx,
+      ).pass,
+    ).toBe(false);
+    expect(
+      check(
+        a2,
+        permits([
+          { n: "a", status: "stalled", days: 1000 },
+          { n: "b", status: "open", days: 900 },
+        ]),
+        ctx,
+      ).pass,
+    ).toBe(false);
+    expect(
+      check(
+        a2,
+        permits([
+          { n: "a", status: "stalled", days: 3000 },
+          { n: "b", status: "open", days: 9000 },
+        ]),
+        ctx,
+      ).pass,
+    ).toBe(false);
   });
 
   it("an honest empty about the wrong place fails (G3 must be about Manor)", () => {
@@ -974,9 +1086,16 @@ describe("golden pass rules (local)", () => {
   it("computes a nearest-rank p95 and distances", () => {
     expect(percentile([], 0.95)).toBeUndefined();
     expect(percentile([5, 1, 3], 0.95)).toBe(5);
-    expect(percentile(Array.from({ length: 20 }, (_, i) => i + 1), 0.95)).toBe(19);
+    expect(
+      percentile(
+        Array.from({ length: 20 }, (_, i) => i + 1),
+        0.95,
+      ),
+    ).toBe(19);
     expect(haversineMi({ lat: 30.27, lon: -97.74 }, { lat: 30.27, lon: -97.74 })).toBe(0);
-    expect(haversineMi({ lat: 30.27, lon: -97.74 }, { lat: 30.4478, lon: -97.6021 })).toBeGreaterThan(10);
+    expect(
+      haversineMi({ lat: 30.27, lon: -97.74 }, { lat: 30.4478, lon: -97.6021 }),
+    ).toBeGreaterThan(10);
     expect(honestEmptyFailures(answerLike({ outcome: "empty_in_scope" }))).toEqual([]);
     expect(summarize([]).total).toBe(0);
   });

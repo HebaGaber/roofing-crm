@@ -16,9 +16,7 @@
       "outcome": "needs_clarification",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        2784
-      ],
+      "latencyMs": [2784],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -29,9 +27,7 @@
       "countCheck": "not applicable",
       "intent": "find_properties",
       "modelCalls": 2,
-      "failures": [
-        "outcome needs_clarification is not an honest empty"
-      ],
+      "failures": ["outcome needs_clarification is not an honest empty"],
       "detail": {
         "area": "place \"Show me open roofing permits older than five years within five miles of Manor\" -> unresolved (undefined, undefined) radius 5 mi",
         "filters": {},
@@ -46,9 +42,7 @@
       "outcome": "needs_clarification",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        3151
-      ],
+      "latencyMs": [3151],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -59,9 +53,7 @@
       "countCheck": "not applicable",
       "intent": "find_properties",
       "modelCalls": 2,
-      "failures": [
-        "outcome needs_clarification, expected field_not_published or a flagged answer"
-      ],
+      "failures": ["outcome needs_clarification, expected field_not_published or a flagged answer"],
       "detail": {
         "area": "place \"Which homes near Lakeway haven't changed owners in 10+ years and have owners out\" -> unresolved (undefined, undefined) radius 5 mi",
         "filters": {},
@@ -76,16 +68,12 @@
       "outcome": "error",
       "mode": "fail",
       "pass": false,
-      "latencyMs": [
-        28403
-      ],
+      "latencyMs": [28403],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
       "countCheck": "not applicable",
-      "failures": [
-        "ask failed: Unable to transform response from server"
-      ]
+      "failures": ["ask failed: Unable to transform response from server"]
     },
     {
       "repeat": 0,
@@ -93,9 +81,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        12584
-      ],
+      "latencyMs": [12584],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,

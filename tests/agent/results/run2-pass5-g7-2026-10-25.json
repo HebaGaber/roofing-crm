@@ -21,10 +21,7 @@
       "outcome": "lead_created",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        10636,
-        7138
-      ],
+      "latencyMs": [10636, 7138],
       "failures": [],
       "emptyReason": "confirmLead created 48453:tcad:118096; confirmLeads created 2, already 0; undo removed 3 lead(s); none remain in leads.list"
     }
