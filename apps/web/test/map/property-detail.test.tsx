@@ -209,5 +209,13 @@ describe("PropertyDetail drawer · near {place} (E-93)", () => {
     const reason = document.querySelector('[data-field="near_place"]');
     expect(reason?.textContent).toContain("Nearest place not shown");
     expect(reason?.textContent).toContain("No coordinates for this parcel");
+    // One line says the map is left alone, in the same missing-data wording.
+    const position = document.querySelector('[data-field="map_position"]');
+    expect(position?.textContent).toBe("Not shown on the map · No coordinates for this parcel");
+  });
+
+  it("a property with coordinates has no such line", () => {
+    renderDrawer(data);
+    expect(document.querySelector('[data-field="map_position"]')).toBeNull();
   });
 });

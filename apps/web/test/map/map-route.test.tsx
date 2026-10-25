@@ -20,6 +20,17 @@ let lastMapProps: {
   answerPins?: { n: number }[];
   focusedPin?: number | null;
   onPinSelect?: (n: number) => void;
+  center?: { lat: number; lng: number } | null;
+  radiusMi?: number;
+  onHexSelect?: (cell: {
+    lat: number;
+    lng: number;
+    zoom: number;
+    count: number;
+    medianRoofAge: number | null;
+  }) => void;
+  onPinDrop?: (p: { lat: number; lng: number }) => void;
+  selectedPoint?: { lat: number; lng: number } | null;
 } = {};
 /** The props the route last handed the committed Candidate list and Field triage components. */
 let lastListProps: Record<string, unknown> | null = null;
@@ -28,6 +39,7 @@ let panelInstances = 0;
 let panelMounts = 0;
 let panelUnmounts = 0;
 const fitPins = vi.fn();
+const focusProperty = vi.fn();
 let lastTriageProps: Record<string, unknown> | null = null;
 let reportedMode: "overview" | "detail" = "overview";
 /** What the route last handed the map for the overview (null = client binning fallback). */
@@ -48,6 +60,11 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       answerPins?: { n: number }[];
       focusedPin?: number | null;
       onPinSelect?: (n: number) => void;
+      center?: { lat: number; lng: number } | null;
+      radiusMi?: number;
+      onHexSelect?: typeof lastMapProps.onHexSelect;
+      onPinDrop?: (p: { lat: number; lng: number }) => void;
+      selectedPoint?: { lat: number; lng: number } | null;
     },
     ref,
   ) {
@@ -63,6 +80,7 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       placeAtCenter,
       showCounty,
       fitPins,
+      focusProperty,
     }));
     useEffect(() => props.onViewModeChange?.(reportedMode), [props]);
     return <div data-testid="crm-map" />;
@@ -130,6 +148,7 @@ let searchResult: {
 } = { properties: [property] };
 let permitsReply: { permits: unknown[]; total?: number; truncated?: boolean } = { permits: [] };
 const permitInputs: unknown[] = [];
+let detailWithoutCoords = false;
 
 const RUN = "travis-202609-permits-20261021t103516z";
 function overviewFor(input: { zoom: number; permits?: boolean }) {
@@ -203,7 +222,9 @@ vi.mock("@crm/api-client/react", () => ({
     property: {
       get: {
         queryOptions: opts("property.get", () => ({
-          property,
+          property: detailWithoutCoords
+            ? { ...property, latitude: null, longitude: null }
+            : property,
           permits: [],
           bbbStatus: null,
           bbbStatusReason: null,
@@ -236,6 +257,8 @@ afterEach(() => {
   panelMounts = 0;
   panelUnmounts = 0;
   fitPins.mockReset();
+  focusProperty.mockReset();
+  detailWithoutCoords = false;
   sessionStorage.clear();
   lastTriageProps = null;
   permitsReply = { permits: [] };
@@ -312,7 +335,7 @@ describe("Map route layout", () => {
   it("zoomed out with loaded results: shows the overview chip, whose Zoom in zooms the map", async () => {
     renderAt("/?lat=30.4394&lng=-97.62&r=5");
     await screen.findByTestId("search-results");
-    const chip = await screen.findByText("Zoomed out: median roof age per hexagon");
+    const chip = await screen.findByText("Click a hexagon to search there");
     expect(chip).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Zoom in to individual properties" }));
     expect(zoomToDetail).toHaveBeenCalledTimes(1);
@@ -323,7 +346,7 @@ describe("Map route layout", () => {
     reportedMode = "detail";
     renderAt("/?lat=30.4394&lng=-97.62&r=5");
     await screen.findByTestId("search-results");
-    expect(screen.queryByText("Zoomed out: median roof age per hexagon")).toBeNull();
+    expect(screen.queryByText("Click a hexagon to search there")).toBeNull();
     expect(screen.getByText("Roof age, yrs")).not.toBeNull();
   });
 
@@ -367,7 +390,7 @@ describe("Map route county overview (search.countyOverview)", () => {
     expect(screen.getByText(/5 not on the map: no coordinates published/)).not.toBeNull();
     expect(screen.getByText(new RegExp(`Source: run ${RUN}`))).not.toBeNull();
     // The overview chip shows with county cells even before any pin.
-    expect(screen.getByText("Zoomed out: median roof age per hexagon")).not.toBeNull();
+    expect(screen.getByText("Click a hexagon to search there")).not.toBeNull();
   });
 
   it("re-asks with the map's whole-number zoom and the roof-age filter", async () => {
@@ -640,17 +663,26 @@ describe("Map route AI mode (mode=ai&q=)", () => {
     expect(aiProps().initialQuestion).toBe("roofs older than 15");
   });
 
-  it("the Map and AI chips switch mode and keep the pin", async () => {
-    renderAt("/?lat=30.4394&lng=-97.62&r=5");
-    const ai = screen.getByRole("button", { name: "Ask AI" });
-    expect(ai.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(ai);
+  it("on a phone the view stays selectable in AI mode, and the Filters button leads back out", async () => {
+    const page = renderAt("/?lat=30.4394&lng=-97.62&r=5&mode=ai");
     await screen.findByTestId("ask-panel");
-    expect(screen.getByRole("button", { name: "Ask AI" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    const group = screen.getByRole("group", { name: "View" });
+    const pressed = () =>
+      [...group.querySelectorAll("button")].filter(
+        (b) => b.getAttribute("aria-pressed") === "true",
+      );
+    expect(pressed().map((b) => b.textContent)).toEqual(["Map + cards"]);
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    await screen.findByTestId("candidate-list");
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    expect(pressed().map((b) => b.textContent)).toEqual(["List"]);
     fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
+    await screen.findByTestId("ask-panel");
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    // The way back to filters and results: the Filters button (opens the filters, leaves AI).
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     await screen.findByRole("region", { name: "Results" });
+    expect(page.getAttribute("data-mode")).toBeNull();
     expect(screen.queryByTestId("ask-panel")).toBeNull();
     expect(screen.getByRole("spinbutton", { name: "Radius" })).not.toBeNull();
   });
@@ -710,7 +742,7 @@ describe("Map route three-pane layout (PO review: left Filters | Ask AI, collaps
   const right = (page: HTMLElement): HTMLElement =>
     page.querySelector<HTMLElement>("[data-pane='right']") as HTMLElement;
 
-  it("the bar above the map is ONE group: Map + cards | List | Ask AI", () => {
+  it("the bar above the map is ONE group: Map + cards | List (no Ask AI)", () => {
     stubWide(true);
     const page = renderAt(PIN_URL);
     const bar = page.querySelector("[data-view-bar]") as HTMLElement;
@@ -718,10 +750,8 @@ describe("Map route three-pane layout (PO review: left Filters | Ask AI, collaps
     expect([...group.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
       "Map + cards",
       "List",
-      "Ask AI",
     ]);
-    expect(within(bar).queryByRole("button", { name: "AI mode" })).toBeNull();
-    expect(within(bar).queryByRole("button", { name: "Map mode" })).toBeNull();
+    expect(within(bar).queryByRole("button", { name: /Ask AI|AI mode|Map mode/ })).toBeNull();
     expect(
       within(bar).getByRole("button", { name: "Map + cards" }).getAttribute("aria-pressed"),
     ).toBe("true");
@@ -748,8 +778,8 @@ describe("Map route three-pane layout (PO review: left Filters | Ask AI, collaps
     expect(
       left(page).querySelector("[aria-label='Filters'][id$='-panel']")?.closest("[hidden]"),
     ).not.toBeNull();
-    // The top control follows the same state.
-    expect(screen.getByRole("button", { name: "Ask AI" }).getAttribute("aria-pressed")).toBe(
+    // The top control is a pure view switch: it keeps showing the view, not the mode.
+    expect(screen.getByRole("button", { name: "Map + cards" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
   });
@@ -801,18 +831,41 @@ describe("Map route three-pane layout (PO review: left Filters | Ask AI, collaps
     expect(lastPanelProps?.layout).toBe("sheet");
   });
 
-  it("Map + cards and List leave AI mode / keep it as the control says", async () => {
+  it("in AI mode the view stays selectable, one option pressed, and the mode and answer are kept", async () => {
     stubWide(true);
     const page = renderAt(`${PIN_URL}&mode=ai`);
     await screen.findByTestId("ask-panel");
-    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    const first = screen.getByTestId("ask-panel").getAttribute("data-instance");
+    const bar = page.querySelector("[data-view-bar]") as HTMLElement;
+    const pressed = () =>
+      [...bar.querySelectorAll("button")]
+        .filter((b) => b.getAttribute("aria-pressed") === "true")
+        .map((b) => b.textContent);
+    expect(pressed()).toEqual(["Map + cards"]);
+    fireEvent.click(within(bar).getByRole("button", { name: "List" }));
     await screen.findByTestId("candidate-list");
-    fireEvent.click(screen.getByRole("button", { name: "Ask AI" }));
-    await screen.findByTestId("crm-map");
-    expect(page.getAttribute("data-view")).toBe("map");
+    expect(pressed()).toEqual(["List"]);
     expect(page.getAttribute("data-mode")).toBe("ai");
-    fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
+    expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first);
+    fireEvent.click(within(bar).getByRole("button", { name: "Map + cards" }));
+    await screen.findByTestId("crm-map");
+    expect(pressed()).toEqual(["Map + cards"]);
+    expect(page.getAttribute("data-mode")).toBe("ai");
+    expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first);
+    expect(panelUnmounts).toBe(0);
+  });
+
+  it("the left pane's Filters tab is the way back out of AI mode", async () => {
+    stubWide(true);
+    const page = renderAt(`${PIN_URL}&mode=ai`);
+    await screen.findByTestId("ask-panel");
+    fireEvent.click(within(leftSwitch(page)).getByRole("button", { name: "Filters" }));
     expect(page.getAttribute("data-mode")).toBeNull();
+    expect(
+      within(leftSwitch(page))
+        .getByRole("button", { name: "Filters" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("each pane collapses on its own to a rail with a named handle, and the choice is kept", () => {
@@ -864,7 +917,7 @@ describe("Map route three-pane layout (PO review: left Filters | Ask AI, collaps
 });
 
 describe("Map route phone toolbar (one row under the search box)", () => {
-  it("is Use my location, Filters with the count, and ONE Map | List | AI control", async () => {
+  it("is Use my location, Filters with the count, and ONE Map | List control", async () => {
     const page = renderAt("/?lat=30.4394&lng=-97.62&r=5");
     await screen.findByTestId("search-results");
     const row = page.querySelector("[data-pane='left']") as HTMLElement;
@@ -872,7 +925,7 @@ describe("Map route phone toolbar (one row under the search box)", () => {
     expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["View"]);
     expect(
       [...(groups[0] as HTMLElement).querySelectorAll("button")].map((b) => b.textContent),
-    ).toEqual(["Map + cards", "List", "Ask AI"]);
+    ).toEqual(["Map + cards", "List"]);
     expect(within(row).getByRole("button", { name: "Use my location" })).not.toBeNull();
     expect(within(row).getByRole("button", { name: /^Filters/ }).textContent).toMatch(/1/);
     expect(within(row).queryByRole("button", { name: "Map mode" })).toBeNull();
@@ -966,14 +1019,14 @@ describe("Map route keeps the answer across the 1280 px boundary (resize, rotate
     expect(panelUnmounts).toBe(0);
   });
 
-  it("leaving AI mode while narrow keeps the answer for when AI mode returns", async () => {
+  it("switching view while narrow keeps the answer (the one panel instance)", async () => {
     stubWide(false);
     renderAt(URL_AI);
     await screen.findByTestId("ask-panel");
     const first = screen.getByTestId("ask-panel").getAttribute("data-instance");
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    await screen.findByTestId("candidate-list");
     fireEvent.click(screen.getByRole("button", { name: "Map + cards" }));
-    await screen.findByRole("region", { name: "Results" });
-    fireEvent.click(screen.getByRole("button", { name: "Ask AI" }));
     await vi.waitFor(() =>
       expect(screen.getByTestId("ask-panel").getAttribute("data-instance")).toBe(first),
     );
@@ -1002,5 +1055,154 @@ describe("Map route prefetches the Leads list once a lead can be created", () =>
     prefetchLeads.mockClear();
     renderAt(`${PIN}&triage=1`);
     await vi.waitFor(() => expect(prefetchLeads).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("Map route: clicking a hexagon of the county overview searches there", () => {
+  const CELL = { lat: 30.2512, lng: -97.7123, zoom: 9, count: 120, medianRoofAge: 21 };
+  const select = (cell = CELL): void =>
+    act(() => (lastMapProps.onHexSelect as NonNullable<typeof lastMapProps.onHexSelect>)(cell));
+
+  it("opens on the overview with no pin, and the chip says to click a hexagon", async () => {
+    renderAt("/");
+    await screen.findByText("Click a hexagon to search there");
+    expect(lastMapProps.center ?? null).toBeNull();
+    expect(typeof lastMapProps.onHexSelect).toBe("function");
+  });
+
+  it("drops the pin at the cell's centre and opens the radius view there (default radius covers the cell)", async () => {
+    renderAt("/");
+    select();
+    await vi.waitFor(() => expect(lastMapProps.center).toEqual({ lat: CELL.lat, lng: CELL.lng }));
+    expect(lastMapProps.radiusMi).toBe(5);
+    // The radius view replaces the overview: the results search runs for that centre.
+    await screen.findByTestId("search-results");
+  });
+
+  it("keeps the rep's own radius when it already covers the cell", async () => {
+    renderAt("/?r=10");
+    select();
+    await vi.waitFor(() => expect(lastMapProps.center).toEqual({ lat: CELL.lat, lng: CELL.lng }));
+    expect(lastMapProps.radiusMi).toBe(10);
+  });
+
+  it("widens a radius that would not cover the cell, to the circumradius rounded up", async () => {
+    renderAt("/?r=1");
+    select();
+    await vi.waitFor(() => expect(lastMapProps.radiusMi).toBe(4));
+  });
+
+  it("never goes above 25 mi, even for the biggest cells", async () => {
+    renderAt("/");
+    select({ ...CELL, zoom: 6 });
+    await vi.waitFor(() => expect(lastMapProps.radiusMi).toBe(25));
+  });
+
+  it("carries the centre and radius in the URL (reload and Back work) with the other filters", async () => {
+    renderAt("/?roof=20&mode=filters");
+    select();
+    await vi.waitFor(() => expect(lastMapProps.center).toEqual({ lat: CELL.lat, lng: CELL.lng }));
+    expect(screen.getByRole("button", { name: "20" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("Escape returns to the overview", async () => {
+    renderAt("/");
+    select();
+    await vi.waitFor(() => expect(lastMapProps.center).not.toBeNull());
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    await vi.waitFor(() => expect(lastMapProps.center ?? null).toBeNull());
+    await screen.findByText("Click a hexagon to search there");
+  });
+
+  it("Escape does not undo a pin the rep placed by hand", async () => {
+    renderAt("/");
+    act(() => lastMapProps.onPinDrop?.({ lat: 30.3, lng: -97.7 }));
+    await vi.waitFor(() => expect(lastMapProps.center).toEqual({ lat: 30.3, lng: -97.7 }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(lastMapProps.center).toEqual({ lat: 30.3, lng: -97.7 });
+  });
+
+  it("tapping elsewhere still places a pin", async () => {
+    renderAt("/");
+    act(() => lastMapProps.onPinDrop?.({ lat: 30.31, lng: -97.71 }));
+    await vi.waitFor(() => expect(lastMapProps.center).toEqual({ lat: 30.31, lng: -97.71 }));
+  });
+
+  it("a cell with no properties still places the pin and the empty state says so", async () => {
+    searchResult = { properties: [] };
+    renderAt("/");
+    select({ ...CELL, count: 0 });
+    await screen.findByText(/No properties within 5 mi/);
+  });
+});
+
+describe("Map route centres the map on a selected property", () => {
+  const URL_PIN = "/?lat=30.4394&lng=-97.62&r=5";
+  const at = { lat: property.latitude, lng: property.longitude };
+
+  it("a selection (?sel=, a link or a reload) centres on the property, close in, once", async () => {
+    stubWide(false);
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
+    expect(focusProperty.mock.calls[0]?.[0]).toEqual(at);
+    expect(lastMapProps.selectedPoint).toEqual(at);
+  });
+
+  it("does not move the search pin or the radius", async () => {
+    stubWide(false);
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalled());
+    expect(lastMapProps.center).toEqual({ lat: 30.4394, lng: -97.62 });
+    expect(lastMapProps.radiusMi).toBe(5);
+  });
+
+  it("from 1280 px it pads the right for the 440 px drawer", async () => {
+    stubWide(true);
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalled());
+    expect(focusProperty.mock.calls[0]?.[1]).toMatchObject({ right: 440, bottom: 0, left: 0 });
+  });
+
+  it("below 1280 px it has no right padding (the drawer is a full-height sheet)", async () => {
+    stubWide(false);
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalled());
+    expect(focusProperty.mock.calls[0]?.[1]).toMatchObject({ right: 0, left: 0 });
+  });
+
+  it("closing the drawer keeps the view: no new camera move", async () => {
+    stubWide(false);
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
+    const dialog = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>("aside[role='dialog'][data-property-cid]");
+      if (found === null) throw new Error("no drawer");
+      return found;
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await vi.waitFor(() => expect(document.querySelector("aside[data-property-cid]")).toBeNull());
+    expect(focusProperty).toHaveBeenCalledTimes(1);
+    expect(lastMapProps.selectedPoint ?? null).toBeNull();
+  });
+
+  it("choosing a result row centres on that property", async () => {
+    stubWide(false);
+    renderAt(URL_PIN);
+    const list = await screen.findByTestId("search-results");
+    expect(focusProperty).not.toHaveBeenCalled();
+    fireEvent.click(within(list).getAllByRole("button")[0] as HTMLElement);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
+    expect(focusProperty.mock.calls[0]?.[0]).toEqual(at);
+  });
+
+  it("a property without coordinates is not centred, and the map is left alone", async () => {
+    stubWide(false);
+    searchResult = { properties: [{ ...property, latitude: null, longitude: null } as never] };
+    detailWithoutCoords = true;
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await screen.findByTestId("search-results");
+    await screen.findByRole("dialog", { name: /TCAD/ });
+    expect(focusProperty).not.toHaveBeenCalled();
+    expect(lastMapProps.selectedPoint ?? null).toBeNull();
   });
 });

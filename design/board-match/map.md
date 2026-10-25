@@ -141,6 +141,34 @@ Sixth pass (follow-up fixes):
 - The result snackbar's action wrapper and close button used an auto margin and the default button
   padding, which the token audit flagged in every state that shows it; both use tokens now.
 
+Seventh pass (PO: toggle, hexagon click, selection centres the map):
+
+- **Toggle**: Ask AI is removed from the toggle above the map; it is a pure view switch (Map + cards |
+  List, exactly one pressed, 48 px) at every width. This reverses the earlier PO decision (review-log
+  rows 75 and 77) that AI appears in it. In AI mode the toggle still shows the view and the answer
+  and mode are kept when it changes. Ways in: the left pane's Filters | Ask AI switch (from 1280 px),
+  the rail's Map > AI, the phone bottom bar's Ask tab, the first-visit questions, `/ask`. Ways out:
+  the left pane's Filters tab, the Filters button on phones (it also opens the filters), the bottom
+  bar's Map tab and the rail's Map entry. On a phone, the List view hides the AI sheet (the answer
+  returns with Map + cards).
+- **Hexagon click**: a click, tap or keyboard activation on a cell drops the search pin at its centre
+  (the cell centre the API computes), keeps the rep's radius unless it would not cover the cell
+  (circumradius rounded up to 0.5 mi, at most 25 mi), and opens the normal radius results; lat, lng,
+  r are in the URL, Escape or Back returns to the overview (the camera zooms back out to the county).
+  Each cell has a keyboard and screen-reader twin ("Hexagon, median roof age 21 years, 120 properties,
+  open here"), one tab stop with arrow keys, and the focused cell is outlined 3 px on the map.
+  Pointer cursor on cells; permit clusters still zoom in; tapping outside a cell still places a pin.
+  Chip and legend: "Click a hexagon to search there".
+- **Selecting a property** flies the map to it at zoom 16 or closer (a jump with reduced motion),
+  centred in what stays visible: from 1280 px the part of the 440 px drawer that reaches past the
+  results pane (measured), below it the strip the results sheet leaves (the drawer is a full-height
+  sheet there); a ring marks the property; closing the drawer keeps the view; the search pin and the
+  radius are not touched. A property with no coordinates is not centred and the drawer says "Not shown
+  on the map · {reason}". Measured on the build: zoom 16, marker 300 px into a 600 px visible strip at
+  1440 px; at 390 px the marker is centred above the sheet as it was when the camera moved.
+- First visible click after a fresh load of the county view at 1440 px was swallowed once in my Playwright
+  run (later clicks searched); I could not tie it to a cause and the unit tests cover the handler.
+
 ## Matrix
 
 | Board                                                                                                                                           | Route + state                | Status                                           | Side-by-side                           | Notes                                                                                                                                                                                                                                                                            |

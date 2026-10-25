@@ -58,6 +58,9 @@ import {
   type OverviewPermitPoint,
 } from "./hexbin.js";
 import { pinBounds, pinElement, setPinSelected } from "./answerPins.js";
+import { HexCellList, type HexListCell } from "./HexCellList.js";
+import { focusCamera, type FocusPadding } from "./focusProperty.js";
+import { parseHexZoom } from "./hexSearch.js";
 import styles from "./CrmMap.module.css";
 
 /** Default demo style: no API key required. MapLibre's own "demotiles" (the original default
@@ -86,6 +89,8 @@ const HEX_FILL_LAYER_ID = "crm-hex-fill";
 const HEX_LINE_LAYER_ID = "crm-hex-line";
 const PERMIT_CLUSTER_SOURCE_ID = "crm-permit-clusters";
 const PERMIT_CLUSTER_LAYER_ID = "crm-permit-clusters-circle";
+const HEX_FOCUS_SOURCE_ID = "crm-hex-focus";
+const HEX_FOCUS_LAYER_ID = "crm-hex-focus-line";
 const OVERVIEW_LAYER_IDS = [HEX_FILL_LAYER_ID, PERMIT_CLUSTER_LAYER_ID] as const;
 /** The opening (whole-county) zoom. */
 const COUNTY_ZOOM = 9;
@@ -227,6 +232,10 @@ export interface CrmMapHandle {
   readonly showCounty: () => void;
   /** AI mode's "Show on map": fits the answer's pins (and the search ring when there is a pin). */
   readonly fitPins: () => void;
+  /** Centres on a selected property, at least `FOCUS_ZOOM` (the current zoom when closer), inside
+   *  the part of the map that stays visible (`padding`); a smooth flight, or a jump with reduced
+   *  motion. Never touches the search pin or the radius. */
+  readonly focusProperty: (point: LatLng, padding: FocusPadding) => void;
 }
 
 /** `overview` = hexagons and permit clusters; `detail` = individual markers. */
@@ -267,6 +276,20 @@ export interface CrmMapProps {
   readonly focusedPin?: number | null;
   /** A pin was clicked: the answer panel focuses that citation. */
   readonly onPinSelect?: (n: number) => void;
+  /** The selected property (its drawer is open): marked on the map so the rep sees which one. */
+  readonly selectedPoint?: LatLng | null;
+  /** A hexagon of the county overview was clicked, tapped or activated from the keyboard: search
+   *  there (the pin goes to the cell's centre). */
+  readonly onHexSelect?: (cell: HexSelection) => void;
+}
+
+export interface HexSelection {
+  readonly lat: number;
+  readonly lng: number;
+  /** The whole-number zoom the cell was made at (its size). */
+  readonly zoom: number;
+  readonly count: number;
+  readonly medianRoofAge: number | null;
 }
 
 /** A roof marker's fill: its roof age on the `--viz-roof-age-*` scale (the legend's scale). */
@@ -330,6 +353,8 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     answerPins = [],
     focusedPin = null,
     onPinSelect,
+    onHexSelect,
+    selectedPoint = null,
   }: CrmMapProps,
   ref,
 ) {
@@ -347,8 +372,13 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const overview = isOverviewView(zoom, center !== null);
   const onViewModeChangeRef = useRef(onViewModeChange);
   onViewModeChangeRef.current = onViewModeChange;
+  const styleReadyRef = useRef(false);
+  const pendingFocusRef = useRef<{ point: LatLng; padding: FocusPadding } | null>(null);
+  const runFocusRef = useRef<(point: LatLng, padding: FocusPadding) => void>(() => undefined);
   const onPinSelectRef = useRef(onPinSelect);
   onPinSelectRef.current = onPinSelect;
+  const onHexSelectRef = useRef(onHexSelect);
+  onHexSelectRef.current = onHexSelect;
   const pinsRef = useRef(answerPins);
   pinsRef.current = answerPins;
   const onZoomStepChangeRef = useRef(onZoomStepChange);
@@ -409,6 +439,14 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       ) {
         return;
       }
+      // A hexagon takes the click (its own handler below); anywhere else still drops a pin.
+      if (
+        onHexSelectRef.current !== undefined &&
+        map.getLayer(HEX_FILL_LAYER_ID) !== undefined &&
+        map.queryRenderedFeatures(event.point, { layers: [HEX_FILL_LAYER_ID] }).length > 0
+      ) {
+        return;
+      }
       onPinDropRef.current?.({ lat: event.lngLat.lat, lng: event.lngLat.lng });
     };
 
@@ -448,6 +486,33 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         .catch(() => zoomInto(lng, lat, OVERVIEW_MAX_ZOOM + 0.5));
     };
 
+    const onHexClick = (
+      event: MapMouseEvent & { features?: { properties: Record<string, unknown> }[] },
+    ): void => {
+      // A permit cluster on top of the hexagon keeps its own behaviour (zoom in).
+      if (
+        map.getLayer(PERMIT_CLUSTER_LAYER_ID) !== undefined &&
+        map.queryRenderedFeatures(event.point, { layers: [PERMIT_CLUSTER_LAYER_ID] }).length > 0
+      ) {
+        return;
+      }
+      const props = event.features?.[0]?.properties;
+      const select = onHexSelectRef.current;
+      if (props === undefined || select === undefined) return;
+      const zoom = parseHexZoom(String(props.id));
+      const lat = Number(props.centerLat);
+      const lng = Number(props.centerLng);
+      if (zoom === null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const median = props.medianRoofAge;
+      select({
+        lat,
+        lng,
+        zoom,
+        count: Number(props.count),
+        medianRoofAge: typeof median === "number" ? median : null,
+      });
+    };
+
     const pointer = (): void => {
       map.getCanvas().style.cursor = "pointer";
     };
@@ -467,6 +532,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     map.on("error", onError);
     map.on("click", onClick);
     map.on("zoomend", onZoomEnd);
+    map.on("click", HEX_FILL_LAYER_ID, onHexClick);
     map.on("click", PERMIT_CLUSTER_LAYER_ID, onClusterClick);
     for (const id of OVERVIEW_LAYER_IDS) {
       map.on("mouseenter", id, pointer);
@@ -481,6 +547,21 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       delete window.__crmMap;
     };
   }, [styleUrl, retryToken]);
+
+  // Leaving a search for the overview (Escape, Back, "Recentre" with no pin): the camera goes back
+  // out to the whole county too, so the hexagons are there to click again.
+  const hadCenterRef = useRef(false);
+  useEffect(() => {
+    const map = mapRef.current;
+    const hasCenter = center !== null;
+    if (map !== null && styleReady && hadCenterRef.current && !hasCenter) {
+      map.fitBounds(TRAVIS_COUNTY_BOUNDS, {
+        padding: 24,
+        duration: prefersReducedMotion() ? 0 : 400,
+      });
+    }
+    hadCenterRef.current = hasCenter;
+  }, [center === null, styleReady]);
 
   // The pin marker: added/moved/removed as `center` changes, never redrawn as part of the full
   // map-recreation effect above (AC-1: dropping a new pin or a new GPS fix must not re-create the
@@ -515,6 +596,36 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     }
     // radiusMi is read through a ref on purpose: a radius change must not refit the view.
   }, [center?.lat, center?.lng, styleReady]);
+
+  runFocusRef.current = (point, padding) => {
+    const map = mapRef.current;
+    if (map === null) return;
+    // Before the style is ready the pin's own ring fit has not run yet and would override this
+    // move: wait, and run right after it (see the effect below).
+    if (!styleReadyRef.current) {
+      pendingFocusRef.current = { point, padding };
+      return;
+    }
+    const camera = focusCamera({
+      point,
+      currentZoom: map.getZoom(),
+      padding,
+      reducedMotion: prefersReducedMotion(),
+    });
+    const options = { center: camera.center, zoom: camera.zoom, padding: camera.padding };
+    if (camera.kind === "jump") map.jumpTo(options);
+    else map.flyTo({ ...options, duration: camera.duration, essential: false });
+  };
+
+  // A property selected before the map was ready (a link or a reload with ?sel=): move to it once the
+  // style is ready, after the search pin's ring fit above, so that fit does not override it.
+  useEffect(() => {
+    styleReadyRef.current = styleReady;
+    const pending = pendingFocusRef.current;
+    if (!styleReady || pending === null) return;
+    pendingFocusRef.current = null;
+    runFocusRef.current(pending.point, pending.padding);
+  }, [styleReady]);
 
   // The radius ring (AC-1): a GeoJSON polygon redrawn on every center/radiusMi change, per
   // plan.md's shared-rule requirement — a live client-side preview of the same search the
@@ -790,6 +901,72 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     });
   }, [permitData, overview, layers.permits, styleReady]);
 
+  // The selected property: a ring in the primary colour at its position (its own marker, so it shows
+  // whatever the results or the layers hold). Decorative: the drawer says which property it is.
+  const selectedMarkerRef = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    selectedMarkerRef.current?.remove();
+    selectedMarkerRef.current = null;
+    if (map === null || !styleReady || selectedPoint === null) return;
+    const el = document.createElement("div");
+    el.dataset.selectedProperty = "true";
+    el.setAttribute("aria-hidden", "true");
+    el.style.width = "32px";
+    el.style.height = "32px";
+    el.style.boxSizing = "border-box";
+    el.style.borderRadius = "50%";
+    el.style.border = "3px solid var(--md-sys-color-primary)";
+    el.style.boxShadow = "0 0 0 2px var(--md-sys-color-surface)";
+    el.style.pointerEvents = "none";
+    selectedMarkerRef.current = new Marker({ element: el })
+      .setLngLat([selectedPoint.lng, selectedPoint.lat])
+      .addTo(map);
+  }, [selectedPoint?.lat, selectedPoint?.lng, styleReady]);
+
+  // The hexagons' keyboard twin and the outline of the focused one (3 px, primary): the layer is
+  // WebGL, so focus has to be drawn on the map itself.
+  const [focusedHex, setFocusedHex] = useState<string | null>(null);
+  const hexListCells = useMemo<HexListCell[]>(
+    () =>
+      hexData.features.map((f) => ({
+        id: f.properties.id,
+        lat: f.properties.centerLat,
+        lng: f.properties.centerLng,
+        count: f.properties.count,
+        medianRoofAge: f.properties.medianRoofAge,
+      })),
+    [hexData],
+  );
+  const showHexList =
+    overview && layers.roofs && onHexSelect !== undefined && hexListCells.length > 0;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !styleReady) return;
+    const feature =
+      focusedHex === null
+        ? undefined
+        : hexData.features.find((f) => f.properties.id === focusedHex);
+    if (!showHexList || feature === undefined) {
+      if (map.getLayer(HEX_FOCUS_LAYER_ID)) map.removeLayer(HEX_FOCUS_LAYER_ID);
+      if (map.getSource(HEX_FOCUS_SOURCE_ID)) map.removeSource(HEX_FOCUS_SOURCE_ID);
+      return;
+    }
+    const data = feature as unknown as GeoJSON.Feature;
+    const source = map.getSource(HEX_FOCUS_SOURCE_ID) as GeoJSONSource | undefined;
+    if (source !== undefined) {
+      source.setData(data);
+      return;
+    }
+    map.addSource(HEX_FOCUS_SOURCE_ID, { type: "geojson", data });
+    map.addLayer({
+      id: HEX_FOCUS_LAYER_ID,
+      type: "line",
+      source: HEX_FOCUS_SOURCE_ID,
+      paint: { "line-color": resolveToken("--md-sys-color-primary"), "line-width": 3 },
+    });
+  }, [focusedHex, hexData, showHexList, styleReady]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -829,6 +1006,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
           duration: prefersReducedMotion() ? 0 : 400,
         });
       },
+      focusProperty: (point, padding) => runFocusRef.current(point, padding),
       showCounty: () => {
         mapRef.current?.fitBounds(TRAVIS_COUNTY_BOUNDS, {
           padding: 24,
@@ -857,6 +1035,23 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
         data-view-mode={overview ? "overview" : "detail"}
         data-pin-mode={pinMode ? "true" : undefined}
       />
+      {showHexList ? (
+        <HexCellList
+          cells={hexListCells}
+          onFocusCell={setFocusedHex}
+          onSelect={(cell) => {
+            const zoom = parseHexZoom(cell.id);
+            if (zoom === null) return;
+            onHexSelect?.({
+              lat: cell.lat,
+              lng: cell.lng,
+              zoom,
+              count: cell.count,
+              medianRoofAge: cell.medianRoofAge,
+            });
+          }}
+        />
+      ) : null}
       {pinMode ? <div className={styles.crosshair} aria-hidden="true" data-crosshair="" /> : null}
       {failed && (
         <div role="alert" data-state="CrmMapFailed390" className={styles.failed}>

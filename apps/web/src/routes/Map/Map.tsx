@@ -38,7 +38,14 @@ import {
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
-import { CrmMap, type CrmMapHandle, type LatLng } from "../../components/Map/CrmMap.js";
+import {
+  CrmMap,
+  type CrmMapHandle,
+  type HexSelection,
+  type LatLng,
+} from "../../components/Map/CrmMap.js";
+import { DRAWER_WIDTH_PX, focusPadding } from "../../components/Map/focusProperty.js";
+import { hexSearchRadiusMi } from "../../components/Map/hexSearch.js";
 import { GpsButton, LOW_ACCURACY_M } from "../../components/Map/GpsButton.js";
 import { LayersPopover, type LayersState } from "../../components/Map/LayersPopover.js";
 import { MapControls } from "../../components/Map/MapControls.js";
@@ -97,6 +104,16 @@ function useWide(): boolean {
   );
 }
 
+/** Pixels of the map the 440 px right-edge drawer will cover: the drawer starts 440 px from the
+ *  viewport's right edge, the map ends where the results pane begins. Unknown size: the whole drawer. */
+function drawerOverlap(mapEl: HTMLElement | null): number {
+  if (mapEl === null) return DRAWER_WIDTH_PX;
+  const rect = mapEl.getBoundingClientRect();
+  if (rect.width === 0) return DRAWER_WIDTH_PX;
+  const drawerLeft = mapEl.ownerDocument.documentElement.clientWidth - DRAWER_WIDTH_PX;
+  return Math.max(0, Math.round(rect.right - drawerLeft));
+}
+
 export function Component(): ReactElement {
   const trpc = useTRPC();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -108,6 +125,7 @@ export function Component(): ReactElement {
   const pinOutsideCounty = center !== null && !isInTravisCounty(center);
 
   const mapHandleRef = useRef<CrmMapHandle | null>(null);
+  const mapAreaRef = useRef<HTMLDivElement | null>(null);
   const [layers, setLayers] = useState<LayersState>(DEFAULT_LAYERS);
   const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
@@ -208,9 +226,26 @@ export function Component(): ReactElement {
     });
   }, []);
 
+  // A hexagon of the county overview opened the radius view (Escape or Back returns to the overview).
+  const [fromHex, setFromHex] = useState(false);
+  const hasRadiusParam = searchParams.has("r");
+  const selectHex = useCallback(
+    (cell: HexSelection) => {
+      setPinMode(false);
+      setAccuracyM(null);
+      setFromGps(false);
+      setFromHex(true);
+      // The rep's own radius is kept; a cell the radius would not cover widens it (never past 25 mi).
+      const radius = hexSearchRadiusMi(cell.lat, cell.zoom, hasRadiusParam ? radiusMi : undefined);
+      setSearchParams((prev) => patchMapParams(prev, { lat: cell.lat, lng: cell.lng, r: radius }));
+    },
+    [hasRadiusParam, radiusMi, setSearchParams],
+  );
+
   // A pin dropped, placed or dragged by hand: ends pin mode, and is not a GPS fix.
   const placePoint = useCallback(
     (point: LatLng) => {
+      setFromHex(false);
       setPinMode(false);
       setAccuracyM(null);
       setFromGps(false);
@@ -219,10 +254,32 @@ export function Component(): ReactElement {
     [setSearchParams],
   );
 
+  // Escape leaves a hexagon search for the overview (only when nothing else is open).
+  useEffect(() => {
+    if (!fromHex || center === null) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented || sel !== null || pinMode) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [role='dialog']")
+      )
+        return;
+      setFromHex(false);
+      setSearchParams((prev) => patchMapParams(prev, { lat: null, lng: null, r: null }));
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [fromHex, center, sel, pinMode, setSearchParams]);
+  useEffect(() => {
+    if (center === null) setFromHex(false);
+  }, [center]);
+
   // A GPS fix: the same centre change, but it keeps the accuracy `GpsButton` reports first.
   const gpsLocated = useCallback(
     (point: LatLng) => {
       setPinMode(false);
+      setFromHex(false);
       setFromGps(true);
       setSearchParams((prev) => patchMapParams(prev, { lat: point.lat, lng: point.lng }));
     },
@@ -306,6 +363,41 @@ export function Component(): ReactElement {
     enabled: sel !== null,
   });
 
+  // The selected property's position: from the results row when it is there, else from its detail.
+  const selectedPoint = useMemo<LatLng | null>(() => {
+    if (sel === null) return null;
+    const row = query.data?.properties.find((p) => p.propertyCid === sel);
+    const from = row ?? detailQuery.data?.property ?? null;
+    if (from === null || from.latitude === null || from.longitude === null) return null;
+    return { lat: from.latitude, lng: from.longitude };
+  }, [sel, query.data, detailQuery.data]);
+  // Selecting a property (a marker, a row, ?sel= from a link or a reload, Open on map, Show on map)
+  // centres the map on it, once per selection: closing the drawer keeps the view. Only the camera
+  // moves; the search pin and the radius are untouched.
+  const centredOnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sel === null) {
+      centredOnRef.current = null;
+      return;
+    }
+    const handle = mapHandleRef.current;
+    if (centredOnRef.current === sel || selectedPoint === null || handle === null || view !== "map")
+      return;
+    centredOnRef.current = sel;
+    const mapEl = mapAreaRef.current;
+    const sheet = mapEl?.ownerDocument.querySelector<HTMLElement>("[data-sheet]");
+    handle.focusProperty(
+      selectedPoint,
+      focusPadding({
+        wide,
+        mapWidth: mapEl?.clientWidth ?? 0,
+        mapHeight: mapEl?.clientHeight ?? 0,
+        drawerOverlap: drawerOverlap(mapEl),
+        sheetHeight: wide ? 0 : (sheet?.getBoundingClientRect().height ?? 0),
+      }),
+    );
+  }, [sel, selectedPoint, view, wide]);
+
   const widenTo = radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? radiusMi + WIDEN_STEP_MI : null;
   const isZeroResult =
     searchInput !== null && query.data !== undefined && query.data.properties.length === 0;
@@ -335,16 +427,22 @@ export function Component(): ReactElement {
     setTriageCid(null);
   }, [setTriage]);
 
-  // The single top control and the left switch: one URL update (two in a row would each start from
-  // the same params and drop the first).
+  // The toggle above the map is a pure view switch (Map + cards | List): it never changes the mode,
+  // so AI mode (and its answer) survives a switch of view. One URL update, like every other change.
   const chooseView = useCallback(
     (choice: MapViewChoice) => {
-      setSearchParams((prev) => {
-        if (choice === "list") return patchMapView(prev, { view: "list" });
-        return patchMapMode(patchMapView(prev, { view: "map" }), {
+      setSearchParams((prev) => patchMapView(prev, { view: choice === "list" ? "list" : "map" }));
+    },
+    [setSearchParams],
+  );
+  // The left pane's Filters | Ask AI switch (from 1280 px): the mode, shown on the map view.
+  const chooseLeft = useCallback(
+    (choice: "filters" | "ai") => {
+      setSearchParams((prev) =>
+        patchMapMode(patchMapView(prev, { view: "map" }), {
           mode: choice === "ai" ? "ai" : "map",
-        });
-      });
+        }),
+      );
     },
     [setSearchParams],
   );
@@ -476,7 +574,7 @@ export function Component(): ReactElement {
     aiOpened && panelHost !== null
       ? createPortal(askPanel(wide ? "pane" : "sheet"), panelHost)
       : null;
-  const topChoice: MapViewChoice = view === "list" ? "list" : ai ? "ai" : "cards";
+  const topChoice: MapViewChoice = view === "list" ? "list" : "cards";
   const matchCountInAnswer = answer?.rows?.length ?? 0;
 
   return (
@@ -511,7 +609,7 @@ export function Component(): ReactElement {
                 type="button"
                 className={`${styles.leftTab} ${ai ? "" : styles.leftTabOn}`}
                 aria-pressed={!ai}
-                onClick={() => chooseView("cards")}
+                onClick={() => chooseLeft("filters")}
               >
                 Filters
               </button>
@@ -520,7 +618,7 @@ export function Component(): ReactElement {
                 className={`${styles.leftTab} ${ai ? styles.leftTabOn : ""}`}
                 aria-pressed={ai}
                 aria-label="Ask AI panel"
-                onClick={() => chooseView("ai")}
+                onClick={() => chooseLeft("ai")}
               >
                 Ask AI
               </button>
@@ -578,7 +676,7 @@ export function Component(): ReactElement {
         </div>
       ) : null}
       {view === "map" ? (
-        <div className={styles.mapArea}>
+        <div ref={mapAreaRef} className={styles.mapArea}>
           <CrmMap
             ref={mapHandleRef}
             center={center}
@@ -597,6 +695,8 @@ export function Component(): ReactElement {
             answerPins={pins}
             focusedPin={focusedCitation}
             onPinSelect={setFocusedCitation}
+            onHexSelect={selectHex}
+            selectedPoint={selectedPoint}
           />
           <MapControls
             mapRef={mapHandleRef}
@@ -619,7 +719,7 @@ export function Component(): ReactElement {
             <div ref={setStatusHost} className={styles.statusStack} data-map-status="" />
             {showOverviewChip ? (
               <p className={styles.chip} role="status" data-view-chip="overview">
-                <span>Zoomed out: median roof age per hexagon</span>
+                <span>Click a hexagon to search there</span>
                 <button
                   type="button"
                   className={styles.chipAction}

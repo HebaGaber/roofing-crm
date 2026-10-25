@@ -282,7 +282,7 @@ export function MapLegend({
           ) : null}
           <p className={styles.line}>
             {overview
-              ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · tap a hexagon to drop a pin there, or a circle to zoom in"
+              ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · click a hexagon to search there, or a circle to zoom in"
               : "● roof · ◆ open or stalled permit · dark ring = open over 5 yrs"}
           </p>
           {overview ? (

@@ -191,6 +191,24 @@ function NearPlaceMissing({
   );
 }
 
+/** One line when the property has no coordinates: it cannot be centred on the map, so the map is
+ *  left alone (the same missing-data wording as the nearest place). */
+function MapPositionMissing({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const entry = property.missingReasons.find((m) =>
+    ["latitude", "longitude", "lat_lon"].includes(m.field),
+  );
+  const reason = missingReasonText(entry?.field ?? "lat_lon", entry?.reason ?? "no_coordinates");
+  return (
+    <span className={styles.titleSub} data-field="map_position">
+      {`Not shown on the map · ${reason}`}
+    </span>
+  );
+}
+
 /** Drawer header (E-93): "TCAD {id} · near {place}", then "Address not published in this run ·
  *  lat, lon". */
 function DrawerTitle({
@@ -218,7 +236,12 @@ function DrawerTitle({
           ? ""
           : ` · ${property.latitude.toFixed(5)}, ${property.longitude.toFixed(5)}`}
       </span>
-      {hasCoords ? null : <NearPlaceMissing property={property} />}
+      {hasCoords ? null : (
+        <>
+          <NearPlaceMissing property={property} />
+          <MapPositionMissing property={property} />
+        </>
+      )}
     </span>
   );
 }
