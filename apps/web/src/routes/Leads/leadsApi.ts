@@ -7,8 +7,10 @@ import type { ApiInputs, ApiOutputs } from "@crm/api-client";
 import { useTRPC } from "@crm/api-client/react";
 import type { LeadFilters } from "@crm/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
 import type { LeadsListInput } from "./leadFilters.state.js";
 import { retryUnlessNotFound } from "./leadErrors.js";
+import { addCreatedLead, overlayLeadsList } from "./leadsListCache.js";
 
 export type LeadsListOutput = ApiOutputs["leads"]["list"];
 export type LeadListItem = LeadsListOutput["leads"][number];
@@ -19,7 +21,19 @@ export type { LeadFilters };
 
 export function useLeadsList(input: LeadsListInput, options: { readonly enabled?: boolean } = {}) {
   const trpc = useTRPC();
-  return useQuery({ ...trpc.leads.list.queryOptions(input), enabled: options.enabled ?? true });
+  const queryClient = useQueryClient();
+  // A lead created a moment ago is kept while a refetch that has not caught up lacks it.
+  const inputKey = JSON.stringify(input);
+  // `inputKey` is the input's identity (the input object itself is rebuilt every render).
+  const select = useCallback(
+    (data: LeadsListOutput) => overlayLeadsList(queryClient, input, data),
+    [queryClient, inputKey],
+  );
+  return useQuery({
+    ...trpc.leads.list.queryOptions(input),
+    select,
+    enabled: options.enabled ?? true,
+  });
 }
 
 export function useLead(leadKey: string) {
@@ -27,13 +41,15 @@ export function useLead(leadKey: string) {
   return useQuery({ ...trpc.leads.get.queryOptions({ leadKey }), retry: retryUnlessNotFound });
 }
 
-/** Creating a lead refreshes any cached list so the new lead appears without a reload. */
+/** A created lead goes straight into the cached Leads list (so /leads paints its row from cache)
+ *  and the lists refetch in the background, never awaited. A failed or duplicate (409) create
+ *  never reaches `onSuccess`, so it inserts nothing. */
 export function useCreateLead() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
   return useMutation({
     ...trpc.leads.create.mutationOptions(),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: trpc.leads.list.queryKey() }),
+    onSuccess: (lead) => addCreatedLead(queryClient, trpc.leads.list.queryKey(), lead),
   });
 }
 

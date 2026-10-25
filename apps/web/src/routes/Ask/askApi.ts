@@ -9,7 +9,8 @@
 // in apps/api/src/routers/index.ts) — no structural double cast, so a contract change on
 // the server is a type error here.
 import { useTRPC } from "@crm/api-client/react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { removeUndoneLead } from "../Leads/leadsListCache.js";
 
 /** The promoted run the answers cite (the composer's "answers cite CountyLens run {n}" line). The
  *  same `shell.indexInfo` query the top bar's data chip reads, so it shares that cache entry. */
@@ -33,7 +34,13 @@ export function useConfirmLead() {
  *  back as `{ deleted: false, reason }`, an outcome to explain rather than an error. */
 export function useUndoCreate() {
   const trpc = useTRPC();
-  return useMutation(trpc.leads.undoCreate.mutationOptions());
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...trpc.leads.undoCreate.mutationOptions(),
+    onSuccess: (answer, vars) => {
+      if (answer.deleted) removeUndoneLead(queryClient, trpc.leads.list.queryKey(), vars.leadKey);
+    },
+  });
 }
 
 /** The bulk "Create leads for all n" (`agent.confirmLeads`): only tcadIds this thread proposed.

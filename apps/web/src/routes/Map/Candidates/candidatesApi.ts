@@ -8,6 +8,7 @@ import { useTRPC, useTRPCClient } from "@crm/api-client/react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 import { isAlreadyExists, toCreateInput, TRAVIS_FIPS } from "../../Leads/LeadCreateAction.js";
+import { addCreatedLead, removeUndoneLead } from "../../Leads/leadsListCache.js";
 import { runBulkCreateMany, type BulkOutcome } from "./bulkCreate.js";
 import { runUndoMany, type UndoAnswer, type UndoTally } from "./undoCopy.js";
 import {
@@ -181,13 +182,18 @@ function useRefreshLeadPresence(): () => Promise<void> {
   }, [queryClient, trpc]);
 }
 
-/** One-tap create (triage). Refreshes lead presence once it settles. */
+/** One-tap create (triage). The lead goes into the cached Leads list at once; lead presence is
+ *  refreshed in the background once it settles (not awaited, so the next card is not held up). */
 export function useCreateCandidateLead() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const refresh = useRefreshLeadPresence();
   return useMutation({
     ...trpc.leads.create.mutationOptions(),
-    onSettled: refresh,
+    onSuccess: (lead) => addCreatedLead(queryClient, trpc.leads.list.queryKey(), lead),
+    onSettled: () => {
+      void refresh();
+    },
   });
 }
 
@@ -197,9 +203,14 @@ export type UndoCreateOutput = ApiOutputs["leads"]["undoCreate"];
  *  settles, so a removed lead's mark disappears. */
 export function useUndoCreateLead() {
   const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const refresh = useRefreshLeadPresence();
   return useMutation({
     ...trpc.leads.undoCreate.mutationOptions(),
+    // Deleted: out of the cached Leads list at once. Refused: the list is left as it is.
+    onSuccess: (answer, vars) => {
+      if (answer.deleted) removeUndoneLead(queryClient, trpc.leads.list.queryKey(), vars.leadKey);
+    },
     onSettled: refresh,
   });
 }
@@ -207,19 +218,24 @@ export function useUndoCreateLead() {
 /** Undo of the leads one bulk create made (and only those): at most 2 calls in flight. */
 export function useUndoCreatedLeads() {
   const client = useTRPCClient();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
   const refresh = useRefreshLeadPresence();
   return useCallback(
     async (leads: readonly { leadKey: string; leadId: string }[]): Promise<UndoTally> => {
       try {
-        return await runUndoMany(
-          leads,
-          (lead): Promise<UndoAnswer> => client.leads.undoCreate.mutate(lead),
-        );
+        return await runUndoMany(leads, async (lead): Promise<UndoAnswer> => {
+          const answer = await client.leads.undoCreate.mutate(lead);
+          // Deleted: out of the cached Leads list at once.
+          if (answer.deleted)
+            removeUndoneLead(queryClient, trpc.leads.list.queryKey(), lead.leadKey);
+          return answer;
+        });
       } finally {
         await refresh();
       }
     },
-    [client, refresh],
+    [client, trpc, queryClient, refresh],
   );
 }
 
