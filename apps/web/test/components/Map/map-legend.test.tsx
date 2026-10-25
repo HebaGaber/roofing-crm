@@ -203,7 +203,12 @@ describe("MapLegend", () => {
       fireEvent.click(screen.getByRole("button", { name: "Close legend" }));
       expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
       open();
+      // Escape elsewhere on the page leaves the legend open ...
       fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+      // ... and closes it when focus is on the legend.
+      screen.getByRole("button", { name: "Close legend" }).focus();
+      fireEvent.keyDown(document.activeElement ?? document, { key: "Escape" });
       expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
       open();
       fireEvent.pointerDown(screen.getByTestId("elsewhere"));

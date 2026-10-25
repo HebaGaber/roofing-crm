@@ -148,12 +148,17 @@ export function MapLegend({
   const id = useId();
   const root = useRef<HTMLDivElement | null>(null);
 
-  // Escape closes it everywhere; a tap outside closes it below the three-pane width, where the
-  // card floats over the map (from there on it stays until closed).
+  // Escape closes it when focus is on the legend itself: it is open by default, so a document-wide
+  // Escape would close it every time someone dismisses the Layers dialog, a drawer or a sheet.
+  // A tap outside closes it below the three-pane width, where the card floats over the map (from
+  // there on it stays until closed).
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") set(false);
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const active = document.activeElement;
+      if (root.current !== null && active instanceof Node && root.current.contains(active))
+        set(false);
     };
     const onPointerDown = (event: Event): void => {
       if (docked) return;
