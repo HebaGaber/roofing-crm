@@ -1,0 +1,34 @@
+# Questions for Task A about Run 3 data gaps
+
+Written 2026-10-25 by the CRM side. Source: Run 3 manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm` (run `travis-full-run3-20261025`), read from the CID-verified table parts and the CRM index built from them (441,961 properties, 15,025 permits). Every number below was counted from that data.
+
+## A. Fields that are empty for (nearly) every property
+
+1. **Owner mailing address has no ZIP, so owner area is "unknown" for all 441,961 properties.**
+   The export holds the mailing-address records (`person_has_mailing_address` 470,597 rows, `company_has_mailing_address` 90,927, `address` 861,958) but `address.postal_code` is never emitted (reason `not_in_export`, 409,152 properties; 237 more have `no_mailing_address`). Can the next run emit `postal_code`, `state_code` and `city_name` on the mailing `address` records? Without them the "owner outside the area" filter and question cannot work. If ADR-0002 forbids it, what is the reason, and is there another way to publish the owner's area (for example a derived `owner_area_class` carried on the property)?
+
+2. **Property (situs) address is missing for all 441,961 properties.**
+   `property_has_address` has 441,961 edges, yet `unnormalized_address`, `city_name` and `postal_code` all read `not_in_export`. The CRM shows "Address not published in this run" on every property screen and cannot show a street address on a lead. Can situs address text be published? If not, what identifies a property to a rep in the field?
+
+## B. Contractors and BBB
+
+3. **Only 4,139 of 15,025 permits (28%) have a contractor name.** The other 10,886 read `contractor_unresolved`. Is the name genuinely absent on those permits in the Austin source, or is it lost in the join (`property_improvement_has_contractor` has 4,139 rows)? Please give the split between "source prints no name" and "name present but not linked".
+4. **No contractor is verified.** `contractor_resolved` is 0 because the Comptroller registry baseline is not loaded (A-07). When will it be, and will a later run mark contractors `resolved` with an official registry id? How will the CRM tell a printed name from a verified one beyond `contractor_resolution`?
+5. **BBB:** `bbb_status` is `blocked` for all 4,139 named contractors and `bbb_rating` is always empty. Is a rating ever going to be published, or is there another permitted source? You noted the `bbb_url` shape is unverified: can you confirm the search link opens a usable results page, or say how it should be built?
+
+## C. Roof age and permits
+
+6. **Roof age is a built year, not a roof date, for 98% of the properties that have one.** Of 389,528 properties with a roof age, 380,018 use basis `built_year` with confidence `low`, and only 9,510 use `permit` with confidence `high`. 52,433 have none (`no_roof_date`). Can the next run carry real roof dates, and is the built-year basis a proxy you intend to keep? A rep reads "roof age 23 years" as a fact, so the CRM labels the basis and confidence; is that the wording you intend?
+7. **Permits cover Austin only.** All 15,025 published permits are `jurisdiction = austin`, and only 80 are open and 1,674 stalled. The manifest says published scope is "roofing-classified, decided-status permits only, not all 2,007,514 linked permits". Why are undecided or open roofing permits left out, given that open roofing permits are the lead signal? Which other jurisdictions in Travis County (Pflugerville, Manor, Lakeway, Travis County itself) are planned, and when?
+8. **Permits that never reach a property.** Coverage shows 275,830 with no TCAD geoid, 31,824 with no TCAD id, 36,568 with an ambiguous geoid and 29,480 with an unmatched address. What are the rules, and will an improved match recover some of them?
+
+## D. Coverage and scope
+
+9. **Properties:** 452,753 parcels exist, 441,961 are published (real-property "R" accounts only). Are the other 10,792 accounts (P, MH, MN types) intentionally out of scope for good, or could they be added later?
+10. **Smaller gaps to explain:** 32,572 properties have no owner record (`no_owner_record`; the manifest notes 15,410 confidential owners redacted under Tax Code 25.025, so are those inside the 32,572?); 21,550 have no dated sale or deed (`no_dated_sale`, so tenure is unknown); 7,945 have no coordinates after the address-point step.
+
+## E. Delivery
+
+11. **Full snapshot or delta?** Run 3 lists every table part (255) and the CRM treats it as a full replacement. Please confirm that future runs will also list everything, or tell us before one lists only changed groups (the CRM does not follow `previousManifestCid` chains yet).
+12. **CloudFront returns 403 (not 404)** for files not copied yet. When will the CloudFront copy be complete for Run 3, so the CRM does not depend on the Filebase fallback?
+13. **Contract versioning:** columns are now 58 (v1.1) but the folder is still `contract/v1`. Will the next additive change be called v1.2 in the same folder, and will you announce it? The CRM re-vendors from your branch by commit.
