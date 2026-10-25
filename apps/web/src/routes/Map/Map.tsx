@@ -191,9 +191,7 @@ export function Component(): ReactElement {
   // Three-pane widths: each pane can be minimised (kept for the session); the Matches rows of an
   // AI answer render into the results pane (`matchesHost`) while the left pane shows the answer.
   const [leftCollapsedState, toggleLeft] = usePaneCollapsed("left");
-  const [rightCollapsedState, toggleRight] = usePaneCollapsed("right");
   const leftCollapsed = wide && leftCollapsedState;
-  const rightCollapsed = wide && rightCollapsedState;
   const [matchesHost, setMatchesHost] = useState<HTMLDivElement | null>(null);
   // Once AI mode has been opened at three-pane widths its panel stays mounted (hidden under the
   // Filters tab), so switching tabs never throws the answer away.
@@ -577,6 +575,13 @@ export function Component(): ReactElement {
     !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
   // A sheet that only holds a notice (no pin, loading, failed, or nothing found) peeks small.
   const compactPeek = pinOutsideCounty || isLoading || isIndexDown || isZeroResult || sheetEmpty;
+  // The results pane starts collapsed while it has nothing to show (no centre chosen, no results,
+  // not AI or triage); once the user toggles it, their choice stands for the session.
+  const [rightCollapsedState, toggleRight] = usePaneCollapsed(
+    "right",
+    sheetEmpty && !ai && !triage,
+  );
+  const rightCollapsed = wide && rightCollapsedState;
   // Counts come from the server's totals; a clipped page says so (never a page as the whole set).
   const matchTotal = query.data?.counts?.afterRoofAge ?? query.data?.properties.length ?? 0;
   const propertiesClipped = query.data !== undefined && matchTotal > query.data.properties.length;

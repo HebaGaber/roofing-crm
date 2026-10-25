@@ -75,4 +75,22 @@ describe("usePaneCollapsed", () => {
     act(() => result.current[1]());
     expect(result.current[0]).toBe(true);
   });
+
+  it("starts collapsed while `auto` says the pane is empty, follows `auto` until the user toggles, then keeps their choice", async () => {
+    vi.resetModules();
+    const fresh = await import("../../src/routes/Map/paneState.js");
+    const { result, rerender } = renderHook(({ auto }) => fresh.usePaneCollapsed("right", auto), {
+      initialProps: { auto: true },
+    });
+    expect(result.current[0]).toBe(true);
+    rerender({ auto: false });
+    expect(result.current[0]).toBe(false);
+    rerender({ auto: true });
+    expect(result.current[0]).toBe(true);
+    // The user expands it: that choice stands even though the pane is still empty.
+    act(() => result.current[1]());
+    expect(result.current[0]).toBe(false);
+    rerender({ auto: true });
+    expect(result.current[0]).toBe(false);
+  });
 });
