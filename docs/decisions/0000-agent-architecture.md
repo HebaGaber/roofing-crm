@@ -985,7 +985,7 @@ sequenceDiagram
   A->>M: load last QueryPlan → area inherited
   A->>L: plan → {inherited area, statusClass [open], openYearsMin 5 (default)}
   A->>T: searchPermits(plan)
-  T-->>A: 0 open; 3 stalled near misses; contractor field_not_published (v1)
+  T-->>A: 0 open, 3 stalled near misses, contractor field_not_published (v1)
   A->>L: compose
   A->>V: verify
   A-->>U: empty_in_scope + stalled offered (labelled) + "contractor names not published in this run"

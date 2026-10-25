@@ -127,7 +127,7 @@ sequenceDiagram
     L->>X: download index/{manifestCid}/*.parquet once
   end
   opt agent.ask only
-    L->>M: plan → QueryPlan (Zod); compose → claims + citations
+    L->>M: plan → QueryPlan (Zod), then compose → claims + citations
   end
   L->>X: bbox + haversine + filters (same query path as the map)
   L-->>W: rows + counts + provenance + manifestCid
