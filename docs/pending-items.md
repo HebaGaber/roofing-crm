@@ -80,18 +80,15 @@ Re-check after each new run with the commands in section 1.1 and the counts in `
 - Map: the Area and Sort menus, the pin explainer toast, in-ring chips, permit coverage hatching (no coverage areas published), the county outline and outside shading (review-log row 9), the GPS "explain first" card (needs the e2e to click Continue).
 - Leads: multi-select status, Me / All reps and a rep directory (`users.list`), `leads.assign`, sort and permit-open filters on `leads.list`, numbered pages, row signal snapshots on the list (`signals`, `lastActivity`), `currentSignals` on `leads.get` (the Changed pill), View property and lineage links, a deleted-lead state, a place picker for "Within".
 - Sign-in: the lockout banner that disables the form, the session-expired and signed-out banners, the "you return to" line.
-- Lead page / bulk Undo snackbar auto-dismisses after 10 seconds although the server allows 15 minutes.
 - Conversation memory is one `THREAD#` item (last plan and proposals), not the full event store of ADR-06.
 
 ## 5. Known small issues
 
-- Numbered citation pills clip when they wrap in the 320 px left pane at 1280 px.
-- Crossing the 1280 px line while an answer is open remounts the AI panel (the answer is lost).
-- The phone Filters sheet at 600 to 1279 px is unchanged.
-- The Gateway AI provider is not wired (no API key); `AI_PROVIDER=gateway` fails synth on purpose.
+- The Gateway AI provider is wired but off: it needs `crm:aiGatewaySecretArn` (a Secrets Manager secret holding the key) and `AI_PROVIDER=gateway`; Bedrock stays live.
+- Fixed on 2026-10-25 (kept here for the record): citation pill clipping, AI answer lost on resize, 15-minute Undo row, phone Filters sheet, lead-list filters in SQL, permit truncation notices, index warm-up plus 5-minute keep-warm. Re-measure cold start on the deployed Lambda (the local figure was 2.8 to 8.7 s cold, about 1 s warm).
+- `search.permits` returns at most 500 rows (longest open first) and the UI says so; the permit page for a very large radius is a summary, not a full list.
 - Every deploy starts one (no-op) sync because of the deploy nonce; a deploy while a sync of the same CID is running starts a second concurrent run (parts are content-addressed and Promote is conditional, so it is safe).
 - If `getModel()` fails after the spend reservation, over-counting is possible only on misconfiguration (fixed by reordering; keep the test).
-- A cold API start takes about 5 seconds while the 442,000-row index loads; warm calls take about 1 second.
 
 ## 6. Cleanup and hygiene
 
