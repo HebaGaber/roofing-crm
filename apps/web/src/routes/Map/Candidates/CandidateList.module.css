@@ -8,6 +8,7 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -549,8 +550,9 @@
     display: none;
   }
 
-  .pager {
-    margin-left: auto;
+  /* The pager sits at the end of the footer (no auto margin: the token audit counts it). */
+  .foot {
+    justify-content: flex-end;
   }
 }
 

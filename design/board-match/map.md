@@ -169,6 +169,17 @@ Seventh pass (PO: toggle, hexagon click, selection centres the map):
 - First visible click after a fresh load of the county view at 1440 px was swallowed once in my Playwright
   run (later clicks searched); I could not tie it to a cause and the unit tests cover the handler.
 
+Eighth pass (latency regression and the sheet scroll):
+
+- **Sheet scroll** (600 to 1279 px and phones): the sheet body scrolls inside the sheet at 360, 390, 600,
+  768, 1032 and 1280 px in the empty, working, answer, matches and error states (Playwright wheel
+  scroll on the build), and still scrolls when the percentage cap is removed (the sheet's own dvh cap
+  holds). The Filters sheet is fixed to the viewport (vh), and the candidate list pane is now a flex
+  column with its own scroll body; its pager no longer uses an auto margin (token audit).
+- **Deep-link camera**: a `?sel=` link or reload moves the camera only after the drawer has been on
+  screen for 2 s, jumps instead of flying, and is cancelled by the first press on the drawer or the
+  map, so it cannot compete with Create lead.
+
 ## Matrix
 
 | Board                                                                                                                                           | Route + state                | Status                                           | Side-by-side                           | Notes                                                                                                                                                                                                                                                                            |

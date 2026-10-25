@@ -44,7 +44,7 @@ import {
   type HexSelection,
   type LatLng,
 } from "../../components/Map/CrmMap.js";
-import { DRAWER_WIDTH_PX, focusPadding } from "../../components/Map/focusProperty.js";
+import { DRAWER_WIDTH_PX, focusPadding, focusTiming } from "../../components/Map/focusProperty.js";
 import { hexSearchRadiusMi } from "../../components/Map/hexSearch.js";
 import { GpsButton, LOW_ACCURACY_M } from "../../components/Map/GpsButton.js";
 import { LayersPopover, type LayersState } from "../../components/Map/LayersPopover.js";
@@ -374,7 +374,12 @@ export function Component(): ReactElement {
   // Selecting a property (a marker, a row, ?sel= from a link or a reload, Open on map, Show on map)
   // centres the map on it, once per selection: closing the drawer keeps the view. Only the camera
   // moves; the search pin and the radius are untouched.
+  const drawerReady = sel !== null && detailQuery.data !== undefined;
   const centredOnRef = useRef<string | null>(null);
+  // A selection already in the URL when the page opened (a link or a reload) has no earlier view to
+  // fly from: the camera jumps there instead of animating through every zoom level.
+  const openedWithSelRef = useRef(sel);
+  const deepLinkTimerRef = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (sel === null) {
       centredOnRef.current = null;
@@ -383,20 +388,42 @@ export function Component(): ReactElement {
     const handle = mapHandleRef.current;
     if (centredOnRef.current === sel || selectedPoint === null || handle === null || view !== "map")
       return;
+    // A deep link waits for the drawer to be on screen, then pauses: the pause starts when the rep
+    // can first act (the drawer is there), so the first thing they do cancels the move.
+    const deepLink = openedWithSelRef.current === sel;
+    if (deepLink && !drawerReady) return;
     centredOnRef.current = sel;
-    const mapEl = mapAreaRef.current;
-    const sheet = mapEl?.ownerDocument.querySelector<HTMLElement>("[data-sheet]");
-    handle.focusProperty(
-      selectedPoint,
-      focusPadding({
-        wide,
-        mapWidth: mapEl?.clientWidth ?? 0,
-        mapHeight: mapEl?.clientHeight ?? 0,
-        drawerOverlap: drawerOverlap(mapEl),
-        sheetHeight: wide ? 0 : (sheet?.getBoundingClientRect().height ?? 0),
-      }),
-    );
-  }, [sel, selectedPoint, view, wide]);
+    const point = selectedPoint;
+    const move = (instant: boolean): void => {
+      const mapEl = mapAreaRef.current;
+      const sheet = mapEl?.ownerDocument.querySelector<HTMLElement>("[data-sheet]");
+      handle.focusProperty(
+        point,
+        focusPadding({
+          wide,
+          mapWidth: mapEl?.clientWidth ?? 0,
+          mapHeight: mapEl?.clientHeight ?? 0,
+          drawerOverlap: drawerOverlap(mapEl),
+          sheetHeight: wide ? 0 : (sheet?.getBoundingClientRect().height ?? 0),
+        }),
+        instant,
+      );
+    };
+    if (!deepLink) {
+      move(false);
+      return;
+    }
+    // A deep link: jump there after a pause, unless the rep has started using the page by then.
+    deepLinkTimerRef.current = window.setTimeout(() => {
+      deepLinkTimerRef.current = undefined;
+      move(true);
+    }, focusTiming.deepLinkDelayMs);
+  }, [sel, selectedPoint, view, wide, drawerReady]);
+  const cancelDeepLinkFocus = useCallback(() => {
+    if (deepLinkTimerRef.current !== undefined) window.clearTimeout(deepLinkTimerRef.current);
+    deepLinkTimerRef.current = undefined;
+  }, []);
+  useEffect(() => cancelDeepLinkFocus, [cancelDeepLinkFocus]);
 
   const widenTo = radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? radiusMi + WIDEN_STEP_MI : null;
   const isZeroResult =
@@ -676,7 +703,7 @@ export function Component(): ReactElement {
         </div>
       ) : null}
       {view === "map" ? (
-        <div ref={mapAreaRef} className={styles.mapArea}>
+        <div ref={mapAreaRef} className={styles.mapArea} onPointerDownCapture={cancelDeepLinkFocus}>
           <CrmMap
             ref={mapHandleRef}
             center={center}
@@ -936,7 +963,7 @@ export function Component(): ReactElement {
       ) : null}
       {askPanelPortal}
       {sel !== null && detailQuery.data !== undefined ? (
-        <div className={styles.drawerSlot}>
+        <div className={styles.drawerSlot} onPointerDownCapture={cancelDeepLinkFocus}>
           <PropertyDetail
             data={detailQuery.data satisfies PropertyDetailData}
             onClose={closeDetail}

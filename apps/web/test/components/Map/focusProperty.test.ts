@@ -87,6 +87,19 @@ describe("focusCamera", () => {
     expect(focusCamera({ point, currentZoom: 16, padding, reducedMotion: false }).zoom).toBe(16);
   });
 
+  it("jumps for a deep link or reload (instant), whatever the motion preference", () => {
+    const camera = focusCamera({
+      point,
+      currentZoom: 9,
+      padding,
+      reducedMotion: false,
+      instant: true,
+    });
+    expect(camera.kind).toBe("jump");
+    expect(camera.duration).toBe(0);
+    expect(camera.zoom).toBe(FOCUS_ZOOM);
+  });
+
   it("jumps (no animation) with reduced motion", () => {
     const camera = focusCamera({ point, currentZoom: 9, padding, reducedMotion: true });
     expect(camera.kind).toBe("jump");

@@ -10,6 +10,10 @@
   flex-direction: column;
   box-sizing: border-box;
   min-height: 0;
+  /* The cap in viewport units too: a percentage of a page whose height the browser cannot resolve is
+     ignored, and the sheet would grow past the page and be cut off. The body below is capped by it. */
+  --sheet-cap: 40vh;
+  --sheet-cap: 40dvh;
   max-height: 40%;
   border-radius: var(--md-sys-shape-corner-extra-large) var(--md-sys-shape-corner-extra-large) 0 0;
   background: var(--md-sys-color-surface);
@@ -20,16 +24,19 @@
 /* A sheet that only holds a notice peeks at about a quarter of the page, so the map keeps the rest.
    More specific than the 600 to 839 px peek below, so it wins there too. */
 .sheet[data-peek="compact"][data-sheet="peek"] {
+  --sheet-cap: 25dvh;
   max-height: 25%;
 }
 
 .sheet[data-sheet="full"] {
+  --sheet-cap: calc(100dvh - var(--space-10) * 3 - var(--space-4));
   max-height: calc(100% - var(--space-10));
 }
 
 /* 600–1279 px (prototype 768: the cards take about half the height). */
 @media (min-width: 600px) and (max-width: 1279.98px) {
   .sheet[data-sheet="peek"] {
+    --sheet-cap: 50dvh;
     max-height: 50%;
   }
 }
@@ -38,6 +45,7 @@
 @media (max-height: 500px) and (max-width: 1279.98px) {
   .sheet[data-sheet="peek"],
   .sheet[data-peek="compact"][data-sheet="peek"] {
+    --sheet-cap: calc(var(--space-9) * 2 + var(--space-2));
     max-height: calc(var(--space-9) * 2 + var(--space-2));
   }
 }
@@ -77,6 +85,7 @@
 
 .body {
   min-height: 0;
+  max-height: calc(var(--sheet-cap) - var(--space-9));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -100,5 +109,6 @@
 
   .body {
     flex: 1 1 auto;
+    max-height: none;
   }
 }

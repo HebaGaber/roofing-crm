@@ -10,6 +10,13 @@ export const FOCUS_ZOOM = 16;
 export const DRAWER_WIDTH_PX = 440;
 const FLY_DURATION_MS = 700;
 
+/** A selection already in the URL when the page opened (a link or a reload) moves the camera only
+ *  after this pause, counted from when its drawer is on screen, and not at all if the rep has
+ *  started using the drawer or the map by then: re-rendering the map at zoom 16 would otherwise
+ *  compete with the first thing they do (Create lead, View leads). Mutable only so tests can
+ *  shorten it. */
+export const focusTiming = { deepLinkDelayMs: 2000 };
+
 export interface FocusPadding {
   readonly top: number;
   readonly right: number;
@@ -49,18 +56,22 @@ export interface FocusCamera {
 }
 
 /** The camera for a selected property: at least `FOCUS_ZOOM` (the current zoom when closer), flying
- *  smoothly, or jumping with `prefers-reduced-motion`. */
+ *  smoothly, or jumping with `prefers-reduced-motion` or when `instant` (a deep link or reload with
+ *  `?sel=`: there is no earlier view to fly from, and animating through every zoom level makes the
+ *  page render dozens of tiles while the rep is already using it). */
 export function focusCamera(input: {
   readonly point: { readonly lat: number; readonly lng: number };
   readonly currentZoom: number;
   readonly padding: FocusPadding;
   readonly reducedMotion: boolean;
+  readonly instant?: boolean;
 }): FocusCamera {
+  const jump = input.reducedMotion || input.instant === true;
   return {
-    kind: input.reducedMotion ? "jump" : "fly",
+    kind: jump ? "jump" : "fly",
     center: [input.point.lng, input.point.lat],
     zoom: Math.max(input.currentZoom, FOCUS_ZOOM),
     padding: input.padding,
-    duration: input.reducedMotion ? 0 : FLY_DURATION_MS,
+    duration: jump ? 0 : FLY_DURATION_MS,
   };
 }

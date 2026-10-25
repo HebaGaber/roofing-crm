@@ -235,7 +235,7 @@ export interface CrmMapHandle {
   /** Centres on a selected property, at least `FOCUS_ZOOM` (the current zoom when closer), inside
    *  the part of the map that stays visible (`padding`); a smooth flight, or a jump with reduced
    *  motion. Never touches the search pin or the radius. */
-  readonly focusProperty: (point: LatLng, padding: FocusPadding) => void;
+  readonly focusProperty: (point: LatLng, padding: FocusPadding, instant?: boolean) => void;
 }
 
 /** `overview` = hexagons and permit clusters; `detail` = individual markers. */
@@ -373,8 +373,14 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const onViewModeChangeRef = useRef(onViewModeChange);
   onViewModeChangeRef.current = onViewModeChange;
   const styleReadyRef = useRef(false);
-  const pendingFocusRef = useRef<{ point: LatLng; padding: FocusPadding } | null>(null);
-  const runFocusRef = useRef<(point: LatLng, padding: FocusPadding) => void>(() => undefined);
+  const pendingFocusRef = useRef<{
+    point: LatLng;
+    padding: FocusPadding;
+    instant: boolean | undefined;
+  } | null>(null);
+  const runFocusRef = useRef<(point: LatLng, padding: FocusPadding, instant?: boolean) => void>(
+    () => undefined,
+  );
   const onPinSelectRef = useRef(onPinSelect);
   onPinSelectRef.current = onPinSelect;
   const onHexSelectRef = useRef(onHexSelect);
@@ -597,13 +603,13 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     // radiusMi is read through a ref on purpose: a radius change must not refit the view.
   }, [center?.lat, center?.lng, styleReady]);
 
-  runFocusRef.current = (point, padding) => {
+  runFocusRef.current = (point, padding, instant) => {
     const map = mapRef.current;
     if (map === null) return;
     // Before the style is ready the pin's own ring fit has not run yet and would override this
     // move: wait, and run right after it (see the effect below).
     if (!styleReadyRef.current) {
-      pendingFocusRef.current = { point, padding };
+      pendingFocusRef.current = { point, padding, instant };
       return;
     }
     const camera = focusCamera({
@@ -611,6 +617,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       currentZoom: map.getZoom(),
       padding,
       reducedMotion: prefersReducedMotion(),
+      ...(instant === true ? { instant } : {}),
     });
     const options = { center: camera.center, zoom: camera.zoom, padding: camera.padding };
     if (camera.kind === "jump") map.jumpTo(options);
@@ -624,7 +631,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     const pending = pendingFocusRef.current;
     if (!styleReady || pending === null) return;
     pendingFocusRef.current = null;
-    runFocusRef.current(pending.point, pending.padding);
+    runFocusRef.current(pending.point, pending.padding, pending.instant);
   }, [styleReady]);
 
   // The radius ring (AC-1): a GeoJSON polygon redrawn on every center/radiusMi change, per
@@ -1006,7 +1013,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
           duration: prefersReducedMotion() ? 0 : 400,
         });
       },
-      focusProperty: (point, padding) => runFocusRef.current(point, padding),
+      focusProperty: (point, padding, instant) => runFocusRef.current(point, padding, instant),
       showCounty: () => {
         mapRef.current?.fitBounds(TRAVIS_COUNTY_BOUNDS, {
           padding: 24,

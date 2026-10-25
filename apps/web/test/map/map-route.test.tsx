@@ -5,9 +5,10 @@
 // (Map.module.css) and is proved live by the responsive Playwright specs.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { focusTiming } from "../../src/components/Map/focusProperty";
 import { forwardRef, useEffect, useImperativeHandle, useState, type ReactElement } from "react";
 import { MemoryRouter, useLocation } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const zoomToDetail = vi.fn();
 const placeAtCenter = vi.fn();
@@ -1138,6 +1139,13 @@ describe("Map route: clicking a hexagon of the county overview searches there", 
 
 describe("Map route centres the map on a selected property", () => {
   const URL_PIN = "/?lat=30.4394&lng=-97.62&r=5";
+  beforeEach(() => {
+    focusTiming.deepLinkDelayMs = 20;
+  });
+  afterEach(() => {
+    focusTiming.deepLinkDelayMs = 2000;
+  });
+
   const at = { lat: property.latitude, lng: property.longitude };
 
   it("a selection (?sel=, a link or a reload) centres on the property, close in, once", async () => {
@@ -1146,6 +1154,39 @@ describe("Map route centres the map on a selected property", () => {
     await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
     expect(focusProperty.mock.calls[0]?.[0]).toEqual(at);
     expect(lastMapProps.selectedPoint).toEqual(at);
+  });
+
+  it("a deep link jumps (instant) after a pause, not at once, so the zoom-16 render does not compete with the first click", async () => {
+    stubWide(false);
+    focusTiming.deepLinkDelayMs = 150;
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    await screen.findByTestId("search-results");
+    expect(focusProperty).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
+    expect(focusProperty.mock.calls[0]?.[2]).toBe(true);
+  });
+
+  it("a deep link's camera move is dropped once the rep starts using the drawer", async () => {
+    stubWide(false);
+    focusTiming.deepLinkDelayMs = 400;
+    renderAt(`${URL_PIN}&sel=${property.propertyCid}`);
+    const dialog = await vi.waitFor(() => {
+      const found = document.querySelector<HTMLElement>("aside[role='dialog'][data-property-cid]");
+      if (found === null) throw new Error("no drawer");
+      return found;
+    });
+    fireEvent.pointerDown(within(dialog).getByRole("button", { name: "Close" }));
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(focusProperty).not.toHaveBeenCalled();
+  });
+
+  it("choosing a row afterwards flies (not instant)", async () => {
+    stubWide(false);
+    renderAt(URL_PIN);
+    const list = await screen.findByTestId("search-results");
+    fireEvent.click(within(list).getAllByRole("button")[0] as HTMLElement);
+    await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
+    expect(focusProperty.mock.calls[0]?.[2]).toBe(false);
   });
 
   it("does not move the search pin or the radius", async () => {

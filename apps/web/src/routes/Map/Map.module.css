@@ -189,6 +189,10 @@
    it takes the centre and results panes (rule below). */
 .listPane {
   grid-area: map;
+  /* A flex column, not a percentage height: the list's own scroll body fills what the grid area
+     gives it in every browser, and scrolls inside it. */
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   min-height: 0;
   padding: 0 var(--space-4) var(--space-4);
