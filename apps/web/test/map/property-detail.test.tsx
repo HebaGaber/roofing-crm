@@ -115,7 +115,7 @@ describe("PropertyDetail drawer", () => {
   it("formats roof values: years, basis and confidence as plain labels", () => {
     renderDrawer();
     expect(document.querySelector('[data-field="roof_age_years"]')?.textContent).toMatch(
-      /^41 yrs$/,
+      /^41 yrs · estimated from year built$/,
     );
     expect(document.querySelector('[data-field="roof_age_basis"]')?.textContent).toContain(
       "Year built (no reroof permit found)",
@@ -173,6 +173,43 @@ describe("PropertyDetail drawer", () => {
       "Contractor name not published · Contractor not matched to a company",
     );
     expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
+  });
+
+  it("keeps 'estimated from year built' beside a built-year roof age, and drops the BBB find_type parameter", () => {
+    const built = {
+      ...permit,
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbUrl:
+        "https://www.bbb.org/search?find_country=USA&find_text=ACME&find_loc=Austin%2C%20TX&find_type=Category",
+    } as unknown as Provenanced<CrmPermit>;
+    const drawer = renderDrawer({
+      ...data,
+      property: {
+        ...property,
+        roofAgeYears: 28,
+        roofAgeBasis: "built_year",
+      } as Provenanced<CrmProperty>,
+      permits: [built],
+    });
+    expect(drawer.querySelector("[data-field='roof_age_years']")?.textContent).toBe(
+      "28 yrs · estimated from year built",
+    );
+    const href = drawer.querySelector("a[data-field='bbb_url']")?.getAttribute("href") ?? "";
+    expect(href).toContain("find_text=ACME");
+    expect(href).not.toContain("find_type");
+  });
+
+  it("states the owner reason as 'not published (confidential or name not parsed)', not 'no owner on record'", () => {
+    const none = {
+      ...property,
+      ownerName: null,
+      ownerKind: null,
+      missingReasons: [{ field: "owner_name", reason: "no_owner_record" }],
+    } as unknown as Provenanced<CrmProperty>;
+    const drawer = renderDrawer({ ...data, property: none });
+    expect(drawer.querySelector("[data-field='owner_name']")?.textContent).toContain(
+      "Owner not published (confidential or name not parsed)",
+    );
   });
 
   it("a Run 2 row (no v1.1 columns at all) still renders, with the reason instead of a name", () => {

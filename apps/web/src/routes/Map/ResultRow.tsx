@@ -25,6 +25,7 @@ import {
   propertyKind,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
+  roofAgeText,
 } from "../../format/index.js";
 import { PermitChip } from "./PermitChip.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
@@ -147,7 +148,11 @@ export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty>
   return (
     <dl className={styles.fields}>
       <Cell label="Roof age" field="roof_age_years">
-        {row.roofAgeYears === null ? <RoofAgeGap row={row} /> : `${row.roofAgeYears} yrs`}
+        {row.roofAgeYears === null ? (
+          <RoofAgeGap row={row} />
+        ) : (
+          roofAgeText(row.roofAgeYears, row.roofAgeBasis)
+        )}
       </Cell>
       <Cell label="Basis" field="roof_age_basis">
         {roofAgeBasisLabel(row.roofAgeBasis)}

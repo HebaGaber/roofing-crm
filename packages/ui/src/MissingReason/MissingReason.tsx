@@ -13,6 +13,9 @@ export interface MissingReasonProps {
   readonly field: string;
   /** One of the contract's closed list of reasons (contract `missing[].reason`). */
   readonly reason: Reason;
+  /** Wording to show instead of the contract's, for a reason whose vendored label is wrong for the
+   *  field (the caller owns that override; the entry's `data-reason` stays the contract's). */
+  readonly label?: string;
 }
 
 /** `missingLabel` throws on a reason code outside its closed list (ADR-07's vendored-verbatim
@@ -27,11 +30,11 @@ function safeMissingLabel(field: string, reason: Reason): string {
   }
 }
 
-export function MissingReason({ field, reason }: MissingReasonProps): ReactElement {
+export function MissingReason({ field, reason, label }: MissingReasonProps): ReactElement {
   return (
     <StatusPill
       status="unavailable"
-      text={safeMissingLabel(field, reason)}
+      text={label ?? safeMissingLabel(field, reason)}
       data={{ field, reason }}
     />
   );

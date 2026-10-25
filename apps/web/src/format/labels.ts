@@ -38,6 +38,14 @@ export function roofAgeBasisLabel(code: RoofAgeBasis): string {
   return ROOF_AGE_BASIS_LABELS[code];
 }
 
+/** The roof age with its basis beside it where the age is only a stand-in: Task A publishes no
+ *  roof date from TCAD, so a "built year" age is the age of the building, not of a roof
+ *  (Task A, 2026-10-26: keep "estimated from year built" visible next to the age). */
+export function roofAgeText(years: number, basis: RoofAgeBasis | null | undefined): string {
+  const estimated = basis === "built_year" || basis === "new_construction";
+  return estimated ? `${String(years)} yrs · estimated from year built` : `${String(years)} yrs`;
+}
+
 export function roofAgeConfidenceLabel(code: RoofAgeConfidence): string {
   return ROOF_AGE_CONFIDENCE_LABELS[code];
 }

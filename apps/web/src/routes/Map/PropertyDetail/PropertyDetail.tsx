@@ -24,6 +24,7 @@ import {
   permitStatusLabel,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
+  roofAgeText,
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
@@ -104,12 +105,26 @@ function ContractorName({ permit }: { readonly permit: Provenanced<CrmPermit> })
   );
 }
 
+/** Task A's link carries `find_type=Category`, which looks wrong for a name search and has never
+ *  been opened by a person (Task A, 2026-10-26); the name search needs only text and place, so the
+ *  parameter is dropped. BBB answers automated requests with a challenge, so this could not be
+ *  tried in a browser test: check the results page by hand. */
+function searchHref(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.delete("find_type");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 /** Task A builds the BBB search link from the printed name and never fetches it, so it is a
  *  search, not a rating. Only an https URL is ever rendered as a link. */
 function BbbLink({ url }: { readonly url?: string | null }): ReactElement | null {
   if (typeof url !== "string" || !url.startsWith("https://")) return null;
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" data-field="bbb_url">
+    <a href={searchHref(url)} target="_blank" rel="noopener noreferrer" data-field="bbb_url">
       Search BBB for this contractor
     </a>
   );
@@ -214,7 +229,13 @@ function MissingValue({
 }): ReactElement {
   const entry = (property.missingReasons ?? []).find((m) => m.field === field);
   if (entry === undefined) return <>{what} not published (no reason recorded)</>;
-  return <MissingReason field={entry.field} reason={entry.reason as Reason} />;
+  return (
+    <MissingReason
+      field={entry.field}
+      reason={entry.reason as Reason}
+      label={missingReasonText(entry.field, entry.reason)}
+    />
+  );
 }
 
 /** Owner data (ADR-03, amended 2026-10-25): the name as Task A parses it from the TCAD roll,
@@ -445,7 +466,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
               {property.roofAgeYears === null ? (
                 <RoofAgeMissing property={property} />
               ) : (
-                `${property.roofAgeYears} yrs`
+                roofAgeText(property.roofAgeYears, property.roofAgeBasis)
               )}
             </dd>
           </div>

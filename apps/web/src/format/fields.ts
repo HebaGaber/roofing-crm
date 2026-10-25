@@ -83,6 +83,13 @@ export function fieldList(fields: readonly string[]): string {
 
 /** The contract's label for one missing entry; an unknown reason is humanized, never thrown. */
 export function missingReasonText(field: string, reason: string): string {
+  // Task A, 2026-10-26: `no_owner_record` on an owner field covers two cases, §25.025 confidential
+  // owners and names Task A's splitter could not parse, so "no owner on record" is wrong for both.
+  // The vendored label is left as it is (ADR-07); the screen says what is known, and does not
+  // single out which properties are confidential.
+  if (reason === "no_owner_record" && (field === "owner_name" || field === "owner_kind")) {
+    return "Owner not published (confidential or name not parsed)";
+  }
   try {
     return missingLabel(field, reason as MissingReason);
   } catch {
