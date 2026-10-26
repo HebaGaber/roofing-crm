@@ -24,7 +24,7 @@ The previous index files stay in S3 under `index/{previous}/`, so a rollback doe
 
 Start an execution of `crm-sync` with input `{"manifestCidHint": "<current cid>", "forceRebuild": true}`. The pointer stays; the Parquet files are rewritten. Then bump `INDEX_SCHEMA_VERSION` and redeploy `CrmApi`.
 
-## Alarms (topic `crm-alarms`)
+## Alarms (the sync alarm topic, emailed to the configured alarm address)
 
 | Alarm | Meaning | What to do |
 | --- | --- | --- |
