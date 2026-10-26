@@ -29,6 +29,7 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { AnswerPin, LeadStatus } from "@crm/shared";
+import { COUNTY_ZOOM, EARTH_RADIUS_M, METERS_PER_MILE } from "@crm/domain";
 import { RADIUS_BOUNDS } from "../../routes/Map/ExploreFilters.state.js";
 import { leadRing } from "./leadRing.js";
 import {
@@ -85,8 +86,6 @@ const RADIUS_RING_SOURCE_ID = "crm-radius-ring";
 const RADIUS_RING_FILL_LAYER_ID = "crm-radius-ring-fill";
 const RADIUS_RING_LINE_LAYER_ID = "crm-radius-ring-line";
 const RING_POINTS = 64;
-const EARTH_RADIUS_M = 6_371_008.8;
-const METERS_PER_MILE = 1609.344;
 const [MIN_RADIUS_MI, MAX_RADIUS_MI] = RADIUS_BOUNDS;
 const HEX_SOURCE_ID = "crm-hex";
 const HEX_FILL_LAYER_ID = "crm-hex-fill";
@@ -96,8 +95,6 @@ const PERMIT_CLUSTER_LAYER_ID = "crm-permit-clusters-circle";
 const HEX_FOCUS_SOURCE_ID = "crm-hex-focus";
 const HEX_FOCUS_LAYER_ID = "crm-hex-focus-line";
 const OVERVIEW_LAYER_IDS = [HEX_FILL_LAYER_ID, PERMIT_CLUSTER_LAYER_ID] as const;
-/** The opening (whole-county) zoom. */
-const COUNTY_ZOOM = 9;
 /** Paint colours MapLibre cannot read from CSS variables: resolved from the live Atlas tokens.
  *  Only if a token is unset (never in the app, which loads tokens.css) does a CSS named colour
  *  stand in, so a paint call never fails. */

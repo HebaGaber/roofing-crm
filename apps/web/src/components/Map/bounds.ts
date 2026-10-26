@@ -4,12 +4,15 @@
 // out from CrmMap.tsx so T012's unit test exercises this pure logic without a real WebGL canvas.
 // Tuples are mutable (not `readonly`) so they structurally satisfy maplibre-gl's own
 // `LngLatLike`/`LngLatBoundsLike` types without a cast.
+import { TRAVIS_COUNTY_BBOX, isInsideTravisCountyBbox } from "@crm/domain";
+
 export const TRAVIS_COUNTY_CENTER: [number, number] = [-97.7431, 30.2672];
 
-/** Travis County, TX bounding box: southwest, northeast (spec.md, agent-design.md §3). */
+/** Travis County, TX bounding box as MapLibre bounds: southwest, northeast. Built from the one
+ *  shared `TRAVIS_COUNTY_BBOX` (`@crm/domain`), which the API agent's scope check also uses. */
 export const TRAVIS_COUNTY_BOUNDS: [[number, number], [number, number]] = [
-  [-98.17, 30.09],
-  [-97.33, 30.52],
+  [TRAVIS_COUNTY_BBOX.west, TRAVIS_COUNTY_BBOX.south],
+  [TRAVIS_COUNTY_BBOX.east, TRAVIS_COUNTY_BBOX.north],
 ];
 
 export interface CameraForBoundsResult {
@@ -56,6 +59,5 @@ export function buildMapInitOptions(): CrmMapInitOptions {
  * the story's named edge case (Williamson County is well outside this box in every direction).
  */
 export function isInTravisCounty(point: { lat: number; lng: number }): boolean {
-  const [[west, south], [east, north]] = TRAVIS_COUNTY_BOUNDS;
-  return point.lat >= south && point.lat <= north && point.lng >= west && point.lng <= east;
+  return isInsideTravisCountyBbox(point);
 }

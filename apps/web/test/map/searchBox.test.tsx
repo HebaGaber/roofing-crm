@@ -152,7 +152,7 @@ describe("SearchBox", () => {
     fireEvent.change(input, { target: { value: "1200 Main St" } });
     const option = screen.getByRole("option", { name: /1200 Main St/ });
     expect(option.getAttribute("aria-disabled")).toBe("true");
-    expect(option.textContent).toMatch(/Run 3\.1/);
+    expect(option.textContent).toMatch(/Street addresses are not published yet/);
     fireEvent.click(option);
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });

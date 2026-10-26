@@ -32,7 +32,7 @@ import {
 import { BbbLink } from "./BbbLink.js";
 import { PermitChip } from "./PermitChip.js";
 import { SourceLink, safeSourceHref } from "./SourceLink.js";
-import { mainPermitOf } from "./whyLead.js";
+import { mainPermitOf, runLabel } from "./whyLead.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 import styles from "./ResultRow.module.css";
 
@@ -266,24 +266,22 @@ export function MissingSummary({
 }
 
 export function RowProvenance({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
-  if (safeSourceHref(row.sourceUrl) === null) {
-    return (
-      <Provenance
-        sourceUrl={null}
-        capturedAt={row.capturedAt}
-        tableCid={row.cid}
-        runId={row.runId}
-      />
+  // No usable source link: say why (contract/v1: `source_url` is null only with `not_in_export`).
+  // Written here rather than through the shared line, which prints the raw run id.
+  const source =
+    safeSourceHref(row.sourceUrl) === null ? (
+      <MissingReason field="source_url" reason="not_in_export" />
+    ) : (
+      <SourceLink url={row.sourceUrl} label="source record" />
     );
-  }
   return (
     <Provenance>
-      Source: <SourceLink url={row.sourceUrl} label="source record" />
+      Source: {source}
       {" · collected "}
       <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time>
       {" UTC · table "}
       <CidDisplay cid={row.cid} />
-      {` · run ${row.runId}`}
+      {` · ${runLabel(row.runId)}`}
     </Provenance>
   );
 }

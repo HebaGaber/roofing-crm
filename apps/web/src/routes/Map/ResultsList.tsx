@@ -7,6 +7,7 @@ import type { LatLng } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { Icon } from "@crm/ui";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { MAX_PROPERTY_ROWS } from "@crm/domain";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
 import { WhyPanel } from "./WhyPanel.js";
@@ -103,6 +104,7 @@ export function ResultsList({
   return (
     <ResultsPanel
       count={total}
+      triageCount={Math.min(rows.length, MAX_PROPERTY_ROWS)}
       note={note}
       onCollapseAll={collapseAll}
       onExpandAll={expandAll}

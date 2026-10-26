@@ -1,6 +1,7 @@
 // T012: write first, confirm it fails (no bounds helper exists yet). Asserts minZoom is derived
-// from cameraForBounds on the Travis County bbox (≈30.09–30.52°N, −98.17–−97.33°W) and that no
+// from cameraForBounds on the Travis County bbox (the shared @crm/domain TRAVIS_COUNTY_BBOX) and that no
 // maxBounds is set (research.md, agent-design.md §3).
+import { TRAVIS_COUNTY_BBOX } from "@crm/domain";
 import { describe, expect, it } from "vitest";
 import {
   TRAVIS_COUNTY_BOUNDS,
@@ -24,12 +25,11 @@ describe("CrmMap bounds helper (T012)", () => {
     expect(calls[0]).toBe(TRAVIS_COUNTY_BOUNDS);
   });
 
-  it("the Travis County bbox is approximately 30.09–30.52°N, -98.17–-97.33°W", () => {
-    const [[swLng, swLat], [neLng, neLat]] = TRAVIS_COUNTY_BOUNDS;
-    expect(swLat).toBeCloseTo(30.09, 1);
-    expect(neLat).toBeCloseTo(30.52, 1);
-    expect(swLng).toBeCloseTo(-98.17, 1);
-    expect(neLng).toBeCloseTo(-97.33, 1);
+  it("the map bounds are the one shared domain bbox (the API agent uses the same one)", () => {
+    expect(TRAVIS_COUNTY_BOUNDS).toEqual([
+      [TRAVIS_COUNTY_BBOX.west, TRAVIS_COUNTY_BBOX.south],
+      [TRAVIS_COUNTY_BBOX.east, TRAVIS_COUNTY_BBOX.north],
+    ]);
   });
 
   it("returns undefined rather than guessing when cameraForBounds can't compute one", () => {
@@ -52,6 +52,12 @@ describe("CrmMap bounds helper (T012)", () => {
 
     it("Georgetown, Williamson County (30.6333, -97.6780) is outside", () => {
       expect(isInTravisCounty({ lat: 30.6333, lng: -97.678 })).toBe(false);
+    });
+
+    it("accepts Run 3 properties the old box refused (north of 30.52, south of 30.09, west of -98.17)", () => {
+      expect(isInTravisCounty({ lat: 30.58, lng: -97.7 })).toBe(true);
+      expect(isInTravisCounty({ lat: 30.05, lng: -97.8 })).toBe(true);
+      expect(isInTravisCounty({ lat: 30.3, lng: -98.178 })).toBe(true);
     });
 
     it("is inclusive at the box's own edges", () => {

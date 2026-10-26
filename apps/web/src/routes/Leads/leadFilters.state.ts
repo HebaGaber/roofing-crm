@@ -6,10 +6,10 @@
 // URL keys: `roof` (roofAgeMinYears), `permit` (open|stalled; no "closed": design-review-log row 6,
 // the CRM's permit filter is Open / Stalled / Any), `lat`,`lng` (the area center) with `r`
 // (radiusMi), `status`, `assignee`, `permitOpen` (years the permit has been open at least: 1, 3, 5
-// or 10; sent as days = years x 365), `page` (1-based; the list's cursor is the numeric offset, so
+// or 10; sent as days = ceil(years x 365.25)), `page` (1-based; the list's cursor is the numeric offset, so
 // page n asks for offset (n - 1) x 25). A legacy `cursor=<offset>` link opens the page it falls in.
 // Example: /leads?status=new&assignee=rep%40example.com&roof=20&permit=open&lat=30.5&lng=-97.6&r=10&page=2
-import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { MAX_RADIUS_MI, MIN_RADIUS_MI, yearsToDays } from "@crm/domain";
 import { LEAD_STATUSES, type LeadFilters, type LeadStatus } from "@crm/shared";
 
 export const DEFAULT_LEAD_RADIUS_MI = 5;
@@ -129,7 +129,7 @@ export function toLeadsListInput(query: LeadQuery): LeadsListInput {
     ...(query.permitStatus === undefined ? {} : { permitStatus: query.permitStatus }),
     ...(query.permitOpenYears === undefined
       ? {}
-      : { permitOpenDaysMin: query.permitOpenYears * 365 }),
+      : { permitOpenDaysMin: yearsToDays(query.permitOpenYears) }),
     ...(query.center === null
       ? {}
       : { radiusMi: query.radiusMi, centerLat: query.center.lat, centerLon: query.center.lng }),

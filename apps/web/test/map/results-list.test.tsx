@@ -37,6 +37,12 @@ describe("ResultsList header (C5)", () => {
     expect(screen.getByRole("button", { name: "Permit coverage note" })).not.toBeNull();
   });
 
+  it("the Triage count is the stack length (rows listed), not the server total", () => {
+    setup({ total: 16741, clipped: true, onTriage: vi.fn() });
+    expect(screen.getByText("Matches 16741")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Triage 25" })).not.toBeNull();
+  });
+
   it("has a Triage button only when the page offers triage", () => {
     const onTriage = vi.fn();
     const { unmount } = setup({ onTriage });
@@ -53,6 +59,16 @@ describe("ResultsList rows (C1)", () => {
     setup();
     for (const card of cards()) expect(card.getAttribute("data-expanded")).toBe("false");
     expect(screen.queryByText("Basis")).toBeNull();
+  });
+
+  it("shows the run as its label ('Run 3'), not the raw run id", () => {
+    setup({ rows: rows(3).map((r) => ({ ...r, runId: "travis-full-run3-20261025" })) });
+    fireEvent.click(
+      within(cards()[0] as HTMLElement).getByRole("button", { name: "Expand details" }),
+    );
+    const card = cards()[0] as HTMLElement;
+    expect(card.textContent).toContain(" · Run 3");
+    expect(card.textContent).not.toContain("run3-2026");
   });
 
   it("expands one row without touching the others, and keeps it while paging back", () => {

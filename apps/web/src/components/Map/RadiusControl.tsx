@@ -2,7 +2,7 @@
 // bound is rejected at the control — the radius stays at its previous value and no onChange
 // fires (testplans/B-03-test-cases.md TC-002) — never silently clamped into a different number.
 import { useId, useState, type KeyboardEvent, type ReactElement } from "react";
-import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { MAX_RADIUS_MI, MIN_RADIUS_MI, RADIUS_STEP_MI } from "@crm/domain";
 import styles from "./RadiusControl.module.css";
 
 // Re-exported under this component's own names so existing callers are unaffected — the values
@@ -72,7 +72,7 @@ export function RadiusControl({
           <input
             type="range"
             className={styles.slider}
-            step="0.5"
+            step={RADIUS_STEP_MI}
             min={min}
             max={max}
             value={radiusMi}
@@ -84,7 +84,7 @@ export function RadiusControl({
             className={styles.input}
             type="number"
             inputMode="decimal"
-            step="0.5"
+            step={RADIUS_STEP_MI}
             min={min}
             max={max}
             value={draft ?? String(radiusMi)}

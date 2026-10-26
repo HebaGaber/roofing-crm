@@ -25,8 +25,7 @@ export interface SearchOption {
 /** Shown under the gazetteer options. */
 export const GAZETTEER_PROVENANCE = `Census 2024 Gazetteer · ${gazetteer.GAZETTEER_VERSION}`;
 
-export const ADDRESS_UNAVAILABLE_REASON =
-  "Address search needs Run 3.1 (street addresses are not published in Run 3 yet)";
+export const ADDRESS_UNAVAILABLE_REASON = "Street addresses are not published yet";
 
 const PERMIT_RE = /^\d{4}-\d{6}(?:\s*BP)?$/i;
 const ZIP_RE = /^(?:zip\s*)?\d{3,5}$/i;
@@ -168,8 +167,11 @@ export interface SearchSample {
   readonly verified: string;
 }
 
-/** "Try" examples for the empty box. Each is searched for real on the current data (Run 3,
- *  travis-full-run3-20261025):
+/** "Try" examples for the empty box, the one list the box renders. The permit and TCAD samples are
+ *  pinned to the data of Run 3: they are real rows in that run and must be re-checked (or removed)
+ *  when a later run is promoted. The visible labels carry no run number.
+ *
+ *  Each is searched for real on the current data (travis-full-run3-20261025):
  *  - Pflugerville, Round Rock, Austin: places in the vendored gazetteer (travis-places@1.0.0),
  *    asserted by searchSuggest.test.ts.
  *  - 78660: a Travis ZCTA in the same gazetteer (same test).

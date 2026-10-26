@@ -8,6 +8,7 @@
 // it covers a large part of a small map and sits over the points a pin is dropped on.
 import { useEffect, useId, useRef, type ReactElement } from "react";
 import { Icon } from "@crm/ui";
+import { runLabel } from "../../routes/Map/whyLead.js";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
 import { useLegendDocked, useLegendOpen } from "./legendState.js";
@@ -100,7 +101,7 @@ function CountyNote({
       <p className={styles.noteLine} data-provenance="">
         {county.runId === null
           ? "Source: promoted index, run id not published."
-          : `Source: run ${county.runId}.`}
+          : `Source: ${runLabel(county.runId)}.`}
       </p>
     </div>
   );

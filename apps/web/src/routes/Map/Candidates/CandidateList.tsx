@@ -7,7 +7,7 @@
 // this a lead?". Bulk create calls `leads.createMany` (25 per call); duplicates come back as
 // `already` and are counted, never failed. The result snackbar's Undo calls `leads.undoCreate` for
 // exactly the leads that create made and reports, honestly, any the server kept and why.
-import { MAX_RADIUS_MI } from "@crm/domain";
+import { MAX_RADIUS_MI, WIDEN_STEP_MI } from "@crm/domain";
 import { Icon, Popover } from "@crm/ui";
 import { useCallback, useEffect, useId, useMemo, useState, type ReactElement } from "react";
 import { useNavigate } from "react-router";
@@ -44,7 +44,6 @@ import { UndoStatusRow } from "./UndoStatusRow.js";
 import styles from "./CandidateList.module.css";
 
 export const DEFAULT_PAGE_SIZE = 20;
-const WIDEN_STEP_MI = 1;
 
 /** CRM-HANDOFF §4.2 coverage note (same words as the map's results header). */
 export const COVERAGE_NOTE =

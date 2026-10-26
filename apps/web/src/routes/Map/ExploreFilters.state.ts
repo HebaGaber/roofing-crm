@@ -11,13 +11,10 @@
 // owner, "1" or "true"), `permits` (permit-view toggle, "1"), `sel` (the selected
 // propertyCid, opens the detail drawer). Values outside bounds are dropped, never clamped into a
 // different question (FR-001/FR-003, matching the pattern the original file used).
-import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import { DEFAULT_RADIUS_MI, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
 
-export const DEFAULT_RADIUS_MI = 5;
+export { DEFAULT_RADIUS_MI };
 export const RADIUS_BOUNDS: readonly [number, number] = [MIN_RADIUS_MI, MAX_RADIUS_MI];
-/** architecture-constitution.md §6's page-limit bound. */
-export const MAX_RESULTS = 100;
-
 /** Upper bound of the owner-tenure filter (years); a value above it is dropped, not clamped. */
 export const MAX_TENURE_YEARS = 100;
 
