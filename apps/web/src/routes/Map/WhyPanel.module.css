@@ -31,7 +31,6 @@
 
 .back {
   align-self: flex-start;
-  margin-left: calc(var(--space-3) * -1);
 }
 
 .back:hover,
