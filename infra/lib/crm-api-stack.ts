@@ -134,6 +134,12 @@ export class CrmApiStack extends Stack {
         // architecture-constitution.md §9's module-boundary table).
         CRM_INDEX_BUCKET_NAME: props.indexBucketName,
         CRM_LEADS_TABLE_NAME: props.leadsTableName,
+        // Bump when crm_property/crm_permit gain or change columns (apps/sync buildIndex). The API
+        // keeps the loaded index per warm sandbox and the keep-warm ping stops it recycling, so an
+        // index rebuilt under the same manifest CID is only read after the function changes: this
+        // value changing is what gives a deploy fresh sandboxes. 2 = built year, last sale, tenure
+        // years and source URLs (2026-10-26).
+        INDEX_SCHEMA_VERSION: "2",
         // B-09: apps/api/src/agent/{rateLimiter,spendCap}.ts read this (never a hard-coded table
         // name, architecture-constitution.md §9's module-boundary table).
         CRM_AGENT_USAGE_TABLE_NAME: props.agentUsageTableName,
