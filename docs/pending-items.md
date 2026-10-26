@@ -8,10 +8,9 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no ha
 
 | Item | Value |
 | --- | --- |
-| Pull request | `prismteam-ai/roofing-crm` PR 15 from `HebaGaber:feature/roofing-crm`, marked ready for review on 2026-10-26. Its text on GitHub is the older description; the current text is `docs/pr-body.md` |
+| Pull request | `prismteam-ai/roofing-crm` PR 15 from `HebaGaber:feature/roofing-crm`, open and ready for review since 2026-10-26. Its text on GitHub follows `docs/pr-body.md` (republished 2026-10-26 after the final evaluator score) |
 | Data the app serves | Task A **Run 3.1** (contract v1.2), run `travis-full-run3-1-20261025`, manifest `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`: 441,961 properties, 15,025 Austin roofing permits, 4,552 with a printed contractor name. Rebuilt on 2026-10-26 with Task A's review changes (fa6771a). Run 3 (`bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`) is `previous` and the rollback ([`docs/runbook.md`](runbook.md)) |
-| Deployed code | Commit 96b85a3. CI on that commit is green (workspace, secret scan, hosted Playwright) |
-| On the branch, not pushed or deployed | Server-side permit filter with "Open" including stalled, Ask keeps the permit condition, alarms for failed and held sync runs, shared main-permit rule, tenure wording, agent-lead street titles, constitution reconciled, responsive tests and two tap-target CSS fixes, runbook, this file and `docs/pr-body.md`. The golden re-baseline is still being produced |
+| Deployed code | See `/build.json` on https://crm.aldarraj.com; the API and sync stacks are deployed from the same commit as the web build. CI on the last full push was green (secret scan, workspace checks, hosted Playwright) |
 | How a new run is picked up | Change `DATA_MANIFEST_CID` (GitHub repository variable and the deploy shell); a deploy starts one sync (execution `{cid}-{deployNonce}`); an already promoted CID is a no-op. Details in [`docs/runbook.md`](runbook.md) |
 | Deploy method | Clean checkout of the commit, `eval "$(aws configure export-credentials --profile assess --format env)"`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. CI never deploys |
 
@@ -31,12 +30,12 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no ha
 3. Deploy from a clean checkout; check `/build.json`, the sync alarms exist, and re-run the hosted suites (parallel and isolated phases). Re-run `tests/e2e/responsive/drawer-actions.spec.ts` (its two CSS fixes are unverified until then). Do not run hosted lead tests while CI runs: they share one DynamoDB table.
 4. Replace the PR text with `docs/pr-body.md` (`gh pr edit 15 -R prismteam-ai/roofing-crm --body-file docs/pr-body.md`) and turn its last progress row ("Pending when this was written") into measured results.
 5. Real-data performance test on Run 3.1 (`CRM_PERF=1`, `CRM_REAL_INDEX_DIR` set to a copy of the served index) and a p95 sample against the hosted API; the evaluator saw only single timings (a map search after GPS took about 3.6 s against the 3 s target).
-6. Re-run `machamp` (was 68) and `smeargle` (was 66) on the fixed code, then record all scores in `docs/kit-usage.md`.
+6. Done 2026-10-26: `machamp` re-scored 79 and `smeargle` 83 on the fixed code; all scores are in `docs/kit-usage.md`.
 7. Release steps still open: R1 Golden Path sweep (`../assessment-guide/reference/checks.md` section 5) and `/simplify` once; R3 `/code-review ultra` (**PO types it**); R4 `docs/release.md`, `/developmentsupport-g8-precheck`, the private-window login and `git tag rel-B1`; R5 `babysit-release` for PR readiness only; R6 a fresh `slowking` self-score once the demo link exists; R7 the demo video (**PO**).
 
 ## 3. Findings from the 2026-10-26 whole-repo review, still open
 
-Scores: `audino` 84, `metagross` 82, `espeon` 82, `ash` 82, `alakazam` 78, `porygon` 78, `machamp` 68, `smeargle` 66, plus an evaluator estimate of about 68 with both gates cleared. Fixed already on the branch: the permit-filter limit, "Open" meaning, Ask dropping the permit condition, failed and held sync alerts, the replay and rollback runbook, shared rules, tenure wording, constitution text, responsive test gaps.
+Scores: `audino` 84, `metagross` 82, `espeon` 82, `ash` 82, `alakazam` 78, `porygon` 78, `machamp` 68 then 79 after fixes, `smeargle` 66 then 83 after fixes. Evaluator self-scores with the demo gate treated as passed: about 68 (estimate), 75 (first measured), 80 (final measured, 2026-10-26); 0 as scored because the demo video is not recorded. Fixed already on the branch: the permit-filter limit, "Open" meaning, Ask dropping the permit condition, failed and held sync alerts, the replay and rollback runbook, shared rules, tenure wording, constitution text, responsive test gaps.
 
 | Finding | From | Decision needed |
 | --- | --- | --- |
