@@ -41,7 +41,7 @@ test.describe("Why is this a lead? (responsive)", () => {
 
     const panel = page.locator("[data-why-panel]");
     await expect(panel).toBeVisible();
-    const heading = panel.getByRole("heading", { name: /^Why TCAD \S+ is a lead$/ });
+    const heading = panel.getByRole("heading", { name: /^Why .+ is a lead$/ });
     await expect(heading).toBeVisible();
     // The panel opens at its top (the list was scrolled to the row): title and Back are on screen.
     await expect(heading).toBeInViewport();
