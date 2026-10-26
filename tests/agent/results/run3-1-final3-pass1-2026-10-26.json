@@ -16,9 +16,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        8294
-      ],
+      "latencyMs": [8294],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -137,9 +135,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        5871
-      ],
+      "latencyMs": [5871],
       "citations": 3,
       "rowsChecked": 5,
       "rowsVerified": 5,
@@ -155,9 +151,7 @@
       "detail": {
         "area": "place \"Pflugerville\" -> Pflugerville city (30.447765, -97.602116) radius 5 mi",
         "filters": {
-          "statusClass": [
-            "open"
-          ],
+          "statusClass": ["open"],
           "openYearsMin": 3
         },
         "unsupported": [
@@ -231,9 +225,7 @@
       "outcome": "empty_in_scope",
       "mode": "honest_empty",
       "pass": true,
-      "latencyMs": [
-        1820
-      ],
+      "latencyMs": [1820],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -250,9 +242,7 @@
       "detail": {
         "area": "place \"Manor\" -> Manor city (30.354228, -97.558259) radius 5 mi",
         "filters": {
-          "statusClass": [
-            "open"
-          ],
+          "statusClass": ["open"],
           "openYearsMin": 5
         },
         "unsupported": [],
@@ -267,9 +257,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        7841
-      ],
+      "latencyMs": [7841],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -286,10 +274,7 @@
         "area": "place \"Lakeway\" -> Lakeway city (30.354982, -97.986269) radius 5 mi",
         "filters": {
           "tenureYearsMin": 10,
-          "ownerAreaClass": [
-            "regional",
-            "out_of_area"
-          ]
+          "ownerAreaClass": ["regional", "out_of_area"]
         },
         "unsupported": [],
         "missing": [
@@ -353,9 +338,7 @@
       "outcome": "answered",
       "mode": "unavailable",
       "pass": true,
-      "latencyMs": [
-        5584
-      ],
+      "latencyMs": [5584],
       "citations": 1,
       "rowsChecked": 1,
       "rowsVerified": 1,
@@ -459,9 +442,7 @@
       "outcome": "out_of_scope",
       "mode": "refused",
       "pass": true,
-      "latencyMs": [
-        1852
-      ],
+      "latencyMs": [1852],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -506,10 +487,7 @@
       "outcome": "lead_created",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        8488,
-        10877
-      ],
+      "latencyMs": [8488, 10877],
       "failures": [],
       "emptyReason": "confirmLead created 48453:tcad:118088; confirmLeads created 2, already 0; undo removed 3 lead(s); none remain in leads.list"
     },
@@ -519,9 +497,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        7830
-      ],
+      "latencyMs": [7830],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -606,9 +582,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        10607
-      ],
+      "latencyMs": [10607],
       "citations": 3,
       "rowsChecked": 23,
       "rowsVerified": 23,
@@ -624,10 +598,7 @@
       "detail": {
         "area": "place \"Austin\" -> Austin city (30.298622, -97.754134) radius 5 mi",
         "filters": {
-          "statusClass": [
-            "open",
-            "stalled"
-          ],
+          "statusClass": ["open", "stalled"],
           "openYearsMin": 5
         },
         "unsupported": [],
@@ -714,9 +685,7 @@
       "outcome": "answered",
       "mode": "unavailable",
       "pass": true,
-      "latencyMs": [
-        15737
-      ],
+      "latencyMs": [15737],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -732,9 +701,7 @@
       "detail": {
         "area": "place \"Austin\" -> Austin city (30.298622, -97.754134) radius 2 mi",
         "filters": {
-          "statusClass": [
-            "stalled"
-          ]
+          "statusClass": ["stalled"]
         },
         "unsupported": [
           {
@@ -837,9 +804,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        7931
-      ],
+      "latencyMs": [7931],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -889,9 +854,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        6947
-      ],
+      "latencyMs": [6947],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -1010,9 +973,7 @@
       "outcome": "answered",
       "mode": "unavailable",
       "pass": true,
-      "latencyMs": [
-        5361
-      ],
+      "latencyMs": [5361],
       "citations": 1,
       "rowsChecked": 1,
       "rowsVerified": 1,
@@ -1116,9 +1077,7 @@
       "outcome": "out_of_scope",
       "mode": "refused",
       "pass": true,
-      "latencyMs": [
-        1937
-      ],
+      "latencyMs": [1937],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -1158,9 +1117,7 @@
       "outcome": "answered",
       "mode": "answered",
       "pass": true,
-      "latencyMs": [
-        10875
-      ],
+      "latencyMs": [10875],
       "citations": 3,
       "rowsChecked": 25,
       "rowsVerified": 25,
@@ -1279,9 +1236,7 @@
       "outcome": "out_of_scope",
       "mode": "refused",
       "pass": true,
-      "latencyMs": [
-        1951
-      ],
+      "latencyMs": [1951],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
@@ -1329,9 +1284,7 @@
       "outcome": "out_of_scope",
       "mode": "refused",
       "pass": true,
-      "latencyMs": [
-        1558
-      ],
+      "latencyMs": [1558],
       "citations": 0,
       "rowsChecked": 0,
       "rowsVerified": 0,
