@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mainLeadPermit } from "../../src/leads/mainLeadPermit.js";
+import {
+  isLivePermit,
+  mainLeadPermit,
+  permitStatusClassesFor,
+} from "../../src/leads/mainLeadPermit.js";
 
 describe("mainLeadPermit", () => {
   it("picks the open or stalled permit open longest", () => {
@@ -22,5 +26,21 @@ describe("mainLeadPermit", () => {
     const y = { id: "y", statusClass: "open", openDays: 10 };
     expect(mainLeadPermit([none, x, y])).toBe(x);
     expect(mainLeadPermit([none])).toBe(none);
+  });
+});
+
+describe("permitStatusClassesFor (the one Open / Stalled / Any definition)", () => {
+  it("Open is open or stalled, Stalled is stalled only, Any and unset send nothing", () => {
+    expect(permitStatusClassesFor("open")).toEqual(["open", "stalled"]);
+    expect(permitStatusClassesFor("stalled")).toEqual(["stalled"]);
+    expect(permitStatusClassesFor("any")).toBeUndefined();
+    expect(permitStatusClassesFor(undefined)).toBeUndefined();
+  });
+
+  it("agrees with isLivePermit for every status Open sends", () => {
+    for (const statusClass of ["open", "stalled", "closed", null, undefined]) {
+      const sent = permitStatusClassesFor("open") ?? [];
+      expect(sent.includes(statusClass as "open")).toBe(isLivePermit({ statusClass }));
+    }
   });
 });

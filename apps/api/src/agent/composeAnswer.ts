@@ -129,7 +129,10 @@ export const PLAN_SYSTEM_PROMPT =
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
   "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
-  "the radius goes in radiusMi and everything else in filters. Owner location (owners outside the " +
+  "the radius goes in radiusMi and everything else in filters. A permit condition on a property " +
+  'question ("with a stalled roofing permit", "an open permit", "permit open 5+ years") always ' +
+  "goes in filters.statusClass (and filters.openYearsMin), whatever the intent; never drop it. " +
+  "Owner location (owners outside the " +
   "area, out-of-state owners, owner mailing address) is never published: put it in unsupported with " +
   'reason "not_in_export", not in filters. Examples (question -> plan ' +
   "fields): " +
@@ -146,7 +149,11 @@ export const PLAN_SYSTEM_PROMPT =
   '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"default"},"unsupported":[]}; ' +
   '"Which properties within 3 miles of Austin have roofs older than 20 years?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Austin","radiusMi":3},' +
-  '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"stated"},"unsupported":[]}.';
+  '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
+  '"Roofs older than 25 years within 2 miles of Austin with a stalled roofing permit" -> ' +
+  '{"intent":"find_properties","area":{"kind":"place","query":"Austin","radiusMi":2},' +
+  '"filters":{"roofAgeMinYears":25,"statusClass":["stalled"]},"slotSources":{"roofAgeMinYears":"stated",' +
+  '"statusClass":"stated","radiusMi":"stated"},"unsupported":[]}.';
 
 function buildPlanPrompt(question: string, previousPlan: QueryPlan | undefined): string {
   if (previousPlan === undefined) return question;
@@ -178,7 +185,9 @@ const COMPOSE_SYSTEM_PROMPT =
   '{"claims":[{"text":"<=400 chars","citationIds":[<citationId>,...]}]}. ' +
   "Each claim cites the citationId of every DATA row it relies on, and every number in a claim " +
   "must be one of that row's values or one of the DATA counts. When DATA.area.note or " +
-  "DATA.area.notApplied is present, your first claim states it in your own words. " +
+  "DATA.area.notApplied is present, your first claim states it in your own words. When " +
+  "DATA.area.permitCondition is present, state it as part of what was counted. Write numbers of " +
+  "1,000 or more with thousands separators (14,394) and never run a number into the next word. " +
   "On a permit row, contractorResolution says whether the contractor was matched to a known " +
   'business ("unresolved" means it was not); contractorNameAsPrinted is the name exactly as ' +
   "printed on the permit and is not verified, so never present it as a verified business.";
@@ -232,6 +241,7 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
       name: plan.area.resolved?.name ?? plan.area.query,
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
       ...(notes.length === 0 ? {} : { notApplied: notes.join(" ") }),
+      ...(permitConditionText(plan) === "" ? {} : { permitCondition: permitConditionText(plan) }),
       ...(plan.area.kind === "zip" && !gathered.countyWide
         ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
         : {}),
@@ -477,6 +487,10 @@ function propertySearchArgs(plan: QueryPlan, point: ScopePoint, countyWide: bool
     roofAgeMinYears: plan.filters.roofAgeMinYears,
     ownerAreaClass: plan.filters.ownerAreaClass,
     tenureYearsMin: plan.filters.tenureYearsMin,
+    // A permit condition on a property question ("with a stalled roofing permit") is part of the
+    // search, applied in SQL before the page and the counts.
+    statusClass: plan.filters.statusClass,
+    openYearsMin: plan.filters.openYearsMin,
   };
 }
 
@@ -873,8 +887,14 @@ function deriveMissing(plan: QueryPlan, gathered: Gathered | undefined): Missing
   return [...out, ...byKey.values()];
 }
 
+/** A count with thousands separators ("123,646"), so a large number can never run into the text
+ *  around it. The claim-text check reads comma-grouped numbers (claimText.ts NUMBER_TOKEN). */
+export function formatCount(n: number): string {
+  return n.toLocaleString("en-US");
+}
+
 function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
+  return `${formatCount(n)} ${n === 1 ? one : many}`;
 }
 
 /** The deterministic answer used when rows matched but no model claim verified (or compose
@@ -886,6 +906,24 @@ function zipSuffix(plan: QueryPlan, gathered: Gathered): string {
       : ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
   const notes = answerNotes(plan, gathered).join(" ");
   return notes === "" ? zip : `${zip} ${notes}`;
+}
+
+/** The permit condition in words ("a stalled permit", "an open or stalled permit open 5+ years"),
+ *  or "" when the plan carries none. "Open" includes stalled, as everywhere else. */
+export function permitConditionText(plan: QueryPlan): string {
+  const status = plan.filters.statusClass;
+  const years = plan.filters.openYearsMin;
+  if ((status === undefined || status.length === 0) && years === undefined) return "";
+  const live = status?.includes("open") === true;
+  const word =
+    status === undefined || status.length === 0
+      ? "a permit"
+      : live
+        ? "an open or stalled permit"
+        : status.length === 1 && status[0] === "closed"
+          ? "a closed permit"
+          : `a ${status.join(" or ")} permit`;
+  return years === undefined ? word : `${word} open ${years}+ years`;
 }
 
 function templateText(plan: QueryPlan, gathered: Gathered): string {
@@ -920,9 +958,11 @@ function templateText(plan: QueryPlan, gathered: Gathered): string {
         plan.filters.roofAgeMinYears === undefined
           ? ""
           : ` with a roof at least ${plan.filters.roofAgeMinYears} years old`;
+      const permit = permitConditionText(plan);
       return (
         `Found ${plural(gathered.counts.matched, "matching property", "matching properties")} ` +
-        `${where}${roof}; showing the top ${gathered.counts.shown}.${zipSuffix(plan, gathered)}`
+        `${where}${roof}${permit === "" ? "" : `${roof === "" ? " with" : " and"} ${permit}`}; ` +
+        `showing the top ${formatCount(gathered.counts.shown)}.${zipSuffix(plan, gathered)}`
       );
     }
   }
@@ -1154,7 +1194,29 @@ export function repairPlanFromQuestion(
       };
     }
   }
+  // Only a property question can lose its permit condition (a permit question already is one).
+  const permit = next.intent === "find_permits" ? undefined : scanQuestionForPermitStatus(question);
+  if (permit !== undefined && next.filters.statusClass === undefined) {
+    repairs.push(`statusClass -> ${permit.join(",")}`);
+    next = {
+      ...next,
+      filters: { ...next.filters, statusClass: permit },
+      slotSources: { ...next.slotSources, statusClass: "stated" },
+    };
+  }
   return { plan: next, repairs };
+}
+
+/** A permit condition the rep stated that the plan dropped: "a stalled permit", "an open roofing
+ *  permit". Conservative: only the words stalled/open directly before "permit" (optionally with
+ *  "roofing"), and never when the question negates it ("no open permits", "without a stalled
+ *  permit"). */
+export function scanQuestionForPermitStatus(question: string): ("open" | "stalled")[] | undefined {
+  const m = /\b(stalled|open)\s+(?:roofing\s+|building\s+)?permits?\b/i.exec(question);
+  if (m === null) return undefined;
+  const before = question.slice(Math.max(0, m.index - 24), m.index);
+  if (/\b(no|not|without|zero|never|aren't|don't)\b[^.?]*$/i.test(before)) return undefined;
+  return [(m[1] ?? "").toLowerCase() === "stalled" ? "stalled" : "open"];
 }
 
 /** The model's compose-step output: claims plus the citation labels they rely on. The optional
@@ -1643,7 +1705,8 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
   const gapNote = unpublishedNote(plan);
   const first = claims[0];
   if (gapNote !== "" && first !== undefined && !/not narrowed by/i.test(first.text)) {
-    claims = [{ ...first, text: `${first.text} ${gapNote}`.slice(0, 400) }, ...claims.slice(1)];
+    const lead = /[.!?]$/.test(first.text.trim()) ? first.text.trim() : `${first.text.trim()}.`;
+    claims = [{ ...first, text: `${lead} ${gapNote}`.slice(0, 400) }, ...claims.slice(1)];
   }
 
   emitCitationMetrics(obs, {

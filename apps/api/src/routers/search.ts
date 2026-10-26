@@ -67,6 +67,13 @@ const SearchPropertiesInput = z.object({
   // area is outside the county area (`ownerAreaClass` regional or out_of_area).
   tenureYearsMin: z.number().int().min(0).max(100).optional(),
   outOfArea: z.boolean().optional(),
+  // Permit filters, applied in SQL to every property in the circle (not to the returned page).
+  // The map's "Open" sends ["open","stalled"], its "Stalled" sends ["stalled"].
+  permitStatusClass: z
+    .array(z.enum(["open", "stalled", "closed"]))
+    .min(1)
+    .optional(),
+  permitOpenDaysMin: z.number().int().min(0).max(36_500).optional(),
   // architecture-constitution.md §6's page-limit bound.
   limit: z.number().int().positive().max(MAX_PROPERTY_ROWS).optional(),
 });

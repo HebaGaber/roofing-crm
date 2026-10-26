@@ -13,7 +13,7 @@ import {
   type LatLng,
 } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import type { LeadStatus } from "@crm/shared";
+import { isLivePermit, permitStatusClassesFor, type LeadStatus } from "@crm/shared";
 import {
   permitStatusShortLabel,
   propertySubtitle,
@@ -73,12 +73,14 @@ export function compassBearing(from: LatLng, to: LatLng): string {
   return COMPASS[Math.round(deg / 45) % 8] ?? "N";
 }
 
-const isOpenOrStalled = (p: CandidatePermit): boolean =>
-  p.statusClass === "open" || p.statusClass === "stalled";
+const isOpenOrStalled = (p: CandidatePermit): boolean => isLivePermit(p);
 
+/** "Open" is open or stalled (a stalled permit is open and not progressing); "Stalled" is stalled
+ *  only. The server applies the same definition (`permitStatusClassesFor`). */
 function permitPasses(permit: CandidatePermit, filters: CandidateFilters): boolean {
   const status = filters.permitStatus ?? "any";
-  if (status !== "any" && permit.statusClass !== status) return false;
+  if (status === "open" && !isLivePermit(permit)) return false;
+  if (status === "stalled" && permit.statusClass !== "stalled") return false;
   if (filters.permitOpenYrs !== undefined) {
     if (permit.openDays === null || permit.openDays / DAYS_PER_YEAR < filters.permitOpenYrs)
       return false;
@@ -106,7 +108,7 @@ export function permitQueryInput(
     center: center ?? { lat: 0, lng: 0 },
     radiusMi,
     sort: "openDays",
-    ...(status === "any" ? {} : { statusClass: [status] }),
+    ...(status === "any" ? {} : { statusClass: [...(permitStatusClassesFor(status) ?? [])] }),
     // The same cut the map's own "Permit open at least N yrs" filter always made: openDays is a
     // whole number, so at least ceil(N years in days).
     ...(permitOpenYrs === undefined ? {} : { openDaysMin: yearsToDays(permitOpenYrs) }),
@@ -147,13 +149,20 @@ export function propertiesSearchInput(
   roofAgeMinYears: number | undefined,
   tenureYearsMin: number | undefined,
   outOfArea: boolean | undefined,
+  permitStatus?: PermitStatusFilter | undefined,
+  permitOpenYrs?: number | undefined,
 ) {
+  const permitStatusClass = permitStatusClassesFor(permitStatus);
   return {
     center,
     radiusMi,
     roofAgeMinYears,
     ...(tenureYearsMin === undefined ? {} : { tenureYearsMin }),
     ...(outOfArea === true ? { outOfArea: true } : {}),
+    // The permit filters travel with the properties request: the server applies them to every
+    // property in the circle before the page and the counts, not to the nearest page afterwards.
+    ...(permitStatusClass === undefined ? {} : { permitStatusClass }),
+    ...(permitOpenYrs === undefined ? {} : { permitOpenDaysMin: yearsToDays(permitOpenYrs) }),
   };
 }
 
@@ -219,7 +228,7 @@ export function emptyStateCopy(filters: CandidateFilters): {
   }
   const why =
     status === "open"
-      ? "Open permits are rare in this data (Austin permits only; most are stalled, a status the CRM derives). "
+      ? "Open includes stalled permits; few properties have one in this data (Austin permits only). "
       : "";
   const title = roofFilter
     ? `No roofs of ${String(roof)}+ yrs have ${phrase} within ${radius} mi.`
@@ -234,11 +243,15 @@ export function emptyStateCopy(filters: CandidateFilters): {
   };
 }
 
-/** The header's count: it must equal the rows listed. Without a permit filter the rows are the
- *  properties in range, so the server's total (the page may be clipped); with one they are the
- *  properties with a matching permit, so the rows themselves. */
-export function listedCount(filters: CandidateFilters, serverTotal: number, rows: number): number {
-  return hasPermitFilter(filters) ? rows : serverTotal;
+/** The header's count: the server's total of matching properties. Every filter, the permit ones
+ *  included, is applied by the server before the page is cut, so the total, the list and the map
+ *  markers agree (a clipped page says so). */
+export function listedCount(
+  _filters: CandidateFilters,
+  serverTotal: number,
+  _rows: number,
+): number {
+  return serverTotal;
 }
 
 /** Index of lead presence by the property's TCAD request identifier (`{fips}:tcad:{id}`). */
@@ -265,11 +278,11 @@ export function buildCandidates(
     if (!permitPasses(permit, filters)) continue;
     byProperty.set(permit.propertyCid, [...(byProperty.get(permit.propertyCid) ?? []), permit]);
   }
-  const permitFilter = hasPermitFilter(filters);
   const out: Candidate[] = [];
   for (const property of properties) {
     const own = byProperty.get(property.propertyCid) ?? [];
-    if (permitFilter && own.length === 0) continue;
+    // The server already kept only properties with a matching permit; one whose permit is past
+    // the permits page (the 500 longest open) stays listed, just without that permit's detail.
     const mainPermit =
       [...own].filter(isOpenOrStalled).sort((a, b) => (b.openDays ?? -1) - (a.openDays ?? -1))[0] ??
       null;

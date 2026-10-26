@@ -7,6 +7,20 @@ export interface LeadPermitLike {
   readonly openDays?: number | null | undefined;
 }
 
+/** The `statusClass` values that count as a live permit: a stalled permit is an open one that is
+ *  not progressing, so "open" always includes it. */
+export const LIVE_PERMIT_STATUS_CLASSES = ["open", "stalled"] as const;
+
+/** The permit-status filter chips (Open, Stalled, Any) as the `statusClass` values to send:
+ *  Open = open or stalled, Stalled = stalled only, Any = no filter (undefined). */
+export function permitStatusClassesFor(
+  status: "open" | "stalled" | "any" | undefined,
+): ("open" | "stalled")[] | undefined {
+  if (status === "open") return [...LIVE_PERMIT_STATUS_CLASSES];
+  if (status === "stalled") return ["stalled"];
+  return undefined;
+}
+
 /** An open or stalled permit; a closed one, or one with no status, is not a live signal. */
 export function isLivePermit(permit: LeadPermitLike): boolean {
   return permit.statusClass === "open" || permit.statusClass === "stalled";

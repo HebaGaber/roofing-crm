@@ -6,8 +6,9 @@
 // §4.2 "Filters (CRM set)" names exactly three controls, and this file owns all three: the
 // roof-age threshold (chips 10/13/15/20/25, or any number in "Other"; default 15 — one control,
 // not two), the permit status (Open/Stalled/Any), and the permit-open-duration filter. Permit
-// status/open-years are applied client-side over the already-fetched permits (the API has no
-// status filter of its own, contracts/search-api.md). There is no separate "show permits"
+// status/open-years are sent with the properties request and applied by the server to every
+// property in range before it pages and counts ("Open" = open or stalled, "Stalled" = stalled
+// only; a stalled permit is an open one that is not progressing). There is no separate "show permits"
 // toggle in the CRM-HANDOFF filter set — the old A-13 "Show open permits" checkbox was left
 // behind by the structural rebuild and has been removed as a duplicate of "Permit status".
 // Below 1280 px the controls collapse into a real dismissible sheet behind a "Filters" button
@@ -294,6 +295,7 @@ export function FilterSheet({
                 type="button"
                 className={`${styles.chip} ${permitStatus === status ? styles.chipSelected : ""}`}
                 aria-pressed={permitStatus === status}
+                title={status === "open" ? "Open and stalled permits" : undefined}
                 onClick={() => onPermitStatusChange(status)}
               >
                 {status === "open" ? "Open" : status === "stalled" ? "Stalled" : "Any"}

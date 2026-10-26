@@ -472,41 +472,39 @@ describe("Map route tablet alignment (A3, A4, C1, C6)", () => {
     expect(within(list).getAllByLabelText("Permits")).toHaveLength(1);
   });
 
-  it("a permit filter narrows the cards to properties with a matching permit, same as the List: rows, count and empty state agree", async () => {
+  it("a permit filter is sent with the properties request and the server's page, count and empty state are shown (F-1)", async () => {
     const other = {
       ...property,
       propertyCid: "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbq4xb",
       requestIdentifier: "0201885123",
     };
     searchResult = { properties: [property, other], counts: { afterRadius: 2, afterRoofAge: 2 } };
-    permitsReply = {
-      permits: [
-        {
-          propertyCid: property.propertyCid,
-          permitCid: "bafkreipermit",
-          statusClass: "open",
-          openDays: 803,
-          permitNumber: "2024-1",
-          isLongOpen: false,
-        },
-      ],
-    };
+    permitsReply = { permits: [] };
     renderAt("/?lat=30.4394&lng=-97.62&r=5");
     const list = await screen.findByTestId("search-results");
-    // No permit filter: both properties, the server's count.
+    // No permit filter: both properties, the server's count, and no permit key in the request.
     expect(within(list).getAllByRole("article")).toHaveLength(2);
     expect(screen.getByText("Matches 2")).not.toBeNull();
-    // Permit status Open: only the property with an open permit, and the count equals the rows.
+    expect(propertyInputs.at(-1)).not.toHaveProperty("permitStatusClass");
+    // Permit status Open: the request carries open AND stalled; the server answers with the
+    // properties (and the total) that pass, which the map lists as they are.
+    searchResult = { properties: [property], counts: { afterRadius: 2, afterRoofAge: 1 } };
     fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     const group = screen.getByRole("group", { name: "Permit status" });
     fireEvent.click(within(group).getByRole("button", { name: "Open" }));
     await vi.waitFor(() =>
+      expect(propertyInputs.at(-1)).toMatchObject({ permitStatusClass: ["open", "stalled"] }),
+    );
+    await vi.waitFor(() =>
       expect(within(screen.getByTestId("search-results")).getAllByRole("article")).toHaveLength(1),
     );
     expect(screen.getByText("Matches 1")).not.toBeNull();
-    // No property has a matching permit: the empty state names the permit filter, as the List does.
-    permitsReply = { permits: [] };
+    // Stalled: only stalled. The server finds none: the empty state names the permit filter.
+    searchResult = { properties: [], counts: { afterRadius: 2, afterRoofAge: 0 } };
     fireEvent.click(within(group).getByRole("button", { name: "Stalled" }));
+    await vi.waitFor(() =>
+      expect(propertyInputs.at(-1)).toMatchObject({ permitStatusClass: ["stalled"] }),
+    );
     await vi.waitFor(() =>
       expect(document.querySelector('[data-state="CrmMapNoResults390"]')?.textContent).toMatch(
         /stalled permit/,

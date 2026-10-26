@@ -471,8 +471,25 @@ export function Component(): ReactElement {
     () =>
       center === null || pinOutsideCounty
         ? null
-        : propertiesSearchInput(center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea),
-    [center, pinOutsideCounty, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea],
+        : propertiesSearchInput(
+            center,
+            radiusMi,
+            roofAgeMinYears,
+            tenureYearsMin,
+            outOfArea,
+            permitStatus,
+            permitOpenYrs,
+          ),
+    [
+      center,
+      pinOutsideCounty,
+      radiusMi,
+      roofAgeMinYears,
+      tenureYearsMin,
+      outOfArea,
+      permitStatus,
+      permitOpenYrs,
+    ],
   );
 
   const query = useQuery({
@@ -520,13 +537,9 @@ export function Component(): ReactElement {
   // The properties the map and the cards list: the nearest page of the ring, and with a permit
   // filter only those with a matching permit (the rule the Candidate list applies, buildCandidates).
   // While the permits load the filtered set is not known yet.
-  const permitsReady = !permitFilterActive || permitsQuery.data !== undefined;
-  const listProperties = useMemo(() => {
-    const all = query.data?.properties ?? [];
-    if (!permitFilterActive) return all;
-    if (permitsQuery.data === undefined) return [];
-    return all.filter((p) => permitsByPropertyCid.has(p.propertyCid));
-  }, [query.data, permitFilterActive, permitsQuery.data, permitsByPropertyCid]);
+  // The server applies the permit filters to every property in the circle before it pages and
+  // counts, so the rows listed are exactly the page it returned.
+  const listProperties = useMemo(() => query.data?.properties ?? [], [query.data]);
 
   const detailQuery = useQuery({
     ...trpc.property.get.queryOptions({ propertyCid: sel ?? "" }),
@@ -597,7 +610,7 @@ export function Component(): ReactElement {
 
   const widenTo = radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? radiusMi + WIDEN_STEP_MI : null;
   const isZeroResult =
-    searchInput !== null && query.data !== undefined && permitsReady && listProperties.length === 0;
+    searchInput !== null && query.data !== undefined && listProperties.length === 0;
 
   // The map's own question, handed to the Candidate list and Field triage. Same centre rule as the
   // map's search (an outside pin is never a search centre), so the three share one React Query
@@ -768,19 +781,16 @@ export function Component(): ReactElement {
   );
   const rightCollapsed = wide && rightCollapsedState;
   // Counts come from the server's totals; a clipped page says so (never a page as the whole set).
-  // With a permit filter the count is the rows listed (as in the Candidate list, listedCount): the
-  // server only knows the properties in range, not which of them have a matching permit.
+  // Permit filters included: the server counts the properties that pass every filter.
   const serverTotal = query.data?.counts?.afterRoofAge ?? query.data?.properties.length ?? 0;
-  const matchTotal = permitFilterActive ? listProperties.length : serverTotal;
+  const matchTotal = serverTotal;
   const propertiesClipped =
     query.data !== undefined && serverTotal > (query.data?.properties.length ?? 0);
   const resultsNote =
     propertiesClipped || permitClipNote !== null
       ? [
           propertiesClipped
-            ? permitFilterActive
-              ? `Permit filter applied to the nearest ${String(query.data?.properties.length ?? 0)} of ${serverTotal.toLocaleString("en-US")} properties in range; narrow the radius or raise the roof age.`
-              : `Showing the nearest ${String(query.data?.properties.length ?? 0)} of ${serverTotal.toLocaleString("en-US")} properties; narrow the radius or raise the roof age.`
+            ? `Showing the nearest ${String(query.data?.properties.length ?? 0)} of ${serverTotal.toLocaleString("en-US")} properties; narrow the radius or raise the roof age.`
             : null,
           permitClipNote,
         ]

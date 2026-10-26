@@ -3,6 +3,7 @@
 // listed, and every value is read from the row (never recomputed or invented); a signal the data
 // does not carry is left out rather than shown as met.
 import type { LatLng } from "@crm/domain";
+import { isLivePermit } from "@crm/shared";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import {
   SOURCE_PARCELS_LABEL,
@@ -71,9 +72,7 @@ export function hasUnfinaledRoofPermit(
 export function mainPermitOf(
   permits: readonly Provenanced<CrmPermit>[] | undefined,
 ): Provenanced<CrmPermit> | null {
-  const live = (permits ?? []).filter(
-    (p) => p.statusClass === "open" || p.statusClass === "stalled",
-  );
+  const live = (permits ?? []).filter(isLivePermit);
   if (live.length === 0) return null;
   return [...live].sort((a, b) => (b.openDays ?? -1) - (a.openDays ?? -1))[0] ?? null;
 }

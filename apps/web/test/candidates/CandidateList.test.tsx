@@ -283,15 +283,15 @@ describe("CandidateList", () => {
       permitOpenYrs: 5,
     };
 
-    it("permit-only empty: names the permit filter, says why, and the header count is 0, not the old total", () => {
-      result = ready({ candidates: [], totalInRing: 23775 });
+    it("permit-only empty: names the permit filter, says why, and the header count is the server's 0", () => {
+      result = ready({ candidates: [], totalInRing: 0 });
       mount({ filters: PERMIT_FILTERS });
       const empty = document.querySelector('[data-state="CrmCandidatesEmpty390"]') as HTMLElement;
       expect(empty.textContent).toContain(
         "No properties with an open permit (open 5+ yrs) within 5 mi.",
       );
       expect(empty.textContent).not.toMatch(/roofs match/);
-      expect(empty.textContent).toContain("Open permits are rare in this data");
+      expect(empty.textContent).toContain("Open includes stalled permits");
       expect(
         document.querySelector(".num, [data-matches]")?.getAttribute("data-matches") ?? "0",
       ).toBe("0");
@@ -332,11 +332,10 @@ describe("CandidateList", () => {
       expect(screen.getByRole("button", { name: /^Roof ≥/ })).toBeTruthy();
     });
 
-    it("the header count equals the rows listed: with a permit filter the page length, else the server total", () => {
+    it("the header count is the server's total with or without a permit filter (F-1)", () => {
       result = ready({ totalInRing: 340 });
       mount({ filters: PERMIT_FILTERS });
-      expect(document.body.textContent).toContain("3 within 5 mi");
-      expect(document.body.textContent).not.toContain("340 within");
+      expect(document.body.textContent).toContain("340 within 5 mi");
       cleanup();
       result = ready({ totalInRing: 340, propertiesTruncated: true, propertiesShown: 3 });
       mount();

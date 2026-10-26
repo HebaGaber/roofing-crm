@@ -12,6 +12,7 @@ import type {
   LeadSignals,
   LeadStatus,
 } from "@crm/shared";
+import { isLivePermit } from "@crm/shared";
 import type { LeadIndex, SearchPropertiesQuery } from "../adapters/duckDbParquet.js";
 import {
   noteExcerpt,
@@ -243,7 +244,11 @@ export function createLeadService(
       const withMatch = new Set(
         permits
           .filter(
-            (p) => filters.permitStatus === undefined || p.statusClass === filters.permitStatus,
+            (p) =>
+              filters.permitStatus === undefined ||
+              (filters.permitStatus === "open"
+                ? isLivePermit(p)
+                : p.statusClass === filters.permitStatus),
           )
           .map((p) => p.propertyCid),
       );

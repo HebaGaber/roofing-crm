@@ -62,7 +62,15 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     ...trpc.search.properties.queryOptions(
       center === null
         ? { center: { lat: 0, lng: 0 }, radiusMi }
-        : propertiesSearchInput(center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea),
+        : propertiesSearchInput(
+            center,
+            radiusMi,
+            roofAgeMinYears,
+            tenureYearsMin,
+            outOfArea,
+            filters.permitStatus,
+            filters.permitOpenYrs,
+          ),
     ),
     enabled: center !== null,
   });
