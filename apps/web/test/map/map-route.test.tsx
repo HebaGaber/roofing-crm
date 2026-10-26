@@ -1483,7 +1483,7 @@ describe("Map route owner filters (tenure, out-of-area)", () => {
 
   it("Clear resets tenure and out-of-area together with roof in one URL update", async () => {
     stubWide(true);
-    renderAt(`${PIN}&roof=15&tenure=10&ooa=1`);
+    renderAt(`${PIN}&roof=15&tenure=11&ooa=1`);
     await screen.findByTestId("search-results");
     const bar = await vi.waitFor(() => {
       const el = document.querySelector("[data-match-bar]") as HTMLElement;

@@ -28,8 +28,9 @@ import { OUT_OF_AREA_UNPUBLISHED } from "./Candidates/candidates.js";
 import { MAX_TENURE_YEARS } from "./ExploreFilters.state.js";
 import styles from "./FilterSheet.module.css";
 
-/** The "Tenure > 10 yrs" chip sets this threshold. */
-export const TENURE_CHIP_YEARS = 10;
+/** The "Tenure > 10 yrs" chip sets this threshold: the filter is "N years or more", so "more than
+ *  10 years" is 11 (tenure is whole years, and Task A's long-tenure rule is `tenure_years > 10`). */
+export const TENURE_CHIP_YEARS = 11;
 
 /** CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other'; default 15)". */
 export const ROOF_AGE_CHIPS: readonly number[] = [10, 13, 15, 20, 25];
@@ -87,7 +88,11 @@ export function filterSummary(
 ): string {
   const parts = [
     roofAgeMinYears === undefined ? null : `roof ≥ ${String(roofAgeMinYears)}`,
-    tenureYearsMin === undefined ? null : `tenure > ${String(tenureYearsMin)}`,
+    tenureYearsMin === undefined
+      ? null
+      : tenureYearsMin === TENURE_CHIP_YEARS
+        ? `tenure > ${String(TENURE_CHIP_YEARS - 1)}`
+        : `tenure ≥ ${String(tenureYearsMin)}`,
     outOfArea === true ? "out-of-area owner" : null,
     permitStatus === "any" ? null : `permit ${permitStatus}`,
     permitOpenYrs === undefined ? null : `open ${String(permitOpenYrs)}+ yrs`,

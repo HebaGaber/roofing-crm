@@ -74,14 +74,14 @@ describe("FilterSheet owner group (tenure, out-of-area)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
   };
 
-  it("the tenure chip toggles 10 on and off and shows aria-pressed", () => {
+  it("the tenure chip toggles 11 (more than 10 years) on and off and shows aria-pressed", () => {
     const onChange = vi.fn();
     const view = renderSheet({ tenureYearsMin: undefined, onTenureYearsMinChange: onChange });
     open();
     const chip = screen.getByRole("button", { name: "Tenure > 10 yrs" });
     expect(chip.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(chip);
-    expect(onChange).toHaveBeenLastCalledWith(10);
+    expect(onChange).toHaveBeenLastCalledWith(11);
     view.rerender(
       <FilterSheet
         roofAgeMinYears={15}
@@ -90,7 +90,7 @@ describe("FilterSheet owner group (tenure, out-of-area)", () => {
         onPermitStatusChange={vi.fn()}
         permitOpenYrs={undefined}
         onPermitOpenYrsChange={vi.fn()}
-        tenureYearsMin={10}
+        tenureYearsMin={11}
         onTenureYearsMinChange={onChange}
       />,
     );
@@ -166,9 +166,11 @@ describe("FilterSheet owner group (tenure, out-of-area)", () => {
   });
 
   it("the summary names the owner filters", () => {
-    expect(filterSummary(undefined, "any", undefined, 10, true)).toBe(
+    expect(filterSummary(undefined, "any", undefined, 11, true)).toBe(
       "tenure > 10 · out-of-area owner",
     );
+    // A typed value reads as "N or more", never "more than N".
+    expect(filterSummary(undefined, "any", undefined, 10, false)).toBe("tenure ≥ 10");
     expect(filterSummary(15, "any", undefined, undefined, false)).toBe("roof ≥ 15");
     expect(filterSummary(undefined, "any", undefined)).toBe("none");
   });
