@@ -106,9 +106,83 @@ describe("out-of-area pill", () => {
     expect(screen.queryByText("Local owner")).toBeNull();
   });
 
-  it("shows it in the drawer Owner section only when known", () => {
-    drawer({ ...base, ownerIsOutOfArea: true } as typeof base, []);
-    expect(screen.getByText("Out-of-area owner")).toBeTruthy();
+  it("words the class on the result row so it matches the drawer", () => {
+    render(
+      <ResultRow
+        row={{ ...base, ownerIsOutOfArea: false, ownerAreaClass: "regional" } as typeof base}
+      />,
+    );
+    expect(screen.getByText("Regional owner")).toBeTruthy();
+  });
+
+  it.each([
+    ["in_county", false, "Local"],
+    ["regional", false, "Regional"],
+    ["out_of_area", true, "Out-of-area"],
+  ])("drawer Owner section: mailing location and %s pill", (cls, out, label) => {
+    drawer(
+      {
+        ...base,
+        ownerAreaClass: cls,
+        ownerIsOutOfArea: out,
+        ownerMailingStateCode: "TX",
+        ownerMailingPostalCode: "78660",
+      } as unknown as typeof base,
+      [],
+    );
+    expect(document.querySelector('[data-field="owner_mailing_location"]')?.textContent).toBe(
+      `TX 78660 ${label}`,
+    );
+    expect(document.querySelector('[data-field="owner_area_class"]')?.textContent).toBe(label);
+  });
+
+  it("drawer Owner section: unknown class keeps its stated reason on both rows", () => {
+    drawer(
+      {
+        ...base,
+        ownerAreaClass: "unknown",
+        missingReasons: [
+          { field: "owner_area_class", reason: "no_mailing_address" },
+          { field: "owner_mailing_postal_code", reason: "no_mailing_address" },
+        ],
+      } as unknown as typeof base,
+      [],
+    );
+    const mailing = document.querySelector('[data-field="owner_mailing_location"]');
+    expect(mailing?.textContent).not.toBe("");
+    expect(mailing?.textContent).not.toContain("Local");
+    expect(document.querySelector('[data-field="owner_area_class"]')?.textContent).not.toBe("");
+  });
+
+  it("drawer Owner section tolerates an index without the v1.2 fields", () => {
+    drawer(base, []);
+    expect(document.querySelector('[data-field="owner_mailing_location"]')?.textContent).toContain(
+      "not published",
+    );
+  });
+
+  it("result row title: address with the TCAD id under it, and without one the TCAD id", () => {
+    const { rerender } = render(
+      <ResultRow
+        row={{ ...base, unnormalizedAddress: "100 MAIN ST, AUSTIN, TX 78701" } as never}
+      />,
+    );
+    expect(screen.getByText("100 MAIN ST, AUSTIN, TX 78701")).toBeTruthy();
+    expect(screen.getByText("TCAD 192820")).toBeTruthy();
+    rerender(<ResultRow row={base} />);
+    expect(screen.getByText("TCAD 192820")).toBeTruthy();
+    expect(screen.getByText(/Address not published/)).toBeTruthy();
+  });
+
+  it("drawer header: the street address is the title and the TCAD id is under it", () => {
+    drawer(
+      { ...base, unnormalizedAddress: "2725 WOODALL DR 1401, CEDAR PARK, TX 78613" } as never,
+      [],
+    );
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading.textContent).toContain("2725 WOODALL DR 1401, CEDAR PARK, TX 78613");
+    expect(heading.textContent).toContain("TCAD 192820");
+    expect(heading.textContent).not.toContain("not published");
   });
 });
 

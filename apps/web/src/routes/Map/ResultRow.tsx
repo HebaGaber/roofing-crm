@@ -20,7 +20,9 @@ import {
   type ReactNode,
 } from "react";
 import {
-  addressLine,
+  ownerAreaPill,
+  propertySubtitle,
+  propertyTitle,
   bbbGapText,
   contractorReasonText,
   coordinateSourceLabel,
@@ -40,15 +42,14 @@ import { mainPermitOf, runLabel } from "./whyLead.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 import styles from "./ResultRow.module.css";
 
-/** The card's title: this contract never publishes a street address (§9.1/E-93 — no lexicon
- *  carrier for it yet, FU-A-01), so every row shows its TCAD account id instead of a fabricated
- *  address and never the raw lat/lon as if it were one (constitution P0-4, task brief "never raw
- *  lat/lon as a fake address"). */
+/** The card's title: the street address as TCAD prints it (contract v1.2), with the TCAD id under
+ *  it. A row without one shows the TCAD id and the reason from its own `missing` entry, never the
+ *  raw lat/lon as if it were an address (constitution P0-4). */
 export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
   return (
     <span className={styles.titleStack}>
-      <span className={styles.titleMain}>{`TCAD ${row.requestIdentifier}`}</span>
-      <span className={styles.titleSub}>{addressLine(row)}</span>
+      <span className={styles.titleMain}>{propertyTitle(row)}</span>
+      <span className={styles.titleSub}>{propertySubtitle(row)}</span>
     </span>
   );
 }
@@ -115,14 +116,20 @@ export function TypePill({
  *  (`null` or absent: the drawer's Owner section states the reason). */
 export function OutOfAreaPill({
   isOutOfArea,
+  areaClass,
 }: {
   readonly isOutOfArea: boolean | null | undefined;
+  /** When the row carries the class, the pill words it ("Regional owner"), so the two never differ. */
+  readonly areaClass?: CrmProperty["ownerAreaClass"] | undefined;
 }): ReactElement | null {
   if (isOutOfArea == null) return null;
+  const pill = ownerAreaPill(areaClass);
   return (
     <StatusPill
       status={isOutOfArea ? "warning" : "info"}
-      text={isOutOfArea ? "Out-of-area owner" : "Local owner"}
+      text={
+        pill !== null ? `${pill.text} owner` : isOutOfArea ? "Out-of-area owner" : "Local owner"
+      }
       data={{ field: "owner_is_out_of_area" }}
     />
   );
@@ -425,7 +432,7 @@ function ResultRowView({
           </ul>
         )}
         <TypePill usageType={row.propertyUsageType} missing={row.missingReasons} />
-        <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} />
+        <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} areaClass={row.ownerAreaClass} />
       </div>
       {expanded ? (
         <div id={detailId} className={styles.detail}>
@@ -433,7 +440,7 @@ function ResultRowView({
             Property <CidDisplay cid={row.propertyCid} />
           </p>
           <PropertyFields row={row} />
-          <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} />
+          <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} areaClass={row.ownerAreaClass} />
           <PermitSignals permits={permits} />
           {onWhy === undefined ? null : (
             <button

@@ -33,6 +33,7 @@ export {
   type RoofAgeBucket,
   type PermitOpenBucket,
 } from "./buckets.js";
+export { mailingLocation, ownerAreaPill, type MailingLocation } from "./mailing.js";
 export {
   ADDRESS_NOT_PUBLISHED,
   BBB_SOURCE_LABEL,
@@ -45,5 +46,8 @@ export {
   missingEntry,
   openDurationText,
   permitsSourceLabel,
+  propertySubtitle,
+  propertyTitle,
+  streetAddress,
   tenureBandLabel,
 } from "./display.js";

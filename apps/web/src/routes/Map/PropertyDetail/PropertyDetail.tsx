@@ -20,17 +20,21 @@ import { Link, useSearchParams } from "react-router";
 import {
   BBB_SOURCE_LABEL,
   SOURCE_PARCELS_LABEL,
-  addressLine,
   bbbGapText,
   contractorReasonText,
   coordinateSourceLabel,
   formatDate,
   humanizeCode,
   missingEntry,
+  mailingLocation,
   missingReasonText,
   openDurationText,
+  ownerAreaPill,
   permitStatusLabel,
   permitsSourceLabel,
+  propertySubtitle,
+  propertyTitle,
+  streetAddress,
   tenureBandLabel,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
@@ -39,7 +43,7 @@ import {
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
-import { MissingSummary, OutOfAreaPill, RowProvenance, TypePill } from "../ResultRow.js";
+import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import { BbbLink } from "../BbbLink.js";
 import { SourceLink, safeSourceHref } from "../SourceLink.js";
 import { patchMapMode } from "../mapMode.js";
@@ -377,27 +381,71 @@ function OwnerSection({
             )}
           </dd>
         </div>
-        <div className={styles.permitField}>
-          <dt>Owner area</dt>
-          <dd data-field="owner_area_class">
-            {property.ownerAreaClass == null || property.ownerAreaClass === "unknown" ? (
-              <MissingValue property={property} field="owner_area_class" what="Owner area" />
-            ) : (
-              humanizeCode(property.ownerAreaClass)
-            )}
-          </dd>
-        </div>
-        {property.ownerIsOutOfArea == null ? null : (
-          <div className={styles.permitField}>
-            <dt>Owner location</dt>
-            <dd>
-              <OutOfAreaPill isOutOfArea={property.ownerIsOutOfArea} />
-            </dd>
-          </div>
-        )}
+        <OwnerAreaRows property={property} />
         <ComingSoonRow label="Merged from" reason="No merge data in the published contract" />
       </dl>
     </section>
+  );
+}
+
+/** Mailing location (state and ZIP) and Owner area, both from the owner's mailing ZIPs; one pill
+ *  words the class on both rows so they cannot contradict. `unknown` and an absent class carry
+ *  the row's stated reason. */
+export function OwnerAreaRows({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const pill = ownerAreaPill(property.ownerAreaClass);
+  const mailing = mailingLocation(property);
+  const areaValue =
+    pill === null ? (
+      <MissingValue property={property} field="owner_area_class" what="Owner area" />
+    ) : (
+      <StatusPill status={pill.status} text={pill.text} data={{ field: "owner_area_class" }} />
+    );
+  return (
+    <>
+      <div className={styles.permitField}>
+        <dt>Mailing location</dt>
+        <dd data-field="owner_mailing_location">
+          {mailing === null ? (
+            <MissingMailing property={property} />
+          ) : (
+            <>
+              {mailing.text}{" "}
+              {pill === null ? areaValue : <StatusPill status={pill.status} text={pill.text} />}
+            </>
+          )}
+        </dd>
+      </div>
+      <div className={styles.permitField}>
+        <dt>Owner area</dt>
+        <dd data-field="owner_area_class">{areaValue}</dd>
+      </div>
+    </>
+  );
+}
+
+/** No mailing state or ZIP: the reason from the row's entry for the ZIP, else the state, else the
+ *  area class; an index built before v1.2 has none of them. */
+function MissingMailing({
+  property,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+}): ReactElement {
+  const entry = missingEntry(
+    property.missingReasons,
+    "owner_mailing_postal_code",
+    "owner_mailing_state_code",
+  );
+  if (entry === undefined) return <>Mailing location not published (no reason recorded)</>;
+  return (
+    <MissingReason
+      field={entry.field}
+      reason={entry.reason as Reason}
+      label={missingReasonText(entry.field, entry.reason)}
+    />
   );
 }
 
@@ -449,8 +497,8 @@ function MapPositionMissing({
   );
 }
 
-/** Drawer header (E-93): "TCAD {id} · near {place}", then "Address not published in this run ·
- *  lat, lon". */
+/** Drawer header: the street address as the title, then "TCAD {id} · near {place}" and the
+ *  coordinates. A row without an address keeps the TCAD id as the title and states why. */
 function DrawerTitle({
   property,
   nearPlace,
@@ -459,23 +507,44 @@ function DrawerTitle({
   readonly nearPlace: NearPlace | undefined;
 }): ReactElement {
   const hasCoords = property.latitude !== null && property.longitude !== null;
+  const hasAddress = streetAddress(property) !== null;
+  const coords = hasCoords
+    ? `${(property.latitude ?? 0).toFixed(5)}, ${(property.longitude ?? 0).toFixed(5)}`
+    : null;
   return (
     <span className={styles.titleStack}>
-      <span>
-        {`TCAD ${property.requestIdentifier}`}
-        {nearPlace === undefined ? null : (
-          <>
-            {" · "}
-            <NearPlaceLabel nearPlace={nearPlace} />
-          </>
-        )}
-      </span>
-      <span className={styles.titleSub}>
-        {addressLine(property)}
-        {property.latitude === null || property.longitude === null
-          ? ""
-          : ` · ${property.latitude.toFixed(5)}, ${property.longitude.toFixed(5)}`}
-      </span>
+      {hasAddress ? (
+        <>
+          <span>{propertyTitle(property)}</span>
+          <span className={styles.titleSub}>
+            {`TCAD ${property.requestIdentifier}`}
+            {nearPlace === undefined ? null : (
+              <>
+                {" · "}
+                <NearPlaceLabel nearPlace={nearPlace} />
+              </>
+            )}
+          </span>
+        </>
+      ) : (
+        <>
+          <span>
+            {propertyTitle(property)}
+            {nearPlace === undefined ? null : (
+              <>
+                {" · "}
+                <NearPlaceLabel nearPlace={nearPlace} />
+              </>
+            )}
+          </span>
+          <span className={styles.titleSub}>
+            {coords === null
+              ? propertySubtitle(property)
+              : `${propertySubtitle(property)} · ${coords}`}
+          </span>
+        </>
+      )}
+      {hasAddress && coords !== null ? <span className={styles.titleSub}>{coords}</span> : null}
       {hasCoords ? null : (
         <>
           <NearPlaceMissing property={property} />

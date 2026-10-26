@@ -125,7 +125,7 @@ describe("FilterSheet owner group (tenure, out-of-area)", () => {
       "true",
     );
     expect(document.querySelector("[data-out-of-area-hint]")?.textContent).toContain(
-      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1)",
+      "Out-of-area compares the owner's mailing ZIP with the county",
     );
     fireEvent.click(screen.getByRole("button", { name: "Out-of-area" }));
     expect(onChange).toHaveBeenLastCalledWith(false);

@@ -42,9 +42,9 @@ const NO_REASON = "no reason recorded";
 
 export const ADDRESS_NOT_PUBLISHED = "Address not published in this run";
 
-/** The street-address line. The index has no address column yet (Task A publishes
- *  `unnormalized_address` in Run 3.1, contract v1.2); once a row carries one it is shown as it is
- *  and "not published" is never claimed. Without one, the row's own `missing` entry says why. */
+/** The street-address line: `unnormalized_address` as TCAD prints it (contract v1.2), shown as it
+ *  is. A row without one (21 properties, or an index built before v1.2) says why from its own
+ *  `missing` entry. */
 export function addressLine(
   property: Pick<CrmProperty, "missingReasons"> & {
     readonly unnormalizedAddress?: string | null | undefined;
@@ -87,4 +87,31 @@ export function bbbGapText(
   return `BBB rating not available · ${
     reason === null || reason === undefined ? NO_REASON : missingReasonText("bbb_rating", reason)
   }`;
+}
+
+type AddressFields = {
+  readonly unnormalizedAddress?: string | null | undefined;
+};
+
+/** The trimmed street address, or null when the row carries none. */
+export function streetAddress(property: AddressFields): string | null {
+  const address = property.unnormalizedAddress?.trim();
+  return address === undefined || address === "" ? null : address;
+}
+
+/** The title of a property: its street address, else `TCAD {id}` (never an invented address). */
+export function propertyTitle(
+  property: AddressFields & { readonly requestIdentifier: string },
+): string {
+  return streetAddress(property) ?? `TCAD ${property.requestIdentifier}`;
+}
+
+/** The line under the title: `TCAD {id}` when the title is the address, else the reason the
+ *  address is missing. */
+export function propertySubtitle(
+  property: AddressFields & Pick<CrmProperty, "missingReasons" | "requestIdentifier">,
+): string {
+  return streetAddress(property) === null
+    ? addressLine(property)
+    : `TCAD ${property.requestIdentifier}`;
 }

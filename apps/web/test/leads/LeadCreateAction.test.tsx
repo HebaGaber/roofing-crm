@@ -149,6 +149,14 @@ describe("signals snapshot holds the permit", () => {
   const closed = permit({ permitCid: "c", permitNumber: "2020-1", statusClass: "closed" });
   const open = permit({ permitCid: "o" });
 
+  it("the lead address is the street address when the property has one, else the TCAD id", () => {
+    const withAddress = { ...property, unnormalizedAddress: "100 MAIN ST, AUSTIN, TX 78701" };
+    expect(toCreateInput(withAddress as typeof property)?.address).toBe(
+      "100 MAIN ST, AUSTIN, TX 78701",
+    );
+    expect(toCreateInput(property)?.address).toBe(`TCAD ${property.requestIdentifier}`);
+  });
+
   it("defaults to the first open permit (id and open days); never invents a contractor", () => {
     const input = toCreateInput(property, [closed, open]);
     expect(input?.signals).toMatchObject({ openPermitId: "2025-100", openDays: 340 });

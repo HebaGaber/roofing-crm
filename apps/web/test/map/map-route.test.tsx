@@ -1499,7 +1499,7 @@ describe("Map route owner filters (tenure, out-of-area)", () => {
       return el as Element;
     });
     expect(notice.textContent).toContain(
-      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.",
+      "Out-of-area compares the owner's mailing ZIP with the county; owners with no mailing ZIP on record are not matched.",
     );
     expect(document.querySelector("[data-out-of-area-hint]")).not.toBeNull();
   });
