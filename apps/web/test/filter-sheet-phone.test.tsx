@@ -120,3 +120,12 @@ describe("FilterSheet sheet CSS", () => {
     expect(css).toMatch(/@media \(min-width: 1280px\) \{[^@]*\.footer \{\s*display:\s*none/);
   });
 });
+
+describe("FilterSheet counts", () => {
+  it("groups thousands in the toggle chip and in Show n results", () => {
+    renderSheet({ matchCount: 441961 });
+    expect(document.querySelector("[data-filter-count]")?.textContent).toBe("441,961");
+    fireEvent.click(toggle());
+    expect(screen.getByRole("button", { name: "Show 441,961 results" })).toBeTruthy();
+  });
+});

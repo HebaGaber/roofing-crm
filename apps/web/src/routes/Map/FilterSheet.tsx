@@ -218,7 +218,7 @@ export function FilterSheet({
         <span className={styles.toggleLabel}>Filters</span>
         {matchCount === undefined ? null : (
           <span className={styles.count} data-filter-count="">
-            {matchCount}
+            {matchCount.toLocaleString("en-US")}
           </span>
         )}
       </button>
@@ -429,7 +429,7 @@ export function FilterSheet({
           <button type="button" className={styles.showResults} onClick={close}>
             {matchCount === undefined
               ? "Show results"
-              : `Show ${String(matchCount)} ${matchCount === 1 ? "result" : "results"}`}
+              : `Show ${matchCount.toLocaleString("en-US")} ${matchCount === 1 ? "result" : "results"}`}
           </button>
         </div>
       </div>

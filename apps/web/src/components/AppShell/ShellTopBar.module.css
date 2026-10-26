@@ -23,7 +23,7 @@
 }
 
 .county {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: var(--space-1);
   flex: none;
@@ -182,10 +182,12 @@
 }
 
 /* Below 840 px the county label has no room next to the data chip (CrmShellApps768); below
-   600 px Apps and Help sit in the More sheet instead. */
-@media (max-width: 839px) {
+   600 px Apps and Help sit in the More sheet instead. The county label is mobile first (hidden by
+   default, shown from 840 px). Apps and Help keep a max-width query on purpose: jsdom ignores
+   media queries, so a display: none default would hide the buttons from every shell unit test. */
+@media (min-width: 840px) {
   .county {
-    display: none;
+    display: inline-flex;
   }
 }
 

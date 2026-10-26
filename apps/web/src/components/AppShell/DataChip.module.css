@@ -67,6 +67,7 @@
 }
 
 .long {
+  display: none;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -74,28 +75,30 @@
 }
 
 .short {
-  display: none;
+  display: inline;
 }
 
 /* Below 840 px the bar has no room for "Data: CountyLens run …": the chip shows the short run
-   label ("Run 3") and the full text stays in its tooltip and the panel (CrmShellApps768). */
-@media (max-width: 839px) {
+   label ("Run 3") and the full text stays in its tooltip and the panel (CrmShellApps768). From
+   840 px the long text shows. */
+@media (min-width: 840px) {
   .long {
-    display: none;
+    display: inline;
   }
 
   .short {
-    display: inline;
+    display: none;
   }
 }
 
 .panel {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  right: 0;
+  position: fixed;
+  top: var(--space-10);
+  left: var(--space-4);
+  right: var(--space-4);
   z-index: 3;
   box-sizing: border-box;
-  width: min(calc(100vw - var(--space-8)), calc(var(--space-10) * 6));
+  width: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -177,14 +180,14 @@
   letter-spacing: var(--md-sys-typescale-label-large-tracking);
 }
 
-/* Compact: the chip sits mid-bar, so a chip-anchored panel would run off the left edge; dock it
-   under the top bar between the 16 px margins instead. */
-@media (max-width: 599px) {
+/* Compact (the default): the chip sits mid-bar, so a chip-anchored panel would run off the left
+   edge; it docks under the top bar between the 16 px margins. From 600 px it hangs from the chip. */
+@media (min-width: 600px) {
   .panel {
-    position: fixed;
-    top: var(--space-10);
-    left: var(--space-4);
-    right: var(--space-4);
-    width: auto;
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    left: auto;
+    right: 0;
+    width: min(calc(100vw - var(--space-8)), calc(var(--space-10) * 6));
   }
 }

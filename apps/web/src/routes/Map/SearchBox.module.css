@@ -9,7 +9,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  min-height: 48px;
+  min-height: var(--space-9);
   padding: 0 var(--space-4);
   border-radius: var(--md-sys-shape-corner-full);
   background: var(--md-sys-color-surface-container-high);
@@ -24,7 +24,7 @@
 .input {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 48px;
+  min-height: var(--space-9);
   padding: 0;
   border: 0;
   background: transparent;
@@ -47,8 +47,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--space-9);
+  height: var(--space-9);
   margin-inline-end: calc(var(--space-3) * -1);
   padding: 0;
   border: 0;
@@ -99,7 +99,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 48px;
+  min-height: var(--space-9);
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
   font-family: var(--md-sys-typescale-body-large-font);
@@ -142,8 +142,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--space-9);
+  height: var(--space-9);
   padding: 0;
   border: 0;
   border-radius: var(--md-sys-shape-corner-full);
@@ -177,8 +177,8 @@
 }
 
 .groupAction {
-  min-width: 48px;
-  min-height: 48px;
+  min-width: var(--space-9);
+  min-height: var(--space-9);
   padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--md-sys-shape-corner-full);
@@ -204,8 +204,8 @@
   flex: none;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--space-9);
+  height: var(--space-9);
   padding: 0;
   border: 0;
   border-radius: var(--md-sys-shape-corner-full);
