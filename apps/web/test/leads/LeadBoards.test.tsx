@@ -353,7 +353,11 @@ describe("Lead page review fixes", () => {
     expect(within(section).getByText("At creation")).toBeTruthy();
     expect(within(section).getByText("Main permit")).toBeTruthy();
     expect(within(section).queryByText("Open permit")).toBeNull();
-    expect(within(section).getByText(/Confidence: not saved with the lead/)).toBeTruthy();
+    expect(
+      within(section).getByText(
+        /Confidence not saved with this lead \(created before it was recorded\)/,
+      ),
+    ).toBeTruthy();
     expect(
       within(section).getByText(/Change since this lead was created: not available/),
     ).toBeTruthy();

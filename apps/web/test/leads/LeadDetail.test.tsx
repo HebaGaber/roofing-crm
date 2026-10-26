@@ -88,6 +88,24 @@ describe("LeadDetail", () => {
     expect(screen.getByText("Status: New → Contacted")).toBeTruthy();
   });
 
+  it("shows the saved roof-age confidence for a new lead", () => {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...base, signals: { ...base.signals, roofAgeConfidence: "low" } },
+      refetch: vi.fn(),
+    });
+    renderDetail();
+    expect(screen.getByText("Confidence: Low")).toBeTruthy();
+  });
+
+  it("says honestly when an older lead has no saved confidence", () => {
+    useLead.mockReturnValue({ status: "success", data: base, refetch: vi.fn() });
+    renderDetail();
+    expect(
+      screen.getByText("Confidence not saved with this lead (created before it was recorded)"),
+    ).toBeTruthy();
+  });
+
   it("renders the not-in-run state and never renders the signals as current", () => {
     useLead.mockReturnValue({
       status: "success",

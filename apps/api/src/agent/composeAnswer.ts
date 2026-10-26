@@ -822,6 +822,7 @@ function buildAnswerRows(
       ...(citationId === undefined ? {} : { citationId }),
       ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
       roofAgeBasis: property.roofAgeBasis,
+      roofAgeConfidence: property.roofAgeConfidence,
       ...(row.permit === undefined
         ? {}
         : {

@@ -37,6 +37,7 @@ const CreateLeadInput = z.object({
   signals: z.object({
     roofAgeYears: z.number().optional(),
     roofAgeBasis: z.string().optional(),
+    roofAgeConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
     openPermitId: z.string().optional(),
     openDays: z.number().optional(),
     contractor: z.string().optional(),

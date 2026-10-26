@@ -1,6 +1,6 @@
 // B-07 T003: lead schema shape checks.
 import { describe, expect, it } from "vitest";
-import { Lead, LeadEvent, LeadFilters, LeadStatus } from "../../src/schemas/lead.js";
+import { Lead, LeadEvent, LeadFilters, LeadSignals, LeadStatus } from "../../src/schemas/lead.js";
 
 describe("lead schemas", () => {
   it("accepts exactly the five statuses", () => {
@@ -35,5 +35,14 @@ describe("lead schemas", () => {
   it("accepts empty filters and rejects an unknown permitStatus", () => {
     expect(LeadFilters.safeParse({}).success).toBe(true);
     expect(LeadFilters.safeParse({ permitStatus: "weird" }).success).toBe(false);
+  });
+
+  it("accepts signals with or without roofAgeConfidence and rejects a bad value", () => {
+    const base = { capturedAt: "2026-10-01T00:00:00Z", roofAgeYears: 20 };
+    expect(LeadSignals.safeParse(base).success).toBe(true);
+    for (const c of ["high", "medium", "low", "none"]) {
+      expect(LeadSignals.parse({ ...base, roofAgeConfidence: c }).roofAgeConfidence).toBe(c);
+    }
+    expect(LeadSignals.safeParse({ ...base, roofAgeConfidence: "certain" }).success).toBe(false);
   });
 });

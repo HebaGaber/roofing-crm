@@ -95,7 +95,7 @@ describe("LeadCreateAction in the PropertyDetail drawer", () => {
       lon: -97.74,
       sourceManifestCid: "bafkreimanifest",
       createdFrom: "map",
-      signals: { roofAgeYears: 23, roofAgeBasis: "permit" },
+      signals: { roofAgeYears: 23, roofAgeBasis: "permit", roofAgeConfidence: "high" },
     });
   });
 

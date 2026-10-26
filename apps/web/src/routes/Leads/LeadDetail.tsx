@@ -9,6 +9,7 @@ import { Icon, Provenance, StatusPill } from "@crm/ui";
 import { LEAD_STATUSES, type LeadEvent, type LeadStatus } from "@crm/shared";
 import { useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
+import { roofAgeConfidenceLabel } from "../../format/index.js";
 import { Skeleton } from "../../components/Skeleton.js";
 import { isNotFoundError, isStaleError } from "./leadErrors.js";
 import { LeadBanner } from "./LeadBanner.js";
@@ -117,7 +118,11 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
               {s.roofAgeBasis === undefined ? null : (
                 <span className={styles.sub}>{`Basis: ${basisText(s.roofAgeBasis)}`}</span>
               )}
-              <span className={styles.sub}>Confidence: not saved with the lead</span>
+              <span className={styles.sub}>
+                {s.roofAgeConfidence === undefined
+                  ? "Confidence not saved with this lead (created before it was recorded)"
+                  : `Confidence: ${roofAgeConfidenceLabel(s.roofAgeConfidence)}`}
+              </span>
             </>
           )}
         </Field>

@@ -52,6 +52,7 @@ export function toCreateInput(
     signals: {
       ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
       roofAgeBasis: property.roofAgeBasis,
+      roofAgeConfidence: property.roofAgeConfidence,
       ...(snapshotPermit?.permitNumber == null
         ? {}
         : { openPermitId: snapshotPermit.permitNumber }),

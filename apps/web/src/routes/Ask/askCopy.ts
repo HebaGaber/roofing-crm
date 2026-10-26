@@ -8,7 +8,12 @@
 import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
-import { fieldLabel, permitStatusLabel, roofAgeBasisLabel } from "../../format/index.js";
+import {
+  fieldLabel,
+  permitStatusLabel,
+  roofAgeBasisLabel,
+  roofAgeConfidenceLabel,
+} from "../../format/index.js";
 
 type Plan = AgentAnswer["plan"];
 type Outcome = AgentAnswer["outcome"];
@@ -315,7 +320,15 @@ export function rowNearText(row: Row): string | undefined {
 export function rowRoofText(row: Row): string | undefined {
   if (row.roofAgeYears === undefined) return undefined;
   const age = `Roof ${String(Math.round(row.roofAgeYears))} yrs`;
-  return row.roofAgeBasis === undefined ? age : `${age} · ${roofAgeBasisLabel(row.roofAgeBasis)}`;
+  return [
+    age,
+    row.roofAgeBasis === undefined ? null : roofAgeBasisLabel(row.roofAgeBasis),
+    row.roofAgeConfidence === undefined
+      ? null
+      : `${roofAgeConfidenceLabel(row.roofAgeConfidence)} confidence`,
+  ]
+    .filter((p): p is string => p !== null)
+    .join(" · ");
 }
 
 /** "Stalled · derived: no status in source · open 6.4 yrs", from the row's permit. */

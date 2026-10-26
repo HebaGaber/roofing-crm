@@ -23,6 +23,8 @@ export type Lead = z.infer<typeof Lead>;
 export const LeadSignals = z.object({
   roofAgeYears: z.number().optional(),
   roofAgeBasis: z.string().optional(),
+  /** Absent on leads created before the confidence was recorded; never guessed. */
+  roofAgeConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
   openPermitId: z.string().optional(),
   openDays: z.number().optional(),
   contractor: z.string().optional(),

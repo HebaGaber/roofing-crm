@@ -27,6 +27,7 @@ export const AnswerRow = z.object({
   citationId: z.number().int().optional(),
   roofAgeYears: z.number().optional(),
   roofAgeBasis: z.enum(["permit", "new_construction", "built_year", "unknown"]).optional(),
+  roofAgeConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
   permit: z
     .object({
       permitCid: z.string(),
