@@ -1,9 +1,10 @@
 // B-03 Layers popover (CRM-HANDOFF §4.2/E-72): the four layers the design lists. Two are live
 // switches — Aged roofs (hexagons by median roof age when zoomed out, a marker per property when
-// zoomed in) and Open and stalled permits (count clusters by open duration when zoomed out, a
-// marker per permit when zoomed in). Two cannot be drawn from what is published, so they are
-// shown disabled with the reason instead of being hidden or faked: Permit coverage gaps (contract/v1
-// publishes no coverage areas) and My leads (lead markers are not built on the map yet).
+// zoomed in), Open and stalled permits (count clusters by open duration when zoomed out, a
+// marker per permit when zoomed in) and My leads (an outline on the markers of properties that
+// are already leads, line style by status). One cannot be drawn from what is published, so it is
+// shown disabled with the reason instead of being hidden or faked: Permit coverage gaps
+// (contract/v1 publishes no coverage areas).
 // Render-only; the caller (Map.tsx) owns the on/off state.
 import { Icon, Popover } from "@crm/ui";
 import { useId, useState, type ReactElement } from "react";
@@ -12,6 +13,8 @@ import styles from "./LayersPopover.module.css";
 export interface LayersState {
   readonly roofs: boolean;
   readonly permits: boolean;
+  /** My leads: a ring on the markers of properties that are already leads (default on). */
+  readonly leads: boolean;
   /** Kept for the URL/state shape; never drawn (see UNAVAILABLE below). */
   readonly gaps: boolean;
 }
@@ -25,7 +28,7 @@ export interface LayersPopoverProps {
 }
 
 const LIVE: readonly {
-  readonly key: "roofs" | "permits";
+  readonly key: "roofs" | "permits" | "leads";
   readonly label: string;
   readonly hint: string;
 }[] = [
@@ -39,6 +42,11 @@ const LIVE: readonly {
     label: "Open and stalled permits",
     hint: "Clusters by open duration when zoomed out; a marker per permit when zoomed in",
   },
+  {
+    key: "leads",
+    label: "My leads",
+    hint: "Marker outline for properties that are already leads; line style shows the status",
+  },
 ];
 
 const UNAVAILABLE: readonly {
@@ -46,11 +54,6 @@ const UNAVAILABLE: readonly {
   readonly label: string;
   readonly why: string;
 }[] = [
-  {
-    id: "leads",
-    label: "My leads",
-    why: "Lead markers are not drawn on the map yet. Open Leads to see them.",
-  },
   {
     id: "gaps",
     label: "Permit coverage gaps",

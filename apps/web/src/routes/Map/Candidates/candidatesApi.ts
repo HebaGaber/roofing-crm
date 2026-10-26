@@ -5,15 +5,15 @@
 // mock this module.
 import type { ApiInputs, ApiOutputs } from "@crm/api-client";
 import { useTRPC, useTRPCClient } from "@crm/api-client/react";
-import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
-import { isAlreadyExists, toCreateInput, TRAVIS_FIPS } from "../../Leads/LeadCreateAction.js";
+import { isAlreadyExists, toCreateInput } from "../../Leads/LeadCreateAction.js";
 import { addCreatedLead, removeUndoneLead } from "../../Leads/leadsListCache.js";
 import { runBulkCreateMany, type BulkOutcome } from "./bulkCreate.js";
 import { runUndoMany, type UndoAnswer, type UndoTally } from "./undoCopy.js";
+import { LEAD_PRESENCE_LIMIT, LEAD_PRESENCE_MAX_CALLS, useLeadMarks } from "./useLeadMarks.js";
 import {
   buildCandidates,
-  leadsByRequestIdentifier,
   type Candidate,
   permitQueryInput,
   type CandidateFilters,
@@ -25,10 +25,7 @@ export type LeadCreateInput = ApiInputs["leads"]["create"];
 export type CreatedFrom = LeadCreateInput["createdFrom"];
 export type PropertyDetailOutput = ApiOutputs["property"]["get"];
 
-/** `leads.presence` identifier cap per call (the router's PRESENCE_MAX). */
-export const LEAD_PRESENCE_LIMIT = 100;
-/** Calls per ring; a bigger ring leaves the rest unmarked and says so (`leadsUnavailable`). */
-export const LEAD_PRESENCE_MAX_CALLS = 10;
+export { LEAD_PRESENCE_LIMIT, LEAD_PRESENCE_MAX_CALLS };
 
 export type CandidatesStatus = "idle" | "loading" | "error" | "ready";
 
@@ -74,45 +71,18 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     ),
     enabled: center !== null,
   });
-  // Lead marks for every property in the ring, whoever owns the lead: chunks of 100 identifiers.
-  const ids = useMemo(
-    () => [...new Set((properties.data?.properties ?? []).map((p) => p.requestIdentifier))],
-    [properties.data],
-  );
-  const chunks = useMemo(() => {
-    const out: string[][] = [];
-    for (
-      let at = 0;
-      at < ids.length && out.length < LEAD_PRESENCE_MAX_CALLS;
-      at += LEAD_PRESENCE_LIMIT
-    )
-      out.push(ids.slice(at, at + LEAD_PRESENCE_LIMIT));
-    return out;
-  }, [ids]);
-  const presence = useQueries({
-    queries: chunks.map((requestIdentifiers) =>
-      trpc.leads.presence.queryOptions({ requestIdentifiers, fips: TRAVIS_FIPS }),
-    ),
-    // `combine` results are structurally shared, so `rows` keeps its identity between renders.
-    combine: (results) => ({
-      rows: results.flatMap((q) => q.data ?? []),
-      failed: results.some((q) => q.isError),
-    }),
-  });
-  const presenceRows = presence.rows;
-  const presenceTooMany = ids.length > LEAD_PRESENCE_LIMIT * LEAD_PRESENCE_MAX_CALLS;
-  const presenceError = presence.failed || presenceTooMany;
+  // Lead marks for every property in the ring, whoever owns the lead (shared with the map layer).
+  const lead = useLeadMarks(properties.data?.properties ?? []);
 
   const candidates = useMemo(() => {
     if (properties.data === undefined) return [];
-    const presence = leadsByRequestIdentifier(presenceRows);
     return buildCandidates(
       properties.data.properties,
       permits.data?.permits ?? [],
-      presence,
+      lead.marks,
       filters,
     );
-  }, [properties.data, permits.data, presenceRows, filters]);
+  }, [properties.data, permits.data, lead.marks, filters]);
 
   const refetch = useCallback(() => {
     void properties.refetch();
@@ -138,8 +108,8 @@ export function useCandidates(filters: CandidateFilters): CandidatesResult {
     permitTotal: permits.data?.total ?? permits.data?.permits.length ?? 0,
     permitsTruncated: permits.data?.truncated === true,
     permitsUnavailable: permits.isError,
-    leadsUnavailable: presenceError,
-    leadsReason: presenceTooMany ? "tooMany" : presence.failed ? "failed" : null,
+    leadsUnavailable: lead.unavailable,
+    leadsReason: lead.reason,
     refetch,
   };
 }
