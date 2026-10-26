@@ -31,7 +31,8 @@ export interface SearchPropertiesInput {
    *  exact-match `ownerAreaClass` filter — never a second, independently-derived classification. */
   ownerAreaClass?: string | readonly string[] | undefined;
   /** T043 (B-09/US2, G4): see `SearchPropertiesQuery.tenureYearsMin`'s doc comment in
-   *  `adapters/duckDbParquet.ts` for the fixed-cutoff limitation this threshold is honored at. */
+   *  `adapters/duckDbParquet.ts`. The index carries the stored `tenureYears` column, so the filter
+   *  is exact (`tenureYears >= N`); rows with no tenure are left out and counted separately. */
   tenureYearsMin?: number | undefined;
   /** Web owner filter "Out-of-area": `ownerAreaClass IN ('regional','out_of_area')`. */
   outOfArea?: boolean | undefined;

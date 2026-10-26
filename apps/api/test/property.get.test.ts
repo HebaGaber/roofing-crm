@@ -4,7 +4,7 @@
 // own column derivation rule, never a new guess); bbbStatus !== "rated" always returns a
 // non-empty bbbStatusReason. Exercises the router directly (createCallerFactory), injecting a
 // fake LeadIndex into the tRPC context, same convention as search.properties.test.ts.
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { gazetteer } from "@crm/oracle-views";
 import { appRouter } from "../src/routers/index.js";
@@ -112,6 +112,15 @@ function makeCaller(entries: (Provenanced<CrmProperty> & { permits: Provenanced<
   return createCaller({ requestId: "test-request", leadIndex: new FakeLeadIndex(byCid) });
 }
 
+const SAVED_EXPLORER = process.env.EXPLORER_BASE_URL;
+beforeEach(() => {
+  process.env.EXPLORER_BASE_URL = "https://countylens.example.test";
+});
+afterEach(() => {
+  if (SAVED_EXPLORER === undefined) delete process.env.EXPLORER_BASE_URL;
+  else process.env.EXPLORER_BASE_URL = SAVED_EXPLORER;
+});
+
 describe("property.get", () => {
   it("returns property: null (never throws) when the CID isn't in the promoted run", async () => {
     const caller = makeCaller([]);
@@ -174,7 +183,7 @@ describe("property.get", () => {
       { ...property({ latitude: 30.3597374, longitude: -97.751527 }), permits: [] },
     ]);
     const result = await caller.property.get({ propertyCid: PROPERTY_CID });
-    const url = new URL(result.lineageUrl);
+    const url = new URL(result.lineageUrl ?? "");
     expect(url.protocol).toBe("https:");
     // The old `/explore` path answers 404 on Task A's site since A-13.
     expect(url.pathname).toBe("/tx/travis/explore");
@@ -183,10 +192,17 @@ describe("property.get", () => {
     expect(url.searchParams.get("r")).toBe("1");
   });
 
+  it("lineageUrl is null when EXPLORER_BASE_URL is not configured (no default host)", async () => {
+    delete process.env.EXPLORER_BASE_URL;
+    const caller = makeCaller([{ ...property(), permits: [] }]);
+    const result = await caller.property.get({ propertyCid: PROPERTY_CID });
+    expect(result.lineageUrl).toBeNull();
+  });
+
   it("a property with no coordinates still links to the Explorer by sel only", async () => {
     const caller = makeCaller([{ ...property({ latitude: null, longitude: null }), permits: [] }]);
     const result = await caller.property.get({ propertyCid: PROPERTY_CID });
-    const url = new URL(result.lineageUrl);
+    const url = new URL(result.lineageUrl ?? "");
     expect(url.pathname).toBe("/tx/travis/explore");
     expect(url.searchParams.get("sel")).toBe(PROPERTY_CID);
     expect(url.searchParams.has("at")).toBe(false);

@@ -63,6 +63,8 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     // email subscriber. From cdk.json context `crm:alarmEmail` (infra/src/config.ts), never a
     // literal here.
     alarmEmail: config.alarmEmail,
+    // From cdk.json context `crm:taskACloudFrontBaseUrl` (infra/src/config.ts), never a literal.
+    taskACloudFrontBaseUrl: config.taskACloudFrontBaseUrl,
   });
   syncStack.addDependency(dataStack);
 
@@ -92,6 +94,8 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
     // B-09: apps/api/src/agent/getModel.ts reads these via the Lambda's environment.
     aiProvider: config.aiProvider,
     agentModelId: config.agentModelId,
+    // From cdk.json context `crm:explorerBaseUrl`: the API Lambda's EXPLORER_BASE_URL.
+    explorerBaseUrl: config.explorerBaseUrl,
   });
   // The recorded deviation from architecture-constitution.md §11's literal stack order
   // (plan.md's Complexity Tracking table): CrmApi's JWT authorizer needs CrmOps's pool first.
@@ -112,7 +116,7 @@ export function createCrmStacks(app: App, config: CrmAppConfig): void {
 
   const domainStack = new CrmDomainStack(app, "CrmDomain", {
     env,
-    domainName: "crm.aldarraj.com",
+    domainName: config.domainName,
     // Round 1 decision D-2 (cut over only after the stories merge) is now executed: B-01, B-02,
     // B-03 and B-07 are merged on feature/roofing-crm. The two DNS records go in at Namecheap.
     cutover: true,

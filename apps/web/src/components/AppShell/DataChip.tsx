@@ -1,7 +1,7 @@
 // The data-source chip and panel (CRM-HANDOFF E-62; boards CrmDataChip, CrmShellData1440; review
 // log row 22: 48 px Close). The chip names the run the lead index is serving, read from
 // `shell.indexInfo` — never a hard-coded run. Panel: the manifest CID (copyable), when it was
-// promoted, and the link to CountyLens. States: loading, ready, unavailable (with Retry). The
+// promoted, and the links to the CountyLens data (manifest) page and to Verify for this run. States: loading, ready, unavailable (with Retry). The
 // board's "updating to Run n" state needs a newer-run signal the API does not expose, so it is
 // not drawn rather than guessed.
 import { useRef, type ReactElement } from "react";
@@ -39,25 +39,43 @@ function runTail(runId: string): string {
   return `Run …${runId.slice(-6)}`;
 }
 
-/** The compact chip text (board CrmShellApps768 "Run 3"): a short run number as is, a run id that
- *  carries a calendar date as "24 Oct", any other long id cut to its last six characters. The
- *  full id stays in the chip's tooltip, its name and the panel; the chip never invents a run. */
+/** The run number an id carries, or null: `…run3…` (`travis-full-run3-20261025`) is run 3, and an
+ *  id that is only 1 to 3 digits is that run number. A date-only id (`20261024`) is not a run
+ *  number, so the calendar date is parsed first and a purely numeric id counts only below 4 digits. */
+function runNumber(runId: string): string | null {
+  const labelled = /run(\d+)/i.exec(runId);
+  if (labelled !== null) return String(Number(labelled[1]));
+  return /^\d{1,3}$/.test(runId) ? String(Number(runId)) : null;
+}
+
+/** The compact chip text (board CrmShellApps768 "Run 3"): the run number when the id carries one,
+ *  else a run id with a calendar date as "24 Oct", else the last six characters. The full id stays
+ *  in the chip's tooltip, its name and the panel; the chip never invents a run. */
 export function shortRunLabel(runId: string | null): string {
   if (runId === null || runId === "") return "Data";
-  if (runId.length <= 8) return `Run ${runId}`;
+  const number = runNumber(runId);
+  if (number !== null) return `Run ${number}`;
   const date = runDate(runId);
   return date === null ? runTail(runId) : `${String(date.day)} ${date.month}`;
 }
 
-/** The wider chip text: "Run 24 Oct 2026" for a dated id, else as the short label; null when
+/** The wider chip text: "Run 3 · 25 Oct 2026" when the id has a run number and a date, "Run 3"
+ *  with a number only, "Run 24 Oct 2026" for a date only, else as the short label; null when
  *  there is no run id. */
 export function longRunLabel(runId: string | null): string | null {
   if (runId === null || runId === "") return null;
-  if (runId.length <= 8) return `Run ${runId}`;
+  const number = runNumber(runId);
   const date = runDate(runId);
-  return date === null
-    ? runTail(runId)
-    : `Run ${String(date.day)} ${date.month} ${String(date.year)}`;
+  const dated = date === null ? null : `${String(date.day)} ${date.month} ${String(date.year)}`;
+  if (number !== null) return dated === null ? `Run ${number}` : `Run ${number} · ${dated}`;
+  return dated === null ? runTail(runId) : `Run ${dated}`;
+}
+
+/** The status line's run, as the board draws it ("Index up to date · Run 3"). */
+function statusRun(runId: string | null): string {
+  if (runId === null) return runText(null);
+  const number = runNumber(runId);
+  return number === null ? (longRunLabel(runId) ?? runText(runId)) : `Run ${number}`;
 }
 
 export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactElement {
@@ -123,7 +141,7 @@ export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactEleme
                 <span className={styles.stateIcon} data-state="ready">
                   <Icon name="cloud_done" size="small" />
                 </span>
-                {`Index serving ${runText(index.data.runId)}`}
+                {`Index up to date · ${statusRun(index.data.runId)}`}
               </p>
               <p className={styles.meta}>
                 {`${index.data.propertyCount} properties · ${index.data.permitCount} permits`}
@@ -146,11 +164,22 @@ export function DataChip({ open, onToggle, onClose }: DataChipProps): ReactEleme
               Reading the lead index…
             </p>
           )}
-          {links.data !== undefined && (
-            <a className={styles.link} href={links.data.countyLensUrl}>
-              <Icon name="dataset" size="small" />
-              Open CountyLens (manifest and Verify)
-            </a>
+          {links.data?.countyLensUrl != null && (
+            <>
+              <a className={styles.link} href={`${links.data.countyLensUrl}/data/manifest`}>
+                <Icon name="dataset" size="small" />
+                CountyLens Data (manifest)
+              </a>
+              {index.data !== undefined && (
+                <a
+                  className={styles.link}
+                  href={`${links.data.countyLensUrl}/data/verify/${encodeURIComponent(index.data.manifestCid)}`}
+                >
+                  <Icon name="verified" size="small" />
+                  Verify this run
+                </a>
+              )}
+            </>
           )}
         </div>
       )}

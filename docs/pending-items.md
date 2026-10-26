@@ -9,7 +9,7 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no `#
 | Item | Value |
 | --- | --- |
 | Data the app serves | Task A **Run 3**, run `travis-full-run3-20261025`, manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`, promoted 2026-10-25 20:27Z. Run 2 (`bafkreife3vk3c...`) is `previous`. |
-| Index size | 441,961 properties, 15,025 Austin roofing permits; 190 of 255 table parts fetched (0.92 GB) |
+| Index size | 441,961 properties, 15,025 Austin roofing permits; 190 of 255 table parts fetched (0.78 GB); all 255 table parts are 0.92 GB |
 | Done for Run 3 | contract v1.1 and views vendored (`docs/reuse-log.md`); index carries tenure basis, address-point coordinates, owner name (ADR-03 amended: shown, never sent to the model), printed contractor, BBB state and link; cost-gate document limit 1,000,000; BuildIndex DuckDB limit 2,400 MB (first sync ran out of memory at 1,800 MB); e2e fixtures refreshed; lineage link fixed (`/tx/travis/explore`) |
 | Still Run 2 | `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, golden queries (about $1 of Bedrock) and the real-data perf test (`CRM_PERF=1`) have not been re-run on Run 3 |
 | Waiting on Task A | **Run 3.1** (manifest `bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu`, built, not published; do not vendor or sync until Task A sends the published CID and the commit). It adds street address and owner ZIP columns (contract v1.2), 413 more printed contractors. Task A's answers to the 13 gap questions: `docs/task-a-questions-run3.md` |
@@ -68,10 +68,10 @@ The 100% checklist rows that depend on R7 (the demo link plays without signing i
 
 ## 3. Task A data gaps (sent to the Task A session on 2026-10-25; the PO said not to wait)
 
-1. `structure.roof_date` is empty for all 441,961 structures although `property.property_structure_built_year` is set for about 88% of properties. Roof ages exist only where Austin has a closed reroof permit (about 8,700 properties).
+1. Run 3 fills `structure.roof_date` for 389,528 of 441,961 structures; the rest have no roof date, and roof age falls back to `property.property_structure_built_year` (set for about 88% of properties) or to a closed Austin reroof permit.
 2. `ownerAreaClass` is `unknown` everywhere (300 of 300 sampled): the view stubs the mailing postal code, so "owners outside the area" cannot be answered (golden query G4 gets an honest `field_not_published`).
 3. Tenure (`is_long_tenure`) is missing for 33 to 72% of sampled properties.
-4. 51,900 properties (11.7%) have no coordinates, so they cannot appear on the map or in a radius search.
+4. 7,945 properties (Run 3) have no coordinates, so they cannot appear on the map or in a radius search.
 5. All 15,025 permits are City of Austin; no contractor is resolved (registry not wired) and BBB is not available.
 6. Full-county manifests carry no `coverage.parcels_published` and no `travis-places` profile; the CRM handles both, but a parcel count would let consumers reconcile properties.
 

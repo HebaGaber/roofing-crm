@@ -86,6 +86,7 @@ import { MapViewToggle, type MapViewChoice } from "./MapViewToggle.js";
 import { PaneHandle } from "./PaneHandle.js";
 import { usePaneCollapsed } from "./paneState.js";
 import { newThreadId, patchMapMode, readThreadId, useMapMode } from "./mapMode.js";
+import { COUNTY_NAME } from "../../components/AppShell/navigation.js";
 import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
@@ -1076,12 +1077,12 @@ export function Component(): ReactElement {
                   icon="wrong_location"
                   actions={[
                     {
-                      label: "Go to Travis County",
+                      label: `Go to ${COUNTY_NAME}`,
                       onClick: () => mapHandleRef.current?.showCounty(),
                     },
                   ]}
                 >
-                  This pin is outside Travis County. The CRM covers Travis County only.
+                  This pin is outside {COUNTY_NAME}. The CRM covers {COUNTY_NAME} only.
                 </MapStatusCard>,
                 statusHost,
               )

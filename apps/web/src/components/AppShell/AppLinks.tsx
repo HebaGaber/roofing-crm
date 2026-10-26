@@ -42,11 +42,11 @@ export function AppLinks({ itemRole, onNavigate }: AppLinksProps): ReactElement 
 
   return (
     <>
-      {countyLens === undefined ? (
+      {countyLens === undefined || countyLens === null ? (
         <Unavailable
           icon="travel_explore"
           label="CountyLens"
-          reason={pendingReason}
+          reason={countyLens === null ? "Not available yet" : pendingReason}
           itemRole={itemRole}
         />
       ) : (

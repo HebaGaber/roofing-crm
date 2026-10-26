@@ -63,3 +63,22 @@ describe("loadConfig: deploy nonce", () => {
     );
   });
 });
+
+describe("loadConfig: hosts from cdk.json context", () => {
+  it("reads the explorer, Task A CloudFront and domain values (same hosts as before the move)", () => {
+    const config = loadConfig(ENV, contextFrom());
+    expect(config.explorerBaseUrl).toBe("https://countylens.aldarraj.com");
+    expect(config.taskACloudFrontBaseUrl).toBe("https://d2xsqoqv09bd0q.cloudfront.net");
+    expect(config.domainName).toBe("crm.aldarraj.com");
+  });
+
+  it("fails fast when any of them is missing or malformed", () => {
+    for (const key of ["crm:explorerBaseUrl", "crm:taskACloudFrontBaseUrl"]) {
+      expect(() => loadConfig(ENV, contextFrom({ [key]: undefined }))).toThrow(key);
+      expect(() => loadConfig(ENV, contextFrom({ [key]: "http://x.test/path" }))).toThrow(key);
+    }
+    expect(() => loadConfig(ENV, contextFrom({ "crm:domainName": "nope" }))).toThrow(
+      /crm:domainName/,
+    );
+  });
+});

@@ -26,6 +26,7 @@ import {
   type LeadQuery,
   type LeadQueryPatch,
 } from "./leadFilters.state.js";
+import { COUNTY_NAME } from "../../components/AppShell/navigation.js";
 import styles from "./LeadFilters.module.css";
 
 export const STATUS_LABEL: Readonly<Record<LeadStatus, string>> = {
@@ -273,7 +274,7 @@ function AreaControls({
                 }
               }}
             >
-              <option value="anywhere">Anywhere in Travis County</option>
+              <option value="anywhere">Anywhere in {COUNTY_NAME}</option>
               <option value="point">A point (latitude, longitude)</option>
             </select>
           </div>

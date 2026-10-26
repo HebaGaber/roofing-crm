@@ -73,7 +73,9 @@ describe("WhatCanIAsk card", () => {
     expect(text).toMatch(/roof age/i);
     expect(text).toMatch(/permits/i);
     expect(text).toMatch(/contractors where published/i);
-    expect(text).toMatch(/addresses and BBB ratings are not published/i);
+    expect(text).toMatch(
+      /street addresses and BBB ratings may be missing; every missing value says why/i,
+    );
     expect(text).toMatch(/every answer shows its sources/i);
   });
 
