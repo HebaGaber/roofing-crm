@@ -10,7 +10,7 @@ import { z } from "zod";
 import { gazetteer } from "@crm/oracle-views";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import { mainLeadPermit, type AgentAnswer, type QueryPlan } from "@crm/shared";
+import { isLivePermit, mainLeadPermit, type AgentAnswer, type QueryPlan } from "@crm/shared";
 import {
   causeWithCode,
   mapIndexNotReady,
@@ -255,6 +255,13 @@ async function checkConfirmRateLimit(guard: UsageGuard, userId: string): Promise
   }
 }
 
+/** The lead title, as the map's `propertyTitle` makes it: the stored street address when the index
+ *  has one, else `TCAD {id}` (never an invented address). */
+function leadTitle(tcadId: string, property: PropertyResult): string {
+  const street = property.unnormalizedAddress?.trim();
+  return street === undefined || street === "" ? `TCAD ${tcadId}` : street;
+}
+
 /** The lead for a proposed property, built only from the index row (never from client input), or
  *  undefined when the row has no coordinates. */
 function leadInputFromProperty(
@@ -268,7 +275,8 @@ function leadInputFromProperty(
   return {
     fips: gazetteer.TRAVIS_FIPS,
     requestIdentifier: tcadId,
-    address: `TCAD ${tcadId}`,
+    // The same title the map gives a lead: the street address, else the TCAD id.
+    address: leadTitle(tcadId, property),
     lat: property.latitude,
     lon: property.longitude,
     signals: {
@@ -277,8 +285,8 @@ function leadInputFromProperty(
       roofAgeConfidence: property.roofAgeConfidence,
       ...(main?.permitNumber == null ? {} : { openPermitId: main.permitNumber }),
       ...(main?.openDays == null ? {} : { openDays: main.openDays }),
-      ...(main?.statusClass === "open" || main?.statusClass === "stalled"
-        ? { openPermitStatus: main.statusClass }
+      ...(main !== null && isLivePermit(main)
+        ? { openPermitStatus: main.statusClass === "stalled" ? "stalled" : "open" }
         : {}),
     },
     // Constitution B2 / AC-7: the lead records the manifest this property row actually came from,

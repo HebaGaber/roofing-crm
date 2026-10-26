@@ -3,7 +3,7 @@
 // rounded down — `isLongOpen(1826) === false`, `isLongOpen(1827) === true` (tasks.md T004).
 import { DAYS_PER_YEAR } from "./constants.js";
 
-export const LONG_OPEN_THRESHOLD_DAYS = 1826;
+export const LONG_OPEN_THRESHOLD_DAYS = Math.floor(5 * DAYS_PER_YEAR);
 
 export function isLongOpen(openDays: number | null): boolean {
   return openDays !== null && openDays > LONG_OPEN_THRESHOLD_DAYS;

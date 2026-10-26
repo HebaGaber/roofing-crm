@@ -5,6 +5,10 @@ import { describe, expect, it } from "vitest";
 import { isLongOpen, openDurationLabel, LONG_OPEN_THRESHOLD_DAYS } from "../src/permit.js";
 
 describe("isLongOpen", () => {
+  it("the threshold is 5 years of days, rounded down (1826)", () => {
+    expect(LONG_OPEN_THRESHOLD_DAYS).toBe(1826);
+  });
+
   it("is false at the threshold (1826 days)", () => {
     expect(isLongOpen(LONG_OPEN_THRESHOLD_DAYS)).toBe(false);
   });

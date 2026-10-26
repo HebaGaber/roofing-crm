@@ -13,7 +13,12 @@ vi.mock("../../src/components/AppShell/shellApi.js", () => ({
 
 import { WhyPanel } from "../../src/routes/Map/WhyPanel";
 import { ResultRow } from "../../src/routes/Map/ResultRow";
-import { mainPermitOf, runLabel, whyLead } from "../../src/routes/Map/whyLead";
+import {
+  hasUnfinaledRoofPermit,
+  mainPermitOf,
+  runLabel,
+  whyLead,
+} from "../../src/routes/Map/whyLead";
 
 afterEach(() => {
   cleanup();
@@ -111,6 +116,20 @@ describe("whyLead", () => {
     expect(main?.openDays).toBe(900);
     expect(runLabel("travis-full-run2-20261024")).toBe("Run 2");
     expect(runLabel("weird")).toBe("weird");
+  });
+});
+
+describe("hasUnfinaledRoofPermit", () => {
+  it("is true only for a live (open or stalled) permit, whether or not it has a final date", () => {
+    expect(hasUnfinaledRoofPermit([{ statusClass: "open" }])).toBe(true);
+    expect(hasUnfinaledRoofPermit([{ statusClass: "stalled" }])).toBe(true);
+  });
+
+  it("a closed permit with no final date is not live, and neither is one with no status", () => {
+    expect(hasUnfinaledRoofPermit([{ statusClass: "closed" }])).toBe(false);
+    expect(hasUnfinaledRoofPermit([{ statusClass: null }])).toBe(false);
+    expect(hasUnfinaledRoofPermit([])).toBe(false);
+    expect(hasUnfinaledRoofPermit(undefined)).toBe(false);
   });
 });
 

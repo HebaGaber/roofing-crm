@@ -7,7 +7,7 @@
 //   (design-review-log row 17, `users.list`), so there is no Me / All reps menu; the hint says so.
 // - Roof age ≥ Any / 15 / 20 / 25, Permit status Open / Stalled / Any (no Closed:
 //   design-review-log row 6; the API takes one value, so Open and Stalled do not combine).
-// - Permit open >= Any / 1 yr / 3 yrs / 5 yrs / 10 yrs (sent as days: years x 365).
+// - Permit open >= Any / 1 yr / 3 yrs / 5 yrs / 10 yrs (sent as days = ceil(years x 365.25)).
 // - Within {radius preset} mi of {Area}: one select line (the area is Anywhere, a point or the
 //   device location; the radius waits for an area). There is no place picker: the gazetteer is
 //   not bundled into the web app.

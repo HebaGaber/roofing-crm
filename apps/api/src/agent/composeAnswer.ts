@@ -25,7 +25,13 @@
 //  - `needs_clarification` returns the resolver's top candidates (finding 7).
 //  - Slots the plan marks `inherited` take the thread's last plan's values (finding 8 remainder).
 import { gazetteer } from "@crm/oracle-views";
-import { DAYS_PER_YEAR, distanceMeters, milesToMeters, TRAVIS_COUNTY_BBOX } from "@crm/domain";
+import {
+  DAYS_PER_YEAR,
+  DEFAULT_ROOF_AGE_YEARS,
+  distanceMeters,
+  milesToMeters,
+  TRAVIS_COUNTY_BBOX,
+} from "@crm/domain";
 import { z } from "zod";
 import {
   classifyPlaceConfidence,
@@ -125,21 +131,25 @@ export const PLAN_SYSTEM_PROMPT =
   'area.query is a place name for kind "place", a 5-digit ZIP for "zip", "lat, lon" for ' +
   '"point", and the county name for "county". For lookup_property put the TCAD property id in ' +
   "area.query; for lookup_permit put the permit number in filters.permitNumber; coverage needs " +
-  "no area. Default radiusMi to 5, and roofAgeMinYears to 15 only when the question is about roofs and the rep didn't state it, and " +
+  "no area. Default radiusMi to 5, and roofAgeMinYears to " +
+  String(DEFAULT_ROOF_AGE_YEARS) +
+  " only when the question is about roofs and the rep didn't state it, and " +
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
   "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
   "the radius goes in radiusMi and everything else in filters. Owner location (owners outside the " +
   "area, out-of-state owners, owner mailing address) is never published: put it in unsupported with " +
-  'reason "not_in_export", not in filters. Examples (question -> plan ' +
+  'reason "not_in_export", not in filters. tenureYearsMin is a whole-year minimum, inclusive: ' +
+  '"more than 10 years" or "over 10 years" is 11 (tenure above 10 years is Task A\'s long-tenure rule), ' +
+  '"at least 10 years" is 10. Examples (question -> plan ' +
   "fields): " +
   '"Show me open roofing permits older than five years within five miles of Manor" -> ' +
   '{"intent":"find_permits","area":{"kind":"place","query":"Manor","radiusMi":5},' +
   '"filters":{"statusClass":["open"],"openYearsMin":5},"slotSources":{"statusClass":"stated",' +
   '"openYearsMin":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
-  '"Which homes near Lakeway haven\'t changed owners in 10+ years and have owners outside the area?" -> ' +
+  '"Which homes near Lakeway haven\'t changed owners in over 10 years and have owners outside the area?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Lakeway","radiusMi":5},' +
-  '"filters":{"tenureYearsMin":10},"slotSources":{"tenureYearsMin":"stated","radiusMi":"default"},' +
+  '"filters":{"tenureYearsMin":11},"slotSources":{"tenureYearsMin":"stated","radiusMi":"default"},' +
   '"unsupported":[{"constraint":"owners outside the area","reason":"not_in_export"}]}; ' +
   '"How many properties have roofs older than 20 years in ZIP 78701?" -> ' +
   '{"intent":"find_properties","area":{"kind":"zip","query":"78701","radiusMi":5},' +
@@ -1040,22 +1050,28 @@ export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
   return next;
 }
 
-/** The index stores only whether a property's tenure exceeds 10 years, so any tenureYearsMin is
- *  answered at that one cutoff. Say so when the rep asked for a different number. */
+/** An index built before the stored `tenureYears` column holds only whether a property's tenure
+ *  exceeds 10 years (minimum 11 whole years, the same meaning as the map's "Tenure > 10" chip), so
+ *  any other tenureYearsMin is answered at that one cutoff. Say so when the rep asked for a
+ *  different number. */
+/** "More than 10 years" as a minimum of whole years. */
+const LONG_TENURE_MIN_YEARS = 11;
+
 const TENURE_NOTE =
   "Tenure is answered as more than 10 years, the only tenure cutoff this data holds.";
 
 function tenureNote(plan: QueryPlan, gathered: Gathered): string {
   const asked = plan.filters.tenureYearsMin;
-  if (asked === undefined || asked === 10) return "";
+  if (asked === undefined || asked === LONG_TENURE_MIN_YEARS) return "";
   return servedIndexHasTenureYears(gathered) ? "" : TENURE_NOTE;
 }
 
-/** Read-only: an index built with the stored `tenureYears` column returns it (a number or null)
- *  on every property row, and the tenure filter is then exact at any N; an older index returns no
- *  such key. Judged from the rows this turn actually received. */
-function servedIndexHasTenureYears(gathered: Gathered): boolean {
-  return gathered.properties.some((p) => p.tenureYears !== undefined);
+/** Read-only: an index built with the stored `tenureYears` column filters exactly at any N, and
+ *  every row a tenure filter returns then carries a whole number of years (a null tenure never
+ *  matches `tenureYears >= N`). An older index returns no number, so a null or missing value is not
+ *  evidence of the column. Judged from the rows this turn actually received. */
+export function servedIndexHasTenureYears(gathered: Pick<Gathered, "properties">): boolean {
+  return gathered.properties.some((p) => typeof p.tenureYears === "number");
 }
 
 /** Every plain-words label this answer must carry. */
