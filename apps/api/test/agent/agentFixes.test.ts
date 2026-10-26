@@ -10,6 +10,7 @@ import {
   repairPlanFromQuestion,
   roofBasisPhrase,
   runAsk,
+  stalledMixPhrase,
   type RunAskInput,
 } from "../../src/agent/composeAnswer.js";
 import { createPlaceResolver } from "../../src/services/agent/placeResolver.js";
@@ -311,5 +312,81 @@ describe("defect 4: a place named in a follow-up never inherits the thread's pla
     const { run, model } = ask(Q, [roofPlan], index, { previousPlan });
     await run;
     expect(JSON.stringify(model.doGenerateCalls[0]?.prompt)).toMatch(/names a place of its own/);
+  });
+});
+
+describe("Run 3.1: stalled permits are open and not progressing, and the answer says so", () => {
+  const Q = "Which open roofing permits have been open for many years near Pflugerville?";
+  const openPlan = planText({
+    intent: "find_permits",
+    area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+    filters: { statusClass: ["open"], openYearsMin: 5 },
+    slotSources: { statusClass: "stated", openYearsMin: "stated", radiusMi: "stated" },
+  });
+  const stalledIndex = () =>
+    new FakeLeadIndex(
+      [property()],
+      [permit({ statusClass: "stalled", openDays: 8269, permitNumber: "2004-011296 BP" })],
+    );
+
+  it("stalledMixPhrase is empty, all, or some, and never carries a number", () => {
+    expect(stalledMixPhrase([])).toBe("");
+    expect(stalledMixPhrase([{ statusClass: "open" }])).toBe("");
+    expect(stalledMixPhrase([{ statusClass: "stalled" }])).toBe(
+      "all are stalled: open and not progressing",
+    );
+    expect(stalledMixPhrase([{ statusClass: "stalled" }, { statusClass: "open" }])).toBe(
+      "some are stalled: open and not progressing",
+    );
+  });
+
+  it("template path states that the found permits are stalled", async () => {
+    const { run } = ask(Q, [openPlan, NOT_JSON], stalledIndex());
+    const answer = await run;
+    expect(answer.outcome).toBe("answered");
+    expect(answer.claims[0]?.text).toMatch(
+      /matching permit \(all are stalled: open and not progressing\)/,
+    );
+  });
+
+  it("a model claim that omits the status gets the sentence appended", async () => {
+    const { run } = ask(
+      Q,
+      [
+        openPlan,
+        compose([{ text: "Permit 2004-011296 BP is open 8,269 days.", citationIds: [1] }]),
+      ],
+      stalledIndex(),
+    );
+    const answer = await run;
+    expect(answer.claims[0]?.text).toMatch(
+      /^Permit 2004-011296 BP is open 8,269 days\. Permit status: all are stalled: open and not progressing\.$/,
+    );
+  });
+
+  it("a model claim that already says stalled is left alone, and a wrong number is still dropped", async () => {
+    const text = "Permit 2004-011296 BP is stalled and has been open 8,269 days.";
+    const ok = await ask(Q, [openPlan, compose([{ text, citationIds: [1] }])], stalledIndex()).run;
+    expect(ok.claims[0]?.text).toBe(text);
+    const bad = await ask(
+      Q,
+      [openPlan, compose([{ text: "It is stalled and open 9,999 days.", citationIds: [1] }])],
+      stalledIndex(),
+    ).run;
+    expect(bad.claims.map((c) => c.text).join(" ")).not.toMatch(/9,999/);
+  });
+
+  it("no stalled permit, no sentence", async () => {
+    const { run } = ask(Q, [openPlan, NOT_JSON], new FakeLeadIndex([property()], [permit()]));
+    const answer = await run;
+    expect(answer.claims[0]?.text).not.toMatch(/stalled/);
+  });
+
+  it("the compose prompt carries the permit status and tells the model to state it", async () => {
+    const { run, model } = ask(Q, [openPlan, NOT_JSON], stalledIndex());
+    await run;
+    const prompt = JSON.stringify(model.doGenerateCalls[1]?.prompt);
+    expect(prompt).toMatch(/permitStatus/);
+    expect(prompt).toMatch(/open and not progressing/);
   });
 });

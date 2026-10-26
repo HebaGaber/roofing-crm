@@ -208,7 +208,10 @@ const COMPOSE_SYSTEM_PROMPT =
   "Each claim cites the citationId of every DATA row it relies on, and every number in a claim " +
   "must be one of that row's values or one of the DATA counts. When DATA.area.note or " +
   "DATA.area.notApplied is present, your first claim states it in your own words. When " +
-  "DATA.area.permitCondition is present, state it as part of what was counted. Write numbers of " +
+  "DATA.area.permitCondition is present, state it as part of what was counted. When " +
+  "DATA.area.permitStatus is present, a claim states it in your own words (for example that the " +
+  'permits are stalled, meaning open and not progressing), so "open permits" is never read as ' +
+  "actively moving. Write numbers of " +
   "1,000 or more with thousands separators (14,394) and never run a number into the next word. " +
   "On a permit row, contractorResolution says whether the contractor was matched to a known " +
   'business ("unresolved" means it was not); contractorNameAsPrinted is the name exactly as ' +
@@ -268,6 +271,9 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
       ...(notes.length === 0 ? {} : { notApplied: notes.join(" ") }),
       ...(permitConditionText(plan) === "" ? {} : { permitCondition: permitConditionText(plan) }),
+      ...(stalledMixPhrase(gathered.permits) === ""
+        ? {}
+        : { permitStatus: stalledMixPhrase(gathered.permits) }),
       ...(plan.area.kind === "zip" && !gathered.countyWide
         ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
         : {}),
@@ -1026,7 +1032,8 @@ function templateText(plan: QueryPlan, gathered: Gathered): string {
     }
     case "permits":
       return (
-        `Found ${plural(gathered.counts.matched, "matching permit", "matching permits")} ${where}; ` +
+        `Found ${plural(gathered.counts.matched, "matching permit", "matching permits")}` +
+        `${stalledSuffix(gathered.permits)} ${where}; ` +
         `showing the top ${gathered.counts.shown}, longest open first.${zipSuffix(plan, gathered)}`
       );
     case "properties": {
@@ -1061,6 +1068,42 @@ export function roofBasisPhrase(
   if (built) return "roof age estimated from the year built";
   if (permit) return "roof age from a closed roofing permit";
   return "";
+}
+
+/** The status mix of the shown permits when any is stalled, in plain words and without a number
+ *  (so no claim needs one verified). A stalled permit is open and not progressing; "Open" in this
+ *  product includes it, so an answer about open permits must not leave that unsaid. Empty when no
+ *  shown permit is stalled. */
+export function stalledMixPhrase(permits: readonly Pick<PermitResult, "statusClass">[]): string {
+  const stalled = permits.filter((p) => p.statusClass === "stalled").length;
+  if (stalled === 0) return "";
+  return stalled === permits.length
+    ? "all are stalled: open and not progressing"
+    : "some are stalled: open and not progressing";
+}
+
+function stalledSuffix(permits: readonly Pick<PermitResult, "statusClass">[]): string {
+  const mix = stalledMixPhrase(permits);
+  return mix === "" ? "" : ` (${mix})`;
+}
+
+const STALLED_DISCLOSED = /\bstalled\b/i;
+
+/** Appends the permit status mix to the first claim when the shown permits include stalled ones and
+ *  no claim says so. The sentence has no number, so it never needs a citation. */
+export function discloseStalledPermits(
+  claims: readonly Claim[],
+  gathered: Pick<Gathered, "permits">,
+): Claim[] {
+  const first = claims[0];
+  if (first === undefined) return [...claims];
+  const mix = stalledMixPhrase(gathered.permits);
+  if (mix === "" || claims.some((c) => STALLED_DISCLOSED.test(c.text))) return [...claims];
+  const note = `Permit status: ${mix}.`;
+  const lead = /[.!?]$/.test(first.text.trim()) ? first.text.trim() : `${first.text.trim()}.`;
+  const room = 400 - note.length - 1;
+  const text = `${lead.length > room ? `${lead.slice(0, Math.max(0, room - 1)).trimEnd()}…` : lead} ${note}`;
+  return [{ ...first, text }, ...claims.slice(1)];
 }
 
 const ROOF_BASIS_DISCLOSED = /year[- ]built|built[- ]year|estimated from|closed roofing permit/i;
@@ -1883,6 +1926,8 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
   // Code-enforced disclosure: a claim about roof age must say where the age comes from, whatever
   // the model wrote (most ages are an estimate from the year built).
   claims = discloseRoofBasis(claims, plan, gathered);
+  // Code-enforced disclosure: stalled permits are open and not progressing; say so.
+  claims = discloseStalledPermits(claims, gathered);
 
   emitCitationMetrics(obs, {
     citationsTotal,

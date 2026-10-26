@@ -41,6 +41,9 @@ export interface QuerySpec {
   /** Run 3.1 roof ages are mostly the year built (low confidence): an answer whose rows rest on
    *  it must say so in a claim. */
   readonly roofBasisMustBeDisclosed?: boolean;
+  /** "Open" includes stalled (a stalled permit is open and not progressing): when a cited permit
+   *  row is stalled, a claim must say "stalled" so a rep reading "open permits" is told the status. */
+  readonly stalledMustBeDisclosed?: boolean;
   /** A misspelled place may be asked about instead of guessed: the candidates must then name it. */
   readonly candidatesMustMatch?: string;
 }
@@ -214,7 +217,14 @@ function permitRowFailures(answer: AnswerLike, query: QuerySpec): string[] {
   let previous = Number.POSITIVE_INFINITY;
   for (const row of rows) {
     const p = row.permit as NonNullable<typeof row.permit>;
-    if (wanted !== undefined && wanted.length > 0 && !wanted.includes(p.statusClass ?? "")) {
+    // "Open" includes stalled, as in the agent's withStalledWhenOpen: a stalled row under a filter
+    // that includes open is in scope; under a closed-only (or other) filter it still fails.
+    const accepted =
+      wanted === undefined ||
+      wanted.length === 0 ||
+      wanted.includes(p.statusClass ?? "") ||
+      (p.statusClass === "stalled" && wanted.includes("open"));
+    if (!accepted) {
       failures.push(
         `permit ${p.number ?? p.permitCid} is ${p.statusClass}, outside the stated status filter`,
       );
@@ -266,6 +276,14 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
     !/year[- ]built|built[- ]year|built in|estimated|low confidence/i.test(text)
   ) {
     failures.push("rows rest on the year built but no claim says the roof age is an estimate");
+  }
+  if (
+    query.stalledMustBeDisclosed === true &&
+    answer.outcome === "answered" &&
+    (answer.rows ?? []).some((r) => r.permit?.statusClass === "stalled") &&
+    !/\bstalled\b/i.test(text)
+  ) {
+    failures.push("rows include stalled permits but no claim says they are stalled");
   }
   if (query.contractorMustBeUnavailable === true || query.bbbRatingMustBeUnavailable === true) {
     for (const row of answer.rows ?? []) {

@@ -900,9 +900,10 @@ function check(query: GoldenQuery, answer: AnswerLike, ctx: RuleContext) {
 }
 
 describe("golden pass rules (local)", () => {
-  // G1 is an answered query on Run 3.1; the honest-empty rules are exercised through G2, which
-  // still accepts either (answered or an honest empty).
-  const g1 = queryById("G2");
+  // G1 is an answered query on Run 3.1; the honest-empty rules are exercised through G3, which
+  // still accepts either (answered or an honest empty). G2 is answered since Run 3.1 ("open"
+  // includes stalled), so it has its own tests below.
+  const g1 = queryById("G3");
 
   it("keeps the assessment's G1-G7 prompts and adds Austin variants", () => {
     expect(golden.queries.slice(0, 7).map((q) => q.id)).toEqual([
@@ -1236,6 +1237,50 @@ describe("golden pass rules (local)", () => {
         ctx,
       ).pass,
     ).toBe(false);
+  });
+
+  it("G2: open includes stalled; a stalled row needs a claim that says stalled", () => {
+    const g2 = queryById("G2");
+    expect(g2.stalledMustBeDisclosed).toBe(true);
+    const answer = (status: string, filter: string[], text: string) =>
+      answerLike({
+        outcome: "answered",
+        claims: [{ text, citationIds: [1] }],
+        citations: [{ id: 1, kind: "permit", permitCid: "p", manifestCid: MANIFEST }],
+        plan: {
+          intent: "find_permits",
+          area: { radiusMi: 5, resolved: { name: "Pflugerville city" } },
+          filters: { statusClass: filter, openYearsMin: 5 },
+          unsupported: [],
+        },
+        counts: { matched: 1, shown: 1, excludedNoCoordinates: 0, excludedNoRoofDate: 0 },
+        missing: [{ field: "bbbRating", reason: "blocked" }],
+        rows: [
+          {
+            propertyCid: "c",
+            permit: {
+              permitCid: "p",
+              number: "2004-011296 BP",
+              statusClass: status,
+              openDays: 8269,
+            },
+          },
+        ],
+      });
+    const ctx = { manifestCid: MANIFEST, verification: { checked: 1, verified: 1 } };
+    const stalledText = "Found 1 matching permit (all stalled: open and not progressing).";
+    // accepted: stalled row under an open filter, with the word stalled in a claim
+    expect(evaluateQuery(g2, answer("stalled", ["open"], stalledText), ctx).failures).toEqual([]);
+    // rejected: stalled row under an open filter, no claim says stalled
+    const silent = evaluateQuery(g2, answer("stalled", ["open"], "Found 1 matching permit."), ctx);
+    expect(silent.pass).toBe(false);
+    expect(silent.failures.join(" ")).toMatch(/no claim says they are stalled/);
+    // rejected: stalled row under a closed filter, even when the claim says stalled
+    const closed = evaluateQuery(g2, answer("stalled", ["closed"], stalledText), ctx);
+    expect(closed.pass).toBe(false);
+    expect(closed.failures.join(" ")).toMatch(/outside the stated status filter/);
+    // rejected: a closed row under an open filter
+    expect(evaluateQuery(g2, answer("closed", ["open"], stalledText), ctx).pass).toBe(false);
   });
 
   it("an empty answer needs a reason that explains the emptiness; a generic missing entry is not one", () => {
