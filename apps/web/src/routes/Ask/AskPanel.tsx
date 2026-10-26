@@ -1180,6 +1180,7 @@ export function AskPanel({
     threadRef.current = threadId;
     setKept(undefined);
     setAsked("");
+    setQuestion("");
     setEditing(false);
     setBulkCreated(new Set());
     ask.reset();

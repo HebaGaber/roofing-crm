@@ -268,6 +268,17 @@ export function Component(): ReactElement {
     setFocusedCitation(null);
   }, []);
 
+  // Changing the search (a place, ZIP, address, permit, TCAD account or saved search chosen in the
+  // top-bar box) starts a new conversation: the Ask panel forgets the last question and answer and
+  // the agent gets a new thread, so a follow-up never inherits the previous place.
+  const resetAsk = useCallback(() => {
+    setThreadId(newThreadId());
+    hadAnswer.current = false;
+    setAnswer(null);
+    setFocusedCitation(null);
+    setPrefill(null);
+  }, []);
+
   useEffect(() => {
     // Fire-and-forget: contracts/health.md's health.ping, same-origin via the Amplify /api/*
     // rewrite. Its own X-Ray trace (not this call's result) is what AC-2/NFR-001 checks.
@@ -445,6 +456,7 @@ export function Component(): ReactElement {
   const queryClient = useQueryClient();
   const searchCentre = useCallback(
     (point: LatLng) => {
+      resetAsk();
       setFromHex(false);
       setPinMode(false);
       setAccuracyM(null);
@@ -453,10 +465,11 @@ export function Component(): ReactElement {
         patchMapParams(prev, { lat: point.lat, lng: point.lng, sel: null }),
       );
     },
-    [setSearchParams],
+    [setSearchParams, resetAsk],
   );
   const searchOpenProperty = useCallback(
     (propertyCid: string, point: LatLng) => {
+      resetAsk();
       setFromHex(false);
       setPinMode(false);
       setAccuracyM(null);
@@ -465,7 +478,7 @@ export function Component(): ReactElement {
         patchMapParams(prev, { lat: point.lat, lng: point.lng, sel: propertyCid }),
       );
     },
-    [setSearchParams],
+    [setSearchParams, resetAsk],
   );
   // Saved searches: the box saves the URL's centre, radius and roof filter, and a chosen one is
   // put back through the URL like a pin drop (the open property is closed).
@@ -481,6 +494,7 @@ export function Component(): ReactElement {
       radiusMi: number;
       roofAgeMinYears?: number | undefined;
     }) => {
+      resetAsk();
       setFromHex(false);
       setPinMode(false);
       setAccuracyM(null);
@@ -495,7 +509,7 @@ export function Component(): ReactElement {
         }),
       );
     },
-    [setSearchParams],
+    [setSearchParams, resetAsk],
   );
   // Called only when a permit/TCAD option is chosen, so nothing is requested while typing.
   const searchLookup = useCallback(

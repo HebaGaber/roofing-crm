@@ -1006,6 +1006,22 @@ describe("Ask screen", () => {
     );
     expect(askReset).toHaveBeenCalledTimes(1);
   });
+
+  it("a new thread (the search changed) also empties the question box", () => {
+    const view = renderAsk();
+    fireEvent.change(screen.getByLabelText(QUESTION_LABEL), {
+      target: { value: "Tell me about TCAD 181990" },
+    });
+    expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(
+      "Tell me about TCAD 181990",
+    );
+    view.rerender(
+      <MemoryRouter>
+        <AskPanel threadId="thread-2" focusedCitation={null} layout="pane" {...panelCallbacks} />
+      </MemoryRouter>,
+    );
+    expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe("");
+  });
 });
 
 describe("composer collapses once there is an answer (K1, CrmAsk768)", () => {
