@@ -5,8 +5,10 @@
 //   source   the API Lambda `crm-api-trpc` (account profile `assess`, region eu-north-1), invoked
 //            with an API Gateway v2 event: `search.properties`, `search.permits`, `property.get`
 //   read on  2026-10-25 (after the Run 3 promotion at 20:27Z)
-//   run      travis-full-run3-20261025 (Task A Run 3, contract v1.1: 441,961 properties, 15,025 Austin permits)
-//   manifest bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm
+//   run      travis-full-run3-1-20261025 (Task A Run 3.1, contract v1.2); the pins below were read on
+//            Run 3 (travis-full-run3-20261025, bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm,
+//            441,961 properties, 15,025 Austin permits), the same parcels, so they carry over
+//   manifest bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai
 //   history  Run 2 (travis-full-run2-20261024, bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute)
 //            was refreshed to Run 3 the same day; the pins and the open-permit lead survived unchanged
 //
@@ -28,8 +30,8 @@
 // never loses results, every row is inside the ring), and where a fixed property is needed, the B-07
 // suite re-reads it from the live index and fails with a clear message when it drifted.
 
-export const FIXTURES_MANIFEST_CID = "bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm";
-export const FIXTURES_RUN_ID = "travis-full-run3-20261025";
+export const FIXTURES_MANIFEST_CID = "bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai";
+export const FIXTURES_RUN_ID = "travis-full-run3-1-20261025";
 
 export interface LatLng {
   readonly lat: number;

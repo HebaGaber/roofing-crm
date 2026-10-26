@@ -43,10 +43,12 @@ export interface WhyLead {
   readonly coordinates: WhyCoordinates | null;
 }
 
-/** `travis-full-run3-20261025` → `Run 3`; any other run id is shown as it is. */
+/** `travis-full-run3-20261025` → `Run 3`, `travis-full-run3-1-20261025` → `Run 3.1`; any other run id
+ *  is shown as it is. */
 export function runLabel(runId: string): string {
-  const match = /run(\d+)/i.exec(runId);
-  return match?.[1] === undefined ? runId : `Run ${match[1]}`;
+  const match = /run(\d+)(?:-(\d{1,2})(?=-))?/i.exec(runId);
+  if (match?.[1] === undefined) return runId;
+  return match[2] === undefined ? `Run ${match[1]}` : `Run ${match[1]}.${match[2]}`;
 }
 
 /** Where a roof age came from: the permit that dated it, or the TCAD parcel record (year built). */

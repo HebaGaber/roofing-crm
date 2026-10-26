@@ -39,12 +39,15 @@ function runTail(runId: string): string {
   return `Run …${runId.slice(-6)}`;
 }
 
-/** The run number an id carries, or null: `…run3…` (`travis-full-run3-20261025`) is run 3, and an
+/** The run number an id carries, or null: `…run3…` (`travis-full-run3-20261025`) is run 3 (`travis-full-run3-1-20261025` is run 3.1), and an
  *  id that is only 1 to 3 digits is that run number. A date-only id (`20261024`) is not a run
  *  number, so the calendar date is parsed first and a purely numeric id counts only below 4 digits. */
 function runNumber(runId: string): string | null {
-  const labelled = /run(\d+)/i.exec(runId);
-  if (labelled !== null) return String(Number(labelled[1]));
+  const labelled = /run(\d+)(?:-(\d{1,2})(?=-))?/i.exec(runId);
+  if (labelled !== null) {
+    const major = String(Number(labelled[1]));
+    return labelled[2] === undefined ? major : `${major}.${labelled[2]}`;
+  }
   return /^\d{1,3}$/.test(runId) ? String(Number(runId)) : null;
 }
 
