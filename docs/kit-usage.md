@@ -86,3 +86,8 @@ After the whole-repo review the fixes were made by general-purpose agents workin
 | Alarms, named failure state, memory alarm, rollback and replay script, runbook | `machamp`, `espeon` | Claude (infra tests) | `machamp` re-scored 79 |
 | Responsive tests, tap-target CSS | `smeargle` | general-purpose agents | `smeargle` re-scored 83 |
 | Tokens, mobile-first queries, focus-ring tests | `audino` | `audino` (builder) | Web unit tests; hosted suites |
+
+## Responsive test coverage after the last UI round (2026-10-26)
+
+`smeargle` reviewed the responsive specs twice more after the final UI changes (Ask cards, phone List rows, first-visit card, full drawer, ring fit, not-found page). First read: **62/100**, because those pages were covered only by unit and CSS-text tests. Seven rendered hosted specs were then added under `tests/e2e/responsive/` (`ask-matches`, `candidate-list-phone`, `first-visit`, `drawer-content`, `ring-fit`, `not-found`, `legend-widths`); they pass at 390, 768 and 1440 px on the live site, and two of them found real layout bugs that were fixed (the Ask card was 16 px indented and 32 px narrower than a search card; the candidate table overflowed at 1,240 to 1,639 px). Second read: **83/100**. Still open, as listed by the reviewer: widths outside the three projects (320, 1024, 1280, 1536), the Ask-about-it drawer close at 390 and 768, larger-text and landscape checks, and visual baselines.
+
