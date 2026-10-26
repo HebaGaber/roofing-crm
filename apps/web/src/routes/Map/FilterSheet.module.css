@@ -252,14 +252,24 @@
     display: none;
   }
 
+  /* The pane's own height bounds the panel, which scrolls inside it. */
+  .sheet {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+  }
+
   .panel,
   .open {
     position: static;
     inset: auto;
     z-index: auto;
     display: grid;
+    flex: 1 1 auto;
+    min-height: 0;
     max-height: none;
-    overflow-y: visible;
+    overflow-y: auto;
     border-radius: var(--md-sys-shape-corner-large);
   }
 }

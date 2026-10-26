@@ -60,11 +60,12 @@ test.describe("Search box (responsive)", () => {
 
     // A street address says plainly why it cannot be searched yet; it does not fake a result.
     await box.fill("2725 Woodall Dr");
-    await expect(page.getByRole("option", { name: /Run 3\.1/ })).toBeVisible();
-    await expect(page.getByRole("option", { name: /Run 3\.1/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    await expect(
+      page.getByRole("option", { name: /Street addresses are not published/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: /Street addresses are not published/ }),
+    ).toHaveAttribute("aria-disabled", "true");
     await shot(page, "4-address", project);
 
     // Escape closes the list; the clear button empties the box.

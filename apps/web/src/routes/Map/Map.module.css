@@ -449,7 +449,9 @@
     align-items: stretch;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-4) var(--space-4);
-    overflow-y: auto;
+    /* The pane itself never scrolls: the filter panel (or the Ask panel) inside it does, so its box
+       stays inside the pane and the match total stays pinned under it. */
+    overflow: hidden;
     border-right: 1px solid var(--md-sys-color-outline-variant);
     background: var(--md-sys-color-surface);
   }
@@ -466,6 +468,7 @@
     gap: var(--space-4);
     min-width: 0;
     min-height: 0;
+    flex: 1 1 auto;
   }
 
   .paneBody[hidden],
@@ -474,7 +477,10 @@
   }
 
   .aiLeft {
+    flex: 1 1 auto;
     min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .leftSwitch {
