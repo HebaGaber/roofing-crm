@@ -66,6 +66,7 @@ import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
 import {
   emptyStateCopy,
+  propertiesSearchInput,
   leadsNote,
   permitNote,
   permitQueryInput,
@@ -89,6 +90,8 @@ import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
+/** Owner filters reach `search.properties` only; the county overview is not filtered by them. */
+const OWNER_OVERVIEW_NOTE = "Owner filters apply once you pick an area";
 const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, leads: true, gaps: false };
 const NO_PROPERTIES: readonly { readonly requestIdentifier: string }[] = [];
 /** The map opens on the whole county at this zoom (CrmMap's COUNTY_ZOOM). */
@@ -136,7 +139,9 @@ export function Component(): ReactElement {
   const trpc = useTRPC();
   const [searchParams, setSearchParams] = useSearchParams();
   const mapQuery = useMemo(() => parseMapQuery(searchParams), [searchParams]);
-  const { center, radiusMi, roofAgeMinYears, permitView, sel } = mapQuery;
+  const { center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea, permitView, sel } =
+    mapQuery;
+  const ownerFilterActive = tenureYearsMin !== undefined || outOfArea;
   // AC-1's edge case 2: a center outside Travis County is never itself the search point (the
   // pin still shows — see CrmMap's `center` prop below), so this is its own derived flag rather
   // than a URL key.
@@ -320,6 +325,20 @@ export function Component(): ReactElement {
     [setSearchParams],
   );
 
+  const setTenureYearsMin = useCallback(
+    (value: number | undefined) => {
+      setSearchParams((prev) => patchMapParams(prev, { tenure: value ?? null }));
+    },
+    [setSearchParams],
+  );
+
+  const setOutOfArea = useCallback(
+    (value: boolean) => {
+      setSearchParams((prev) => patchMapParams(prev, { ooa: value ? true : null }));
+    },
+    [setSearchParams],
+  );
+
   const selectProperty = useCallback(
     (propertyCid: string) => {
       setSearchParams((prev) => patchMapParams(prev, { sel: propertyCid }));
@@ -400,8 +419,11 @@ export function Component(): ReactElement {
   }, [setSearchParams]);
 
   const searchInput = useMemo(
-    () => (center === null || pinOutsideCounty ? null : { center, radiusMi, roofAgeMinYears }),
-    [center, pinOutsideCounty, radiusMi, roofAgeMinYears],
+    () =>
+      center === null || pinOutsideCounty
+        ? null
+        : propertiesSearchInput(center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea),
+    [center, pinOutsideCounty, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea],
   );
 
   const query = useQuery({
@@ -536,10 +558,21 @@ export function Component(): ReactElement {
       center: pinOutsideCounty ? null : center,
       radiusMi,
       roofAgeMinYears,
+      tenureYearsMin,
+      outOfArea,
       permitStatus,
       permitOpenYrs,
     }),
-    [pinOutsideCounty, center, radiusMi, roofAgeMinYears, permitStatus, permitOpenYrs],
+    [
+      pinOutsideCounty,
+      center,
+      radiusMi,
+      roofAgeMinYears,
+      tenureYearsMin,
+      outOfArea,
+      permitStatus,
+      permitOpenYrs,
+    ],
   );
   // One URL update (two in a row would each start from the same params and drop the first).
   const showOnMap = useCallback(
@@ -799,9 +832,21 @@ export function Component(): ReactElement {
               onPermitStatusChange={setPermitStatus}
               permitOpenYrs={permitOpenYrs}
               onPermitOpenYrsChange={setPermitOpenYrs}
+              tenureYearsMin={tenureYearsMin}
+              onTenureYearsMinChange={setTenureYearsMin}
+              outOfArea={outOfArea}
+              onOutOfAreaChange={setOutOfArea}
+              matchNote={
+                ownerFilterActive && (searchInput === null || query.data === undefined)
+                  ? OWNER_OVERVIEW_NOTE
+                  : undefined
+              }
               matchCount={
                 searchInput === null || query.data === undefined
-                  ? (overview?.counts.matched ?? undefined)
+                  ? // The county overview is not filtered by owner: no count rather than a wrong one.
+                    ownerFilterActive
+                    ? undefined
+                    : (overview?.counts.matched ?? undefined)
                   : matchTotal
               }
               matchScope={
@@ -817,7 +862,10 @@ export function Component(): ReactElement {
                   : runLabel(listProperties[0].runId)
               }
               onClear={() => {
-                setRoofAgeMinYears(undefined);
+                // One URL update: two in a row would each start from the same params.
+                setSearchParams((prev) =>
+                  patchMapParams(prev, { roof: null, tenure: null, ooa: null }),
+                );
                 setPermitStatus("any");
                 setPermitOpenYrs(undefined);
               }}
@@ -907,7 +955,10 @@ export function Component(): ReactElement {
             <div ref={setStatusHost} className={styles.statusStack} data-map-status="" />
             {showOverviewChip ? (
               <p className={styles.chip} role="status" data-view-chip="overview">
-                <span>Click a hexagon to search there</span>
+                <span>
+                  Click a hexagon to search there
+                  {ownerFilterActive ? `. ${OWNER_OVERVIEW_NOTE}` : ""}
+                </span>
                 <button
                   type="button"
                   className={styles.chipAction}
@@ -1072,7 +1123,7 @@ export function Component(): ReactElement {
                 ) : null}
                 {isZeroResult ? (
                   <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
-                    {permitFilterActive
+                    {permitFilterActive || ownerFilterActive
                       ? `${emptyStateCopy(candidateFilters).title} ${emptyStateCopy(candidateFilters).text}`
                       : `No properties within ${String(radiusMi)} mi.`}
                     {widenTo === null ? null : (

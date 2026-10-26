@@ -4,7 +4,7 @@
 // port (apps/api/src/adapters/duckDbParquet.ts): indexInfo, searchProperties, searchPermits and
 // getProperty over promoted Parquet. These cases exercise that port with real DuckDB reading
 // Parquet built in-test. DynamoDB and S3 are aws-sdk-client-mock doubles; nothing reaches AWS.
-import { createReadStream, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createReadStream, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
@@ -422,12 +422,58 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
     );
   });
 
-  // T043 (B-09/US2, G4 "10+ years"): the index stores only the fixed >10yr isLongTenure
-  // boolean (P1=true, P2=false, P3=null), so every tenureYearsMin value is answered at that one
-  // cutoff (see SearchPropertiesQuery.tenureYearsMin's doc comment).
-  it("searchProperties tenureYearsMin keeps only isLongTenure rows, at any requested threshold", async () => {
-    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 10 }))).toEqual([P1]);
-    expect(propertyCids(await makeIndex().searchProperties({ tenureYearsMin: 5 }))).toEqual([P1]);
+  // Owner filter "Tenure >= N": the index carries the stored `tenureYears` (P1=22, P2 and P3 null),
+  // so the filter is exact and a row with no tenure never passes.
+  it("searchProperties tenureYearsMin filters on the stored tenureYears, NULL tenure excluded", async () => {
+    const index = makeIndex();
+    expect(propertyCids(await index.searchProperties({ tenureYearsMin: 10 }))).toEqual([P1]);
+    expect(propertyCids(await index.searchProperties({ tenureYearsMin: 22 }))).toEqual([P1]);
+    expect(await index.searchProperties({ tenureYearsMin: 23 })).toEqual([]);
+    expect(propertyCids(await index.searchProperties({ tenureYearsMin: 0 }))).toEqual([P1]);
+  });
+
+  it("searchPropertiesPage counts the rows a tenure filter left out for want of a tenure", async () => {
+    const page = await makeIndex().searchPropertiesPage({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: 25,
+      tenureYearsMin: 10,
+    });
+    expect(page.rows.map((r) => r.propertyCid)).toEqual([P1]);
+    expect(page.afterFilters).toBe(1);
+    expect(page.noTenure).toBe(1); // P2; P3 has no coordinates so is outside the circle
+  });
+
+  it("searchPropertiesPage out-of-area keeps regional and out_of_area owners", async () => {
+    const page = await makeIndex().searchPropertiesPage({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: 25,
+      ownerAreaClass: ["regional", "out_of_area"],
+    });
+    expect(page.rows.map((r) => r.propertyCid)).toEqual([P2]);
+  });
+
+  // An older index has no tenureYears column: the boolean isLongTenure rule applies as before.
+  it("searchProperties tenureYearsMin falls back to isLongTenure on an index without tenureYears", async () => {
+    const oldTypes = { ...PROPERTY_TYPES };
+    delete oldTypes.tenureYears;
+    const oldFile = join(fixtureDir, "old", "crm_property.parquet");
+    mkdirSync(join(fixtureDir, "old"), { recursive: true });
+    await writeParquet(oldFile, parquetSql(PROPERTY_ROWS, oldTypes));
+    promote("bafkreiasycmsr2qdlxqcfg3yc2conpn3jxmohz7gs55hkseipplhpqsdddd");
+    s3Mock.on(GetObjectCommand).callsFake((input) => ({
+      Body: createReadStream(
+        input.Key?.endsWith("crm_permit.parquet") ? permitFile : oldFile,
+      ) as unknown as GetObjectCommandOutput["Body"],
+    }));
+    const index = makeIndex();
+    expect(propertyCids(await index.searchProperties({ tenureYearsMin: 10 }))).toEqual([P1]);
+    expect(propertyCids(await index.searchProperties({ tenureYearsMin: 5 }))).toEqual([P1]);
+    const page = await index.searchPropertiesPage({
+      center: { lat: 30.2672, lng: -97.7431 },
+      radiusMi: 25,
+      tenureYearsMin: 5,
+    });
+    expect(page.noTenure).toBe(0);
   });
 
   // T007 (B-03, US1): the extended SearchPropertiesQuery's center/radiusMi — a bbox prefilter via

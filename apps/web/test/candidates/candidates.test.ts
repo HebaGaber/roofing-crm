@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildCandidates,
   emptyStateCopy,
+  hasOwnerFilter,
+  OUT_OF_AREA_UNPUBLISHED,
+  propertiesSearchInput,
   listedCount,
   compassBearing,
   defaultSort,
@@ -240,5 +243,60 @@ describe("listedCount (the header equals the rows)", () => {
   it("with a permit filter the rows are the properties with a matching permit, so it is the rows", () => {
     expect(listedCount({ center: null, radiusMi: 5, permitStatus: "open" }, 23775, 0)).toBe(0);
     expect(listedCount({ center: null, radiusMi: 5, permitOpenYrs: 5 }, 23775, 12)).toBe(12);
+  });
+});
+
+describe("owner filters in the candidate model", () => {
+  const base = { center: { lat: 30.4, lng: -97.6 }, radiusMi: 5 };
+
+  it("hasOwnerFilter is true for tenure or out-of-area, false otherwise", () => {
+    expect(hasOwnerFilter(base)).toBe(false);
+    expect(hasOwnerFilter({ ...base, outOfArea: false })).toBe(false);
+    expect(hasOwnerFilter({ ...base, tenureYearsMin: 0 })).toBe(true);
+    expect(hasOwnerFilter({ ...base, outOfArea: true })).toBe(true);
+  });
+
+  it("emptyStateCopy names a tenure filter", () => {
+    const c = emptyStateCopy({ ...base, tenureYearsMin: 10 });
+    expect(c.title).toBe("No properties with tenure 10+ yrs within 5 mi.");
+    expect(c.text).toBe("Try a bigger radius or a lower tenure.");
+    expect(c.ownerFilter).toBe(true);
+    expect(c.permitFilter).toBe(false);
+  });
+
+  it("emptyStateCopy gives the honest out-of-area reason", () => {
+    const c = emptyStateCopy({ ...base, outOfArea: true });
+    expect(c.title).toContain("out-of-area owners");
+    expect(c.text).toBe(
+      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.",
+    );
+    expect(c.text).toBe(OUT_OF_AREA_UNPUBLISHED);
+  });
+
+  it("emptyStateCopy keeps the permit wording and adds the owner filter", () => {
+    const c = emptyStateCopy({ ...base, permitStatus: "stalled", tenureYearsMin: 5 });
+    expect(c.title).toBe("No properties with a stalled permit within 5 mi, with tenure 5+ yrs.");
+    expect(c.permitFilter).toBe(true);
+    expect(c.ownerFilter).toBe(true);
+  });
+
+  it("a server-side owner filter does not change the listed count", () => {
+    expect(listedCount({ ...base, tenureYearsMin: 10 }, 40, 12)).toBe(40);
+  });
+
+  it("propertiesSearchInput carries owner keys only when on", () => {
+    const center = { lat: 30.4, lng: -97.6 };
+    expect(propertiesSearchInput(center, 5, 15, undefined, false)).toEqual({
+      center,
+      radiusMi: 5,
+      roofAgeMinYears: 15,
+    });
+    expect(propertiesSearchInput(center, 5, undefined, 10, true)).toEqual({
+      center,
+      radiusMi: 5,
+      roofAgeMinYears: undefined,
+      tenureYearsMin: 10,
+      outOfArea: true,
+    });
   });
 });

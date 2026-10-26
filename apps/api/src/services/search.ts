@@ -33,6 +33,8 @@ export interface SearchPropertiesInput {
   /** T043 (B-09/US2, G4): see `SearchPropertiesQuery.tenureYearsMin`'s doc comment in
    *  `adapters/duckDbParquet.ts` for the fixed-cutoff limitation this threshold is honored at. */
   tenureYearsMin?: number | undefined;
+  /** Web owner filter "Out-of-area": `ownerAreaClass IN ('regional','out_of_area')`. */
+  outOfArea?: boolean | undefined;
   limit?: number | undefined;
 }
 
@@ -41,7 +43,13 @@ export interface SearchPropertiesResult {
   /** `excludedNoRoofDate` (B-09 review, CR finding 10): rows in the radius that a roof-age
    *  filter excluded only because they carry no roof date (`roofAgeYears` null) — 0 when no
    *  roof-age filter was applied. */
-  counts: { afterRadius: number; afterRoofAge: number; excludedNoRoofDate: number };
+  counts: {
+    afterRadius: number;
+    afterRoofAge: number;
+    excludedNoRoofDate: number;
+    /** In the radius with no tenure (a tenure filter leaves them out); 0 without one. */
+    excludedNoTenure: number;
+  };
   manifestCid: string;
 }
 
@@ -68,7 +76,11 @@ export async function searchProperties(
   // assigning an explicit `| undefined` to SearchPropertiesQuery's plain-optional fields.
   const filters = {
     ...(input.roofAgeMinYears === undefined ? {} : { roofAgeMinYears: input.roofAgeMinYears }),
-    ...(input.ownerAreaClass === undefined ? {} : { ownerAreaClass: input.ownerAreaClass }),
+    ...(input.ownerAreaClass !== undefined
+      ? { ownerAreaClass: input.ownerAreaClass }
+      : input.outOfArea === true
+        ? { ownerAreaClass: ["regional", "out_of_area"] }
+        : {}),
     ...(input.tenureYearsMin === undefined ? {} : { tenureYearsMin: input.tenureYearsMin }),
   };
 
@@ -85,6 +97,7 @@ export async function searchProperties(
         afterRadius: page.afterRadius,
         afterRoofAge: page.afterFilters,
         excludedNoRoofDate: input.roofAgeMinYears === undefined ? 0 : page.noRoofDate,
+        excludedNoTenure: input.tenureYearsMin === undefined ? 0 : page.noTenure,
       },
       manifestCid,
     };
@@ -112,6 +125,10 @@ export async function searchProperties(
         input.roofAgeMinYears === undefined
           ? 0
           : afterRadius.filter((p) => p.roofAgeYears === null).length,
+      excludedNoTenure:
+        input.tenureYearsMin === undefined
+          ? 0
+          : afterRadius.filter((p) => p.tenureYears == null).length,
     },
     manifestCid,
   };

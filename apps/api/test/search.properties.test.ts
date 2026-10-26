@@ -50,7 +50,9 @@ class FakeLeadIndex implements LeadIndex {
       promotedAt: "2026-10-21T10:35:16Z",
     };
   }
+  readonly queries: SearchPropertiesQuery[] = [];
   async searchProperties(query: SearchPropertiesQuery) {
+    this.queries.push(query);
     // Mirrors the real adapter's center/radiusMi exact-circle cut closely enough for this
     // router-level contract test (the cut itself is proven directly in query.test.ts).
     let rows = this.rows;
@@ -166,5 +168,50 @@ describe("search.properties counts.excludedNoRoofDate", () => {
   it("is 0 when no roof-age filter excluded anything", async () => {
     const result = await withUndated.search.properties({ center: PFLUGERVILLE, radiusMi: 10 });
     expect(result.counts.excludedNoRoofDate).toBe(0);
+  });
+});
+
+// Owner filters: the router takes `tenureYearsMin` (0-100, integer) and `outOfArea`, and the
+// service hands the adapter `tenureYearsMin` and `ownerAreaClass IN (regional, out_of_area)`.
+describe("search.properties owner filters", () => {
+  const fake = new FakeLeadIndex([property({})]);
+  const ownerCaller = createCaller({ requestId: "owner", leadIndex: fake });
+
+  it("passes tenureYearsMin and outOfArea to the adapter", async () => {
+    await ownerCaller.search.properties({
+      center: PFLUGERVILLE,
+      radiusMi: 10,
+      tenureYearsMin: 10,
+      outOfArea: true,
+    });
+    const last = fake.queries[fake.queries.length - 1];
+    expect(last).toMatchObject({
+      tenureYearsMin: 10,
+      ownerAreaClass: ["regional", "out_of_area"],
+    });
+  });
+
+  it("outOfArea false or absent adds no owner filter", async () => {
+    await ownerCaller.search.properties({ center: PFLUGERVILLE, radiusMi: 10, outOfArea: false });
+    const last = fake.queries[fake.queries.length - 1];
+    expect(last).not.toHaveProperty("ownerAreaClass");
+    expect(last).not.toHaveProperty("tenureYearsMin");
+  });
+
+  it.each([-1, 101, 1.5])("rejects tenureYearsMin %s, never clamped", async (tenureYearsMin) => {
+    await expect(
+      ownerCaller.search.properties({ center: PFLUGERVILLE, radiusMi: 10, tenureYearsMin }),
+    ).rejects.toThrow(TRPCError);
+  });
+
+  it("reports excludedNoTenure only when a tenure filter is applied", async () => {
+    const plain = await ownerCaller.search.properties({ center: PFLUGERVILLE, radiusMi: 10 });
+    expect(plain.counts.excludedNoTenure).toBe(0);
+    const filtered = await ownerCaller.search.properties({
+      center: PFLUGERVILLE,
+      radiusMi: 10,
+      tenureYearsMin: 5,
+    });
+    expect(filtered.counts.excludedNoTenure).toBe(1); // fixture tenureYears is absent
   });
 });

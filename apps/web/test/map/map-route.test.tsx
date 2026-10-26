@@ -186,6 +186,7 @@ function overviewFor(input: { zoom: number; permits?: boolean }) {
   };
 }
 const overviewCalls: unknown[] = [];
+const propertyInputs: unknown[] = [];
 let overviewFails = false;
 let searchFails = false;
 let searchCalls = 0;
@@ -210,11 +211,14 @@ vi.mock("@crm/api-client/react", () => ({
     },
     search: {
       properties: {
-        queryOptions: opts("search.properties", () => {
-          searchCalls += 1;
-          if (searchFails) throw new Error("index down");
-          return searchResult;
-        }),
+        queryOptions: (input: unknown) => {
+          propertyInputs.push(input);
+          return opts("search.properties", () => {
+            searchCalls += 1;
+            if (searchFails) throw new Error("index down");
+            return searchResult;
+          })(input);
+        },
       },
       permits: {
         queryOptions: (input: unknown) => {
@@ -283,6 +287,7 @@ afterEach(() => {
   showCounty.mockReset();
   lastMapProps = {};
   overviewCalls.length = 0;
+  propertyInputs.length = 0;
   overviewFails = false;
   searchFails = false;
   searchCalls = 0;
@@ -668,6 +673,7 @@ describe("Map route list view, triage and toolbar (committed Candidates and Tria
       center: { lat: 30.4394, lng: -97.62 },
       radiusMi: 5,
       roofAgeMinYears: 15,
+      outOfArea: false,
       permitStatus: "any",
       permitOpenYrs: undefined,
     });
@@ -1424,5 +1430,86 @@ describe("Map route centres the map on a selected property", () => {
     await screen.findByRole("dialog", { name: /TCAD/ });
     expect(focusProperty).not.toHaveBeenCalled();
     expect(lastMapProps.selectedPoint ?? null).toBeNull();
+  });
+});
+
+describe("Map route owner filters (tenure, out-of-area)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const PIN = "/?lat=30.4394&lng=-97.62&r=5";
+
+  it("a tenure in the URL changes the search.properties input, owner keys absent when off", async () => {
+    renderAt(`${PIN}&tenure=10`);
+    await screen.findByTestId("search-results");
+    expect(propertyInputs).toContainEqual({
+      center: { lat: 30.4394, lng: -97.62 },
+      radiusMi: 5,
+      roofAgeMinYears: undefined,
+      tenureYearsMin: 10,
+    });
+    cleanup();
+    propertyInputs.length = 0;
+    renderAt(PIN);
+    await screen.findByTestId("search-results");
+    expect(propertyInputs.every((i) => !("tenureYearsMin" in (i as object)))).toBe(true);
+    expect(propertyInputs.every((i) => !("outOfArea" in (i as object)))).toBe(true);
+  });
+
+  it("an invalid tenure is dropped, never clamped", async () => {
+    renderAt(`${PIN}&tenure=500&ooa=maybe`);
+    await screen.findByTestId("search-results");
+    expect(propertyInputs.every((i) => !("tenureYearsMin" in (i as object)))).toBe(true);
+    expect(propertyInputs.every((i) => !("outOfArea" in (i as object)))).toBe(true);
+  });
+
+  it("the Out-of-area chip writes ooa to the URL and the query, and says why nothing matches", async () => {
+    stubWide(true);
+    searchResult = { properties: [] };
+    renderAt(PIN);
+    fireEvent.click(await screen.findByText("Out-of-area"));
+    await vi.waitFor(() =>
+      expect(propertyInputs).toContainEqual(expect.objectContaining({ outOfArea: true })),
+    );
+    expect(screen.getByTestId("url-search").textContent).toContain("ooa=1");
+    const notice = await vi.waitFor(() => {
+      const el = document.querySelector('[data-state="CrmMapNoResults390"]');
+      expect(el).not.toBeNull();
+      return el as Element;
+    });
+    expect(notice.textContent).toContain(
+      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.",
+    );
+    expect(document.querySelector("[data-out-of-area-hint]")).not.toBeNull();
+  });
+
+  it("Clear resets tenure and out-of-area together with roof in one URL update", async () => {
+    stubWide(true);
+    renderAt(`${PIN}&roof=15&tenure=10&ooa=1`);
+    await screen.findByTestId("search-results");
+    const bar = await vi.waitFor(() => {
+      const el = document.querySelector("[data-match-bar]") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(bar.textContent).toContain("Filters: roof ≥ 15 · tenure > 10 · out-of-area owner");
+    fireEvent.click(bar.querySelector("button") as HTMLElement);
+    await vi.waitFor(() => {
+      const url = screen.getByTestId("url-search").textContent ?? "";
+      expect(url).not.toContain("roof");
+      expect(url).not.toContain("tenure");
+      expect(url).not.toContain("ooa");
+    });
+  });
+
+  it("in the county overview an owner filter is not pretended: no count, a note instead", async () => {
+    stubWide(true);
+    renderAt("/?tenure=10");
+    const bar = await vi.waitFor(() => {
+      const el = document.querySelector("[data-match-bar]") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(bar.textContent).toContain("Owner filters apply once you pick an area");
+    expect(bar.querySelector("[data-match-total]")).toBeNull();
+    expect(overviewCalls.every((c) => !("tenureYearsMin" in (c as object)))).toBe(true);
   });
 });

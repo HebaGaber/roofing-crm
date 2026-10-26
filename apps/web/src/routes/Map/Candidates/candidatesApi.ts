@@ -16,6 +16,7 @@ import {
   buildCandidates,
   type Candidate,
   permitQueryInput,
+  propertiesSearchInput,
   type CandidateFilters,
   type LeadsReason,
 } from "./candidates.js";
@@ -55,13 +56,13 @@ export interface CandidatesResult {
 export function useCandidates(filters: CandidateFilters): CandidatesResult {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
-  const { center, radiusMi, roofAgeMinYears } = filters;
+  const { center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea } = filters;
   // Exactly the map's input shape (Map.tsx `searchInput`), so the cache entry is shared.
   const properties = useQuery({
     ...trpc.search.properties.queryOptions(
       center === null
         ? { center: { lat: 0, lng: 0 }, radiusMi }
-        : { center, radiusMi, roofAgeMinYears },
+        : propertiesSearchInput(center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea),
     ),
     enabled: center !== null,
   });

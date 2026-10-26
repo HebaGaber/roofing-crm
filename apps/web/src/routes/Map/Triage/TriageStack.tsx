@@ -128,6 +128,8 @@ export function TriageStack({
     filters.center,
     filters.radiusMi,
     filters.roofAgeMinYears,
+    filters.tenureYearsMin,
+    filters.outOfArea,
     filters.permitStatus,
     filters.permitOpenYrs,
     effectiveSort,
