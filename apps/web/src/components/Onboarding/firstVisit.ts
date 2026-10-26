@@ -27,7 +27,7 @@ export const WHAT_CAN_I_ASK_INTRO = `Roofing leads from Task A's published ${COU
  *  agent is graded on, so none promises something it cannot answer. */
 export const EXAMPLE_QUESTIONS: readonly string[] = [
   `Which properties in ${COUNTY_NAME} within five miles of Pflugerville have roofs older than 15 years?`,
-  "Show me open roofing permits older than five years within five miles of Manor",
+  "Show me open or stalled roofing permits older than five years within five miles of Austin, sorted by open duration",
   "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
 ];
 

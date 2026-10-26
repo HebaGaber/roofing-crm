@@ -8,6 +8,7 @@ import {
   applyInheritance,
   PLAN_SYSTEM_PROMPT,
   repairLookupPermitWithoutNumber,
+  repairTcadIdLookup,
   repairPlanFromQuestion,
   roofBasisPhrase,
   runAsk,
@@ -465,5 +466,57 @@ describe("outbound messaging is refused at the scope gate (X5)", () => {
     expect(PLAN_SYSTEM_PROMPT).toMatch(
       /"constraint":"send messages to owners","reason":"out_of_scope"/,
     );
+  });
+});
+
+describe("a TCAD account id is a property lookup, never a radius search", () => {
+  const Q = "Tell me about TCAD 181990";
+  const radius: QueryPlan = {
+    intent: "find_properties",
+    area: { kind: "place", query: "181990", radiusMi: 5 },
+    filters: {},
+    slotSources: {},
+    unsupported: [],
+  };
+
+  it("repairs a radius plan around the id into lookup_property with the id as area.query", () => {
+    const out = repairTcadIdLookup(radius, Q);
+    expect(out).toMatchObject({ intent: "lookup_property", area: { query: "181990" } });
+    expect(repairPlanFromQuestion(radius, Q).repairs.join(" ")).toMatch(/lookup_property/);
+  });
+
+  it("takes the id from phrasings such as 'TCAD account #181990' and leaves other questions alone", () => {
+    expect(repairTcadIdLookup(radius, "what is TCAD account #181990?")?.area.query).toBe("181990");
+    expect(repairTcadIdLookup(radius, "roofs within 5 miles of Austin")).toBeUndefined();
+    expect(repairTcadIdLookup(radius, "TCAD 12")).toBeUndefined();
+    const already = { ...radius, intent: "lookup_property" as const };
+    expect(repairTcadIdLookup(already, Q)).toBeUndefined();
+  });
+
+  it("runAsk: the plan the model gave as a radius search is answered as a lookup of that property", async () => {
+    const index = new FakeLeadIndex(
+      [property({ requestIdentifier: "181990" })],
+      [permit({ statusClass: "stalled" })],
+    );
+    const { run } = ask(
+      Q,
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "181990", radiusMi: 5 },
+        }),
+        NOT_JSON,
+      ],
+      index,
+    );
+    const answer = await run;
+    expect(answer.plan.intent).toBe("lookup_property");
+    expect(answer.outcome).toBe("answered");
+    expect(index.searchPropertiesCalls).toHaveLength(0);
+    expect(answer.trace.planRepairs?.join(" ")).toMatch(/lookup_property/);
+  });
+
+  it("the plan prompt carries the TCAD example", () => {
+    expect(PLAN_SYSTEM_PROMPT).toMatch(/Tell me about TCAD 181990/);
   });
 });

@@ -163,6 +163,10 @@ export const PLAN_SYSTEM_PROMPT =
   '{"intent":"find_permits","area":{"kind":"place","query":"Manor","radiusMi":5},' +
   '"filters":{"statusClass":["open"],"openYearsMin":5},"slotSources":{"statusClass":"stated",' +
   '"openYearsMin":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
+  '"Tell me about TCAD 181990" -> ' +
+  '{"intent":"lookup_property","area":{"kind":"place","query":"181990","radiusMi":5},' +
+  '"filters":{},"slotSources":{"area":"stated"},"unsupported":[]} ' +
+  "(a number after TCAD is a property id, never a place or a radius centre); " +
   '"Which homes near Lakeway haven\'t changed owners in over 10 years and have owners outside the area?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Lakeway","radiusMi":5},' +
   '"filters":{"tenureYearsMin":11,"ownerAreaClass":["regional","out_of_area"]},' +
@@ -927,6 +931,9 @@ function buildAnswerRows(
     rows.push({
       propertyCid: property.propertyCid,
       tcadId: property.requestIdentifier,
+      ...(property.unnormalizedAddress?.trim()
+        ? { address: property.unnormalizedAddress.trim() }
+        : {}),
       ...(point.lat === undefined ? {} : { lat: point.lat, lon: point.lon }),
       ...(point.nearPlace === undefined ? {} : { nearPlace: point.nearPlace }),
       ...(citationId === undefined ? {} : { citationId }),
@@ -1367,6 +1374,25 @@ export function repairLookupPermitWithoutNumber(
   };
 }
 
+const TCAD_ID_IN_TEXT =
+  /\bTCAD\b[\s:#.-]*(?:(?:property|account|acct|prop|id)\b[\s:#.-]*)*(\d{4,9})\b/i;
+
+/** A question that names a TCAD account id ("Tell me about TCAD 181990") is a lookup of that one
+ *  property, never a radius search around the number read as a place. Applies whatever intent the
+ *  model chose; leaves a plan alone that is already that lookup. */
+export function repairTcadIdLookup(plan: QueryPlan, question: string): QueryPlan | undefined {
+  const id = TCAD_ID_IN_TEXT.exec(question)?.[1];
+  if (id === undefined) return undefined;
+  if (plan.intent === "lookup_property" && plan.area.query.trim() === id) return undefined;
+  if (plan.intent === "coverage" || plan.intent === "lookup_permit") return undefined;
+  return {
+    ...plan,
+    intent: "lookup_property",
+    area: { kind: "place", query: id, radiusMi: plan.area.radiusMi },
+    slotSources: { ...plan.slotSources, area: "stated" },
+  };
+}
+
 /** GAP-2: when the plan's area is unusable (blank, the sentence, not a gazetteer name or ZIP) but
  *  the question itself names a gazetteer place or a ZIP, take the area from the question. Never
  *  overrides an area the plan resolved to a real place, never fires for an "inherited" area, and
@@ -1378,6 +1404,11 @@ export function repairPlanFromQuestion(
 ): { plan: QueryPlan; repairs: string[] } {
   const repairs: string[] = [];
   let next = plan;
+  const byId = repairTcadIdLookup(next, question);
+  if (byId !== undefined) {
+    repairs.push(`intent ${next.intent} -> lookup_property (TCAD id ${byId.area.query})`);
+    next = byId;
+  }
   const asList = repairLookupPermitWithoutNumber(next, question);
   if (asList !== undefined) {
     repairs.push("intent lookup_permit -> find_permits (no permit number)");

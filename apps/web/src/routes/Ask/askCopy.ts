@@ -196,16 +196,56 @@ export function missingGroups(missing: readonly Missing[]): MissingListGroup[] {
   }));
 }
 
-/** The real number of matches an answer stands for: the server's total, never fewer than the rows. */
+type AnswerRowOf = NonNullable<AgentAnswer["rows"]>[number];
+
+/** An answer can carry a property row and a permit row for the same property. The list shows the
+ *  permit under its property: a row with no permit is dropped when another row for the same
+ *  property carries one (its citation moves to the kept row). Rows for different permits stay. */
+export function distinctAnswerRows(rows: readonly AnswerRowOf[] | undefined): AnswerRowOf[] {
+  const list = rows ?? [];
+  const withPermit = new Set(list.filter((r) => r.permit !== undefined).map((r) => r.propertyCid));
+  const bare = new Map(list.filter((r) => r.permit === undefined).map((r) => [r.propertyCid, r]));
+  return list
+    .filter((r) => r.permit !== undefined || !withPermit.has(r.propertyCid))
+    .map((r) => {
+      const dropped = r.permit === undefined ? undefined : bare.get(r.propertyCid);
+      return dropped === undefined
+        ? r
+        : {
+            ...r,
+            ...(r.citationId === undefined && dropped.citationId !== undefined
+              ? { citationId: dropped.citationId }
+              : {}),
+            ...(r.address === undefined && dropped.address !== undefined
+              ? { address: dropped.address }
+              : {}),
+          };
+    });
+}
+
+/** How many distinct properties the rows stand for (a property row plus its permit row is one). */
+export function distinctPropertyCount(rows: readonly AnswerRowOf[] | undefined): number {
+  return new Set((rows ?? []).map((r) => r.propertyCid)).size;
+}
+
+/** A "near X, N mi" distance is measured from the nearest place, not from a search centre, so a
+ *  property lookup (no search centre) never prints it. */
+export function answerShowsDistance(answer: AgentAnswer): boolean {
+  // `plan` is always on the wire; a partial answer in a test or a stale cache is not fatal.
+  return (answer.plan as { intent?: string } | undefined)?.intent !== "lookup_property";
+}
+
+/** The real number of matches an answer stands for: the server's total, never fewer than the
+ *  distinct properties in the rows. */
 export function answerMatchTotal(answer: AgentAnswer): number {
   // `counts` is always present on the wire; a partial answer in a test or a stale cache is not fatal.
   const matched = (answer.counts as { matched?: number } | undefined)?.matched ?? 0;
-  return Math.max(matched, answer.rows?.length ?? 0);
+  return Math.max(matched, distinctPropertyCount(answer.rows));
 }
 
 /** "Showing the top 25 of 28,062 matching properties" when the rows are only part of the total. */
 export function answerRowsNote(answer: AgentAnswer): string | undefined {
-  const shown = answer.rows?.length ?? 0;
+  const shown = distinctAnswerRows(answer.rows).length;
   const total = answerMatchTotal(answer);
   return shown > 0 && total > shown
     ? `Showing the top ${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} matching properties.`
@@ -486,7 +526,13 @@ export function matchesEmptyText(rows: readonly Row[] | undefined): string {
 
 /** Why some or all cited properties have no map pin; undefined when every one has a pin. */
 export function pinsNote(citations: readonly Citation[], pinCount: number): string | undefined {
-  const properties = citations.filter((c) => c.kind === "property");
+  // A cited permit stands for its property (it pins at the property's point).
+  const cited = new Set(
+    citations
+      .filter((c) => c.kind === "property" || (c.kind === "permit" && c.propertyCid !== undefined))
+      .map((c) => c.propertyCid ?? `citation-${String(c.id)}`),
+  );
+  const properties = [...cited];
   if (properties.length === 0) return "No map pins: this answer cites no property.";
   const without = properties.length - pinCount;
   if (without <= 0) return undefined;

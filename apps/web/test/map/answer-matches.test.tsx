@@ -186,3 +186,38 @@ describe("AnswerList (List view)", () => {
     expect(back).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("one property, one card", () => {
+  const permitRow = row(1, {
+    citationId: undefined,
+    address: "100 MAIN ST, AUSTIN, TX 78701",
+    permit: { permitCid: "bafkreiperm", number: "2001-1 BP", statusClass: "stalled", openDays: 40 },
+  });
+  const lookup = (): AgentAnswer =>
+    ({
+      ...answer([row(1), permitRow], 1),
+      plan: { intent: "lookup_property" },
+    }) as unknown as AgentAnswer;
+
+  it("lists the property once with its permit, counts 1, prints the row's address and no distance", () => {
+    const { container } = inRouter(
+      <AnswerMatches answer={lookup()} focusedCitation={null} onOpen={() => undefined} />,
+    );
+    expect(container.querySelectorAll("article[data-result-row]")).toHaveLength(1);
+    expect(container.textContent).toContain("100 MAIN ST, AUSTIN, TX 78701");
+    expect(container.textContent).not.toMatch(/near Pflugerville/);
+  });
+
+  it("the List view counts one match and omits the distance", () => {
+    const { container } = inRouter(
+      <AnswerList
+        answer={lookup()}
+        asked="Tell me about TCAD 0201880001"
+        onShowFilterResults={() => undefined}
+      />,
+    );
+    expect(container.querySelectorAll("[data-answer-row]")).toHaveLength(1);
+    expect(container.querySelector("[data-matches]")?.getAttribute("data-matches")).toBe("1");
+    expect(container.textContent).not.toMatch(/near Pflugerville/);
+  });
+});

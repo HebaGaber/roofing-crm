@@ -11,6 +11,8 @@ import { useId, useState, type ReactElement } from "react";
 import {
   answerMatchTotal,
   answerRowsNote,
+  answerShowsDistance,
+  distinctAnswerRows,
   missingGroups,
   rowPermitText,
 } from "../../Ask/askCopy.js";
@@ -79,8 +81,10 @@ function Row({
   active,
   onSelect,
   onShowOnMap,
+  showDistance,
 }: {
   readonly row: AnswerRow;
+  readonly showDistance: boolean;
   readonly active: boolean;
   readonly onSelect: AnswerListProps["onSelect"];
   readonly onShowOnMap: AnswerListProps["onShowOnMap"];
@@ -105,8 +109,8 @@ function Row({
       <td className={styles.cAddress}>
         <span className={styles.title}>{title}</span>
         <span className={styles.sub}>
-          {`Street address ${NOT_IN_ANSWER}`}
-          {row.nearPlace === undefined
+          {row.address ?? `Street address ${NOT_IN_ANSWER}`}
+          {row.nearPlace === undefined || !showDistance
             ? ""
             : ` · near ${row.nearPlace.name} · ${row.nearPlace.distanceMi.toFixed(1)} mi`}
         </span>
@@ -144,8 +148,10 @@ function Row({
         )}
       </td>
       <td className={`${styles.cMi} ${styles.wide768}`}>
-        {row.nearPlace === undefined ? (
-          <span className={styles.muted}>No location</span>
+        {row.nearPlace === undefined || !showDistance ? (
+          <span className={styles.muted}>
+            {showDistance ? "No location" : "Not from a search centre"}
+          </span>
         ) : (
           <span title={`Distance from ${row.nearPlace.name}, not from a search centre`}>
             {row.nearPlace.distanceMi.toFixed(1)}
@@ -196,7 +202,8 @@ export function AnswerList({
   onShowFilterResults,
   pageSize = DEFAULT_PAGE_SIZE,
 }: AnswerListProps): ReactElement {
-  const rows = answer.rows ?? [];
+  const rows = distinctAnswerRows(answer.rows);
+  const showDistance = answerShowsDistance(answer);
   const [page, setPage] = useState(1);
   const [noteOpen, setNoteOpen] = useState(false);
   const noteId = useId();
@@ -289,8 +296,9 @@ export function AnswerList({
           <tbody>
             {pageRows.map((row) => (
               <Row
-                key={row.propertyCid}
+                key={`${row.propertyCid}|${row.permit?.permitCid ?? ""}`}
                 row={row}
+                showDistance={showDistance}
                 active={selectedCid === row.propertyCid}
                 onSelect={onSelect}
                 onShowOnMap={onShowOnMap}

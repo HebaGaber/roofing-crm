@@ -21,6 +21,8 @@ const MissingEntry = z.object({
 export const AnswerRow = z.object({
   propertyCid: z.string(),
   tcadId: z.string(),
+  // The situs as TCAD prints it, when the index carries it (additive; never the owner).
+  address: z.string().optional(),
   lat: z.number().optional(),
   lon: z.number().optional(),
   nearPlace: NearPlace.optional(),
@@ -146,16 +148,22 @@ export const AgentAnswer = z.object({
 });
 export type AgentAnswer = z.infer<typeof AgentAnswer>;
 
-/** One pin per property citation that has coordinates; `n` is the citation number. A permit
- *  citation is not a pin of its own (its property row is). Sorted by `n`. */
+/** One pin per cited property that has coordinates; `n` is the citation number. A permit
+ *  citation pins at its property's point when it carries one (a permit-only answer still shows
+ *  where its permits are); a property already pinned by an earlier citation gets no second pin.
+ *  Sorted by `n`. */
 export function answerPins(answer: Pick<AgentAnswer, "citations">): AnswerPin[] {
   const pins: AnswerPin[] = [];
   const seen = new Set<number>();
-  for (const c of answer.citations) {
-    if (c.kind !== "property" || c.propertyCid === undefined) continue;
+  const pinned = new Set<string>();
+  const ordered = [...answer.citations].sort((a, b) => a.id - b.id);
+  for (const c of ordered) {
+    if ((c.kind !== "property" && c.kind !== "permit") || c.propertyCid === undefined) continue;
     if (c.lat === undefined || c.lon === undefined || seen.has(c.id)) continue;
+    if (pinned.has(c.propertyCid)) continue;
     seen.add(c.id);
+    pinned.add(c.propertyCid);
     pins.push({ n: c.id, propertyCid: c.propertyCid, lat: c.lat, lon: c.lon });
   }
-  return pins.sort((a, b) => a.n - b.n);
+  return pins;
 }

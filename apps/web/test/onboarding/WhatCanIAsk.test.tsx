@@ -42,6 +42,10 @@ describe("example questions", () => {
     for (const question of EXAMPLE_QUESTIONS) expect(prompts).toContain(question);
   });
 
+  it("no example names a place the live data has nothing for (Manor has no open roofing permits)", () => {
+    for (const question of EXAMPLE_QUESTIONS) expect(question).not.toMatch(/Manor/);
+  });
+
   it("each link opens the map's AI mode with the question prefilled, and never runs it", () => {
     expect(ASK_QUESTION_PARAM).toBe("q");
     const href = askHref(EXAMPLE_QUESTIONS[0] as string);

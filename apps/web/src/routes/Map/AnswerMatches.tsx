@@ -18,6 +18,8 @@ import {
 import {
   answerMatchTotal,
   answerRowsNote,
+  answerShowsDistance,
+  distinctAnswerRows,
   matchesEmptyText,
   missingGroups,
   rowNearText,
@@ -117,7 +119,7 @@ export function AnswerMatchRow({
   onOpen,
   extra,
 }: AnswerMatchRowProps): ReactElement {
-  const near = rowNearText(row);
+  const near = answerShowsDistance(answer) ? rowNearText(row) : undefined;
   const hasCoords = row.lat !== undefined && row.lon !== undefined;
   return (
     <MatchCard
@@ -131,7 +133,12 @@ export function AnswerMatchRow({
         "tcad-id": row.tcadId,
         ...(row.citationId === undefined ? {} : { "citation-id": String(row.citationId) }),
       }}
-      title={<TitleStack main={`TCAD ${row.tcadId}`} sub={`Street address ${NOT_IN_ANSWER}`} />}
+      title={
+        <TitleStack
+          main={`TCAD ${row.tcadId}`}
+          sub={row.address ?? `Street address ${NOT_IN_ANSWER}`}
+        />
+      }
       distance={
         near === undefined ? null : (
           <DistanceLabel
@@ -225,7 +232,7 @@ export function AnswerMatches({
   onOpen,
   extraFor,
 }: AnswerMatchesProps): ReactElement {
-  const rows = useMemo(() => answer.rows ?? [], [answer.rows]);
+  const rows = useMemo(() => distinctAnswerRows(answer.rows), [answer.rows]);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
@@ -260,7 +267,7 @@ export function AnswerMatches({
     >
       <ul className={styles.results} aria-label="Matches" data-testid="answer-matches">
         {pageRows.map((row) => (
-          <li key={row.propertyCid}>
+          <li key={`${row.propertyCid}|${row.permit?.permitCid ?? ""}`}>
             <AnswerMatchRow
               row={row}
               answer={answer}
