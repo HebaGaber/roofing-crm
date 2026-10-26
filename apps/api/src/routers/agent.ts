@@ -10,7 +10,7 @@ import { z } from "zod";
 import { gazetteer } from "@crm/oracle-views";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import type { AgentAnswer, QueryPlan } from "@crm/shared";
+import { mainLeadPermit, type AgentAnswer, type QueryPlan } from "@crm/shared";
 import {
   causeWithCode,
   mapIndexNotReady,
@@ -31,7 +31,11 @@ import type { SpendReservation } from "../agent/spendCap.js";
 import { requireUsageGuard, type UsageGuard } from "../agent/usageGuard.js";
 import { meterModel, meteredCostCents, type UsageMeter } from "../agent/usageMeter.js";
 import { OverBudgetError, RateLimitedError } from "../agentErrors.js";
-import { IndexNotReadyError, type PropertyResult } from "../adapters/duckDbParquet.js";
+import {
+  IndexNotReadyError,
+  type PermitResult,
+  type PropertyResult,
+} from "../adapters/duckDbParquet.js";
 import { LeadAlreadyExistsError } from "../leadErrors.js";
 import type { CreateLeadInput } from "../services/leads.js";
 import { emptyAnswer, emptyPlan, runAsk } from "../agent/composeAnswer.js";
@@ -256,8 +260,11 @@ async function checkConfirmRateLimit(guard: UsageGuard, userId: string): Promise
 function leadInputFromProperty(
   tcadId: string,
   property: PropertyResult,
+  permits: readonly PermitResult[],
 ): CreateLeadInput | undefined {
   if (property.latitude === null || property.longitude === null) return undefined;
+  // The same rule as the map: the open or stalled permit open longest is the lead's main signal.
+  const main = mainLeadPermit(permits);
   return {
     fips: gazetteer.TRAVIS_FIPS,
     requestIdentifier: tcadId,
@@ -267,6 +274,12 @@ function leadInputFromProperty(
     signals: {
       ...(property.roofAgeYears === null ? {} : { roofAgeYears: property.roofAgeYears }),
       roofAgeBasis: property.roofAgeBasis,
+      roofAgeConfidence: property.roofAgeConfidence,
+      ...(main?.permitNumber == null ? {} : { openPermitId: main.permitNumber }),
+      ...(main?.openDays == null ? {} : { openDays: main.openDays }),
+      ...(main?.statusClass === "open" || main?.statusClass === "stalled"
+        ? { openPermitStatus: main.statusClass }
+        : {}),
     },
     // Constitution B2 / AC-7: the lead records the manifest this property row actually came from,
     // exactly as `leads.create` on the map path does. Never a pinned constant.
@@ -436,7 +449,8 @@ export const agentRouter = router({
     if (property === undefined) {
       throw new TRPCError({ code: "NOT_FOUND", message: `No property for tcadId ${input.tcadId}` });
     }
-    const lead = leadInputFromProperty(input.tcadId, property);
+    const detail = await leadIndex.getProperty(property.propertyCid).catch(mapIndexNotReady);
+    const lead = leadInputFromProperty(input.tcadId, property, detail?.permits ?? []);
     if (lead === undefined) throw noCoordinatesError();
     try {
       return await requireLeadService(ctx).create(lead, userId);
@@ -485,7 +499,8 @@ export const agentRouter = router({
         try {
           const property = await propertyByTcadId(leadIndex, tcadId);
           if (property === undefined) return fail(tcadId, "NOT_FOUND");
-          const lead = leadInputFromProperty(tcadId, property);
+          const detail = await leadIndex.getProperty(property.propertyCid);
+          const lead = leadInputFromProperty(tcadId, property, detail?.permits ?? []);
           if (lead === undefined) return fail(tcadId, "NO_COORDINATES");
           const created = await leadService.create(lead, userId);
           return { kind: "created", tcadId, leadKey: created.leadKey, leadId: created.leadId };

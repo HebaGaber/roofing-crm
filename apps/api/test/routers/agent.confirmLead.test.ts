@@ -56,8 +56,25 @@ function property(sourceManifestCid: string = RUN_2_MANIFEST_CID): Provenanced<C
   };
 }
 
+function permitRow(
+  permitNumber: string,
+  statusClass: "open" | "stalled" | "closed",
+  openDays: number | null,
+): Provenanced<CrmPermit> {
+  return {
+    propertyCid: PROPERTY_CID,
+    permitCid: `bafkreip${permitNumber.replace(/\W/g, "").padEnd(52, "p")}`,
+    permitNumber,
+    statusClass,
+    openDays,
+  } as unknown as Provenanced<CrmPermit>;
+}
+
 class FakeLeadIndex implements LeadIndex {
-  constructor(private readonly rows: Provenanced<CrmProperty>[]) {}
+  constructor(
+    private readonly rows: Provenanced<CrmProperty>[],
+    private readonly permits: Provenanced<CrmPermit>[] = [],
+  ) {}
   async indexInfo() {
     return {
       manifestCid: RUN_2_MANIFEST_CID,
@@ -80,7 +97,7 @@ class FakeLeadIndex implements LeadIndex {
   }
   async getProperty(propertyCid: string) {
     const found = this.rows.find((r) => r.propertyCid === propertyCid);
-    return found === undefined ? null : { ...found, permits: [] };
+    return found === undefined ? null : { ...found, permits: this.permits };
   }
   async getPropertyByRequestIdentifier(requestIdentifier: string) {
     return this.rows.find((r) => r.requestIdentifier === requestIdentifier);
@@ -112,8 +129,9 @@ function fakeLeadService(): LeadService & { create: ReturnType<typeof vi.fn> } {
 function ctx(
   rows: Provenanced<CrmProperty>[] = [property()],
   guardOptions: FakeUsageGuardOptions = { proposed: { "thread-1|rep-1": [TCAD_ID] } },
+  permits: Provenanced<CrmPermit>[] = [],
 ) {
-  const leadIndex = new FakeLeadIndex(rows);
+  const leadIndex = new FakeLeadIndex(rows, permits);
   const leadService = fakeLeadService();
   const fake = fakeUsageGuard(guardOptions);
   setUsageGuardForTest(fake.guard);
@@ -175,6 +193,34 @@ describe("agent.confirmLead (T028)", () => {
     expect((error as TRPCError).code).toBe("PRECONDITION_FAILED");
     expect(appCodeOf(error)).toBe("NO_COORDINATES");
     expect(leadService.create).not.toHaveBeenCalled();
+  });
+
+  it("saves the same signals as the map: confidence plus the main permit (open or stalled, longest open)", async () => {
+    const { c, leadService } = ctx([property()], undefined, [
+      permitRow("2020-1", "closed", 900),
+      permitRow("2021-2", "open", 120),
+      permitRow("2022-3", "stalled", 400),
+    ]);
+    await c.agent.confirmLead({ threadId: "thread-1", tcadId: TCAD_ID });
+    const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
+    expect(input.signals).toEqual({
+      roofAgeYears: 28,
+      roofAgeBasis: "built_year",
+      roofAgeConfidence: "medium",
+      openPermitId: "2022-3",
+      openDays: 400,
+      openPermitStatus: "stalled",
+    });
+  });
+
+  it("saves no permit signals when the property has no open or stalled permit", async () => {
+    const { c, leadService } = ctx([property()], undefined, [permitRow("2020-1", "closed", 900)]);
+    await c.agent.confirmLead({ threadId: "thread-1", tcadId: TCAD_ID });
+    const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
+    expect(input.signals).not.toHaveProperty("openPermitId");
+    expect(input.signals).not.toHaveProperty("openDays");
+    expect(input.signals).not.toHaveProperty("openPermitStatus");
+    expect(input.signals.roofAgeConfidence).toBe("medium");
   });
 
   it("passes the property's real coordinates through, never a default", async () => {

@@ -46,6 +46,21 @@ async function propertyCidForTcadId(
  *  rows") — the UI pages the full set from `resultSetId`/the index itself, never from here. */
 const MAX_COMPACT_ROWS = 25;
 
+/** ADR-03 (amended 2026-10-25): the owner name is shown on screen but NEVER sent to the model.
+ *  Returns a copy of `value` with every `ownerName` key, at any depth, set to null. Every tool
+ *  result that can reach the model passes through this, whatever row shape it carries. */
+export function withoutOwnerName<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((item) => withoutOwnerName(item)) as T;
+  if (typeof value === "object" && value !== null) {
+    const out: Record<string, unknown> = {};
+    for (const [key, inner] of Object.entries(value)) {
+      out[key] = key === "ownerName" ? null : withoutOwnerName(inner);
+    }
+    return out as T;
+  }
+  return value;
+}
+
 export interface AgentDispatchDeps {
   readonly leadIndex: LeadIndex;
   readonly leadRepo: LeadRepo;
@@ -125,11 +140,11 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
       ...(tenureYearsMin === undefined ? {} : { tenureYearsMin }),
       limit: MAX_COMPACT_ROWS,
     });
-    return {
+    return withoutOwnerName({
       manifestCid: result.manifestCid,
       counts: result.counts,
       properties: result.properties.slice(0, MAX_COMPACT_ROWS),
-    };
+    });
   }
 
   async function searchPermitsDispatch({
@@ -151,12 +166,12 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
       ...(openYearsMin === undefined ? {} : { openDaysMin: Math.ceil(openYearsMin * 365) }),
       limit: MAX_COMPACT_ROWS,
     });
-    return {
+    return withoutOwnerName({
       manifestCid: result.manifestCid,
       // B-09 review (CR finding 10): the full matching count, before the compact-row cap.
       matched: result.total,
       permits: result.permits.slice(0, MAX_COMPACT_ROWS),
-    };
+    });
   }
 
   async function getPropertyDispatch({ tcadId, propertyCid }: GetPropertyArgs) {
@@ -167,16 +182,14 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
 
     const detail = await propertyDetail(leadIndex, cid);
     if (detail.property === null) return { found: false as const };
-    // ADR-03 (amended 2026-10-25): the owner name is shown on screen but never sent to the model.
-    const propertyForModel = { ...detail.property, ownerName: null };
-    return {
+    return withoutOwnerName({
       found: true as const,
       manifestCid: detail.manifestCid,
-      property: propertyForModel,
+      property: detail.property,
       permits: detail.permits,
       bbbStatus: detail.bbbStatus,
       bbbStatusReason: detail.bbbStatusReason,
-    };
+    });
   }
 
   async function getCoverageDispatch() {

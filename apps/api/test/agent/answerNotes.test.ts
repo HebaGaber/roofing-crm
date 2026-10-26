@@ -162,6 +162,24 @@ describe("tenure is answered at more than 10 years", () => {
     expect(answer.claims[0]?.text).toMatch(/tenure is answered as more than 10 years/i);
   });
 
+  it("an index that stores tenureYears is exact, so no cutoff note appears", async () => {
+    const withColumn = property({ isLongTenure: true, tenureYears: 22 });
+    const answer = await ask(
+      "Which properties near Pflugerville haven't changed owners in 15 years?",
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+          filters: { tenureYearsMin: 15 },
+          slotSources: { tenureYearsMin: "stated" },
+        }),
+        NOT_JSON,
+      ],
+      new FakeLeadIndex([withColumn]),
+    );
+    expect(answer.claims[0]?.text).not.toMatch(/tenure is answered/i);
+  });
+
   it("a request for 10 years gets no note", async () => {
     const answer = await run(10);
     expect(answer.claims[0]?.text).not.toMatch(/tenure is answered/i);
