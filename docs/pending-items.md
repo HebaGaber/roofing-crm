@@ -21,7 +21,7 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no ha
 | PR to `prismteam-ai/roofing-crm` | Open and ready for review (PR 15) | Update its text from `docs/pr-body.md` after the push (section 2, step 4) |
 | Hosted URL opens in a private window and the login survives a reload | Passed (evaluator, fresh browser contexts at 390, 768 and 1440 px, 2026-10-26) | Repeat once after the next deploy |
 | Credentials | Passed. Test user `admin@roofing-crm.test`; the password is in Secrets Manager `roofing-crm/admin-user`, shared privately, never in a file | Share privately with the assessor |
-| Demo video linked from the PR and playable without signing in | **Open. Not recorded** | PO records it (R7), following the README Demo Transcript in order with the hosted URL visible; rehearse in central Austin first (section 6) |
+| Demo video linked from the PR and playable without signing in | Linked: https://www.youtube.com/watch?v=Iq4KyMsz6mc. YouTube was still processing it when linked | PO confirms it plays in a private window |
 
 ## 2. To finish the current round (in this order)
 

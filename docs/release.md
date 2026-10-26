@@ -17,7 +17,7 @@ approved_date:
 
 # Release REL-B1: Roofing CRM, Travis County TX v1.0
 
-Status is **Draft**: the demo video, the G8 approval, the tag and `/code-review ultra` are still open (section 6 and the gate table say which).
+Status is **Draft**: the G8 approval, the tag and `/code-review ultra` are still open (section 6 and the gate table say which).
 
 ## 1. Release scope
 
@@ -124,7 +124,7 @@ Deploy: see "How to redeploy and where the data comes from" in `docs/pr-body.md`
 | G8-04 | Hosted URL verified in a private window; full demo suite green | ☐ (PO private-window login) |
 | G8-05 | Rollback plan documented and tested | ◐ documented; tested in part (section 4) |
 | G8-06 | Release notes complete, and the known gaps are honest | ☑ |
-| G8-07 | Demo video recorded, following the README transcript in order | ☐ **open** |
+| G8-07 | Demo video recorded, following the README transcript in order | ☑ recorded and linked: https://www.youtube.com/watch?v=Iq4KyMsz6mc (YouTube was still processing it when linked; confirm it plays in a private window) |
 | G8-08 | Admin test credentials shared privately, not in Git | ☐ (PO shares privately) |
 | G8-09 | AI pre-check (`developmentsupport-g8-precheck`): PASS | ☐ (to run) |
 
