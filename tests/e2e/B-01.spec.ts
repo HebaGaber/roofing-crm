@@ -184,7 +184,7 @@ test.describe("AC-4: disabled roadmap rows", () => {
     // trip finishes, it always saw the sign-in page (no "More" button yet) and silently skipped
     // the click, leaving the sheet closed for the rest of the test.
     await expect(page.locator('[data-route="map"]')).toBeVisible();
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
     }
@@ -212,7 +212,7 @@ test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
     // Same fix as AC-4 above: wait for the SRP round trip to actually land before checking for
     // "More" (found deploying).
     await expect(page.locator('[data-route="map"]')).toBeVisible();
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
     }

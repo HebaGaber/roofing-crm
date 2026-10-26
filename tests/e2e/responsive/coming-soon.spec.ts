@@ -14,7 +14,7 @@ test.use({ storageState: AUTH_STATE_PATH });
 
 async function openComingSoon(page: import("@playwright/test").Page): Promise<void> {
   await openSignedIn(page);
-  const moreTrigger = page.getByRole("button", { name: "More" });
+  const moreTrigger = page.getByRole("button", { name: "More", exact: true });
   if (await moreTrigger.isVisible()) {
     await moreTrigger.click();
   }

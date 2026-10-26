@@ -382,7 +382,7 @@ test.describe("Layout: app shell", () => {
         name: "Sign out",
       });
     } else {
-      await shell(page).nav.getByRole("button", { name: "More" }).click();
+      await shell(page).nav.getByRole("button", { name: "More", exact: true }).click();
       signOut = page.getByRole("dialog", { name: "More" }).getByRole("button", {
         name: /Sign out/,
       });
@@ -525,7 +525,7 @@ test.describe("Layout: top bar below 840 px and the open Coming-soon page", () =
       await expect(current).toHaveCount(1);
       await expect(current).toHaveAttribute("data-roadmap-section", "campaigns");
     } else {
-      await shell(page).nav.getByRole("button", { name: "More" }).click();
+      await shell(page).nav.getByRole("button", { name: "More", exact: true }).click();
       const sheet = page.getByRole("dialog", { name: "More" });
       await expect(sheet.locator('[aria-current="page"][data-roadmap-section]')).toHaveAttribute(
         "data-roadmap-section",

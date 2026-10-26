@@ -95,7 +95,7 @@ test.describe("Responsive design: Ask screen", () => {
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
     const isCompact = (viewport?.width ?? 0) < 600;
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     const navRail = page.locator('[aria-label="Roadmap sections (not yet built)"]');
     if (isCompact) {
       await expect(moreTrigger).toBeVisible();

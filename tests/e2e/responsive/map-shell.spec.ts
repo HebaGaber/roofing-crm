@@ -35,7 +35,7 @@ test.describe("Responsive design: Map screen and navigation shell", () => {
     expect(viewport).not.toBeNull();
     const isCompact = (viewport?.width ?? 0) < 600;
 
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     const navRail = page.locator('[aria-label="Roadmap sections (not yet built)"]');
 
     if (isCompact) {
@@ -60,7 +60,7 @@ test.describe("Responsive design: Map screen and navigation shell", () => {
   test("the five roadmap rows stay reachable without horizontal scroll", async ({ page }) => {
     const viewport = page.viewportSize();
     expect(viewport).not.toBeNull();
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
     }
@@ -77,7 +77,7 @@ test.describe("Responsive design: Map screen and navigation shell", () => {
   test("passes the Atlas design-token audit (no non-token color, type, spacing or radius values)", async ({
     page,
   }) => {
-    const moreTrigger = page.getByRole("button", { name: "More" });
+    const moreTrigger = page.getByRole("button", { name: "More", exact: true });
     if (await moreTrigger.isVisible()) {
       await moreTrigger.click();
     }
