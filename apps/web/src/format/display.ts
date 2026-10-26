@@ -46,7 +46,9 @@ export const ADDRESS_NOT_PUBLISHED = "Address not published in this run";
  *  `unnormalized_address` in Run 3.1, contract v1.2); once a row carries one it is shown as it is
  *  and "not published" is never claimed. Without one, the row's own `missing` entry says why. */
 export function addressLine(
-  property: Pick<CrmProperty, "missingReasons"> & { readonly unnormalizedAddress?: string | null },
+  property: Pick<CrmProperty, "missingReasons"> & {
+    readonly unnormalizedAddress?: string | null | undefined;
+  },
 ): string {
   const address = property.unnormalizedAddress?.trim();
   if (address !== undefined && address !== "") return address;
