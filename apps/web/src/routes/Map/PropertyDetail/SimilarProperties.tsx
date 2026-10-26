@@ -47,7 +47,7 @@ function SimilarList({
           {onSelectProperty === undefined ? null : (
             <button
               type="button"
-              className={styles.link}
+              className={styles.linkButton}
               onClick={() => onSelectProperty(row.propertyCid)}
             >
               {`Open TCAD ${row.requestIdentifier}`}

@@ -194,3 +194,31 @@
   flex-wrap: wrap;
   column-gap: var(--space-5);
 }
+
+/* A text button that reads like the drawer's links (Similar properties rows). */
+.linkButton {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: var(--space-9);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  cursor: pointer;
+}
+
+/* "Coming soon" rows the design shows but the published data cannot back yet. */
+.soonButton {
+  min-height: var(--space-8);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+  cursor: not-allowed;
+}

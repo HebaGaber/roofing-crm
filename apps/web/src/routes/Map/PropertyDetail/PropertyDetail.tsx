@@ -85,6 +85,7 @@ function ComingSoonRow({
       <dd>
         <button
           type="button"
+          className={styles.soonButton}
           disabled
           title={reason}
           aria-label={`${label}: coming soon. ${reason}`}
