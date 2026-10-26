@@ -579,10 +579,9 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           <div className={styles.permitField}>
             <dt>Basis</dt>
             <dd data-field="roof_age_basis">
-              {roofAgeBasisLabel(property.roofAgeBasis)}
               {property.roofAgeBasis === "built_year" && property.structureBuiltYear != null
-                ? ` · Year built ${property.structureBuiltYear}`
-                : ""}
+                ? `Year built ${String(property.structureBuiltYear)} (no reroof permit found)`
+                : roofAgeBasisLabel(property.roofAgeBasis)}
             </dd>
           </div>
           <div className={styles.permitField}>
