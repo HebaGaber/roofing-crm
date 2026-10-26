@@ -118,3 +118,11 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
 }
+
+/* The BBB search link inside a rule is a tap target like the one in the permit list: 48 px tall
+   (it was a 20 px line of text) wherever the rules are drawn, in the panel or in the drawer. */
+.body a[data-field="bbb_url"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
+}
