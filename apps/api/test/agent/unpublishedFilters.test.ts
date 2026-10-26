@@ -1,11 +1,16 @@
-// B-09 GAP-3: a question that filters on a field the index does not publish (owner location is
-// `not_in_export` for every Run 2 property) must never be answered by applying that filter and
-// returning "none". The server drops the filter, records it as unsupported with reason
-// not_in_export, and shows the rest of the matches labelled as not narrowed by it.
+// B-09 GAP-3: a question that filters on a field the search cannot apply (roof age confidence,
+// residential/commercial kind) must never be answered as if it had. The server drops the filter,
+// records it as unsupported with reason not_in_export, and labels the matches as not narrowed by it.
+// Owner location was in this list for Run 2; Run 3.1 publishes it, so the search now applies it.
 import { describe, expect, it } from "vitest";
 import { createObservability } from "@crm/observability";
 import type { QueryPlan } from "@crm/shared";
-import { dropUnpublishedFilters, runAsk, type RunAskInput } from "../../src/agent/composeAnswer.js";
+import {
+  PLAN_SYSTEM_PROMPT,
+  dropUnpublishedFilters,
+  runAsk,
+  type RunAskInput,
+} from "../../src/agent/composeAnswer.js";
 import { createPlaceResolver } from "../../src/services/agent/placeResolver.js";
 import {
   FakeLeadIndex,
@@ -53,21 +58,13 @@ describe("dropUnpublishedFilters", () => {
     unsupported: [],
   };
 
-  it("removes ownerAreaClass and its slot source, adds one not_in_export entry", () => {
+  it("keeps ownerAreaClass and its slot source (Run 3.1 publishes it) and adds no unsupported entry", () => {
     const out = dropUnpublishedFilters(base);
-    expect(out.filters).toEqual({ tenureYearsMin: 10 });
-    expect(out.slotSources).toEqual({ tenureYearsMin: "stated" });
-    expect(out.unsupported).toHaveLength(1);
-    expect(out.unsupported[0]).toMatchObject({ reason: "not_in_export" });
-    expect(out.unsupported[0]?.constraint).toMatch(/owner/i);
+    expect(out).toEqual(base);
+    expect(out.unsupported).toHaveLength(0);
   });
 
-  it("does not duplicate an entry the model already made, and leaves other plans alone", () => {
-    const already = {
-      ...base,
-      unsupported: [{ constraint: "owners outside the area", reason: "not_in_export" as const }],
-    };
-    expect(dropUnpublishedFilters(already).unsupported).toHaveLength(1);
+  it("leaves a plan without dropped filters alone", () => {
     const clean = {
       ...base,
       filters: { tenureYearsMin: 10 },
@@ -77,68 +74,61 @@ describe("dropUnpublishedFilters", () => {
   });
 });
 
-describe("runAsk with an unpublished filter (G4)", () => {
-  it("searches without the owner filter, labels the answer, and flags the gap in missing", async () => {
-    const index = new FakeLeadIndex([property({ isLongTenure: true })]);
+describe("runAsk with the owner-area filter (G4, Run 3.1)", () => {
+  it("passes ownerAreaClass to the search, adds no gap label, and never says owner location is unpublished", async () => {
+    const index = new FakeLeadIndex([
+      property({ isLongTenure: true, ownerAreaClass: "out_of_area" }),
+    ]);
     const { run } = ask(
-      [plan({ tenureYearsMin: 10, ownerAreaClass: ["out_of_area"] }), NOT_JSON],
+      [plan({ tenureYearsMin: 11, ownerAreaClass: ["regional", "out_of_area"] }), NOT_JSON],
       index,
     );
     const answer = await run;
-    expect(index.searchPropertiesCalls[0]).not.toHaveProperty("ownerAreaClass");
+    expect(index.searchPropertiesCalls.at(-1)).toMatchObject({
+      ownerAreaClass: ["regional", "out_of_area"],
+      tenureYearsMin: 11,
+    });
     expect(answer.outcome).toBe("answered");
-    expect(answer.plan.filters.ownerAreaClass).toBeUndefined();
-    expect(answer.plan.unsupported[0]).toMatchObject({ reason: "not_in_export" });
+    expect(answer.plan.filters.ownerAreaClass).toEqual(["regional", "out_of_area"]);
+    expect(answer.plan.unsupported).toHaveLength(0);
     expect(answer.missing.some((m) => /owner/i.test(m.field) && m.reason === "not_in_export")).toBe(
-      true,
+      false,
     );
-    expect(answer.claims[0]?.text).toMatch(/not narrowed by owner location/i);
-    expect(answer.claims[0]?.text).toMatch(/owner location is not published/i);
+    for (const claim of answer.claims) {
+      expect(claim.text).not.toMatch(/owner location is not published|not narrowed by owner/i);
+    }
   });
 
-  it("zero matches after the remaining filters is empty_in_scope that still states the gap", async () => {
+  it("zero matches with an owner filter is a plain empty_in_scope, not a field_not_published", async () => {
     const index = new FakeLeadIndex([]);
-    const { run } = ask([plan({ tenureYearsMin: 10, ownerAreaClass: ["out_of_area"] })], index);
-    const answer = await run;
-    expect(answer.outcome).toBe("empty_in_scope");
-    expect(answer.claims).toHaveLength(0);
-    expect(answer.missing.some((m) => /owner/i.test(m.field))).toBe(true);
-  });
-
-  it("an owner-only question is field_not_published with no search", async () => {
-    const index = new FakeLeadIndex([property()]);
     const { run } = ask([plan({ ownerAreaClass: ["out_of_area"] })], index);
     const answer = await run;
-    expect(answer.outcome).toBe("field_not_published");
-    expect(index.searchPropertiesCalls).toHaveLength(0);
-    expect(answer.missing.some((m) => /owner/i.test(m.field) && m.reason === "not_in_export")).toBe(
-      true,
-    );
+    expect(answer.outcome).toBe("empty_in_scope");
+    expect(index.searchPropertiesCalls.length).toBeGreaterThan(0);
   });
 
-  it("a plan the model made correctly (owner in unsupported, tenure only) behaves the same", async () => {
-    const index = new FakeLeadIndex([property({ isLongTenure: true })]);
-    const { run } = ask(
-      [
-        plan(
-          { tenureYearsMin: 10 },
-          { unsupported: [{ constraint: "owners outside the area", reason: "not_in_export" }] },
-        ),
-        NOT_JSON,
-      ],
+  it("the plan prompt maps absentee / out-of-town owners to the published area classes", () => {
+    expect(PLAN_SYSTEM_PROMPT).toMatch(/in_county, regional, out_of_area/);
+    expect(PLAN_SYSTEM_PROMPT).toMatch(/absentee/i);
+    expect(PLAN_SYSTEM_PROMPT).toContain('["regional","out_of_area"]');
+    expect(PLAN_SYSTEM_PROMPT).toContain('["in_county"]');
+    expect(PLAN_SYSTEM_PROMPT).not.toMatch(/never published/i);
+  });
+
+  it("the owner's name never reaches the model (plan or compose call)", async () => {
+    const index = new FakeLeadIndex([
+      property({
+        isLongTenure: true,
+        ownerAreaClass: "out_of_area",
+        ownerName: "Zebediah Quillfeather",
+      }),
+    ]);
+    const { run, model } = ask(
+      [plan({ tenureYearsMin: 11, ownerAreaClass: ["out_of_area"] }), NOT_JSON],
       index,
     );
-    const answer = await run;
-    expect(answer.outcome).toBe("answered");
-    expect(answer.plan.unsupported).toHaveLength(1);
-    expect(answer.claims[0]?.text).toMatch(/not narrowed by owner location/i);
-  });
-
-  it("a question without an unpublished filter gets no such label", async () => {
-    const index = new FakeLeadIndex([property({ roofAgeYears: 30 })]);
-    const { run } = ask([plan({ roofAgeMinYears: 20 }), NOT_JSON], index);
-    const answer = await run;
-    expect(answer.claims[0]?.text).not.toMatch(/owner location/i);
+    await run;
+    expect(JSON.stringify(model.doGenerateCalls)).not.toContain("Zebediah");
   });
 });
 
