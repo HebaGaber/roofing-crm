@@ -77,6 +77,26 @@ test.describe("Fixtures still match the served run", () => {
     ).toBeGreaterThan(0);
   });
 
+  test("the Map's default roof filter (15+ years) still leaves results at the search pin, and never more than the unfiltered set", async ({
+    page,
+  }) => {
+    // The pins are measured with no roof filter (`roof=any`); the Map now opens with 15+ years.
+    const all = await radiusCount(page, EAST_TRAVIS, 3);
+    const aged = (
+      await trpc<{ counts: Counts }>(page, "search.properties", {
+        center: EAST_TRAVIS,
+        radiusMi: 3,
+        roofAgeMinYears: 15,
+        limit: 1,
+      })
+    ).counts.afterRadius;
+    expect(
+      aged,
+      `no roof of 15 years or more within 3 mi of EAST_TRAVIS: ${REFRESH}`,
+    ).toBeGreaterThan(0);
+    expect(aged).toBeLessThanOrEqual(all);
+  });
+
   for (const [name, fixture] of Object.entries(LEAD_FIXTURES)) {
     test(`lead fixture ${name} still resolves`, async ({ page }) => {
       const data = await trpc<{

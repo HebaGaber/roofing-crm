@@ -12,8 +12,14 @@
 //   history  Run 2 (travis-full-run2-20261024, bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute)
 //            was refreshed to Run 3 the same day; the pins and the open-permit lead survived unchanged
 //
-// Honest data facts behind the choices (measured on that index with the map's own default query:
-// `search.properties` with NO roof age filter, which is what the Map opens with):
+// Roof age default (PO decision 2026-10-26): the Map now opens with a roof age filter of 15 years
+// or more (README: "default suggestion: 15 years"). Every pin and count below was measured with NO
+// roof age filter, so the specs open these pins with `roof=any` (ROOF_ANY_PARAM) to keep asking the
+// same question. B-02-roof-default.spec.ts covers the default itself (15 chip pressed, same count as
+// an explicit `roof=15`, and Any gives at least as many).
+//
+// Honest data facts behind the choices (measured on that index with `search.properties` and NO
+// roof age filter, i.e. the Map opened with `roof=any`):
 //  - rows exist almost everywhere in Travis County, but their number grows fast with the radius:
 //    Central Austin has 4,488 properties within 1 mi and 73,621 within 5 mi, Pflugerville 3,955 /
 //    24,864 within 1 / 3 mi. The API answers in about 0.5 s per thousand properties (1 mi about
@@ -29,6 +35,9 @@
 // A new Task A run can move any of these. Specs therefore assert RELATIONS (results exist, widening
 // never loses results, every row is inside the ring), and where a fixed property is needed, the B-07
 // suite re-reads it from the live index and fails with a clear message when it drifted.
+
+/** The URL param that keeps the pins' unfiltered counts valid now that the Map defaults to 15. */
+export const ROOF_ANY_PARAM = "roof=any";
 
 export const FIXTURES_MANIFEST_CID = "bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai";
 export const FIXTURES_RUN_ID = "travis-full-run3-1-20261025";
@@ -50,7 +59,7 @@ export const EAST_TRAVIS: LatLng = { lat: 30.4, lng: -97.45 };
 
 /** The pin the layout suite opens through the URL (`/?lat&lng&r`): EAST_TRAVIS at 3 mi, 1,006
  *  properties, so the result list has rows and loads in about 2 s. */
-export const LAYOUT_SEARCH_PATH = `/?lat=${EAST_TRAVIS.lat}&lng=${EAST_TRAVIS.lng}&r=3`;
+export const LAYOUT_SEARCH_PATH = `/?lat=${EAST_TRAVIS.lat}&lng=${EAST_TRAVIS.lng}&r=3&${ROOF_ANY_PARAM}`;
 
 /** A pocket in north-east Travis County that is honestly empty at 0.5 mi and has results one
  *  +1 mi step wider.
@@ -68,6 +77,7 @@ export const GEORGETOWN: LatLng = { lat: 30.6333, lng: -97.678 };
 /** The perf run opens this pin and then changes the radius 6 to 25 mi, as NFR-001's test case
  *  says. */
 export const PERF_PIN: LatLng = EAST_TRAVIS;
+// (perf and the radius specs open it with `roof=any`: timings were measured on the unfiltered set.)
 
 /** A lead fixture: a real Austin property, found by CID, with the request identifier the index
  *  reports for it (the lead key is `48453:tcad:{requestIdentifier}`). */

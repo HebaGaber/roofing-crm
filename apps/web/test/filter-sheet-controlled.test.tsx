@@ -6,7 +6,7 @@
 // (chips, or any number in "Other") and this file now tests that single control, plus the
 // permit-status/permit-open-years controls which replaced the old checkbox (filter-sheet-
 // extended.test.tsx covers their own cases in more depth).
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_ROOF_AGE_YEARS } from "@crm/domain";
 import { committedRoofAge, FilterSheet } from "../src/routes/Map/FilterSheet";
@@ -30,6 +30,34 @@ function renderSheet(
 }
 
 describe("FilterSheet", () => {
+  it("shows an Any chip that is pressed only when there is no roof filter, and choosing it sends undefined", () => {
+    const onChange = vi.fn();
+    renderSheet({ onRoofAgeMinYearsChange: onChange });
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    expect(screen.getByRole("button", { name: "15" }).getAttribute("aria-pressed")).toBe("true");
+    expect(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true }))
+        .getByRole("button", { name: "Any", hidden: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true })).getByRole(
+        "button",
+        { name: "Any", hidden: true },
+      ),
+    );
+    expect(onChange).toHaveBeenCalledWith(undefined);
+    cleanup();
+    renderSheet({ roofAgeMinYears: undefined });
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    expect(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true }))
+        .getByRole("button", { name: "Any", hidden: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(screen.getByRole("button", { name: "15" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
   it("B-03-TC-011: shows the roof-age 'Other' field with the default placeholder, and no second 'Roof age' field", () => {
     renderSheet();
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));

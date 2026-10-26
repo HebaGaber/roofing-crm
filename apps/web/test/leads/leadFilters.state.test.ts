@@ -136,7 +136,7 @@ describe("leadFilters.state", () => {
   });
 
   it("Show on map carries only the keys the map reads: area, radius, roof age, permit layer", () => {
-    expect(leadsMapHref(parseLeadQuery(new URLSearchParams()))).toBe("/map");
+    expect(leadsMapHref(parseLeadQuery(new URLSearchParams()))).toBe("/map?roof=any");
     const href = leadsMapHref(
       parseLeadQuery(
         new URLSearchParams("status=won&assignee=a&roof=20&permit=open&lat=30.2&lng=-97.7&r=10"),

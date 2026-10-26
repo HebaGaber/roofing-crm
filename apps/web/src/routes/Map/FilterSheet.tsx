@@ -75,7 +75,7 @@ export interface FilterSheetProps {
    *  ("within 5 mi of the pin", "county-wide") and the run it is read from ("Run 3"). */
   readonly matchScope?: string | undefined;
   readonly runLabel?: string | undefined;
-  /** Clears the roof-age, permit and owner filters. */
+  /** Resets the filters: roof age back to the default (15), permit and owner filters off. */
   readonly onClear?: (() => void) | undefined;
 }
 
@@ -247,6 +247,16 @@ export function FilterSheet({
         <div className={styles.group}>
           <span className={styles.groupLabel}>Roof age ≥</span>
           <div className={styles.chips} role="group" aria-label="Roof age threshold">
+            {/* "Any" is an explicit choice (URL `roof=any`), not the absence of one: with no `roof`
+                param the map asks for roofs of DEFAULT_ROOF_AGE_YEARS or more. */}
+            <button
+              type="button"
+              className={`${styles.chip} ${roofAgeMinYears === undefined ? styles.chipSelected : ""}`}
+              aria-pressed={roofAgeMinYears === undefined}
+              onClick={() => onRoofAgeMinYearsChange(undefined)}
+            >
+              Any
+            </button>
             {ROOF_AGE_CHIPS.map((years) => (
               <button
                 key={years}
@@ -408,7 +418,7 @@ export function FilterSheet({
                   type="button"
                   className={styles.clearBtn}
                   disabled={
-                    roofAgeMinYears === undefined &&
+                    roofAgeMinYears === DEFAULT_ROOF_AGE_YEARS &&
                     permitStatus === "any" &&
                     permitOpenYrs === undefined &&
                     tenureYearsMin === undefined &&

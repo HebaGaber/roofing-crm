@@ -378,6 +378,8 @@ function LeadBody({
     lat: String(lead.lat),
     lng: String(lead.lon),
     r: "0.5",
+    // The map defaults to roofs of 15+ years; a lead's own neighbourhood is shown unfiltered.
+    roof: "any",
   });
 
   return (

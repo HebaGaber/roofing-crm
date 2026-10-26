@@ -45,6 +45,6 @@ serves a new run, `fixtures-valid.spec.ts` fails first and points here. Budget: 
 
 ## If a run adds roof dates
 
-The map has no roof age filter by default, so pins and counts keep working. B-07 only needs the
+The map now defaults to a roof age of 15 years or more (PO, 2026-10-26); the specs open the pins with `roof=any`, so the unfiltered pins and counts keep working. B-07 only needs the
 three lead properties to keep a roof age of 20 or more (the open-permit one also needs an open
 permit). Re-measure step 2 timings: more rows per radius can only get slower.

@@ -12,7 +12,7 @@
 // case localhost itself (B-01.spec.ts's precedent; config-guard.spec.ts + playwright.config.ts
 // already enforce "never localhost" for any RUNTIME_URL that IS set).
 import { expect, test } from "@playwright/test";
-import { EAST_TRAVIS, GEORGETOWN, ZERO_THEN_WIDEN } from "./lib/run-fixtures.js";
+import { EAST_TRAVIS, GEORGETOWN, ROOF_ANY_PARAM, ZERO_THEN_WIDEN } from "./lib/run-fixtures.js";
 import { AUTH_STATE_PATH, openSignedIn, SEEDED_PASSWORD, requirePassword } from "./lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
@@ -107,7 +107,8 @@ test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () =>
   }) => {
     requirePassword();
     if (!SEEDED_PASSWORD) return;
-    await openSignedIn(page);
+    // `roof=any`: the Map defaults to roofs of 15+ years; these counts are about the radius only.
+    await openSignedIn(page, `/?${ROOF_ANY_PARAM}`);
     await waitForMapReady(page);
 
     await clickMapAt(page, EAST_TRAVIS);
@@ -155,7 +156,7 @@ test.describe("AC-1 edge case: zero results widen to a wider radius (B-03-TC-006
     // Opened by URL, not by a click: see ZERO_THEN_WIDEN in lib/run-fixtures.ts.
     await openSignedIn(
       page,
-      `/?lat=${ZERO_THEN_WIDEN.lat}&lng=${ZERO_THEN_WIDEN.lng}&r=${ZERO_THEN_WIDEN.zeroRadiusMi}`,
+      `/?lat=${ZERO_THEN_WIDEN.lat}&lng=${ZERO_THEN_WIDEN.lng}&r=${ZERO_THEN_WIDEN.zeroRadiusMi}&${ROOF_ANY_PARAM}`,
     );
     await waitForMapReady(page);
     const radius = page.getByRole("spinbutton", { name: "Radius" });
@@ -211,7 +212,7 @@ test.describe("AC-2: GPS denied falls back to pin-drop with an explicit state (B
     requirePassword();
     if (!SEEDED_PASSWORD) return;
     // No grantPermissions call: geolocation stays denied by default in a fresh context.
-    await openSignedIn(page);
+    await openSignedIn(page, `/?${ROOF_ANY_PARAM}`);
     await waitForMapReady(page);
 
     await page.getByRole("button", { name: "Use my location" }).click();

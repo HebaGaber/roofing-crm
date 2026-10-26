@@ -7,7 +7,7 @@
 // testplans/B-03-test-cases.md's B-03-TC-NF-01 (radius change 5→25 mi, then a threshold change),
 // 20 timed runs after one untimed warm-up, p95 < 3,000 ms (architecture-constitution.md §10).
 import { expect, test } from "@playwright/test";
-import { PERF_PIN } from "./lib/run-fixtures.js";
+import { PERF_PIN, ROOF_ANY_PARAM } from "./lib/run-fixtures.js";
 import { runtimeUrl } from "./lib/runtime.js";
 import { AUTH_STATE_PATH, openSignedIn, SEEDED_PASSWORD, requirePassword } from "./lib/auth.js";
 
@@ -33,7 +33,7 @@ function summarize(valuesMs: number[]): Summary {
 /** Opens the perf pin (fixtures file) by URL at 5 mi and returns once the first search response
  *  landed and rendered. */
 async function openPinAndWait(page: import("@playwright/test").Page): Promise<void> {
-  await openSignedIn(page, `/?lat=${PERF_PIN.lat}&lng=${PERF_PIN.lng}&r=5`);
+  await openSignedIn(page, `/?lat=${PERF_PIN.lat}&lng=${PERF_PIN.lng}&r=5&${ROOF_ANY_PARAM}`);
   await page
     .locator('[data-testid="search-results"]')
     .first()
