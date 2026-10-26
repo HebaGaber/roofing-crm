@@ -31,6 +31,14 @@
 .top {
   grid-area: top;
   min-width: 0;
+  position: relative;
+}
+
+/* While the search box has focus its suggestion list opens above the map overlays (10, 20) and the
+   property drawer (30), so the list is never drawn under the Layers button, the zoom controls or
+   the drawer. At rest the bar stays under the drawer, whose own header must not be covered. */
+.top:focus-within {
+  z-index: 40;
 }
 
 .controls {
