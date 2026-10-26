@@ -26,7 +26,12 @@ import {
   type ReactElement,
 } from "react";
 import { OUT_OF_AREA_UNPUBLISHED } from "./Candidates/candidates.js";
-import { MAX_TENURE_YEARS } from "./ExploreFilters.state.js";
+import {
+  FILTER_PRESETS,
+  MAX_TENURE_YEARS,
+  presetMatches,
+  type FilterPreset,
+} from "./ExploreFilters.state.js";
 import styles from "./FilterSheet.module.css";
 
 /** The "Tenure > 10 yrs" chip sets this threshold: the filter is "N years or more", so "more than
@@ -75,6 +80,9 @@ export interface FilterSheetProps {
    *  ("within 5 mi of the pin", "county-wide") and the run it is read from ("Run 3"). */
   readonly matchScope?: string | undefined;
   readonly runLabel?: string | undefined;
+  /** Applies a Suggestions preset in one update (roof, permit and owner filters together). The
+   *  section is not shown without it. */
+  readonly onApplyPreset?: ((preset: FilterPreset) => void) | undefined;
   /** Resets the filters: roof age back to the default (15), permit and owner filters off. */
   readonly onClear?: (() => void) | undefined;
 }
@@ -138,6 +146,7 @@ export function FilterSheet({
   matchScope,
   runLabel,
   onClear,
+  onApplyPreset,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [ownOpen, setOwnOpen] = useState(false);
@@ -399,6 +408,37 @@ export function FilterSheet({
             (owner_area_class).
           </p>
         </div>
+        {onApplyPreset === undefined ? null : (
+          <div className={styles.group} data-filter-suggestions="">
+            <span className={styles.groupLabel} id={`${id}-suggestions`}>
+              Suggestions
+            </span>
+            <div className={styles.presets} role="group" aria-labelledby={`${id}-suggestions`}>
+              {FILTER_PRESETS.map((preset) => {
+                const pressed = presetMatches(preset, {
+                  roofAgeMinYears,
+                  permitStatus,
+                  permitOpenYrs,
+                  tenureYearsMin,
+                  outOfArea,
+                });
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`${styles.chip} ${styles.presetChip} ${pressed ? styles.chipSelected : ""}`}
+                    aria-pressed={pressed}
+                    data-preset={preset.id}
+                    onClick={() => onApplyPreset(preset)}
+                  >
+                    {pressed ? <Icon name="check" size="small" /> : null}
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {inline && (matchCount !== undefined || matchNote !== undefined) ? (
           <div className={styles.matchBar} data-match-bar="">
             <div className={styles.matchRow}>

@@ -82,7 +82,7 @@ import {
   rowPermitText,
   rowRoofText,
   rowSignal,
-  SUGGESTIONS,
+  SUGGESTION_GROUPS,
   throttleText,
   timedOutText,
   widenQuestion,
@@ -1357,20 +1357,28 @@ export function AskPanel({
             {state !== "idle" ? null : (
               <div className={styles.suggestions}>
                 <span className={styles.label} id="ask-suggestions">
-                  Suggestions
+                  Try one of these
                 </span>
                 <ul className={styles.suggestionList} aria-labelledby="ask-suggestions">
-                  {SUGGESTIONS.map((text) => (
-                    <li key={text}>
-                      <button
-                        type="button"
-                        className={styles.suggestion}
-                        disabled={ask.isPending}
-                        onClick={() => setQuestion(text)}
-                      >
-                        <Icon name="lightbulb" size="medium" />
-                        <span className={styles.suggestionText}>{text}</span>
-                      </button>
+                  {SUGGESTION_GROUPS.map((group) => (
+                    <li key={group.label} className={styles.suggestionGroup}>
+                      <span className={styles.suggestionGroupLabel}>{group.label}</span>
+                      <ul className={styles.suggestionList}>
+                        {group.items.map(({ golden, text }) => (
+                          <li key={golden}>
+                            <button
+                              type="button"
+                              className={styles.suggestion}
+                              disabled={ask.isPending}
+                              data-golden={golden}
+                              onClick={() => setQuestion(text)}
+                            >
+                              <Icon name="lightbulb" size="medium" />
+                              <span className={styles.suggestionText}>{text}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
                     </li>
                   ))}
                 </ul>

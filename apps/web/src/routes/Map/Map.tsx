@@ -67,6 +67,8 @@ import {
   overviewFilterNote,
   parseMapQuery,
   patchMapParams,
+  presetPatch,
+  type FilterPreset,
   RADIUS_BOUNDS,
   ROOF_ANY,
 } from "./ExploreFilters.state.js";
@@ -412,6 +414,14 @@ export function Component(): ReactElement {
   const setPermitOpenYrs = useCallback(
     (value: number | undefined) => {
       setSearchParams((prev) => patchMapParams(prev, { permitYrs: value ?? null }));
+    },
+    [setSearchParams],
+  );
+
+  // One URL update for a Suggestions preset: place and radius stay, the other filters are replaced.
+  const applyPreset = useCallback(
+    (preset: FilterPreset) => {
+      setSearchParams((prev) => patchMapParams(prev, presetPatch(preset)));
     },
     [setSearchParams],
   );
@@ -969,6 +979,7 @@ export function Component(): ReactElement {
                     : runLabel(overview.runId)
                   : runLabel(listProperties[0].runId)
               }
+              onApplyPreset={applyPreset}
               onClear={() => {
                 // One URL update: two in a row would each start from the same params.
                 setSearchParams((prev) =>
