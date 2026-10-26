@@ -31,6 +31,7 @@ import {
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
 import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
+import { BbbLink } from "../BbbLink.js";
 import { patchMapMode } from "../mapMode.js";
 import { runLabel } from "../whyLead.js";
 import styles from "./PropertyDetail.module.css";
@@ -106,31 +107,6 @@ function ContractorName({ permit }: { readonly permit: Provenanced<CrmPermit> })
     <span data-field="contractor_name_as_printed" data-reason={reason}>
       Contractor name not published · {missingReasonText("contractor_name_as_printed", reason)}
     </span>
-  );
-}
-
-/** Task A's link carries `find_type=Category`, which looks wrong for a name search and has never
- *  been opened by a person (Task A, 2026-10-26); the name search needs only text and place, so the
- *  parameter is dropped. BBB answers automated requests with a challenge, so this could not be
- *  tried in a browser test: check the results page by hand. */
-function searchHref(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.searchParams.delete("find_type");
-    return parsed.toString();
-  } catch {
-    return url;
-  }
-}
-
-/** Task A builds the BBB search link from the printed name and never fetches it, so it is a
- *  search, not a rating. Only an https URL is ever rendered as a link. */
-function BbbLink({ url }: { readonly url?: string | null }): ReactElement | null {
-  if (typeof url !== "string" || !url.startsWith("https://")) return null;
-  return (
-    <a href={searchHref(url)} target="_blank" rel="noopener noreferrer" data-field="bbb_url">
-      Search BBB for this contractor
-    </a>
   );
 }
 

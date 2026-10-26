@@ -64,6 +64,17 @@ export function WhyPanel({
                 <span className={styles.prov}>
                   {rule.source} · <CidDisplay cid={rule.cid} />
                 </span>
+                {rule.link === undefined ? null : (
+                  <a
+                    href={rule.link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-field="bbb_url"
+                  >
+                    {rule.link.label}
+                    <span className={styles.sr}> (opens in a new tab)</span>
+                  </a>
+                )}
               </div>
             </li>
           ))}

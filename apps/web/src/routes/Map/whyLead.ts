@@ -6,6 +6,7 @@ import type { LatLng } from "@crm/domain";
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { humanizeCode, roofAgeConfidenceLabel } from "../../format/index.js";
+import { bbbHref } from "./BbbLink.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 
 export interface WhyRule {
@@ -15,6 +16,8 @@ export interface WhyRule {
   /** "TCAD parcels · Run 3" */
   readonly source: string;
   readonly cid: string;
+  /** An outbound link that belongs to the rule (the contractor's BBB search). */
+  readonly link?: { readonly label: string; readonly href: string };
 }
 
 export interface WhyCoordinates {
@@ -102,6 +105,11 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
       value: `${openDurationLabel(main.openDays)} · ${contractor}`,
       source: `Austin permits · ${runLabel(main.runId)}`,
       cid: main.cid,
+      ...(bbbHref(main.bbbUrl) === null
+        ? {}
+        : {
+            link: { label: "Search BBB for this contractor", href: bbbHref(main.bbbUrl) as string },
+          }),
     });
   }
 

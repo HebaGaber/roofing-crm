@@ -29,6 +29,7 @@ import {
   roofAgeGapLabel,
   roofAgeText,
 } from "../../format/index.js";
+import { BbbLink } from "./BbbLink.js";
 import { PermitChip } from "./PermitChip.js";
 import { mainPermitOf } from "./whyLead.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
@@ -209,6 +210,12 @@ function PermitSignals({
       </p>
       <p className={styles.signal} data-field="bbb_status">
         {`BBB rating not available · ${missingReasonText("bbb_rating", reason)}`}
+        {permit.bbbUrl == null ? null : (
+          <>
+            {" · "}
+            <BbbLink url={permit.bbbUrl} label="Search BBB" />
+          </>
+        )}
       </p>
     </div>
   );

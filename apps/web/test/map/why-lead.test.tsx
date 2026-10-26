@@ -57,6 +57,8 @@ const permit = (over: Partial<Provenanced<CrmPermit>> = {}): Provenanced<CrmPerm
     contractorNameAsPrinted: "EXAMPLE ROOFING LLC",
     bbbStatus: "blocked",
     bbbStatusReason: "bbb_blocked",
+    bbbUrl:
+      "https://www.bbb.org/search?find_country=USA&find_text=EXAMPLE%20ROOFING%20LLC&find_loc=Austin%2C%20TX&find_type=Category",
     missingReasons: [],
     capturedAt: "2026-10-25T08:20:38Z",
     cid: PERMIT_CID,
@@ -184,5 +186,36 @@ describe("ResultRow", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Why is this a lead?" }));
     expect(onWhy).toHaveBeenCalledWith("baguqeeraproperty");
+  });
+});
+
+describe("BBB link", () => {
+  it("is on the expanded row and in the Why panel, without find_type, and only for https", () => {
+    const { unmount } = render(
+      <ResultRow row={property} permits={[permit()]} expanded onToggleExpanded={vi.fn()} />,
+    );
+    let href = document.querySelector("a[data-field='bbb_url']")?.getAttribute("href") ?? "";
+    expect(href).toContain("find_text=EXAMPLE");
+    expect(href).not.toContain("find_type");
+    unmount();
+    render(
+      <WhyPanel property={property} permits={[permit()]} onBack={vi.fn()} onDetails={vi.fn()} />,
+    );
+    href =
+      document
+        .querySelector("[data-why-rule='permit'] a[data-field='bbb_url']")
+        ?.getAttribute("href") ?? "";
+    expect(href).toContain("bbb.org/search");
+    expect(href).not.toContain("find_type");
+    cleanup();
+    render(
+      <ResultRow
+        row={property}
+        permits={[permit({ bbbUrl: "javascript:alert(1)" } as Partial<Provenanced<CrmPermit>>)]}
+        expanded
+        onToggleExpanded={vi.fn()}
+      />,
+    );
+    expect(document.querySelector("a[data-field='bbb_url']")).toBeNull();
   });
 });
