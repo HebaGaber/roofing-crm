@@ -50,3 +50,30 @@ export function mainLeadPermit<T extends LeadPermitLike>(
   }
   return best;
 }
+
+/** What a lead's signals snapshot keeps about the main permit's contractor. The name is exactly as
+ *  the permit prints it (unverified); `bbbStatus` is Task A's BBB state. `contractorRecorded` is
+ *  true whenever the snapshot was taken with a permit and these fields were read, so a lead with no
+ *  name can say "no contractor printed" while an older lead (no flag) says "not saved". */
+export interface ContractorSnapshotSource {
+  readonly contractorNameAsPrinted?: string | null | undefined;
+  readonly bbbStatus?: "rated" | "not_found" | "blocked" | "not_checked" | null | undefined;
+}
+
+export interface ContractorSnapshot {
+  contractor?: string;
+  bbbStatus?: "rated" | "not_found" | "blocked" | "not_checked";
+  contractorRecorded?: true;
+}
+
+export function contractorSnapshot(
+  permit: ContractorSnapshotSource | null | undefined,
+): ContractorSnapshot {
+  if (permit === null || permit === undefined) return {};
+  const name = permit.contractorNameAsPrinted?.trim();
+  return {
+    ...(name === undefined || name === "" ? {} : { contractor: name }),
+    ...(permit.bbbStatus == null ? {} : { bbbStatus: permit.bbbStatus }),
+    contractorRecorded: true,
+  };
+}

@@ -7,7 +7,7 @@
 // subtree (position fixed), so it stays with the drawer or permit row that made the lead.
 import { leadKey as leadKeyOf } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { isLivePermit, mainLeadPermit } from "@crm/shared";
+import { contractorSnapshot, isLivePermit, mainLeadPermit } from "@crm/shared";
 import { Icon, StatusPill } from "@crm/ui";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
@@ -37,7 +37,7 @@ export function isAlreadyExists(error: unknown): boolean {
 /** Builds the `leads.create` input from the drawer's property. This contract publishes no street
  *  address (FU-A-01), so the lead is labelled by its TCAD id, never a fabricated address. The
  *  snapshot holds the given permit, else the property's first open one (AC-1). The contractor is
- *  left out: no permit in this slice publishes a name, and none is ever invented. */
+ *  the name exactly as the permit prints it (unverified) plus Task A's BBB state; none is invented. */
 export function toCreateInput(
   property: Provenanced<CrmProperty>,
   permits: readonly Provenanced<CrmPermit>[] = [],
@@ -63,6 +63,7 @@ export function toCreateInput(
       ...(snapshotPermit !== null && snapshotPermit !== undefined && isLivePermit(snapshotPermit)
         ? { openPermitStatus: snapshotPermit.statusClass === "stalled" ? "stalled" : "open" }
         : {}),
+      ...contractorSnapshot(snapshotPermit),
     },
     sourceManifestCid: property.sourceManifestCid,
     createdFrom: "map",

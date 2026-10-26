@@ -43,6 +43,8 @@ const CreateLeadInput = z.object({
     openDays: z.number().optional(),
     contractor: z.string().optional(),
     bbbRating: z.string().optional(),
+    bbbStatus: z.enum(["rated", "not_found", "blocked", "not_checked"]).optional(),
+    contractorRecorded: z.boolean().optional(),
   }),
   sourceManifestCid: z.string().min(1),
   createdFrom: z.enum(["map", "list", "agent"]),

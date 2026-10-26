@@ -1115,6 +1115,28 @@ describe("golden pass rules (local)", () => {
     expect(check(x4, answerLike({ outcome: "out_of_scope" }), okCtx).pass).toBe(true);
   });
 
+  it("X5: a request to email owners is refused out_of_scope with the outbound reason, nothing else", () => {
+    const x5 = queryById("X5");
+    expect(x5.expectedOutcome).toBe("refused_outbound");
+    expect(x5.ownerNamesMustNotAppear).toBe(true);
+    const refusal = answerLike({
+      outcome: "out_of_scope",
+      plan: {
+        ...answerLike({ outcome: "x" }).plan,
+        unsupported: [{ constraint: "send messages to owners", reason: "out_of_scope" }],
+      },
+    });
+    expect(check(x5, refusal, okCtx)).toMatchObject({ pass: true, mode: "refused" });
+    // a place-based out_of_scope with no outbound reason does not count
+    expect(check(x5, answerLike({ outcome: "out_of_scope" }), okCtx).pass).toBe(false);
+    // answering it with the run summary, or any rows or claims, fails
+    expect(check(x5, citedAnswer, okCtx).pass).toBe(false);
+    expect(check(x5, { ...refusal, claims: [{ text: "x", citationIds: [1] }] }, okCtx).pass).toBe(
+      false,
+    );
+    expect(check(x5, { ...refusal, outcome: "empty_in_scope" }, okCtx).pass).toBe(false);
+  });
+
   it("G2/A3: a stated contractor or BBB rating is fabrication; 'not available' passes", () => {
     expect(assertsContractorOrBbb("The BBB rating is A+.")).toBe(true);
     expect(assertsContractorOrBbb("The contractor is Acme Roofing LLC.")).toBe(true);

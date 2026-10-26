@@ -6,6 +6,7 @@ import { createObservability } from "@crm/observability";
 import type { QueryPlan } from "@crm/shared";
 import {
   applyInheritance,
+  PLAN_SYSTEM_PROMPT,
   repairLookupPermitWithoutNumber,
   repairPlanFromQuestion,
   roofBasisPhrase,
@@ -388,5 +389,81 @@ describe("Run 3.1: stalled permits are open and not progressing, and the answer 
     const prompt = JSON.stringify(model.doGenerateCalls[1]?.prompt);
     expect(prompt).toMatch(/permitStatus/);
     expect(prompt).toMatch(/open and not progressing/);
+  });
+});
+
+describe("outbound messaging is refused at the scope gate (X5)", () => {
+  const OUTBOUND_Q = "Email the owners of those properties about a free roof inspection";
+  const nearPlan = planText({
+    intent: "find_properties",
+    area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+    filters: { roofAgeMinYears: 15 },
+    slotSources: { roofAgeMinYears: "default", radiusMi: "default" },
+  });
+
+  it("refuses with out_of_scope, runs no search, and records why in plan.unsupported", async () => {
+    const index = new FakeLeadIndex([property({ ownerName: "JANE Q SMITH" })]);
+    // Only the plan call is scripted: a second (compose) model call would throw.
+    const { run } = ask(OUTBOUND_Q, [nearPlan], index);
+    const answer = await run;
+    expect(answer.outcome).toBe("out_of_scope");
+    expect(answer.plan.unsupported).toContainEqual({
+      constraint: "send messages to owners",
+      reason: "out_of_scope",
+    });
+    expect(answer.claims).toEqual([]);
+    expect(answer.citations).toEqual([]);
+    expect(answer.rows ?? []).toEqual([]);
+    expect(answer.counts.matched).toBe(0);
+    expect(index.searchPropertiesCalls).toHaveLength(0);
+    expect(index.searchPermitsCalls).toHaveLength(0);
+    expect(JSON.stringify(answer)).not.toMatch(/JANE/);
+  });
+
+  it("refuses even when the plan model reads the request as a place the gazetteer does not know", async () => {
+    const index = new FakeLeadIndex([property()]);
+    const odd = planText({
+      intent: "find_properties",
+      area: { kind: "place", query: "those properties", radiusMi: 5 },
+      filters: {},
+      slotSources: {},
+    });
+    const answer = await ask(OUTBOUND_Q, [odd], index).run;
+    expect(answer.outcome).toBe("out_of_scope");
+    expect(index.searchPropertiesCalls).toHaveLength(0);
+  });
+
+  it("honours the model's own out_of_scope marker for a request the words do not catch", async () => {
+    const index = new FakeLeadIndex([property()]);
+    const flagged = planText({
+      intent: "find_properties",
+      area: { kind: "place", query: "Pflugerville", radiusMi: 5 },
+      filters: {},
+      slotSources: {},
+      unsupported: [{ constraint: "send messages to owners", reason: "out_of_scope" }],
+    });
+    const answer = await ask("Drop the roofers a line about those", [flagged], index).run;
+    expect(answer.outcome).toBe("out_of_scope");
+    expect(index.searchPropertiesCalls).toHaveLength(0);
+  });
+
+  it("does not refuse ordinary questions that mention owners, contact or mail", async () => {
+    for (const q of [
+      ROOF_Q,
+      "Which properties near Pflugerville have owners with a mailing address outside the area?",
+      "What is the contact for the owners of 0208011301?",
+      "List the owner names and send them to the model so it can draft a mailing list.",
+    ]) {
+      const index = new FakeLeadIndex([property({ roofAgeYears: 32 })]);
+      const answer = await ask(q, [roofPlan, NOT_JSON], index).run;
+      expect(answer.outcome, q).not.toBe("out_of_scope");
+    }
+  });
+
+  it("the plan prompt tells the model how to mark a messaging request out of scope", () => {
+    expect(PLAN_SYSTEM_PROMPT).toMatch(/never sends messages/);
+    expect(PLAN_SYSTEM_PROMPT).toMatch(
+      /"constraint":"send messages to owners","reason":"out_of_scope"/,
+    );
   });
 });

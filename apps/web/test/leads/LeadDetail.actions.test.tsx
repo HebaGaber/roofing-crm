@@ -197,8 +197,8 @@ describe("LeadDetail signals", () => {
     for (const reason of [
       "Roof age not available",
       "No open permit at capture",
-      "Contractor not published",
-      "Not checked · no name to look up",
+      "Not saved with the lead (created before the contractor was recorded)",
+      "Not saved with the lead",
     ]) {
       expect(screen.getByText(reason)).toBeTruthy();
     }

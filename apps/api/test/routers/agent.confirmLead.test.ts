@@ -168,6 +168,40 @@ describe("agent.confirmLead (T028)", () => {
     expect(by).toBe("rep-1");
   });
 
+  it("saves the main permit's printed contractor and BBB state in the lead's signals", async () => {
+    const printed = {
+      ...permitRow("2025-100", "open", 200),
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbStatus: "not_checked",
+    } as unknown as Provenanced<CrmPermit>;
+    const { c, leadService } = ctx([property()], undefined, [printed]);
+
+    await c.agent.confirmLead({ threadId: "thread-1", tcadId: TCAD_ID });
+
+    const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
+    expect(input.signals).toMatchObject({
+      openPermitId: "2025-100",
+      contractor: "ACME ROOFING LLC",
+      bbbStatus: "not_checked",
+      contractorRecorded: true,
+    });
+  });
+
+  it("records that the main permit printed no contractor (flag set, no name)", async () => {
+    const bare = {
+      ...permitRow("2025-100", "open", 200),
+      contractorNameAsPrinted: null,
+      bbbStatus: null,
+    } as unknown as Provenanced<CrmPermit>;
+    const { c, leadService } = ctx([property()], undefined, [bare]);
+
+    await c.agent.confirmLead({ threadId: "thread-1", tcadId: TCAD_ID });
+
+    const [input] = leadService.create.mock.calls[0] as [CreateLeadInput, string];
+    expect(input.signals).not.toHaveProperty("contractor");
+    expect(input.signals).toMatchObject({ contractorRecorded: true });
+  });
+
   it("records the manifest the property row came from, not a CID pinned in code", async () => {
     // Any other valid CIDv1: proves the value is read from the row's own provenance.
     const otherManifestCid = "bafkreihkjrwg3dobc3emke5j5q2xk63746pxjhg6galvr5kibcseboc6ha";
@@ -210,6 +244,7 @@ describe("agent.confirmLead (T028)", () => {
       openPermitId: "2022-3",
       openDays: 400,
       openPermitStatus: "stalled",
+      contractorRecorded: true,
     });
   });
 

@@ -33,6 +33,11 @@ export const LeadSignals = z.object({
   contractor: z.string().optional(),
   /** Only shown as a rating when bbb_status = rated (constitution P0-4); otherwise a missing reason. */
   bbbRating: z.string().optional(),
+  /** Task A's BBB state for the saved permit's contractor (no rating is published). Absent on older leads. */
+  bbbStatus: z.enum(["rated", "not_found", "blocked", "not_checked"]).optional(),
+  /** True when the snapshot read the permit's contractor fields, so no `contractor` then means the
+   *  permit printed none. Absent on leads saved before this was recorded ("not saved with the lead"). */
+  contractorRecorded: z.boolean().optional(),
   capturedAt: z.string(),
 });
 export type LeadSignals = z.infer<typeof LeadSignals>;

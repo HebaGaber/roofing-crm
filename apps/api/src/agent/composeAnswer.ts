@@ -34,7 +34,10 @@ import {
 } from "@crm/domain";
 import { z } from "zod";
 import {
+  asksToContactOwners,
   classifyPlaceConfidence,
+  isOutboundConstraint,
+  OUTBOUND_CONSTRAINT,
   QueryPlan as QueryPlanSchema,
   type AgentAnswer,
   type AnswerRow,
@@ -138,6 +141,9 @@ export const PLAN_SYSTEM_PROMPT =
   " only when the question is about roofs and the rep didn't state it, and " +
   'record that in slotSources as "default". Put any constraint this shape cannot express in ' +
   "unsupported. Never invent a place outside Travis County. " +
+  "This CRM never sends messages: if the rep asks to email, text, call, mail or otherwise contact " +
+  'owners or anyone, put {"constraint":"send messages to owners","reason":"out_of_scope"} in ' +
+  "unsupported (the rest of the plan may stay as best you can read it). " +
   "area.query holds ONLY the place name (or ZIP), never the question, a radius or a filter; " +
   "the radius goes in radiusMi and everything else in filters. A permit condition on a property " +
   'question ("with a stalled roofing permit", "an open permit", "permit open 5+ years") always ' +
@@ -1737,6 +1743,24 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       ...(candidates === undefined ? {} : { candidates }),
       ...stats(),
     });
+
+    // Outbound messaging is out of scope (README; outreach is "Coming soon"): refuse before any
+    // search, whether the plan model flagged it or the question's own words say so.
+    if (
+      asksToContactOwners(question) ||
+      plan.unsupported.some(
+        (u) => u.reason === "out_of_scope" && isOutboundConstraint(u.constraint),
+      )
+    ) {
+      plan = {
+        ...plan,
+        unsupported: [
+          ...plan.unsupported.filter((u) => !isOutboundConstraint(u.constraint)),
+          { constraint: OUTBOUND_CONSTRAINT, reason: "out_of_scope" },
+        ],
+      };
+      return blocked("out_of_scope", 0);
+    }
 
     // Step 4 + 5: scope gate by intent, then deterministic dispatch. No model call here; only an
     // in-scope area reaches a search.

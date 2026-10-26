@@ -10,11 +10,14 @@
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
 export { UNDO_WINDOW_MS } from "./leads/undoWindow.js";
 export {
+  contractorSnapshot,
   isFinaledPermit,
   isLivePermit,
   LIVE_PERMIT_STATUS_CLASSES,
   mainLeadPermit,
   permitStatusClassesFor,
+  type ContractorSnapshot,
+  type ContractorSnapshotSource,
   type LeadPermitLike,
 } from "./leads/mainLeadPermit.js";
 export { Session } from "./schemas/session.js";
@@ -33,6 +36,12 @@ export {
   LeadStatus,
 } from "./schemas/lead.js";
 export { QueryPlan } from "./agent/queryPlan.js";
+export {
+  asksToContactOwners,
+  isOutboundConstraint,
+  OUTBOUND_CONSTRAINT,
+  OUTBOUND_REFUSAL_TEXT,
+} from "./agent/outbound.js";
 export { AgentAnswer, AnswerRow, answerPins, type AnswerPin } from "./agent/answer.js";
 export { AGENT_TURN_LIMIT_MS } from "./agent/limits.js";
 export {
