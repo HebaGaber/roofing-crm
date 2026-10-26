@@ -57,9 +57,12 @@ async function clickMapAt(
       if (hexes.length === 0) break;
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
+    // A real click carries its DOM event; MapLibre's own marker handler reads `originalEvent.target`
+    // and throws without it once a marker (the search pin) is on the map.
     map.fire("click", {
       lngLat: { lng: p.lng, lat: p.lat },
       point: { x: projected.x, y: projected.y },
+      originalEvent: { target: document.body },
     });
     return true;
   }, point);
