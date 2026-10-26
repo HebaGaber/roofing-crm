@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isFinaledPermit,
   isLivePermit,
   mainLeadPermit,
   permitStatusClassesFor,
@@ -42,5 +43,25 @@ describe("permitStatusClassesFor (the one Open / Stalled / Any definition)", () 
       const sent = permitStatusClassesFor("open") ?? [];
       expect(sent.includes(statusClass as "open")).toBe(isLivePermit({ statusClass }));
     }
+  });
+});
+
+describe("a finaled permit is never live (Task A classes some finaled permits as stalled)", () => {
+  it("excludes an open or stalled permit that has a finalDate", () => {
+    expect(isFinaledPermit({ finalDate: "1991-04-15" })).toBe(true);
+    expect(isFinaledPermit({ finalDate: null })).toBe(false);
+    expect(isFinaledPermit({})).toBe(false);
+    expect(isLivePermit({ statusClass: "stalled", finalDate: "1991-04-15", openDays: null })).toBe(
+      false,
+    );
+    expect(isLivePermit({ statusClass: "open", finalDate: "2020-01-02" })).toBe(false);
+    expect(isLivePermit({ statusClass: "stalled", finalDate: null, openDays: 900 })).toBe(true);
+  });
+
+  it("never picks a finaled permit as the main one", () => {
+    const finaled = { id: "f", statusClass: "stalled", finalDate: "1991-04-15", openDays: 9000 };
+    const live = { id: "l", statusClass: "open", finalDate: null, openDays: 10 };
+    expect(mainLeadPermit([finaled, live])).toBe(live);
+    expect(mainLeadPermit([finaled])).toBeNull();
   });
 });

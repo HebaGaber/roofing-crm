@@ -49,7 +49,8 @@ beforeAll(async () => {
   await w.run(`COPY (SELECT 'p' || (random() * ${PROPS - 1})::INTEGER AS "propertyCid",
       'c' || i AS "permitCid", 'N-' || i AS "permitNumber",
       CASE WHEN random() < 0.3 THEN 'open' WHEN random() < 0.4 THEN 'stalled' ELSE 'closed' END AS "statusClass",
-      (random() * 4000)::INTEGER AS "openDays"
+      (random() * 4000)::INTEGER AS "openDays",
+      CAST(NULL AS VARCHAR) AS "finalDate"
     FROM range(${PERMITS}) t(i)) TO '${join(dir, "crm_permit.parquet")}' (FORMAT parquet)`);
   const readAll = async (sql: string) => (await w.runAndReadAll(sql)).getRowObjectsJS();
   properties = (await readAll(

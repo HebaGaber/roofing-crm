@@ -11,19 +11,33 @@ import { isLongOpen } from "@crm/domain";
 import { StatusPill } from "@crm/ui";
 import type { CrmPermit, Missing } from "@crm/index-schema";
 import type { ReactElement } from "react";
-import { openDurationText, permitStatusShortLabel } from "../../format/index.js";
+import {
+  finaledPermitLabel,
+  openDurationText,
+  permitStatusShortLabel,
+} from "../../format/index.js";
 
 export interface PermitChipProps {
-  readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber"> & {
-    /** The permit's `missing` entries: the reason an empty open duration shows. */
-    readonly missingReasons?: readonly Missing[];
-  };
+  readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber"> &
+    Partial<Pick<CrmPermit, "finalDate">> & {
+      /** The permit's `missing` entries: the reason an empty open duration shows. */
+      readonly missingReasons?: readonly Missing[];
+    };
 }
 
 export function PermitChip({ permit }: PermitChipProps): ReactElement {
+  const finaled = finaledPermitLabel(permit.statusClass, permit.finalDate);
+  if (finaled !== null) {
+    // Finished: no open duration is shown, and the class is not trusted as "stalled".
+    return (
+      <span data-permit-chip="finaled" data-open-days="" data-long-open={false}>
+        <StatusPill status="verified" text={finaled} />
+      </span>
+    );
+  }
   const longOpen = isLongOpen(permit.openDays);
   const label = openDurationText(permit);
-  const statusLabel = permitStatusShortLabel(permit.statusClass);
+  const statusLabel = permitStatusShortLabel(permit.statusClass, permit.finalDate);
   return (
     <span
       data-permit-chip={permit.statusClass ?? ""}

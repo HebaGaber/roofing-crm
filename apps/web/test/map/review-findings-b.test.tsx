@@ -109,10 +109,28 @@ describe("drawer: permit card", () => {
   });
 
   it("D3: stalled keeps the derived wording on a warning pill", () => {
-    const d = drawer([makePermit({ statusClass: "stalled", openDays: 900, missingReasons: [] })]);
+    const d = drawer([
+      makePermit({ statusClass: "stalled", openDays: 900, finalDate: null, missingReasons: [] }),
+    ]);
     const pill = d.querySelector("[data-field='status_class']");
     expect(pill?.textContent).toContain("Stalled · derived: no status in source");
     expect(pill?.className).toMatch(/warning/);
+  });
+
+  it("a stalled permit with a final date reads Finaled, never Stalled, and shows no Open for", () => {
+    const d = drawer([
+      makePermit({
+        statusClass: "stalled",
+        openDays: null,
+        finalDate: "1991-04-15",
+        missingReasons: [{ field: "open_days", reason: "not_open" }],
+      }),
+    ]);
+    const pill = d.querySelector("[data-field='status_class']");
+    expect(pill?.textContent).toBe("Finaled Apr 15, 1991 (status not in source)");
+    expect(pill?.textContent).not.toMatch(/Stalled/);
+    expect(d.querySelector("[data-field='open_days']")).toBeNull();
+    expect(d.textContent).not.toContain("Open for");
   });
 
   it("D12/D17: BBB and contractor read the permit's own entries; no drawer-level fallback", () => {

@@ -10,6 +10,7 @@
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
 export { UNDO_WINDOW_MS } from "./leads/undoWindow.js";
 export {
+  isFinaledPermit,
   isLivePermit,
   LIVE_PERMIT_STATUS_CLASSES,
   mainLeadPermit,

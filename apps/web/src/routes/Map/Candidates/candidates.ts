@@ -78,7 +78,8 @@ export function compassBearing(from: LatLng, to: LatLng): string {
 function permitPasses(permit: CandidatePermit, filters: CandidateFilters): boolean {
   const status = filters.permitStatus ?? "any";
   if (status === "open" && !isLivePermit(permit)) return false;
-  if (status === "stalled" && permit.statusClass !== "stalled") return false;
+  if (status === "stalled" && !(permit.statusClass === "stalled" && isLivePermit(permit)))
+    return false;
   if (filters.permitOpenYrs !== undefined) {
     if (permit.openDays === null || permit.openDays / DAYS_PER_YEAR < filters.permitOpenYrs)
       return false;

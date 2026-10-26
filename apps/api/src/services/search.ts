@@ -10,6 +10,7 @@ import {
   MAX_PERMIT_ROWS as DOMAIN_MAX_PERMIT_ROWS,
   MAX_PROPERTY_ROWS as DOMAIN_MAX_PROPERTY_ROWS,
 } from "@crm/domain";
+import { isLivePermit } from "@crm/shared";
 import type {
   AddressMatch,
   CountyOverview,
@@ -218,7 +219,13 @@ export async function searchPermits(
     });
     if (input.statusClass !== undefined) {
       const allowed = new Set<string>(input.statusClass);
-      all = all.filter((p) => p.statusClass !== null && allowed.has(p.statusClass));
+      // open and stalled are live classes: a permit with a final date is finished (isLivePermit).
+      all = all.filter(
+        (p) =>
+          p.statusClass !== null &&
+          allowed.has(p.statusClass) &&
+          (p.statusClass === "closed" || isLivePermit(p)),
+      );
     }
     if (input.openDaysMin !== undefined) {
       const minDays = input.openDaysMin;

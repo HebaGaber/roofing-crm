@@ -33,6 +33,7 @@ interface PermitRow {
   cid: string;
   status: string | null;
   openDays: number | null;
+  finalDate?: string | null;
 }
 
 /** Deterministic points over Travis County (a fixed LCG, so the test never flakes). */
@@ -74,6 +75,9 @@ const KNOWN_PERMITS: PermitRow[] = [
   { cid: "a3", status: "stalled", openDays: 2_000 },
   { cid: "f1", status: "open", openDays: 90 },
   { cid: "x1", status: "open", openDays: 50 },
+  // Finaled, but Task A classed it stalled (no status): finished, so no count includes it.
+  { cid: "a1", status: "stalled", openDays: null, finalDate: "1991-04-15" },
+  { cid: "f1", status: "open", openDays: null, finalDate: "2001-02-03" },
 ];
 
 const sqlString = (v: string | null): string =>
@@ -99,14 +103,15 @@ function propertySelect(rows: readonly Row[]): string {
 
 function permitSelect(rows: readonly PermitRow[]): string {
   if (rows.length === 0) {
-    return `SELECT CAST(NULL AS VARCHAR) AS "propertyCid", CAST(NULL AS VARCHAR) AS "statusClass", CAST(NULL AS INTEGER) AS "openDays" WHERE FALSE`;
+    return `SELECT CAST(NULL AS VARCHAR) AS "propertyCid", CAST(NULL AS VARCHAR) AS "statusClass", CAST(NULL AS INTEGER) AS "openDays", CAST(NULL AS VARCHAR) AS "finalDate" WHERE FALSE`;
   }
   const values = rows
     .map(
-      (p) => `(${sqlString(p.cid)}, ${sqlString(p.status)}, ${sqlNumber(p.openDays, "INTEGER")})`,
+      (p) =>
+        `(${sqlString(p.cid)}, ${sqlString(p.status)}, ${sqlNumber(p.openDays, "INTEGER")}, ${p.finalDate === undefined ? "CAST(NULL AS VARCHAR)" : sqlString(p.finalDate)})`,
     )
     .join(", ");
-  return `SELECT * FROM (VALUES ${values}) AS t("propertyCid", "statusClass", "openDays")`;
+  return `SELECT * FROM (VALUES ${values}) AS t("propertyCid", "statusClass", "openDays", "finalDate")`;
 }
 
 const ddbMock = mockClient(DynamoDBDocumentClient);

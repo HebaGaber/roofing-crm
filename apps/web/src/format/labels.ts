@@ -3,6 +3,7 @@
 // on a missing code); an open string (property usage, a future status class) is humanized,
 // never shown raw.
 import type { CrmProperty } from "@crm/index-schema";
+import { formatDate } from "./date.js";
 
 /** `SingleFamily` / `built_year` / `MOBILE_HOME` → `Single family` / `Built year` / `Mobile home`. */
 export function humanizeCode(code: string): string {
@@ -72,14 +73,39 @@ const PERMIT_STATUS_SHORT: Readonly<Record<string, string>> = {
   closed: "Closed",
 };
 
-/** Short status for chips and legends: `Open`, `Stalled`, `Closed`. */
-export function permitStatusShortLabel(statusClass: string | null): string {
+/** A permit with a final date is finished, whatever its class says: Task A classes a finaled
+ *  permit that has no status as "stalled". Says so, and why the class is not trusted: `Finaled
+ *  Apr 15, 1991 (status not in source)`. Null when the permit is not an open/stalled one with a
+ *  final date. */
+export function finaledPermitLabel(
+  statusClass: string | null,
+  finalDate: string | null | undefined,
+): string | null {
+  if (statusClass !== "open" && statusClass !== "stalled") return null;
+  if (finalDate === null || finalDate === undefined || finalDate === "") return null;
+  const when = formatDate(finalDate) ?? "date unreadable";
+  return statusClass === "stalled"
+    ? `Finaled ${when} (status not in source)`
+    : `Finaled ${when} (source status: open)`;
+}
+
+/** Short status for chips and legends: `Open`, `Stalled`, `Closed`; `Finaled …` when the permit
+ *  has a final date. */
+export function permitStatusShortLabel(
+  statusClass: string | null,
+  finalDate?: string | null,
+): string {
+  const finaled = finaledPermitLabel(statusClass, finalDate);
+  if (finaled !== null) return finaled;
   if (statusClass === null) return "Status not published";
   return PERMIT_STATUS_SHORT[statusClass] ?? humanizeCode(statusClass);
 }
 
-/** Full status for the drawer: stalled is labelled as derived (design-review-log row 6). */
-export function permitStatusLabel(statusClass: string | null): string {
+/** Full status for the drawer: stalled is labelled as derived (design-review-log row 6); a
+ *  permit with a final date is labelled as finaled, never as stalled. */
+export function permitStatusLabel(statusClass: string | null, finalDate?: string | null): string {
+  const finaled = finaledPermitLabel(statusClass, finalDate);
+  if (finaled !== null) return finaled;
   if (statusClass === "stalled") return "Stalled · derived: no status in source";
   return permitStatusShortLabel(statusClass);
 }

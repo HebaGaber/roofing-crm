@@ -30,6 +30,7 @@ import {
   missingReasonText,
   openDurationText,
   ownerAreaPill,
+  finaledPermitLabel,
   permitStatusLabel,
   permitsSourceLabel,
   propertySubtitle,
@@ -196,13 +197,15 @@ function PermitDetail({
         </span>
         <StatusPill
           status={
-            permit.statusClass === "open" ||
-            permit.statusClass === "stalled" ||
-            permit.statusClass === "closed"
-              ? PERMIT_STATUS_PILL[permit.statusClass]
-              : "unavailable"
+            finaledPermitLabel(permit.statusClass, permit.finalDate) !== null
+              ? PERMIT_STATUS_PILL.closed
+              : permit.statusClass === "open" ||
+                  permit.statusClass === "stalled" ||
+                  permit.statusClass === "closed"
+                ? PERMIT_STATUS_PILL[permit.statusClass]
+                : "unavailable"
           }
-          text={permitStatusLabel(permit.statusClass)}
+          text={permitStatusLabel(permit.statusClass, permit.finalDate)}
           data={{ field: "status_class" }}
         />
       </header>
@@ -218,12 +221,14 @@ function PermitDetail({
             {finaled === null ? " · not finaled" : ` · finaled ${finaled}`}
           </dd>
         </div>
-        <div className={styles.permitField}>
-          <dt>Open for</dt>
-          <dd data-field="open_days">
-            <OpenForValue permit={permit} />
-          </dd>
-        </div>
+        {finaledPermitLabel(permit.statusClass, permit.finalDate) === null ? (
+          <div className={styles.permitField}>
+            <dt>Open for</dt>
+            <dd data-field="open_days">
+              <OpenForValue permit={permit} />
+            </dd>
+          </div>
+        ) : null}
         <div className={styles.permitField}>
           <dt>Contractor, as printed on permit</dt>
           <dd>

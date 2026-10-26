@@ -76,6 +76,7 @@ beforeAll(async () => {
       'c' || i AS "permitCid", CASE WHEN i = 7 THEN '1981-001776 BP' ELSE 'N-' || i END AS "permitNumber",
       CASE WHEN random() < 0.15 THEN 'open' WHEN random() < 0.3 THEN 'stalled' ELSE 'closed' END AS "statusClass",
       CASE WHEN random() < 0.4 THEN NULL ELSE (random() * 4000)::INTEGER END AS "openDays",
+      CAST(NULL AS VARCHAR) AS "finalDate",
       repeat('x', 400) AS "padding"
     FROM range(${PERMITS}) t(i)) TO '${join(dir, "crm_permit.parquet")}' (FORMAT parquet)`);
   const readAll = async (sql: string) => (await w.runAndReadAll(sql)).getRowObjectsJS();

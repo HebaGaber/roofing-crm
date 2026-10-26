@@ -248,7 +248,7 @@ export function createLeadService(
               filters.permitStatus === undefined ||
               (filters.permitStatus === "open"
                 ? isLivePermit(p)
-                : p.statusClass === filters.permitStatus),
+                : p.statusClass === filters.permitStatus && isLivePermit(p)),
           )
           .map((p) => p.propertyCid),
       );
