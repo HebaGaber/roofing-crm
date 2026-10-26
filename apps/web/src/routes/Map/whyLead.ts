@@ -4,6 +4,7 @@
 // does not carry is left out rather than shown as met.
 import type { LatLng } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+import { isLivePermit, mainLeadPermit } from "@crm/shared";
 import {
   SOURCE_PARCELS_LABEL,
   coordinateSourceLabel,
@@ -56,26 +57,21 @@ export function roofSourceLabel(property: Pick<CrmProperty, "roofAgeBasis">): st
   return property.roofAgeBasis === "permit" ? SOURCE_PERMITS_LABEL : SOURCE_PARCELS_LABEL;
 }
 
-/** A roofing permit (any roofing permit, not only a reroof) that is open, stalled or never
- *  finaled: it is not counted as a reroof, so a roof age based on year built may be older than the
- *  roof really is. Own permits only. */
+/** A roofing permit (any roofing permit, not only a reroof) that is still live: open or stalled.
+ *  It is not counted as a reroof, so a roof age based on year built may be older than the roof
+ *  really is. A closed permit with no final date is not live (the contract's `status_class` is the
+ *  one source of "open", ASM-3), and neither is one with no status. Own permits only. */
 export function hasUnfinaledRoofPermit(
-  permits: readonly Pick<CrmPermit, "statusClass" | "finalDate">[] | undefined,
+  permits: readonly Pick<CrmPermit, "statusClass">[] | undefined,
 ): boolean {
-  return (permits ?? []).some(
-    (p) => p.statusClass === "open" || p.statusClass === "stalled" || p.finalDate == null,
-  );
+  return (permits ?? []).some(isLivePermit);
 }
 
-/** The open or stalled permit open longest: the lead's main signal (candidates.ts uses the same). */
+/** The open or stalled permit open longest: the lead's main signal (the shared rule). */
 export function mainPermitOf(
   permits: readonly Provenanced<CrmPermit>[] | undefined,
 ): Provenanced<CrmPermit> | null {
-  const live = (permits ?? []).filter(
-    (p) => p.statusClass === "open" || p.statusClass === "stalled",
-  );
-  if (live.length === 0) return null;
-  return [...live].sort((a, b) => (b.openDays ?? -1) - (a.openDays ?? -1))[0] ?? null;
+  return mainLeadPermit(permits);
 }
 
 export interface WhyInput {

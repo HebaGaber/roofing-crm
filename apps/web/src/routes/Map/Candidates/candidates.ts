@@ -13,7 +13,7 @@ import {
   type LatLng,
 } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import type { LeadStatus } from "@crm/shared";
+import { mainLeadPermit, type LeadStatus } from "@crm/shared";
 import {
   permitStatusShortLabel,
   propertySubtitle,
@@ -72,9 +72,6 @@ export function compassBearing(from: LatLng, to: LatLng): string {
   const deg = (Math.atan2(y, x) / rad + 360) % 360;
   return COMPASS[Math.round(deg / 45) % 8] ?? "N";
 }
-
-const isOpenOrStalled = (p: CandidatePermit): boolean =>
-  p.statusClass === "open" || p.statusClass === "stalled";
 
 function permitPasses(permit: CandidatePermit, filters: CandidateFilters): boolean {
   const status = filters.permitStatus ?? "any";
@@ -270,9 +267,7 @@ export function buildCandidates(
   for (const property of properties) {
     const own = byProperty.get(property.propertyCid) ?? [];
     if (permitFilter && own.length === 0) continue;
-    const mainPermit =
-      [...own].filter(isOpenOrStalled).sort((a, b) => (b.openDays ?? -1) - (a.openDays ?? -1))[0] ??
-      null;
+    const mainPermit = mainLeadPermit(own);
     const point =
       property.latitude === null || property.longitude === null
         ? null

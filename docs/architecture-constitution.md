@@ -214,6 +214,7 @@ Each row traces to the read-only consults in `docs/decisions/0000-agent-architec
 | `packages/domain` | Pure rules (§ 5), shared by web, api, sync and the agent | Pure functions, no I/O | Perform I/O, import AWS SDK or React |
 | `packages/index-schema` | Zod + TS for `crm_property`, `crm_permit`, `index_meta`, `Provenanced<T>` | Shared reader (api) / writer (sync) schema | Diverge between reader and writer |
 | `packages/oracle-contract`, `packages/oracle-views` | Vendored, pinned copies of Task A's `contract` and `query-core` (ADR-07), with a header naming the source commit | Used only by `apps/sync` and the agent's place resolver | Be imported by `apps/web`; be edited to add CRM-specific logic |
+| `packages/travis-austin@1.0.0` | The vendored Task A profile (`@crm/oracle-profile-travis-austin`): the versioned permit-classification `rules.json` for Travis County (include and exclude terms, status map) with its `DIGEST` (sha256) and changelog | Read by the sync's profile-digest guard, which holds the sync when a manifest's `profiles[].sha256` differs from this digest (ADR-07) | Be edited in place (a rule change needs a new version directory, digest and changelog entry); be imported by `apps/web` |
 | `packages/api-client` | The only tRPC client factory + React Query hooks + `AppRouter` type re-export | Consumed by `apps/web` only | Be bypassed by any other package |
 | `packages/ui` | Atlas-token components (`ProvenanceLine`, `MissingValue`, `DataChip`, …) | Design-system components only | Contain business rules or fetch data itself |
 | `packages/config` | Zod-parsed runtime config (region, `AI_PROVIDER`, model ids, source hosts, thresholds) | Fails fast at cold start | Hard-code a region, model id, or threshold anywhere else in the codebase |
@@ -239,7 +240,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 | Agent | First useful answer p95 < 20 s; server abort 23 s; ≤ 3 model calls per ask; 5 asks/min/user; $3/day cap | Golden-query Vitest ×20 against the deployed endpoint |
 | Agent groundedness | 100% of cited CIDs exist in the current index; 0 invented addresses, names or ratings; recall ≥ 80% of top-N against `query-core` SQL | Server-side citation gate + golden replay |
 | Cost | Idle cost ≤ $1/month excluding credits-covered requests (search store is DuckDB/S3, ADR-01); budget alerts at **$10 actual / $20 forecast** | AWS Budgets, cost tags `Project=roofing-crm` |
-| Security | JWT on every route except `health.ping`; S3 private (Block Public Access, SSE, `enforceSSL`); no secrets in git, logs, or CDK context; owner names never in the index, prompts, or logs (ADR-03) | cdk-nag, log-grep test, review |
+| Security | JWT on every route except `health.ping`; S3 private (Block Public Access, SSE, `enforceSSL`); no secrets in git, logs, or CDK context; owner names are indexed and shown in the UI but never sent to the model and never logged: the agent strips them with `withoutOwnerName` (ADR-03, amended 2026-10-25) | cdk-nag, log-grep test, review |
 | Responsive and accessibility | 390 / 768 / 1440 all pass; WCAG 2.2 AA contrast via Atlas tokens; hit areas 48 px (24 px map markers); disabled sections use `aria-disabled` with a tooltip | `smeargle` suite |
 | Observability | Every Lambda emits Powertools Logger/Tracer/Metrics with X-Ray; one self-resolving alarm per DLQ; one dashboard, namespace `RoofingCrm` | CloudWatch; trace ID in each evidence file |
 
@@ -250,6 +251,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 - **Strategy:** Amplify atomic deploys for `apps/web` (branch previews on `0NN-*` branches, all sharing the one deployed API through the `/api/*` rewrite — so every API change must be additive) plus `cdk deploy` for every backend stack, deployed in order: `CrmData` → `CrmSync` → `CrmApi` → `CrmWeb` → `CrmDomain` → `CrmOps`.
 - **Rollback (web):** Amplify "redeploy previous build" — the Blue/Green equivalent for the hosted site.
 - **Rollback (index):** one DynamoDB write — set `META#index.current` back to `previous`. Because every run gets its own `index/{manifestCid}/` folder, rollback needs no migration and no re-sync.
+- **Data removal (demo-project exception):** the `crm-leads` DynamoDB table and the index S3 bucket use `RemovalPolicy.DESTROY` (Article III addendum), so deleting the `CrmData` stack deletes them. The index is re-syncable from Task A's published CIDs; the leads table is not, which is why it has point-in-time recovery. A production deployment would switch both to `RETAIN`.
 - **Rollback (infra):** `cdk deploy` from the previous git tag/commit for the affected stack; stacks share values through typed CDK props, never name-string imports, so a partial rollback of one stack cannot silently break another.
 - **CI:** `just setup → format → lint → type-check → test → build (vite build + cdk synth --strict with cdk-nag)` on every PR and story-branch push. No automatic deploy from CI — merging to `main` is forbidden, so the `feature/roofing-crm` branch (plus its Amplify preview) is production for this assessment.
 - Detailed CDK construct patterns (one construct per concern, L2-first, least-privilege `grant*`, `cdk-nag` per stack) and the test pyramid (unit → contract → lead-transaction concurrency → API → Playwright → `smeargle`) are `apply-engineering-guidelines`'s and each story's `plan.md`'s responsibility, not restated here.
@@ -264,7 +266,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 4. **Data honesty.** Nothing invented, synthetic, or sample-shaped appears in a deployed index or UI. `contract/v1/sample.parquet` and `pilot-manifest.json` are for tests only. BBB is shown as a rating only when `bbb_status = rated`. A null `improvement_status` permit is "stalled", never "open". Missing data always says why.
 5. **Same meaning as Task A.** View semantics come only from vendored `query-core` (ADR-07); the sync holds if `profiles[].sha256` differs from the vendored digest.
 6. **Lead identity.** Leads are keyed and de-duplicated by `{fips}:tcad:{request_identifier}` (ADR-04), enforced by a DynamoDB transaction, never by reading first, and never by `property_cid`.
-7. **No owner name anywhere** (ADR-03): not indexed, not displayed, not sent to the model, not logged.
+7. **Owner name never reaches the model or a log** (ADR-03, amended 2026-10-25): it is indexed and shown on the property screen, but never sent to the model (the agent strips it with `withoutOwnerName`), never written to a log, a lead error message or an agent tool result.
 8. **TypeScript only, CDK only, region from config.** Only CloudFront, WAF and CloudWatch Logs may use `us-east-1`. No Amplify Gen2 backend, no SAM, no console-created resources.
 9. **LLM calls only through the Vercel AI SDK**, provider chosen by `AI_PROVIDER`, Zod tools, no direct provider SDK, no `any` in LLM code. The model never writes SQL, CIDs, coordinates, addresses, contractor names, or ratings — it only words an answer from server-computed rows and counts.
 10. **The agent never writes a lead.** `proposeLeads` never writes; a person confirms every create through the same `leads.create` procedure as the map (ADR-06).
@@ -307,6 +309,15 @@ These were raised by one consult and not settled by the others (`docs/decisions/
 1. **Incremental Task A runs are delta-only per data group** (answered by Task A's A-11 `research.md`: an unchanged group is omitted from the new manifest; a consumer follows `previousManifestCid` back to its last CID). The sync reads one manifest, so a delta-only run is held by the > 5% row-drop check and the CRM stays on the last good run — never silently wrong. **Deferred (PO, 2026-10-24):** chain-following in the sync, to ship after Tasks A and B are complete as an update alongside the "coming soon" sections; it cannot be tested before Task A publishes a real incremental run.
 2. **The published manifest carries no explicit contract version field.** The CRM detects contract compatibility by schema fingerprint instead (§ 6). Ask Task A to add a `contract` field to the manifest or to `profiles[]` when FU-A-01 ships.
 3. **Account-wide Lambda concurrency may be as low as 10**, shared with Task A's own functions. Check `aws lambda get-account-settings` at B-01; no design change until it is measured.
+
+---
+
+## Amendment history
+
+- 2026-10-23: ratified at Gate G3 (approved by HebaGaber).
+- 2026-10-25: ADR-03 amended by the PO: owner name is indexed and shown in the UI, never sent to the model.
+- 2026-10-26: ADR-05 amended to describe what is implemented (manifest CID pinned in SSM).
+- 2026-10-26: reconciled the security NFR row and P0 rule 7 with amended ADR-03 (they still said owner names are never indexed or displayed); added `packages/travis-austin@1.0.0` to the module table and the `RemovalPolicy.DESTROY` demo exception to § 11.
 
 ---
 

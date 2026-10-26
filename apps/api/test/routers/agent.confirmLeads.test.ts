@@ -163,6 +163,22 @@ describe("agent.confirmLeads", () => {
     expect(by).toBe("rep-1");
   });
 
+  it("titles the lead with the stored street address, as the map does", async () => {
+    const { c, lead } = setup({
+      rows: [
+        property("T1", { unnormalizedAddress: "  1100 Congress Ave  " }),
+        property("T2", { unnormalizedAddress: "   " }),
+        property("T3"),
+      ],
+    });
+
+    await c.agent.confirmLeads({ threadId: "thread-1", tcadIds: IDS });
+
+    const inputs = lead.create.mock.calls.map((call) => call[0] as CreateLeadInput);
+    expect(inputs.map((i) => i.address)).toEqual(["1100 Congress Ave", "TCAD T2", "TCAD T3"]);
+    expect(inputs.map((i) => i.requestIdentifier)).toEqual(["T1", "T2", "T3"]);
+  });
+
   it("fails an id that was not proposed in this thread without touching the rest", async () => {
     const { c, lead } = setup({ guard: { proposed: { "thread-1|rep-1": ["T1", "T3"] } } });
 

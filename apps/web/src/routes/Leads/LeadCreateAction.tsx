@@ -7,7 +7,7 @@
 // subtree (position fixed), so it stays with the drawer or permit row that made the lead.
 import { leadKey as leadKeyOf } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { mainLeadPermit } from "@crm/shared";
+import { isLivePermit, mainLeadPermit } from "@crm/shared";
 import { Icon, StatusPill } from "@crm/ui";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
@@ -60,8 +60,8 @@ export function toCreateInput(
         ? {}
         : { openPermitId: snapshotPermit.permitNumber }),
       ...(snapshotPermit?.openDays == null ? {} : { openDays: snapshotPermit.openDays }),
-      ...(snapshotPermit?.statusClass === "open" || snapshotPermit?.statusClass === "stalled"
-        ? { openPermitStatus: snapshotPermit.statusClass }
+      ...(snapshotPermit !== null && snapshotPermit !== undefined && isLivePermit(snapshotPermit)
+        ? { openPermitStatus: snapshotPermit.statusClass === "stalled" ? "stalled" : "open" }
         : {}),
     },
     sourceManifestCid: property.sourceManifestCid,

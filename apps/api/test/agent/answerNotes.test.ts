@@ -3,7 +3,13 @@
 // the index stores (more than 10 years), with a note when the rep asked for another number.
 import { describe, expect, it } from "vitest";
 import { createObservability } from "@crm/observability";
-import { dropDefaultRoofFilter, runAsk, type RunAskInput } from "../../src/agent/composeAnswer.js";
+import {
+  dropDefaultRoofFilter,
+  runAsk,
+  servedIndexHasTenureYears,
+  PLAN_SYSTEM_PROMPT,
+  type RunAskInput,
+} from "../../src/agent/composeAnswer.js";
 import { createPlaceResolver } from "../../src/services/agent/placeResolver.js";
 import type { QueryPlan } from "@crm/shared";
 import {
@@ -180,8 +186,27 @@ describe("tenure is answered at more than 10 years", () => {
     expect(answer.claims[0]?.text).not.toMatch(/tenure is answered/i);
   });
 
-  it("a request for 10 years gets no note", async () => {
-    const answer = await run(10);
+  it("a request for more than 10 years (minimum 11) gets no note", async () => {
+    const answer = await run(11);
     expect(answer.claims[0]?.text).not.toMatch(/tenure is answered/i);
+  });
+
+  it("a request for 10 years on an index without the column gets the note, as it is answered at more than 10", async () => {
+    const answer = await run(10);
+    expect(answer.claims[0]?.text).toMatch(/tenure is answered as more than 10 years/i);
+  });
+
+  it("the prompt maps over 10 years to 11 and names the roof-age default", () => {
+    expect(PLAN_SYSTEM_PROMPT).toMatch(/"over 10 years" is 11/);
+    expect(PLAN_SYSTEM_PROMPT).toContain('"filters":{"tenureYearsMin":11}');
+    expect(PLAN_SYSTEM_PROMPT).toContain("roofAgeMinYears to 15 only");
+  });
+
+  it("servedIndexHasTenureYears needs a number: a null tenureYears is not evidence of the column", () => {
+    expect(servedIndexHasTenureYears({ properties: [property({ tenureYears: null })] })).toBe(
+      false,
+    );
+    expect(servedIndexHasTenureYears({ properties: [property()] })).toBe(false);
+    expect(servedIndexHasTenureYears({ properties: [property({ tenureYears: 22 })] })).toBe(true);
   });
 });
