@@ -25,6 +25,7 @@ vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useCreateLead: () => ({ mutate, ...mutationState }),
   useLeadPresence: () => ({ isPending: false, data: null }),
   useAddLeadNote: () => ({ mutate: noteMutate, isPending: false, isSuccess: false, error: null }),
+  useAssignLead: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }),
 }));
 
 vi.mock("../../src/routes/Map/Candidates/candidatesApi", () => ({

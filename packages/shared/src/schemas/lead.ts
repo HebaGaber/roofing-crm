@@ -39,7 +39,7 @@ export const LeadEvent = z.object({
   at: z.string(),
   by: z.string().min(1),
   change: z.string(),
-  kind: z.enum(["create", "statusChange", "note"]),
+  kind: z.enum(["create", "statusChange", "note", "assignee"]),
 });
 export type LeadEvent = z.infer<typeof LeadEvent>;
 

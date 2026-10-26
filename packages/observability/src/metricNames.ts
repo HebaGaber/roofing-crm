@@ -14,6 +14,7 @@ export const METRIC_NAMES = {
   IndexManifestAgeHours: "IndexManifestAgeHours",
   LeadsCreated: "LeadsCreated",
   LeadsStatusUpdated: "LeadsStatusUpdated",
+  LeadsAssigned: "LeadsAssigned",
   LeadsNoteAdded: "LeadsNoteAdded",
   LeadsRead: "LeadsRead",
   LeadsListed: "LeadsListed",

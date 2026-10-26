@@ -109,6 +109,20 @@ export function useUpdateLeadStatus() {
   });
 }
 
+/** "Assign to me": the server assigns the caller. The detail and every list refresh (the lead moves
+ *  into the caller's list), so both are brought in line before the call settles. */
+export function useAssignLead() {
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  return useMutation({
+    ...trpc.leads.assign.mutationOptions(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: trpc.leads.get.queryKey() });
+      await queryClient.invalidateQueries({ queryKey: trpc.leads.list.queryKey() });
+    },
+  });
+}
+
 export function useAddLeadNote() {
   const trpc = useTRPC();
   const queryClient = useQueryClient();

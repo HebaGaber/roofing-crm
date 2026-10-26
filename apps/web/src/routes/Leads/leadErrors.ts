@@ -18,3 +18,14 @@ export function isStaleError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) return false;
   return (error as { data?: { appCode?: unknown } }).data?.appCode === "STALE_SEQUENCE";
 }
+
+/** Shown (not as an error) after "Assign to me" lost a race and the lead was refetched. */
+export const STALE_ASSIGN_COPY =
+  "This lead changed while you were looking. It is shown as it is now.";
+
+/** The headline for a failed "Assign to me" that is not a stale conflict. */
+export function assignErrorCopy(error: unknown): string {
+  return isNotFoundError(error)
+    ? "This lead no longer exists, so it can't be assigned."
+    : "Couldn't assign the lead.";
+}

@@ -24,6 +24,7 @@ const getFn = vi.fn();
 const createFn = vi.fn();
 const statusFn = vi.fn();
 const noteFn = vi.fn();
+const assignFn = vi.fn();
 const listOptionInputs: unknown[] = [];
 const getOptionInputs: unknown[] = [];
 
@@ -46,6 +47,7 @@ const fakeTrpc = {
     presence: { queryKey: () => PRESENCE_KEY },
     create: { mutationOptions: () => ({ mutationFn: (v: unknown) => createFn(v) }) },
     updateStatus: { mutationOptions: () => ({ mutationFn: (v: unknown) => statusFn(v) }) },
+    assign: { mutationOptions: () => ({ mutationFn: (v: unknown) => assignFn(v) }) },
     addNote: { mutationOptions: () => ({ mutationFn: (v: unknown) => noteFn(v) }) },
   },
 };
@@ -53,6 +55,7 @@ vi.mock("@crm/api-client/react", () => ({ useTRPC: () => fakeTrpc }));
 
 import {
   useAddLeadNote,
+  useAssignLead,
   useCreateLead,
   useLead,
   useLeadsList,
@@ -131,6 +134,14 @@ describe("leads mutations", () => {
     const { result } = renderHook(() => useUpdateLeadStatus(), { wrapper });
     await act(() => result.current.mutateAsync({ leadKey: "k", status: "won" }));
     expect(statusFn).toHaveBeenCalledWith({ leadKey: "k", status: "won" });
+    expect(invalidatedKeys()).toEqual([GET_KEY, LIST_KEY]);
+  });
+
+  it("useAssignLead sends the assignment and refreshes the detail then the list", async () => {
+    assignFn.mockResolvedValue({ leadId: "L1" });
+    const { result } = renderHook(() => useAssignLead(), { wrapper });
+    await act(() => result.current.mutateAsync({ leadKey: "k", expectedSequence: 2 }));
+    expect(assignFn).toHaveBeenCalledWith({ leadKey: "k", expectedSequence: 2 });
     expect(invalidatedKeys()).toEqual([GET_KEY, LIST_KEY]);
   });
 

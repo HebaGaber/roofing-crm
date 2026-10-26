@@ -194,6 +194,19 @@ export const leadsRouter = router({
       ),
     ),
 
+  /** "Assign to me": the assignee is ALWAYS the caller. There is no rep directory yet, so the
+   *  input carries no assignee field; a directory would add one (design G-13) plus a check that the
+   *  named person exists. `expectedSequence` is required: the page always has the sequence it
+   *  showed. A new lead has sequence 0, so the floor is 0, not 1. */
+  assign: publicProcedure
+    .input(LeadKeyInput.extend({ expectedSequence: z.number().int().nonnegative() }))
+    .mutation(({ input, ctx }) =>
+      observed("assign", ctx.requestId, METRIC_NAMES.LeadsAssigned, () => {
+        const me = requireUserId(ctx);
+        return requireLeadService(ctx).assign(input.leadKey, me, me, input.expectedSequence);
+      }),
+    ),
+
   addNote: publicProcedure
     .input(
       LeadKeyInput.extend({ text: z.string().trim().min(1).max(NOTE_MAX_CHARS) }).merge(
