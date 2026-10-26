@@ -1,111 +1,83 @@
-# Pending items after B-09
+# Open items and status
 
-Created 2026-10-25 at the PO's request. B-09 closes and merges on Task A's **Run 2**. Everything below is deliberately **not** in B-09; it belongs on the follow-up branch the PO creates from `feature/roofing-crm` after the merge (suggested name `010-run3-and-release`).
+Rewritten 2026-10-26 to match the branch and the live app. Earlier versions of this file described the Run 2 and Run 3 hand-over; those steps are done and are recorded in `docs/progress.md`, `docs/evidence/` and `docs/reuse-log.md`.
 
-Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no `#` followed by a number in commits, PR text or comments (the fork links it to other candidates' PRs; write `F-8` or "finding 8"); commit messages start with the story ID; no secrets in git or logs; AWS profile `assess`, region `eu-north-1`.
+Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no hash character followed by a number in commits, PR text or comments (write `F-8` or "finding 8"); commit messages start with the story ID; no secrets in git or logs; AWS profile `assess`, region `eu-north-1`.
 
-## 0. State now (updated 2026-10-26)
+## 0. State now
 
 | Item | Value |
 | --- | --- |
-| Data the app serves | Task A **Run 3.1** (contract v1.2), run `travis-full-run3-1-20261025`, manifest `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, promoted 2026-10-26 05:16Z and rebuilt with Task A's review changes (fa6771a) the same day. Run 3 (`bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`) is `previous` and the rollback. |
-| Index size | 441,961 properties, 15,025 Austin roofing permits; 190 of 255 table parts fetched (0.78 GB); all 255 table parts are 0.92 GB |
-| Done for Run 3 | contract v1.1 and views vendored (`docs/reuse-log.md`); index carries tenure basis, address-point coordinates, owner name (ADR-03 amended: shown, never sent to the model), printed contractor, BBB state and link; cost-gate document limit 1,000,000; BuildIndex DuckDB limit 2,400 MB (first sync ran out of memory at 1,800 MB); e2e fixtures refreshed; lineage link fixed (`/tx/travis/explore`) |
-| Still Run 2 | `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, golden queries (about $1 of Bedrock) and the real-data perf test (`CRM_PERF=1`) have not been re-run on Run 3 |
-| Waiting on Task A | **Run 3.1** (manifest `bafkreiae3kzxqnbf6fhf6gqqq7waic4xeltzy5u35ob5x4w2af5ycelbtu`, built, not published; do not vendor or sync until Task A sends the published CID and the commit). It adds street address and owner ZIP columns (contract v1.2), 413 more printed contractors. Task A's answers to the 13 gap questions: `docs/task-a-questions-run3.md` |
-| To do when Run 3.1 arrives | vendor contract v1.2 and views; carry `unnormalized_address`, `owner_mailing_postal_code`, `owner_mailing_state_code` into the index; show the address and owner area; re-check cost gate and BuildIndex memory; set `DATA_MANIFEST_CID`, deploy, read the sync; refresh fixtures; a working search box (today it is decorative) |
-| How a new run is picked up | Change `DATA_MANIFEST_CID` (GitHub repository variable and the deploy shell); a deploy writes it to the SSM parameter `/crm/sync/data-manifest-cid` and starts one sync (execution name `{cid}-{deployNonce}`); an already promoted CID is a no-op |
-| Deploy method | Clean checkout of the commit, `aws configure export-credentials --profile assess --format env`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. Docker must be running. |
-| CI | `workspace`, `gitleaks` and `e2e-hosted` (two phases). The hosted phase waits for `/build.json` to name its own commit. |
+| Pull request | `prismteam-ai/roofing-crm` PR 15 from `HebaGaber:feature/roofing-crm`, marked ready for review on 2026-10-26. Its text on GitHub is the older description; the current text is `docs/pr-body.md` |
+| Data the app serves | Task A **Run 3.1** (contract v1.2), run `travis-full-run3-1-20261025`, manifest `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`: 441,961 properties, 15,025 Austin roofing permits, 4,552 with a printed contractor name. Rebuilt on 2026-10-26 with Task A's review changes (fa6771a). Run 3 (`bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`) is `previous` and the rollback ([`docs/runbook.md`](runbook.md)) |
+| Deployed code | Commit 96b85a3. CI on that commit is green (workspace, secret scan, hosted Playwright) |
+| On the branch, not pushed or deployed | Server-side permit filter with "Open" including stalled, Ask keeps the permit condition, alarms for failed and held sync runs, shared main-permit rule, tenure wording, agent-lead street titles, constitution reconciled, responsive tests and two tap-target CSS fixes, runbook, this file and `docs/pr-body.md`. The golden re-baseline is still being produced |
+| How a new run is picked up | Change `DATA_MANIFEST_CID` (GitHub repository variable and the deploy shell); a deploy starts one sync (execution `{cid}-{deployNonce}`); an already promoted CID is a no-op. Details in [`docs/runbook.md`](runbook.md) |
+| Deploy method | Clean checkout of the commit, `eval "$(aws configure export-credentials --profile assess --format env)"`, then `cdk deploy --all --require-approval never` from `infra/` with `AWS_REGION`, `CDK_DEFAULT_REGION`, `CDK_DEFAULT_ACCOUNT=515618610572`, `DATA_MANIFEST_CID`, `AI_PROVIDER=bedrock`, `AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6`. CI never deploys |
 
-## 1. Run 3 handling (the main follow-up)
+## 1. Gates (a missing gate scores 0 whatever else is done)
 
-### 1.1 Verify the manifest before touching anything
-1. Download it from the CloudFront CID copy (`https://d2xsqoqv09bd0q.cloudfront.net/{cid}`) and from Filebase (`https://ipfs.filebase.io/ipfs/{cid}`); the bytes must be identical.
-2. Recompute the CID from the bytes (CIDv1, raw codec, sha2-256) and compare with the CID you were given.
-3. Read `runId`, `previousManifestCid` (must be Run 2's CID), `coverage.permits_emitted`, `limitations`, `profiles[].sha256` (must still equal the vendored profile digest), the number of `kind: "table"` artifacts and their total size.
-4. HEAD-check every table part on the CID copy (all must answer 200).
-
-### 1.2 Decide which case it is
-| Run 3 manifest | Meaning | Work |
+| Gate | Status | What closes it |
 | --- | --- | --- |
-| Lists **every** table part, like Run 2 did | Full listing; the existing sync works unchanged | Section 1.3 only |
-| Lists **only changed groups** (the Task A spec in `specs/011-publish-and-runs/research.md` says unchanged groups are omitted and a consumer follows `previousManifestCid`) | Delta-only; the sync would hold the run (`unbound_batch`, `zero_properties` or the 5% drop rule) and the app would stay on Run 2 | Section 1.4 first, then 1.3 |
+| PR to `prismteam-ai/roofing-crm` | Open and ready for review (PR 15) | Update its text from `docs/pr-body.md` after the push (section 2, step 4) |
+| Hosted URL opens in a private window and the login survives a reload | Passed (evaluator, fresh browser contexts at 390, 768 and 1440 px, 2026-10-26) | Repeat once after the next deploy |
+| Credentials | Passed. Test user `admin@roofing-crm.test`; the password is in Secrets Manager `roofing-crm/admin-user`, shared privately, never in a file | Share privately with the assessor |
+| Demo video linked from the PR and playable without signing in | **Open. Not recorded** | PO records it (R7), following the README Demo Transcript in order with the hosted URL visible; rehearse in central Austin first (section 6) |
 
-### 1.3 Switch to the new run
-1. Set `DATA_MANIFEST_CID` in: the deploy shell, the GitHub repository variable `DATA_MANIFEST_CID`, `tests/agent/golden.json`, the fixtures module, test constants (`grep -rn "bafkreife3vk3" .` lists them), docs.
-2. Deploy from a clean checkout (see section 0). The starter fires one sync automatically.
-3. Watch the Step Functions execution (`crm-sync`). It succeeds in about 85 seconds for 322 MB. Then read `META#index` in `crm-leads`: `current` must be the new CID, `previous` the old one, and the counts must match the manifest (permits equal `permits_emitted`).
-4. If a run is held, the reason is in the Validate output: `unverified_part`, `digest_mismatch`, `drop_over_5_percent`, `permit_reconcile_mismatch`, `zero_properties`, `unbound_batch`, `empty_county_batch`, `cost_gate_exceeded`. The app stays on the previous run. Never override a hold for a run Task A refused to publish.
-5. Rollback: redeploy the previous CID (a new sync no-ops if it is already promoted, so flip `META#index.current` back to `previous`), or follow the rollback note in `docs/architecture-constitution.md` section 11.
-6. Refresh the fixtures: run `tests/e2e/fixtures-valid.spec.ts`; it tells you which fixture is stale; regenerate with `tests/e2e/lib/refresh-fixtures.md` (about 10 minutes). Re-run the hosted suites, the golden queries (about $1 of Bedrock) and the real-data performance test (`CRM_PERF=1`, `CRM_REAL_INDEX_DIR` pointing at a copy of the new index).
-7. Update the evidence: `docs/evidence/B-09.md` gets a "Run 3" section; the test plan's real-data section gets the new values with provenance; keep Run 2's section as history.
+## 2. To finish the current round (in this order)
 
-### 1.4 Incremental chain-following (only if Run 3 is delta-only)
-- Walk back from the newest manifest through `previousManifestCid`, verifying each manifest against its CID, until every data group has its newest artifacts; apply Task A's removal tombstones (`source_removed`).
-- Fetch and store parts by their own CID (not "manifest CID + path"), so an incremental sync downloads only changed parts (a permits-only run is a few MB).
-- Keep every existing safeguard (CID check, per-part sha256, unverified-part hold, batch coverage, permit reconcile). The index and every lead keep recording the newest manifest CID.
-- Where: `apps/sync/handlers/plan.ts` (part list and `boundPartNames`), `buildIndex.ts`, `validate.ts`, `src/batchCoverage.ts`, `packages/oracle-views` (re-vendor from Task A's `query-core` if it changed), infra tests. Tests first, including a crafted three-run chain. Estimate: about half a day.
+1. Golden queries on Run 3.1: the `tests/agent/golden.json` re-baseline (manifest, run id, permit and count truths, plus an adversarial set) and a run of at least 3 repeats under about US$2 of Bedrock; save results as `tests/agent/results/run3-1-pass*`, add a Run 3.1 section to `docs/evidence/B-09.md`. Status: worker running.
+2. Merge the golden branch, run the full local gate (type-check, lint, prettier, all unit tests), push once.
+3. Deploy from a clean checkout; check `/build.json`, the sync alarms exist, and re-run the hosted suites (parallel and isolated phases). Re-run `tests/e2e/responsive/drawer-actions.spec.ts` (its two CSS fixes are unverified until then). Do not run hosted lead tests while CI runs: they share one DynamoDB table.
+4. Replace the PR text with `docs/pr-body.md` (`gh pr edit 15 -R prismteam-ai/roofing-crm --body-file docs/pr-body.md`) and turn its last progress row ("Pending when this was written") into measured results.
+5. Real-data performance test on Run 3.1 (`CRM_PERF=1`, `CRM_REAL_INDEX_DIR` set to a copy of the served index) and a p95 sample against the hosted API; the evaluator saw only single timings (a map search after GPS took about 3.6 s against the 3 s target).
+6. Re-run `machamp` (was 68) and `smeargle` (was 66) on the fixed code, then record all scores in `docs/kit-usage.md`.
+7. Release steps still open: R1 Golden Path sweep (`../assessment-guide/reference/checks.md` section 5) and `/simplify` once; R3 `/code-review ultra` (**PO types it**); R4 `docs/release.md`, `/developmentsupport-g8-precheck`, the private-window login and `git tag rel-B1`; R5 `babysit-release` for PR readiness only; R6 a fresh `slowking` self-score once the demo link exists; R7 the demo video (**PO**).
 
-### 1.5 If Run 3 fills `structure.roof_date` (the main Task A gap)
-Expect roof-age coverage to rise from about 2% to about 88% of properties. Consequences: the county hexagons fill in; roof-age questions near Pflugerville, Manor and Lakeway start returning rows; golden queries G1 to G3 are then answered rather than honest empties (the pass rules accept both); hard-coded Run 2 counts in docs and tests change; re-measure the radius and overview queries (more matches per query, the database counts and returns bounded pages); the first-load of the index may grow (more non-null columns).
+## 3. Findings from the 2026-10-26 whole-repo review, still open
 
-## 2. Release steps (PLAYBOOK-B Part 4; moved out of B-09 by the PO on 2026-10-25)
+Scores: `audino` 84, `metagross` 82, `espeon` 82, `ash` 82, `alakazam` 78, `porygon` 78, `machamp` 68, `smeargle` 66, plus an evaluator estimate of about 68 with both gates cleared. Fixed already on the branch: the permit-filter limit, "Open" meaning, Ask dropping the permit condition, failed and held sync alerts, the replay and rollback runbook, shared rules, tenure wording, constitution text, responsive test gaps.
 
-Preconditions: B-09 merged into `feature/roofing-crm` with `--no-ff`, pushed, `bash scripts/progress.sh` run, Amplify built `feature/roofing-crm` (that branch is the one `https://crm.aldarraj.com` serves).
+| Finding | From | Decision needed |
+| --- | --- | --- |
+| No AI SDK `experimental_telemetry` in the agent path although the agent decision record promises OpenTelemetry and a LangSmith adapter | `ash` | Wire it, or amend the record to say the agent's own logs and X-Ray subsegment are the trace |
+| Cost gate is a size and count gate, not a spend gate; its document limit was raised from 600,000 to 1,000,000 to fit Run 3 | `espeon`, `machamp` | Documented in ADR-05; no change planned |
+| No size check of fetched bytes against the declared size; no clean-up of old index versions in S3 | `espeon` | Check `fetchPart.ts`; add a retention note or a lifecycle rule |
+| The index build runs in one maximum-size Lambda (2,600 MB DuckDB limit in 3,008 MB) with no scale-out path | `espeon`, `machamp` | Fargate for BuildIndex is the documented next step if a run grows past the limit; the failed-run alarm now fires |
+| Hex-cell aged counts are computed at the fixed 15-year default; the legend buckets are fixed at 15, 20 and 25 | `porygon` | Confirm headline counts use the user's threshold; decide whether the roof-age default stays 15 |
+| Lead snapshot does not store roof-age confidence; Ask rows show roof age without confidence | `audino` | Needs a lead-snapshot change; decide |
+| `search.permits` returns at most 500 rows; a listed property whose permit falls past that page shows without permit detail | `fin-perm` worker | The UI already says so; decide whether to page it |
+| Search suggestions drop over the toolbar at 390 and 768 px (recorded as an annotation, not asserted) | `fin-e2e` worker | Decide whether the toolbar must stay visible |
+| Conversation memory keeps only the last plan and proposed ids; concurrent asks on one thread overwrite the plan; the rate limiter is a fixed window; model prices are hard-coded | `ash`, `alakazam` | Accepted for the demo; listed in `docs/decisions/tech-debt.md` |
+| `composeAnswer.ts` is about 1,700 lines | `ash`, `alakazam` | Split in a later story |
+| No automated accessibility scan (axe); `packages/ui` has three test files | `audino` | Add if time allows |
+| Raw pixel sizes remain in two component files; 20 max-width media queries remain | `audino` | Cosmetic |
+| Final `/code-review medium` follow-ups for B-09 (eight items) | CR-B-09 | Listed in [`docs/reviews/CR-B-09.md`](reviews/CR-B-09.md) |
+| Time-to-submit: `docs/00-timeline.md` row "Assignment sent" is blank | evaluator | **PO provides the time** |
 
-| Step | What | Who | Notes |
-| --- | --- | --- | --- |
-| R1 | Golden Path conformance sweep (`../assessment-guide/reference/checks.md` section 5): list failing rows on the feature branch, fix them, then run `/simplify` once on the final diff | Claude | `/simplify` already ran on the B-09 diff; run again on what changed since |
-| R2 | Every kit agent in the arceus routing of `docs/01-intent.md` (at least metagross, espeon, alakazam, ash, machamp, porygon, audino, smeargle) reviews the whole repo read-only; scores, strengths and deviations go to `docs/kit-usage.md`; anything below 75 is fixed and that agent re-run | Claude (8 agents in parallel) | Do not change code during the review pass |
-| R3 | `/code-review ultra` | **PO types it** | Billed, cannot be launched by Claude; once |
-| R4 | `docs/release.md` from `../assessment-guide/templates/release.md`; `/developmentsupport-g8-precheck`; log in at `https://crm.aldarraj.com` in a private window with the test user and reload; `git tag rel-B1 && git push origin rel-B1` | Claude, PO for the private-window login | Test user `admin@roofing-crm.test`, password in Secrets Manager `roofing-crm/admin-user`; never paste it into a file |
-| R5 | Update the existing PR (fork `feature/roofing-crm` into `prismteam-ai/roofing-crm:main`): body from `docs/pr-body.md`, PUBLISHING.md Part 4; then the `babysit-release` skill for PR readiness only (CI green, comments triaged) | Claude | **Never merge the PR.** Do not mark it ready until the PO says so |
-| R6 | Self-score with the evaluator in a **new** session: use the `soofi-xyz-team-kit:slowking` subagent with the assignment URL, the PR URL, the runtime URL, the demo link or "pending", and the assignment-sent time from `docs/00-timeline.md`; give it the test user when it asks; fix the lowest-weighted gap first, then re-run | **PO opens the session** | Compare with the 100% checklist in PLAYBOOK-B Part 4 |
-| R7 | Record the demo video (PUBLISHING.md section 4.2), add the link to the PR, mark the PR ready, share the credentials privately, then stop committing | **PO** | **Skipped on purpose for now.** Rehearse first on the live site in central Austin (see section 5) |
+## 4. Decisions the PO still owes
 
-The 100% checklist rows that depend on R7 (the demo link plays without signing in; PR marked ready) stay open until then.
+- Delete the test data in the live Leads list before recording: the lead the evaluator created (217 E 6 ST, TCAD 194459) and the seeded test leads such as TCAD B07STALE. Deleting is irreversible, so it waits for the PO.
+- Roof-age default 15 years or none (a default filter hides most of the county's properties at lower values; the README suggests 15).
+- Whether to rebuild lead snapshots server-side (leads store a copy of the signals at creation).
+- Whether to close the Task A question about a stable Explorer link per property (question 14, still open on their side).
 
-## 3. Task A data gaps (sent to the Task A session on 2026-10-25; the PO said not to wait)
+## 5. Task A data gaps that remain in Run 3.1 (answered by Task A on 2026-10-26)
 
-1. Run 3 fills `structure.roof_date` for 389,528 of 441,961 structures; the rest have no roof date, and roof age falls back to `property.property_structure_built_year` (set for about 88% of properties) or to a closed Austin reroof permit.
-2. `ownerAreaClass` is `unknown` everywhere (300 of 300 sampled): the view stubs the mailing postal code, so "owners outside the area" cannot be answered (golden query G4 gets an honest `field_not_published`).
-3. Tenure (`is_long_tenure`) is missing for 33 to 72% of sampled properties.
-4. 7,945 properties (Run 3) have no coordinates, so they cannot appear on the map or in a radius search.
-5. All 15,025 permits are City of Austin; no contractor is resolved (registry not wired) and BBB is not available.
-6. Full-county manifests carry no `coverage.parcels_published` and no `travis-places` profile; the CRM handles both, but a parcel count would let consumers reconcile properties.
+No roof date from TCAD (built year stands in, confidence Low; 9,510 properties use a closed roofing permit); situs city and ZIP not published (inside the address text); 7,945 properties without coordinates; 32,572 properties without an owner (15,410 confidential, about 17,160 names not parsed); contractors only as printed and unverified (4,552 of 15,025 permits); no BBB rating; permits are Austin only; 372 properties have an owner mailing address without a ZIP. The app shows "not published" with the contract reason for each. Full text: [`docs/task-a-questions-run3.md`](task-a-questions-run3.md).
 
-Re-check after each new run with the commands in section 1.1 and the counts in `docs/evidence/B-09.md`.
+## 6. Demo rehearsal
 
-## 4. Deferred features (each needs an API or wire change; proposed shapes are in `design/board-match/ask.md` and `design/board-match/leads.md`)
+Before recording, run the README Demo Transcript once on `https://crm.aldarraj.com`: central Austin for roof-age and permit steps. Open permits are rare (80 county-wide, 1,674 stalled), so use a location where "Open" (open and stalled) has rows; the evaluator found 861 properties within 5 mi of Congress Ave once the permit filter ran on the server. Clear the test leads first (section 4).
 
-- Ask: editable "Read as" assumption chips and Widen / use-place chips (need a structured plan-edit input on `agent.ask`), Cancel while working (needs a server-honoured abort), a low-confidence reason (`AgentAnswer.confidenceNote`), the Close-matches tab and a close-matches search API.
-- Map: the Area and Sort menus, the pin explainer toast, in-ring chips, permit coverage hatching (no coverage areas published), the county outline and outside shading (review-log row 9), the GPS "explain first" card (needs the e2e to click Continue).
-- Leads: multi-select status, Me / All reps and a rep directory (`users.list`), `leads.assign`, sort and permit-open filters on `leads.list`, numbered pages, row signal snapshots on the list (`signals`, `lastActivity`), `currentSignals` on `leads.get` (the Changed pill), View property and lineage links, a deleted-lead state, a place picker for "Within".
-- Sign-in: the lockout banner that disables the form, the session-expired and signed-out banners, the "you return to" line.
-- Conversation memory is one `THREAD#` item (last plan and proposals), not the full event store of ADR-06.
+## 7. Deferred features (not part of the README criteria)
 
-## 5. Known small issues
+Ask: editable assumption chips, Cancel while working, a low-confidence reason, a Close-matches tab. Map: Area and Sort menus, pin explainer toast, permit coverage hatching, county outline. Leads: multi-select status, a rep directory, numbered pages, a changed-signals pill. Sign-in banners (lockout, session expired). Done since the last version of this file: `leads.assign` and Assign to me (not yet exercised end to end with more than one user), lead confidence, recent and saved searches, similar properties, the owner filters. Proposed shapes remain in `design/board-match/`.
 
-- The Gateway AI provider is wired but off: it needs `crm:aiGatewaySecretArn` (a Secrets Manager secret holding the key) and `AI_PROVIDER=gateway`; Bedrock stays live.
-- Fixed on 2026-10-25 (kept here for the record): citation pill clipping, AI answer lost on resize, 15-minute Undo row, phone Filters sheet, lead-list filters in SQL, permit truncation notices, index warm-up plus 5-minute keep-warm. Re-measure cold start on the deployed Lambda (the local figure was 2.8 to 8.7 s cold, about 1 s warm).
-- `search.permits` returns at most 500 rows (longest open first) and the UI says so; the permit page for a very large radius is a summary, not a full list.
-- Every deploy starts one (no-op) sync because of the deploy nonce; a deploy while a sync of the same CID is running starts a second concurrent run (parts are content-addressed and Promote is conditional, so it is safe).
-- If `getModel()` fails after the spend reservation, over-counting is possible only on misconfiguration (fixed by reordering; keep the test).
-
-- Final `/code-review medium` (2026-10-25) left eight follow-ups, listed with file and line in `docs/reviews/CR-B-09.md`: the 10 s query interrupt shares one DuckDB connection, four index methods run without the query budget, a duplicate citation fetch, the lockout key change, thread-wide proposal scope, the permit-number lookup ignoring the radius, timed-out turns billed at the estimate, and the thread-owner error message.
-
-## 6. Cleanup and hygiene
+## 8. Cleanup and hygiene
 
 - Retire the CI AWS access when the assessment is over: remove the `crm-ci` user from `infra/lib/crm-ci-user.ts`, redeploy, delete the repository secrets `CRM_CI_AWS_ACCESS_KEY_ID` and `CRM_CI_AWS_SECRET_ACCESS_KEY`.
-- Close Docker Desktop after the last deploy (it is only needed to bundle the DuckDB Lambdas at deploy time); do not delete Task A's volumes.
-- Tech debt list: `docs/decisions/tech-debt.md`.
-- Commit rule reminder: no `#` followed by a number anywhere in commit text.
-
-## 7. Demo rehearsal (not recorded yet)
-
-A non-recorded rehearsal of the README Demo Transcript runs inside B-09 on the branch preview (its screenshots and findings go to `docs/evidence/B-09.md`). Before recording, repeat it once on `https://crm.aldarraj.com` after the merge and R4's login proof. Use central Austin for roof-age and permit steps (for example "roofs older than 20 years within 3 miles of Austin"; stalled and open permits cluster near latitude 30.35 longitude -97.74). Pflugerville, Manor and Lakeway answer with honest empties until Task A fills the roof dates. Keep the real-data numbers in `docs/evidence/B-09.md` open while presenting.
-
-## 8. What the PO must provide
-
-R3 (typing `/code-review ultra`), R6 (opening a fresh session), R7 (recording and marking the PR ready), creating the follow-up branch, the Run 3 CID when Task A publishes it, and any decision on the deferred features in section 4.
+- Close Docker Desktop after the last deploy (only needed to bundle the DuckDB Lambdas); do not delete Task A's volumes.
+- Twenty re-captured evidence images under `docs/evidence/img/` are modified and uncommitted; commit them with the next evidence update or restore them.
+- Gateway AI provider is wired but off (needs `crm:aiGatewaySecretArn` and `AI_PROVIDER=gateway`); Bedrock stays live.
+- Every deploy starts one (no-op) sync; a deploy while a sync of the same CID runs starts a second concurrent run, which is safe (parts are content-addressed and Promote is conditional).
