@@ -40,8 +40,7 @@ export function roofCell(signals: SignalsIn): FactCell {
   if (signals.roofAgeYears === undefined) {
     return { main: "Roof age not published for this property", reason: true };
   }
-  const stored = (signals as { roofAgeConfidence?: unknown }).roofAgeConfidence;
-  const confidence = ROOF_CONFIDENCE_CODES.find((c) => c === stored);
+  const confidence = ROOF_CONFIDENCE_CODES.find((c) => c === signals.roofAgeConfidence);
   const parts = [
     signals.roofAgeBasis === undefined ? null : roofBasisText(signals.roofAgeBasis),
     confidence === undefined ? null : roofAgeConfidenceLabel(confidence),

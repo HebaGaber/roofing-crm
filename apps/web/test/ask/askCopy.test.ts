@@ -365,6 +365,12 @@ describe("Matches rows (Answer | Matches tab)", () => {
       "Roof 24 yrs · Last reroof permit",
     );
     expect(rowRoofText(row({ roofAgeYears: 24 }))).toBe("Roof 24 yrs");
+    expect(rowRoofText(row({ roofAgeYears: 24, roofAgeConfidence: "low" }))).toBe(
+      "Roof 24 yrs · Low confidence",
+    );
+    expect(
+      rowRoofText(row({ roofAgeYears: 24, roofAgeBasis: "permit", roofAgeConfidence: "high" })),
+    ).toBe("Roof 24 yrs · Last reroof permit · High confidence");
     expect(rowRoofText(row())).toBeUndefined();
   });
 

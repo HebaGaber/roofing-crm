@@ -61,6 +61,22 @@ describe("leads router (T010)", () => {
     });
   });
 
+  it("stores roofAgeConfidence in the signals snapshot and rejects a bad enum", async () => {
+    const { c } = ctx();
+    await c.leads.create({
+      ...input,
+      signals: { roofAgeYears: 20, roofAgeConfidence: "low" },
+    });
+    expect((await c.leads.get({ leadKey: KEY })).signals?.roofAgeConfidence).toBe("low");
+    await expect(
+      c.leads.create({
+        ...input,
+        requestIdentifier: "x2",
+        signals: { roofAgeConfidence: "certain" as never },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("addNote rejects text over 4,000 chars, accepts exactly 4,000", async () => {
     const { c } = ctx();
     await c.leads.create(input);
