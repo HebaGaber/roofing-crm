@@ -7,6 +7,7 @@ import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { humanizeCode, roofAgeConfidenceLabel } from "../../format/index.js";
 import { bbbHref } from "./BbbLink.js";
+import { safeSourceHref } from "./SourceLink.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 
 export interface WhyRule {
@@ -25,6 +26,8 @@ export interface WhyCoordinates {
   readonly source: string;
   readonly direction: string | null;
   readonly osmUrl: string;
+  /** The TCAD source record Task A published (https only); null when absent or not https. */
+  readonly sourceUrl: string | null;
 }
 
 export interface WhyLead {
@@ -87,7 +90,7 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
     rules.push({
       key: "roof",
       rule: `Roof age ${String(property.roofAgeYears)} yrs`,
-      value: `${humanizeCode(property.roofAgeBasis)}${estimated ? " (estimated from year built)" : ""} · ${roofAgeConfidenceLabel(property.roofAgeConfidence).toLowerCase()} confidence`,
+      value: `${humanizeCode(property.roofAgeBasis)}${estimated ? " (estimated from year built)" : ""}${property.roofAgeBasis === "built_year" && property.structureBuiltYear != null ? ` · Year built ${String(property.structureBuiltYear)}` : ""} · ${roofAgeConfidenceLabel(property.roofAgeConfidence).toLowerCase()} confidence`,
       source: `${property.roofAgeBasis === "permit" ? "Austin permits" : "TCAD parcels"} · ${run}`,
       cid: property.cid,
     });
@@ -142,6 +145,7 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
           source: `${COORDINATE_SOURCES[property.coordinateSource]} · ${run}`,
           direction: from === null ? null : directionLabel(from),
           osmUrl: `https://www.openstreetmap.org/?mlat=${latitude.toFixed(5)}&mlon=${longitude.toFixed(5)}#map=18/${latitude.toFixed(5)}/${longitude.toFixed(5)}`,
+          sourceUrl: safeSourceHref(property.sourceUrl),
         };
 
   return { rules, coordinates };

@@ -14,7 +14,7 @@
 // full-height sheet below) is Map.module.css's `.drawerSlot`.
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
 import type { MissingReason as Reason } from "@crm/oracle-contract";
 import { useEffect, useId, useRef, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -32,6 +32,7 @@ import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
 import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import { BbbLink } from "../BbbLink.js";
+import { SourceLink, safeSourceHref } from "../SourceLink.js";
 import { patchMapMode } from "../mapMode.js";
 import { runLabel } from "../whyLead.js";
 import styles from "./PropertyDetail.module.css";
@@ -174,12 +175,27 @@ function PermitDetail({
         </div>
       </dl>
       <LeadCreateAction property={property} permit={permit} />
-      <Provenance
-        sourceUrl={null}
-        capturedAt={permit.capturedAt}
-        tableCid={permit.cid}
-        runId={permit.runId}
-      />
+      {safeSourceHref(permit.sourceUrl) === null ? (
+        <Provenance
+          sourceUrl={null}
+          capturedAt={permit.capturedAt}
+          tableCid={permit.cid}
+          runId={permit.runId}
+        />
+      ) : (
+        <Provenance>
+          Source:{" "}
+          <SourceLink
+            url={permit.sourceUrl}
+            label={`Austin permits ${permit.permitNumber ?? "record"}`}
+          />
+          {" · collected "}
+          <time dateTime={permit.capturedAt}>{formatUtc(permit.capturedAt)}</time>
+          {" UTC · table "}
+          <CidDisplay cid={permit.cid} />
+          {` · run ${permit.runId}`}
+        </Provenance>
+      )}
     </article>
   );
 }
@@ -272,6 +288,30 @@ function OwnerSection({
               <MissingValue property={property} field="is_long_tenure" what="Tenure" />
             ) : (
               `${tenure}${property.tenureBasis != null && property.tenureBasis !== "unknown" ? ` · from ${humanizeCode(property.tenureBasis)}` : ""}`
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Last sale</dt>
+          <dd data-field="last_ownership_transfer_date">
+            {property.lastSaleDate != null ? (
+              property.lastSaleDate.slice(0, 4)
+            ) : (
+              <MissingValue
+                property={property}
+                field="last_ownership_transfer_date"
+                what="Last sale"
+              />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Tenure</dt>
+          <dd data-field="tenure_years">
+            {property.tenureYears != null ? (
+              `${property.tenureYears} yrs`
+            ) : (
+              <MissingValue property={property} field="tenure_years" what="Tenure" />
             )}
           </dd>
         </div>
@@ -538,7 +578,12 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           </div>
           <div className={styles.permitField}>
             <dt>Basis</dt>
-            <dd data-field="roof_age_basis">{roofAgeBasisLabel(property.roofAgeBasis)}</dd>
+            <dd data-field="roof_age_basis">
+              {roofAgeBasisLabel(property.roofAgeBasis)}
+              {property.roofAgeBasis === "built_year" && property.structureBuiltYear != null
+                ? ` · Year built ${property.structureBuiltYear}`
+                : ""}
+            </dd>
           </div>
           <div className={styles.permitField}>
             <dt>Confidence</dt>

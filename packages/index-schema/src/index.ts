@@ -49,6 +49,14 @@ export const CrmProperty = z
     // amended 2026-10-25 (PO): shown on the property screen, still never sent to the model. Null
     // carries its missing reason (owner_unparsed, owner_confidential, no_owner_record, ...).
     ownerName: z.string().nullable(),
+    // contract v1.1 views carry these too; added to the index afterwards (additive), so rows from
+    // an index built earlier lack them: optional on read, nullable when present. A null carries its
+    // missing reason (source_missing, no_dated_sale).
+    structureBuiltYear: z.number().int().nullable().optional(),
+    lastSaleDate: z.string().nullable().optional(),
+    tenureYears: z.number().int().nullable().optional(),
+    // The source record URL (TCAD file) Task A publishes; rendered as a link only when https.
+    sourceUrl: z.string().nullable().optional(),
     ownerKind: z.enum(["person", "company", "unknown"]).nullable(),
     ownerAreaClass: z.enum(["in_county", "regional", "out_of_area", "unknown"]).nullable(),
     ownerIsOutOfArea: z.boolean().nullable(),
@@ -83,6 +91,9 @@ export const CrmPermit = z
     bbbStatus: z.enum(["rated", "not_found", "blocked", "not_checked"]).nullable(),
     bbbStatusReason: z.string().nullable(),
     bbbUrl: z.string().nullable(),
+    // contract v1.1 source record URL (Austin open-data permit record); optional on read for rows
+    // from an index built before it was carried.
+    sourceUrl: z.string().nullable().optional(),
     ...ProvenanceFields,
   })
   .strict();

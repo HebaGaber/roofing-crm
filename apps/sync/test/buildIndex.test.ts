@@ -122,6 +122,47 @@ describe("BuildIndex", () => {
     ]);
   });
 
+  it("carries built year, last sale date (date only), tenure years and source URLs; null keeps its reason", async () => {
+    const dated = propertyRow({
+      property_structure_built_year: 1995,
+      last_ownership_transfer_date: new Date("2004-06-30T00:00:00.000Z"),
+      tenure_years: 22,
+      source_url: "https://example.test/tcad/file.csv",
+    });
+    const undated = propertyRow({
+      property_structure_built_year: null,
+      last_ownership_transfer_date: null,
+      tenure_years: null,
+      source_url: null,
+      missing: [
+        { field: "property_structure_built_year", reason: "source_missing" },
+        { field: "last_ownership_transfer_date", reason: "no_dated_sale" },
+        { field: "tenure_years", reason: "no_dated_sale" },
+      ],
+    });
+    const permit = permitRow({
+      source_url: "https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=P-1",
+    });
+    const result = await buildIndexCore(fakeEngine([dated, undated], [permit]), MANIFEST_CID);
+    expect(result.properties[0]).toMatchObject({
+      structureBuiltYear: 1995,
+      lastSaleDate: "2004-06-30",
+      tenureYears: 22,
+      sourceUrl: "https://example.test/tcad/file.csv",
+    });
+    expect(result.properties[1]).toMatchObject({
+      structureBuiltYear: null,
+      lastSaleDate: null,
+      tenureYears: null,
+      sourceUrl: null,
+    });
+    expect(result.properties[1]?.missingReasons).toContainEqual({
+      field: "last_ownership_transfer_date",
+      reason: "no_dated_sale",
+    });
+    expect(result.permits[0]?.sourceUrl).toContain("3syk-w9eu");
+  });
+
   // Found live (ZodError on the first real run, against the deployed state machine): DuckDB
   // returns TIMESTAMP/DATE columns as native JS Date objects, not strings, so a row straight off
   // the real v_property/v_roofing_permit views fails CrmProperty's/CrmPermit's `string` fields

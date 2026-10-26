@@ -9,7 +9,7 @@
 import type { LatLng } from "@crm/domain";
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
 import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
-import { CidDisplay, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import { CidDisplay, Icon, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
 import {
   memo,
   useId,
@@ -31,6 +31,7 @@ import {
 } from "../../format/index.js";
 import { BbbLink } from "./BbbLink.js";
 import { PermitChip } from "./PermitChip.js";
+import { SourceLink, safeSourceHref } from "./SourceLink.js";
 import { mainPermitOf } from "./whyLead.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 import styles from "./ResultRow.module.css";
@@ -174,6 +175,9 @@ export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty>
       </Cell>
       <Cell label="Basis" field="roof_age_basis">
         {roofAgeBasisLabel(row.roofAgeBasis)}
+        {row.roofAgeBasis === "built_year" && row.structureBuiltYear != null
+          ? ` · Year built ${row.structureBuiltYear}`
+          : ""}
       </Cell>
       <Cell label="Confidence" field="roof_age_confidence">
         {roofAgeConfidenceLabel(row.roofAgeConfidence)}
@@ -245,8 +249,25 @@ export function MissingSummary({
 }
 
 export function RowProvenance({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  if (safeSourceHref(row.sourceUrl) === null) {
+    return (
+      <Provenance
+        sourceUrl={null}
+        capturedAt={row.capturedAt}
+        tableCid={row.cid}
+        runId={row.runId}
+      />
+    );
+  }
   return (
-    <Provenance sourceUrl={null} capturedAt={row.capturedAt} tableCid={row.cid} runId={row.runId} />
+    <Provenance>
+      Source: <SourceLink url={row.sourceUrl} label="source record" />
+      {" · collected "}
+      <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time>
+      {" UTC · table "}
+      <CidDisplay cid={row.cid} />
+      {` · run ${row.runId}`}
+    </Provenance>
   );
 }
 

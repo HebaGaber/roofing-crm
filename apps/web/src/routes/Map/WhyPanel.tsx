@@ -8,6 +8,7 @@ import { CidDisplay, Icon } from "@crm/ui";
 import { useEffect, useRef, type ReactElement } from "react";
 import { useShellAppLinks } from "../../components/AppShell/shellApi.js";
 import { candidateTitle } from "./Candidates/candidates.js";
+import { SourceLink } from "./SourceLink.js";
 import { whyLead } from "./whyLead.js";
 import styles from "./WhyPanel.module.css";
 
@@ -117,6 +118,12 @@ export function WhyPanel({
                 Open in OpenStreetMap
                 <span className={styles.sr}> (opens in a new tab)</span>
               </a>
+              {why.coordinates.sourceUrl === null ? null : (
+                <>
+                  {" · "}
+                  <SourceLink url={why.coordinates.sourceUrl} label="source record" />
+                </>
+              )}
             </span>
           </div>
         </div>
