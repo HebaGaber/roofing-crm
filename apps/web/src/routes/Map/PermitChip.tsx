@@ -7,19 +7,22 @@
 // recomputes the badge itself. `data-permit-chip` carries the status class, `data-open-days` the
 // exact value, `data-long-open` whether the badge fired — the real assertions B-03-TC-016/017/018
 // read. Render-only.
-import { isLongOpen, openDurationLabel } from "@crm/domain";
+import { isLongOpen } from "@crm/domain";
 import { StatusPill } from "@crm/ui";
-import type { CrmPermit } from "@crm/index-schema";
+import type { CrmPermit, Missing } from "@crm/index-schema";
 import type { ReactElement } from "react";
-import { permitStatusShortLabel } from "../../format/index.js";
+import { openDurationText, permitStatusShortLabel } from "../../format/index.js";
 
 export interface PermitChipProps {
-  readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber">;
+  readonly permit: Pick<CrmPermit, "openDays" | "statusClass" | "permitNumber"> & {
+    /** The permit's `missing` entries: the reason an empty open duration shows. */
+    readonly missingReasons?: readonly Missing[];
+  };
 }
 
 export function PermitChip({ permit }: PermitChipProps): ReactElement {
   const longOpen = isLongOpen(permit.openDays);
-  const label = openDurationLabel(permit.openDays);
+  const label = openDurationText(permit);
   const statusLabel = permitStatusShortLabel(permit.statusClass);
   return (
     <span

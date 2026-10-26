@@ -116,7 +116,7 @@ describe("roof evidence and the unfinaled reroof note", () => {
   it("explains an open permit that is not counted, with the evidence line", () => {
     drawer(base, [permit({})]);
     expect(
-      screen.getByText(/A reroof permit exists but was never finaled, so it is not counted/),
+      screen.getByText(/A roofing permit exists but was never finaled, so it is not counted/),
     ).toBeTruthy();
     const evidence = document.querySelector("[data-roof-evidence]");
     expect(evidence?.textContent).toContain("TCAD parcels");
@@ -163,6 +163,9 @@ describe("Similar properties", () => {
       data: {
         found: true,
         reason: null,
+        radiusMi: 1,
+        roofAgeBandYears: 5,
+        limit: 5,
         similar: [
           {
             propertyCid: "cid-2",
@@ -180,6 +183,12 @@ describe("Similar properties", () => {
     expect(similarState.enabledCalls).toEqual([]);
     open();
     expect(screen.getByText(/TCAD 555 · 0.46 mi · roof 38 yrs/)).toBeTruthy();
+    // The rules come from the response and say "structure type", as the server matches it.
+    expect(
+      screen.getByText(
+        "Up to 5, nearest first, within 1 mile with the same structure type and a roof age within 5 years",
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open TCAD 555" }));
     expect(onSelect).toHaveBeenCalledWith("cid-2");
   });
@@ -194,7 +203,14 @@ describe("Similar properties", () => {
     similarState.result = {
       isPending: false,
       isError: false,
-      data: { found: true, similar: [], reason: "no_roof_age" },
+      data: {
+        found: true,
+        similar: [],
+        reason: "no_roof_age",
+        radiusMi: 2,
+        roofAgeBandYears: 3,
+        limit: 5,
+      },
     };
     drawer(base, []);
     open();

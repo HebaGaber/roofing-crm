@@ -119,7 +119,7 @@ describe("drawer: Run 3 fields", () => {
       ],
     );
     expect(text(d, "roof_age_basis")).toContain("Year built 1995");
-    expect(text(d, "last_ownership_transfer_date")).toBe("2004");
+    expect(text(d, "last_ownership_transfer_date")).toBe("Jun 30, 2004");
     expect(text(d, "tenure_years")).toBe("22 yrs");
     const links = [...d.querySelectorAll("a[data-field='source_url']")].map((a) => a.textContent);
     expect(links).toContain("source record");
