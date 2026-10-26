@@ -77,7 +77,9 @@ test.describe("Search box (responsive)", () => {
     const project = testInfo.project.name;
     await page.goto(LAYOUT_SEARCH_PATH);
     await expect(page.locator("[data-result-row]").first()).toBeAttached({ timeout: 45_000 });
-    const info = page.getByRole("button", { name: /permit|coverage|info/i }).first();
+    // The results header's own control, by its exact accessible name: a looser pattern also matches
+    // the Filters suggestions ("... open or stalled permit") and would apply a preset instead.
+    const info = page.getByRole("button", { name: "Permit coverage note", exact: true });
     test.skip((await info.count()) === 0, "no coverage info control at this size");
     await info.click();
     const pop = page.locator('[role="dialog"], [role="tooltip"], [data-popover]').last();

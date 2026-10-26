@@ -27,10 +27,15 @@ async function matches(page: Page, query: string): Promise<number> {
 /** The roof age chip group, opening the Filters sheet first where the filters are a sheet. */
 async function roofGroup(page: Page, projectName: string) {
   if (projectName !== "desktop-1440") {
-    await map(page)
-      .getByRole("button", { name: /^Filters/ })
-      .click();
-    await expect(map(page).getByRole("dialog", { name: "Filters" })).toBeVisible();
+    const sheet = map(page).getByRole("dialog", { name: "Filters" });
+    // After a reload the sheet can still be open (its state is kept), and its backdrop would
+    // block a second click on the Filters button: open it only when it is not already there.
+    if (!(await sheet.isVisible())) {
+      await map(page)
+        .getByRole("button", { name: /^Filters/ })
+        .click();
+    }
+    await expect(sheet).toBeVisible();
   }
   return map(page).getByRole("group", { name: "Roof age threshold" });
 }
