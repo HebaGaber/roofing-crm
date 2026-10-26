@@ -187,3 +187,10 @@
   color: var(--md-sys-color-on-surface);
   font-family: var(--md-sys-typescale-label-large-font);
 }
+
+/* "View lineage in Explorer" and "Ask about it" share a row (wrapping on a phone). */
+.linkRow {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--space-5);
+}

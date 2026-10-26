@@ -140,7 +140,7 @@ describe("WhyPanel", () => {
       "TCAD parcel centroid",
     );
     const verify = document.querySelector("a[data-why-verify]") as HTMLAnchorElement;
-    expect(verify.getAttribute("href")).toBe(`https://lens.example/data/verify/${TABLE_CID}`);
+    expect(verify.getAttribute("href")).toBe("https://lens.example/data/verify/bafkreimanifest");
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
     expect(onDetails).toHaveBeenCalledWith("baguqeeraproperty");
     fireEvent.click(screen.getByRole("button", { name: /Back to results/ }));

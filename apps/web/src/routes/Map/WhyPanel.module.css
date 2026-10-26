@@ -8,6 +8,10 @@
   font-size: var(--md-sys-typescale-body-medium-size);
 }
 
+.panel:focus {
+  outline: none;
+}
+
 .back,
 .action {
   display: inline-flex;

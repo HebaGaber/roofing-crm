@@ -505,18 +505,20 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
       </div>
       <div className={styles.primaryAction}>
         <LeadCreateAction property={property} permits={data.permits} />
-        <a
-          href={data.lineageUrl}
-          className={styles.link}
-          target="_blank"
-          rel="noopener noreferrer"
-          data-lineage-link=""
-        >
-          View lineage in Explorer
-        </a>
-        <Link to={{ search: askSearch }} className={styles.link} data-ask-about="">
-          Ask about it
-        </Link>
+        <div className={styles.linkRow}>
+          <a
+            href={data.lineageUrl}
+            className={styles.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-lineage-link=""
+          >
+            View lineage in Explorer
+          </a>
+          <Link to={{ search: askSearch }} className={styles.link} data-ask-about="">
+            Ask about it
+          </Link>
+        </div>
       </div>
 
       <section className={styles.section} aria-labelledby={`${titleId}-roof`}>

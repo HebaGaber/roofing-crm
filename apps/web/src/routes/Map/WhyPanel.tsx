@@ -5,7 +5,7 @@
 import type { LatLng } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { CidDisplay, Icon } from "@crm/ui";
-import type { ReactElement } from "react";
+import { useEffect, useRef, type ReactElement } from "react";
 import { useShellAppLinks } from "../../components/AppShell/shellApi.js";
 import { candidateTitle } from "./Candidates/candidates.js";
 import { whyLead } from "./whyLead.js";
@@ -31,11 +31,20 @@ export function WhyPanel({
   onDetails,
 }: WhyPanelProps): ReactElement {
   const links = useShellAppLinks();
+  const ref = useRef<HTMLElement>(null);
+  // The panel replaces the list, which was scrolled to the row that was opened: take focus so the
+  // browser brings the panel's top (Back, title) into view, and keyboard and screen-reader users
+  // land on it.
+  useEffect(() => {
+    ref.current?.focus();
+  }, []);
   const countyLens = links.data?.countyLensUrl?.replace(/\/$/, "");
   const why = whyLead({ property, permits, center, radiusMi, centreLabel });
   const title = candidateTitle(property);
   return (
     <section
+      ref={ref}
+      tabIndex={-1}
       className={styles.panel}
       aria-label={`Why ${title} is a lead`}
       data-why-panel=""
@@ -111,7 +120,11 @@ export function WhyPanel({
         ) : (
           <a
             className={styles.action}
-            href={`${countyLens}/data/verify/${encodeURIComponent(property.cid)}`}
+            // Task A's Verify page takes a run manifest or a published file, not a record's own CID
+            // ("is not a manifest or an artifact of any published run"), so it checks the manifest
+            // this record is listed in.
+            href={`${countyLens}/data/verify/${encodeURIComponent(property.sourceManifestCid)}`}
+            title="Checks the run manifest this record comes from"
             target="_blank"
             rel="noopener noreferrer"
             data-why-verify=""
