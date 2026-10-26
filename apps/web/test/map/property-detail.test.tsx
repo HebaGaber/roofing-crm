@@ -102,7 +102,11 @@ describe("PropertyDetail drawer", () => {
   it("shows the usage type, or 'Type not published' — never the structure form 'Building'", () => {
     renderDrawer();
     expect(screen.getByText("Type not published")).not.toBeNull();
-    expect(screen.queryByText("Building")).toBeNull();
+    // The structure form is shown, but only as its own labelled row in the record section.
+    expect(document.querySelector('[data-field="property_type"]')?.textContent).toBe("Building");
+    expect(
+      document.querySelector('[data-drawer-record] [data-field="property_usage_type"]'),
+    ).not.toBeNull();
   });
 
   it("puts the property's Create lead before the Roof section", () => {
@@ -131,12 +135,15 @@ describe("PropertyDetail drawer", () => {
     expect(drawer.textContent).not.toMatch(/\d{4}-\d{2}-\d{2}T/);
     expect(screen.getByText(/Sep 4, 2026/)).not.toBeNull();
     expect(screen.getByText("Open")).not.toBeNull();
-    expect(screen.queryByText("open")).toBeNull();
+    // The source's own status word appears only in its labelled row; the badge is the plain label.
+    expect(screen.queryByText("open")).toBe(
+      document.querySelector('[data-field="improvement_status"]'),
+    );
   });
 
   it("lists missing fields in plain language with the contract's reason", () => {
     renderDrawer();
-    expect(screen.getByText("Street address, city")).not.toBeNull();
+    expect(screen.getByText(/street address, city/)).not.toBeNull();
     expect(screen.queryByText(/unnormalized_address/)).toBeNull();
     expect(screen.getAllByText("Not included in the published tables").length).toBeGreaterThan(0);
   });

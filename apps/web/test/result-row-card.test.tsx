@@ -176,7 +176,13 @@ describe("ResultRow card", () => {
       />,
     );
     expect(screen.getByLabelText("Missing data")).not.toBeNull();
-    expect(screen.getByText("Property use, owner kind")).not.toBeNull();
+    // One bullet per reason with its fields joined, in plain language.
+    expect(screen.getByLabelText("Missing data").tagName).toBe("UL");
+    expect(
+      screen
+        .getAllByRole("listitem")
+        .some((li) => /property use, owner kind/.test(li.textContent ?? "")),
+    ).toBe(true);
     expect(screen.queryByText(/propertyUsageType/)).toBeNull();
   });
 

@@ -12,8 +12,17 @@
 // Create lead"), with View lineage beside it; every value goes through src/format (dates as
 // calendar days, enum codes and field names as plain labels). Placement (side sheet ≥ 1280 px,
 // full-height sheet below) is Map.module.css's `.drawerSlot`.
+import type { LatLng } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
+import {
+  CidDisplay,
+  IconButton,
+  MissingList,
+  MissingReason,
+  Provenance,
+  StatusPill,
+  formatUtc,
+} from "@crm/ui";
 import type { MissingReason as Reason } from "@crm/oracle-contract";
 import { forwardRef, useEffect, useId, useRef, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
@@ -24,6 +33,7 @@ import {
   contractorReasonText,
   coordinateSourceLabel,
   formatDate,
+  groupMissing,
   humanizeCode,
   missingEntry,
   mailingLocation,
@@ -44,8 +54,10 @@ import {
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
+import { ASK_NOW_STATE } from "../../../components/Onboarding/firstVisit.js";
 import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
 import { BbbLink } from "../BbbLink.js";
+import { WhyBody } from "../WhyBody.js";
 import { SourceLink, safeSourceHref } from "../SourceLink.js";
 import { patchMapMode } from "../mapMode.js";
 import { hasUnfinaledRoofPermit, roofSourceLabel, runLabel } from "../whyLead.js";
@@ -83,6 +95,12 @@ export interface PropertyDetailProps {
   readonly onClose: () => void;
   /** Opens another property (a "Similar properties" row); the Map route sets `sel`. */
   readonly onSelectProperty?: ((propertyCid: string) => void) | undefined;
+  /** The search centre, radius and its name, for the inline "Why this is a lead" distance rule. */
+  readonly center?: LatLng | undefined;
+  readonly radiusMi?: number | undefined;
+  readonly centreLabel?: string | undefined;
+  /** CountyLens base URL, for the Verify CID action in the "Why" section. */
+  readonly countyLensUrl?: string | null | undefined;
 }
 
 /** A design row for something the published data cannot support yet: disabled, with the reason on
@@ -174,6 +192,27 @@ function OpenForValue({ permit }: { readonly permit: Provenanced<CrmPermit> }): 
   );
 }
 
+/** A permit value the row left empty, with the reason from the permit's own `missing` entry. */
+function PermitMissing({
+  permit,
+  field,
+  what,
+}: {
+  readonly permit: Provenanced<CrmPermit>;
+  readonly field: string;
+  readonly what: string;
+}): ReactElement {
+  const entry = missingEntry(permit.missingReasons, field);
+  if (entry === undefined) return <>{what} not published (no reason recorded)</>;
+  return (
+    <MissingReason
+      field={entry.field}
+      reason={entry.reason as Reason}
+      label={missingReasonText(entry.field, entry.reason)}
+    />
+  );
+}
+
 const PERMIT_STATUS_PILL = { open: "info", stalled: "warning", closed: "verified" } as const;
 
 function PermitDetail({
@@ -230,6 +269,68 @@ function PermitDetail({
           </div>
         ) : null}
         <div className={styles.permitField}>
+          <dt>Jurisdiction</dt>
+          <dd data-field="jurisdiction">
+            {permit.jurisdiction ?? (
+              <PermitMissing permit={permit} field="jurisdiction" what="Jurisdiction" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Status in the source</dt>
+          <dd data-field="improvement_status">
+            {permit.improvementStatus != null ? (
+              permit.improvementStatus
+            ) : (
+              <PermitMissing permit={permit} field="improvement_status" what="Status" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Closed</dt>
+          <dd data-field="permit_close_date">
+            {permit.permitCloseDate != null ? (
+              (formatDate(permit.permitCloseDate) ?? permit.permitCloseDate)
+            ) : (
+              <PermitMissing permit={permit} field="permit_close_date" what="Close date" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Final inspection</dt>
+          <dd data-field="final_inspection_date">
+            {permit.finalInspectionDate != null ? (
+              (formatDate(permit.finalInspectionDate) ?? permit.finalInspectionDate)
+            ) : (
+              <PermitMissing
+                permit={permit}
+                field="final_inspection_date"
+                what="Final inspection date"
+              />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Permit CID</dt>
+          <dd data-field="permit_cid">
+            <CidDisplay cid={permit.permitCid} />
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Contractor company CID</dt>
+          <dd data-field="contractor_company_cid">
+            {permit.contractorCompanyCid != null ? (
+              <CidDisplay cid={permit.contractorCompanyCid} />
+            ) : (
+              <PermitMissing
+                permit={permit}
+                field="contractor_company_cid"
+                what="Contractor company record"
+              />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
           <dt>Contractor, as printed on permit</dt>
           <dd>
             <ContractorName permit={permit} />{" "}
@@ -243,6 +344,16 @@ function PermitDetail({
           </dd>
         </div>
       </dl>
+      {(permit.missingReasons ?? []).length === 0 ? null : (
+        <MissingList
+          groups={groupMissing(permit.missingReasons ?? []).map((group) => ({
+            key: `${group.reason}|${group.reasonLabel}`,
+            reason: group.reasonLabel,
+            fields: group.fieldsInline,
+            data: { "missing-group": group.reason, fields: group.fields.join(",") },
+          }))}
+        />
+      )}
       <LeadCreateAction property={property} permit={permit} />
       {safeSourceHref(permit.sourceUrl) === null ? (
         <Provenance
@@ -560,6 +671,125 @@ function DrawerTitle({
   );
 }
 
+/** Every other value the property row carries, so nothing has to be opened elsewhere: the property
+ *  CID, the structure form and raw usage type, the year built, where the coordinates came from, the
+ *  out-of-area flag, and when the record was collected in which run. A value the row lacks shows its
+ *  stated reason. `leadKey`-style internals and the manifest CID (the Verify link in "Why this is a
+ *  lead" checks it) stay out. */
+function RecordSection({
+  property,
+  titleId,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly titleId: string;
+}): ReactElement {
+  const coordEntry = property.missingReasons.find((m) =>
+    ["latitude", "longitude", "lat_lon"].includes(m.field),
+  );
+  const hasCoords = property.latitude !== null && property.longitude !== null;
+  return (
+    <section className={styles.section} aria-labelledby={`${titleId}-record`} data-drawer-record="">
+      <h4 id={`${titleId}-record`} className={styles.sectionTitle}>
+        Property record
+      </h4>
+      <dl className={styles.permitFields}>
+        <div className={styles.permitField}>
+          <dt>Property CID</dt>
+          <dd data-field="property_cid">
+            <CidDisplay cid={property.propertyCid} />
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>TCAD account</dt>
+          <dd data-field="request_identifier">{property.requestIdentifier}</dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Structure form</dt>
+          <dd data-field="property_type">
+            {property.propertyType != null ? (
+              humanizeCode(property.propertyType)
+            ) : (
+              <MissingValue property={property} field="property_type" what="Structure form" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Usage type</dt>
+          <dd data-field="property_usage_type">
+            {property.propertyUsageType != null ? (
+              humanizeCode(property.propertyUsageType)
+            ) : (
+              <MissingValue property={property} field="property_usage_type" what="Usage type" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Year built</dt>
+          <dd data-field="structure_built_year">
+            {property.structureBuiltYear != null ? (
+              String(property.structureBuiltYear)
+            ) : (
+              <MissingValue property={property} field="structure_built_year" what="Year built" />
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Coordinates</dt>
+          <dd data-field="lat_lon">
+            {hasCoords
+              ? `${(property.latitude ?? 0).toFixed(5)}, ${(property.longitude ?? 0).toFixed(5)} · ${coordinateSourceLabel(property.coordinateSource)}`
+              : `${coordinateSourceLabel("none")} · ${missingReasonText(
+                  coordEntry?.field ?? "lat_lon",
+                  coordEntry?.reason ?? "no_coordinates",
+                )}`}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Out-of-area owner</dt>
+          <dd data-field="owner_is_out_of_area">
+            {property.ownerIsOutOfArea == null ? (
+              <MissingValue
+                property={property}
+                field="owner_is_out_of_area"
+                what="Out-of-area owner"
+              />
+            ) : property.ownerIsOutOfArea ? (
+              "Yes"
+            ) : (
+              "No"
+            )}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Collected</dt>
+          <dd data-field="captured_at">
+            <time dateTime={property.capturedAt}>{formatUtc(property.capturedAt)}</time>
+            {" UTC · "}
+            {runLabel(property.runId)}
+            {` (${property.runId})`}
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Record CID</dt>
+          <dd data-field="record_cid">
+            <CidDisplay cid={property.cid} />
+          </dd>
+        </div>
+        <div className={styles.permitField}>
+          <dt>Source record</dt>
+          <dd data-field="source_url">
+            {safeSourceHref(property.sourceUrl) === null ? (
+              "No source link published"
+            ) : (
+              <SourceLink url={property.sourceUrl} label="TCAD record" />
+            )}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 /** Where each value came from: source, capture date, run and CID, one row per field (CRM-HANDOFF
  *  §4.3: the drawer's collapsed "Lineage · Metadata"). Read from the rows; nothing is added. */
 function MetadataSection({
@@ -708,6 +938,10 @@ export function PropertyDetail({
   data,
   onClose,
   onSelectProperty,
+  center,
+  radiusMi,
+  centreLabel,
+  countyLensUrl,
 }: PropertyDetailProps): ReactElement {
   const [searchParams] = useSearchParams();
   const titleId = useId();
@@ -766,11 +1000,30 @@ export function PropertyDetail({
               View lineage in Explorer
             </a>
           )}
-          <Link to={{ search: askSearch }} className={styles.link} data-ask-about="">
+          <Link
+            to={{ search: askSearch }}
+            state={ASK_NOW_STATE}
+            className={styles.link}
+            data-ask-about=""
+          >
             Ask about it
           </Link>
         </div>
       </div>
+
+      <section className={styles.section} aria-labelledby={`${titleId}-why`} data-drawer-why="">
+        <h4 id={`${titleId}-why`} className={styles.sectionTitle}>
+          Why this is a lead
+        </h4>
+        <WhyBody
+          property={property}
+          permits={data.permits}
+          center={center}
+          radiusMi={radiusMi}
+          centreLabel={centreLabel}
+          countyLensUrl={countyLensUrl}
+        />
+      </section>
 
       <section className={styles.section} aria-labelledby={`${titleId}-roof`}>
         <h4 id={`${titleId}-roof`} className={styles.sectionTitle}>
@@ -813,6 +1066,8 @@ export function PropertyDetail({
       </section>
 
       <OwnerSection property={property} titleId={titleId} />
+
+      <RecordSection property={property} titleId={titleId} />
 
       <section className={styles.section} aria-labelledby={`${titleId}-permits`}>
         <h4 id={`${titleId}-permits`} className={styles.sectionTitle}>

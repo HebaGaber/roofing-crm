@@ -36,7 +36,7 @@ import {
   type ReactElement,
 } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import { COUNTY_ZOOM, WIDEN_STEP_MI, yearsToDays } from "@crm/domain";
 import { isFinaledPermit } from "@crm/shared";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
@@ -73,6 +73,8 @@ import {
   ROOF_ANY,
 } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
+import { useShellAppLinks } from "../../components/AppShell/shellApi.js";
+import { AnswerList } from "./Candidates/AnswerList.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
 import {
   emptyStateCopy,
@@ -94,7 +96,8 @@ import { ResultsSheet } from "./ResultsSheet.js";
 import type { ExactLookupResult } from "./SearchBox.js";
 import { TopBar } from "./TopBar.js";
 import { TriageStack } from "./Triage/index.js";
-import { AskPanel } from "../Ask/AskPanel.js";
+import { answerMatchTotal } from "../Ask/askCopy.js";
+import { AskPanel, type AutoAsk } from "../Ask/AskPanel.js";
 import { answerPins, type AgentAnswer } from "@crm/shared";
 import { MapViewToggle, type MapViewChoice } from "./MapViewToggle.js";
 import { PaneHandle } from "./PaneHandle.js";
@@ -195,6 +198,7 @@ export function Component(): ReactElement {
   // `view=list` (the Candidate list) and `triage=1` (Field triage) live in the URL beside the
   // centre, radius and filters, so reload, back and a shared link reopen the same view.
   const { view, triage, setTriage } = useMapViewParam();
+  const appLinks = useShellAppLinks();
   const [triageCid, setTriageCid] = useState<string | null>(null);
   // As soon as a lead can be created (a drawer is open, the candidate list or triage is showing),
   // fetch the first page of the Leads list, so a created lead is inserted into a real cached page
@@ -209,11 +213,24 @@ export function Component(): ReactElement {
   // The question in `?q=` only prefills the box. Keep what the panel should show in state, and take
   // `q` out of the URL, so a reload or a shared link does not refill the box with an old question.
   const [prefill, setPrefill] = useState<string | null>(null);
+  // An explicit click (a card question, "Ask about it") also carries `askNow` in the navigation
+  // state: that, never the URL, is what makes the panel ask once. `clearQuestion` drops both.
+  const askNow = (useLocation().state as { askNow?: unknown } | null)?.askNow === true;
+  const [autoAsk, setAutoAsk] = useState<AutoAsk | null>(null);
+  const autoAskNonce = useRef(0);
   useEffect(() => {
     if (q === null) return;
     setPrefill(q);
+    if (askNow) {
+      autoAskNonce.current += 1;
+      setAutoAsk({ text: q, nonce: autoAskNonce.current });
+    }
     clearQuestion();
-  }, [q, clearQuestion]);
+  }, [q, askNow, clearQuestion]);
+  const consumeAutoAsk = useCallback(
+    (nonce: number) => setAutoAsk((cur) => (cur?.nonce === nonce ? null : cur)),
+    [],
+  );
   const ai = mode === "ai";
   const [threadId, setThreadId] = useState(readThreadId);
   const [answer, setAnswer] = useState<AgentAnswer | null>(null);
@@ -231,6 +248,10 @@ export function Component(): ReactElement {
     });
   }, [answer]);
   const hadAnswer = useRef(false);
+  // The question behind `answer`, and whether the List view has been switched back to the filter
+  // results ("Show filter results"). A new answer or a reset puts the answer back in the List.
+  const [answerAsked, setAnswerAsked] = useState("");
+  const [showFilterList, setShowFilterList] = useState(false);
   // Three-pane widths: each pane can be minimised (kept for the session); the Matches rows of an
   // AI answer render into the results pane (`matchesHost`) while the left pane shows the answer.
   const [leftCollapsedState, toggleLeft] = usePaneCollapsed("left");
@@ -260,7 +281,10 @@ export function Component(): ReactElement {
     if (target !== null && panelHost.parentElement !== target) target.appendChild(panelHost);
     else if (target === null && panelHost.parentElement !== null) panelHost.remove();
   }, [panelHost, wide, leftSlot, sheetSlot]);
-  const onAnswer = useCallback((next: AgentAnswer | null) => {
+  const onAnswer = useCallback((next: AgentAnswer | null, asked?: string) => {
+    setAnswerAsked(asked ?? "");
+    // A new answer is what the List shows; the way back to the filter results is per answer.
+    setShowFilterList(false);
     // "New question" clears the answer: that starts a new agent thread (no carried-over memory).
     if (next === null && hadAnswer.current) setThreadId(newThreadId());
     hadAnswer.current = next !== null;
@@ -275,6 +299,8 @@ export function Component(): ReactElement {
     setThreadId(newThreadId());
     hadAnswer.current = false;
     setAnswer(null);
+    setAnswerAsked("");
+    setShowFilterList(false);
     setFocusedCitation(null);
     setPrefill(null);
   }, []);
@@ -878,6 +904,9 @@ export function Component(): ReactElement {
       onFocusCitation={setFocusedCitation}
       onAnswer={onAnswer}
       onShowOnMap={() => mapHandleRef.current?.fitPins()}
+      onOpenProperty={selectProperty}
+      autoAsk={autoAsk}
+      onAutoAskConsumed={consumeAutoAsk}
       layout={layout}
       {...(layout === "pane" ? { matchesHost } : {})}
     />
@@ -887,7 +916,7 @@ export function Component(): ReactElement {
       ? createPortal(askPanel(wide ? "pane" : "sheet"), panelHost)
       : null;
   const topChoice: MapViewChoice = view === "list" ? "list" : "cards";
-  const matchCountInAnswer = answer?.rows?.length ?? 0;
+  const matchCountInAnswer = answer === null ? 0 : answerMatchTotal(answer);
 
   return (
     <section
@@ -1026,17 +1055,28 @@ export function Component(): ReactElement {
       ) : null}
       {view === "list" ? (
         <div className={styles.listPane} data-view="list">
-          <CandidateList
-            filters={candidateFilters}
-            originLabel={center === null ? "the county" : fromGps ? "you" : "the pin"}
-            selectedCid={sel}
-            onSelect={selectProperty}
-            onShowOnMap={showOnMap}
-            onRadiusChange={setRadiusMi}
-            onRoofChange={setRoofAgeMinYears}
-            onPermitStatusChange={setPermitStatus}
-            onPermitOpenYrsChange={setPermitOpenYrs}
-          />
+          {answer !== null && (answer.rows?.length ?? 0) > 0 && !showFilterList ? (
+            <AnswerList
+              answer={answer}
+              asked={answerAsked}
+              selectedCid={sel}
+              onSelect={selectProperty}
+              onShowOnMap={showOnMap}
+              onShowFilterResults={() => setShowFilterList(true)}
+            />
+          ) : (
+            <CandidateList
+              filters={candidateFilters}
+              originLabel={center === null ? "the county" : fromGps ? "you" : "the pin"}
+              selectedCid={sel}
+              onSelect={selectProperty}
+              onShowOnMap={showOnMap}
+              onRadiusChange={setRadiusMi}
+              onRoofChange={setRoofAgeMinYears}
+              onPermitStatusChange={setPermitStatus}
+              onPermitOpenYrsChange={setPermitOpenYrs}
+            />
+          )}
         </div>
       ) : null}
       {view === "map" ? (
@@ -1320,6 +1360,9 @@ export function Component(): ReactElement {
             data={detailQuery.data satisfies PropertyDetailData}
             onClose={closeDetail}
             onSelectProperty={selectProperty}
+            {...(center === null ? {} : { center, radiusMi })}
+            centreLabel={fromGps ? "you" : "the pin"}
+            countyLensUrl={appLinks.data?.countyLensUrl}
           />
         </div>
       ) : null}

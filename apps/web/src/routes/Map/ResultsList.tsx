@@ -5,13 +5,13 @@
 // page as the whole set. Only the page's rows are drawn, so a 100-row answer costs ten cards.
 import type { LatLng } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { Icon } from "@crm/ui";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { MAX_PROPERTY_ROWS } from "@crm/domain";
 import { ResultRow } from "./ResultRow.js";
+import { ResultsPager } from "./ResultsPager.js";
 import { ResultsPanel } from "./ResultsPanel.js";
 import { WhyPanel } from "./WhyPanel.js";
-import { pageNumbers, pageSlice } from "./resultsView.js";
+import { pageSlice } from "./resultsView.js";
 import styles from "./ResultsList.module.css";
 
 export interface ResultsListProps {
@@ -111,47 +111,7 @@ export function ResultsList({
       {...(onTriage === undefined ? {} : { onTriage })}
       footer={
         rows.length === 0 ? undefined : (
-          <footer className={styles.foot} data-results-pager="">
-            <span className={styles.showing}>{showing}</span>
-            <nav className={styles.pager} aria-label="Pages">
-              <button
-                type="button"
-                className={styles.pageBtn}
-                aria-label="Previous page"
-                disabled={slice.page <= 1}
-                onClick={() => setPage(slice.page - 1)}
-              >
-                <Icon name="chevron_left" size="medium" />
-              </button>
-              {pageNumbers(slice.page, slice.pages).map((item, index) =>
-                item === "gap" ? (
-                  <span key={`gap-${String(index)}`} className={styles.gap} aria-hidden="true">
-                    …
-                  </span>
-                ) : (
-                  <button
-                    key={item}
-                    type="button"
-                    className={`${styles.pageBtn} ${item === slice.page ? styles.pageOn : ""}`}
-                    aria-label={`Page ${String(item)}`}
-                    {...(item === slice.page ? { "aria-current": "page" as const } : {})}
-                    onClick={() => setPage(item)}
-                  >
-                    {item}
-                  </button>
-                ),
-              )}
-              <button
-                type="button"
-                className={styles.pageBtn}
-                aria-label="Next page"
-                disabled={slice.page >= slice.pages}
-                onClick={() => setPage(slice.page + 1)}
-              >
-                <Icon name="chevron_right" size="medium" />
-              </button>
-            </nav>
-          </footer>
+          <ResultsPager slice={slice} showing={showing} onPage={setPage} />
         )
       }
     >

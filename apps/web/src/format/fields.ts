@@ -106,6 +106,11 @@ export function missingReasonText(field: string, reason: string): string {
   }
 }
 
+/** `city, ZIP code, property use` — every field lower-cased for mid-sentence use (bullet text). */
+export function fieldListInline(fields: readonly string[]): string {
+  return fields.map((f) => midSentence(fieldLabel(f))).join(", ");
+}
+
 export interface MissingGroup {
   readonly reason: string;
   readonly reasonLabel: string;
@@ -113,6 +118,8 @@ export interface MissingGroup {
   readonly fields: readonly string[];
   /** The plain-language list to display. */
   readonly fieldsLabel: string;
+  /** The same fields, each lower-cased, for "reason: city, ZIP code" bullets. */
+  readonly fieldsInline: string;
 }
 
 /** A row's `missing` entries grouped by reason, in first-seen order. */
@@ -134,5 +141,6 @@ export function groupMissing(
     reasonLabel: group.label,
     fields: group.fields,
     fieldsLabel: fieldList(group.fields),
+    fieldsInline: fieldListInline(group.fields),
   }));
 }

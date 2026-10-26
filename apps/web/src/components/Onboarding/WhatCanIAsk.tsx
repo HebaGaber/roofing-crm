@@ -1,6 +1,7 @@
 // The first-visit "What can I ask?" card (CRM-HANDOFF section 4.10, E-28; boards
 // Welcome1440/768/390). One dismissible, non-modal dialog over the map: a line on what the data
-// is, three example questions that open /ask with the question prefilled (never run), and
+// is, three example questions that open the map's AI mode and ask at once (the click carries in-app
+// state; a URL alone only prefills), and
 // Close / Got it. Placed per the boards by WhatCanIAsk.module.css: 16 px in from the map's left
 // edge at 1440 and 768, full width at 390. `?first=1` forces it open; the Help menu reopens it
 // through the `crm:open-what-can-i-ask` event.
@@ -12,6 +13,7 @@ import {
   FIRST_VISIT_PARAM,
   WHAT_CAN_I_ASK_EVENT,
   WHAT_CAN_I_ASK_INTRO,
+  ASK_NOW_STATE,
   askHref,
   isDismissed,
   markDismissed,
@@ -93,7 +95,12 @@ export function WhatCanIAsk({ onOpenChange }: WhatCanIAskProps = {}): ReactEleme
       <ul className={styles.list}>
         {EXAMPLE_QUESTIONS.map((question) => (
           <li key={question}>
-            <Link to={askHref(question)} className={styles.question} onClick={markDismissed}>
+            <Link
+              to={askHref(question)}
+              state={ASK_NOW_STATE}
+              className={styles.question}
+              onClick={markDismissed}
+            >
               <Icon name="auto_awesome" />
               <span className={styles.questionText}>{question}</span>
               <Icon name="arrow_forward" />

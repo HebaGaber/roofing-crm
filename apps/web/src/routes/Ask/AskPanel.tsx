@@ -31,7 +31,14 @@
 // heading; focus moves to that heading when the result arrives. Limit banners are `role="alert"`.
 import { answerPins, OUTBOUND_REFUSAL_TEXT, type AgentAnswer } from "@crm/shared";
 import { missingReasonLabel } from "@crm/oracle-contract";
-import { CidDisplay, formatUtc, Icon, Provenance, StatusPill } from "@crm/ui";
+import {
+  CidDisplay,
+  formatUtc,
+  Icon,
+  MissingList as SharedMissingList,
+  Provenance,
+  StatusPill,
+} from "@crm/ui";
 import {
   useCallback,
   useEffect,
@@ -43,8 +50,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router";
-import { contractorResolutionLabel } from "../../format/index.js";
+import { Link, useNavigate } from "react-router";
 import {
   useAskAgent,
   useConfirmLead,
@@ -55,6 +61,7 @@ import {
 } from "./askApi.js";
 import { bulkSummary } from "../Map/Candidates/bulkCreate.js";
 import { Snackbar, snackbarActionClass } from "../Map/Candidates/Snackbar.js";
+import { AnswerMatches } from "../Map/AnswerMatches.js";
 import { safeSourceHref, SourceLink } from "../Map/SourceLink.js";
 import { UndoStatusRow } from "../Map/Candidates/UndoStatusRow.js";
 import { undoOneText, undoSummary } from "../Map/Candidates/undoCopy.js";
@@ -70,17 +77,14 @@ import {
   fieldNotPublishedText,
   hasModelPlan,
   isOutboundRefusal,
-  matchesEmptyText,
-  missingText,
+  answerMatchTotal,
+  missingGroups,
   nextRadius,
   offersWiden,
   pausedText,
   pinsNote,
   placeOf,
   planSummary,
-  rowNearText,
-  rowPermitText,
-  rowRoofText,
   rowSignal,
   SUGGESTION_GROUPS,
   throttleText,
@@ -250,6 +254,8 @@ interface PanelCtx {
   /** Three-pane widths: the Matches rows render into this element (the results pane) instead of
    *  a tab, so the left pane shows the answer and the right pane shows the matches. */
   readonly matchesHost?: HTMLElement | null | undefined;
+  /** Opens a matched property's details (the card's "Open details"). */
+  readonly onOpen: (propertyCid: string) => void;
 }
 
 /** Creating a lead from a proposal is a separate, explicit click — never automatic on receiving
@@ -453,29 +459,14 @@ function ClaimItem({
   );
 }
 
+/** The answer-level `missing[]` as the shared bullet list (one bullet per reason, fields joined). */
 function MissingList({
   missing,
 }: {
   readonly missing: AgentAnswer["missing"];
 }): ReactElement | null {
   if (missing.length === 0) return null;
-  return (
-    <ul className={styles.missingList} aria-label="Missing data">
-      {missing.map((m) => (
-        <li key={`${m.field}|${m.reason}`}>
-          <StatusPill
-            status="unavailable"
-            text={missingText(m)}
-            data={{
-              field: m.field,
-              reason: m.reason,
-              ...(m.count === undefined ? {} : { count: String(m.count) }),
-            }}
-          />
-        </li>
-      ))}
-    </ul>
-  );
+  return <SharedMissingList groups={missingGroups(missing)} />;
 }
 
 function Notes({ notes }: { readonly notes: readonly string[] }): ReactElement | null {
@@ -490,53 +481,6 @@ function Notes({ notes }: { readonly notes: readonly string[] }): ReactElement |
 }
 
 type AnswerRowT = NonNullable<AgentAnswer["rows"]>[number];
-
-/** One Matches row (CrmAsk1440 rows): number when a claim cites it, TCAD id, near {place}, roof age
- *  and basis, permit and open years, contractor state, why anything is missing, Open on map, and
- *  the same per-row Create lead as the Answer tab. Every part is skipped when the row lacks it. */
-function MatchRow({
-  row,
-  proposal,
-  ctx,
-}: {
-  readonly row: AnswerRowT;
-  readonly proposal: Proposal | undefined;
-  readonly ctx: PanelCtx;
-}): ReactElement {
-  const facts = [rowNearText(row), rowRoofText(row), rowPermitText(row)].filter(
-    (f): f is string => f !== undefined,
-  );
-  const focused = row.citationId !== undefined && ctx.focused === row.citationId;
-  return (
-    <li
-      className={styles.source}
-      data-focused={focused}
-      data-tcad-id={row.tcadId}
-      {...(row.citationId === undefined ? {} : { "data-citation-id": row.citationId })}
-    >
-      <span className={styles.sourceNumber} aria-hidden="true">
-        {row.citationId === undefined ? <Icon name="home" size="small" /> : row.citationId}
-      </span>
-      <div className={styles.sourceBody}>
-        <span className={styles.sourceTitle}>{`TCAD ${row.tcadId}`}</span>
-        {facts.length === 0 ? null : <span className={styles.sourceCid}>{facts.join(" · ")}</span>}
-        {row.contractorResolution === undefined ? null : (
-          <span className={styles.sourceCid}>
-            {`Contractor: ${contractorResolutionLabel(row.contractorResolution)}`}
-          </span>
-        )}
-        <MissingList missing={row.missing} />
-        <div className={styles.actionRow}>
-          <Link className={styles.textButton} to={`/?sel=${encodeURIComponent(row.propertyCid)}`}>
-            <Icon name="location_on" size="medium" />
-            Open on map
-          </Link>
-        </div>
-        {proposal === undefined ? null : <ProposalAction proposal={proposal} ctx={ctx} />}
-      </div>
-    </li>
-  );
-}
 
 interface PanelCtxFull extends PanelCtx {
   readonly addBulkCreated: (tcadIds: readonly string[]) => void;
@@ -690,28 +634,21 @@ function AnsweredBody({
   };
   const dismissUndoRow = useCallback(() => setUndoRow(null), []);
 
-  const matchCount = rows?.length ?? 0;
+  const matchCount = answerMatchTotal(answer);
+  const matchesPanel = (
+    <AnswerMatches
+      answer={answer}
+      focusedCitation={ctx.focused}
+      onOpen={ctx.onOpen}
+      extraFor={(row) => {
+        const proposal = byTcad.get(row.tcadId);
+        return proposal === undefined ? null : <ProposalAction proposal={proposal} ctx={ctx} />;
+      }}
+    />
+  );
   return (
     <div className={styles.answer}>
-      {matchesHost === null
-        ? null
-        : createPortal(
-            rows === undefined || rows.length === 0 ? (
-              <p className={styles.notice}>{matchesEmptyText(rows)}</p>
-            ) : (
-              <ul className={styles.sources} aria-label="Matches">
-                {rows.map((row) => (
-                  <MatchRow
-                    key={row.propertyCid}
-                    row={row}
-                    proposal={byTcad.get(row.tcadId)}
-                    ctx={ctx}
-                  />
-                ))}
-              </ul>
-            ),
-            matchesHost,
-          )}
+      {matchesHost === null ? null : createPortal(matchesPanel, matchesHost)}
       <div
         className={styles.tabs}
         role="tablist"
@@ -748,20 +685,7 @@ function AnsweredBody({
         className={styles.answer}
       >
         {tab === "matches" ? (
-          rows === undefined || rows.length === 0 ? (
-            <p className={styles.notice}>{matchesEmptyText(rows)}</p>
-          ) : (
-            <ul className={styles.sources} aria-label="Matches">
-              {rows.map((row) => (
-                <MatchRow
-                  key={row.propertyCid}
-                  row={row}
-                  proposal={byTcad.get(row.tcadId)}
-                  ctx={ctx}
-                />
-              ))}
-            </ul>
-          )
+          matchesPanel
         ) : (
           <>
             <PlanBlock answer={answer} />
@@ -1134,13 +1058,25 @@ export interface AskPanelProps {
   readonly focusedCitation: number | null;
   readonly onFocusCitation: (n: number | null) => void;
   /** Fires on each new or kept answer (null before the first), so the map can draw its pins. */
-  readonly onAnswer: (answer: AgentAnswer | null) => void;
+  readonly onAnswer: (answer: AgentAnswer | null, asked?: string) => void;
   /** Fit the map to the cited pins. */
   readonly onShowOnMap: () => void;
   /** A pane at 1280 px and up, the results sheet below. */
   readonly layout: "pane" | "sheet";
   /** Three-pane widths: where the Matches rows render (the results pane). Absent = a tab. */
   readonly matchesHost?: HTMLElement | null | undefined;
+  /** Opens a matched property's details; left out, the panel goes to `/?sel=` itself. */
+  readonly onOpenProperty?: ((propertyCid: string) => void) | undefined;
+  /** A one-shot request to ask `text` now, set only by an explicit in-app click (a card question,
+   *  "Ask about it"), never from the URL. Each `nonce` is acted on once. */
+  readonly autoAsk?: AutoAsk | null | undefined;
+  /** Told once a request was acted on (or ignored), so the owner can drop it. */
+  readonly onAutoAskConsumed?: ((nonce: number) => void) | undefined;
+}
+
+export interface AutoAsk {
+  readonly text: string;
+  readonly nonce: number;
 }
 
 export function AskPanel({
@@ -1152,7 +1088,11 @@ export function AskPanel({
   onShowOnMap,
   layout,
   matchesHost,
+  autoAsk,
+  onAutoAskConsumed,
+  onOpenProperty,
 }: AskPanelProps): ReactElement {
+  const navigate = useNavigate();
   const [question, setQuestion] = useState(() => prefillFrom(initialQuestion ?? null));
   const [asked, setAsked] = useState("");
   // "Edit" on the one-line question header brings the composer back (K1).
@@ -1240,6 +1180,29 @@ export function AskPanel({
     send(question);
   };
 
+  /** A click that asks at once (a suggestion, a card question): fills the box and sends, unless an
+   *  ask is already running or the budget says wait, in which case it only fills. */
+  const askNow = (text: string): void => {
+    const trimmed = prefillFrom(text);
+    if (trimmed === "") return;
+    setQuestion(trimmed);
+    if (ask.isPending || blocked) return;
+    send(trimmed);
+  };
+  const askNowRef = useRef(askNow);
+  askNowRef.current = askNow;
+  const consumedRef = useRef(onAutoAskConsumed);
+  consumedRef.current = onAutoAskConsumed;
+  // The one-shot request is acted on once per nonce (a ref survives StrictMode's second effect run).
+  const handledNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (autoAsk == null || handledNonce.current === autoAsk.nonce) return;
+    handledNonce.current = autoAsk.nonce;
+    askNowRef.current(autoAsk.text);
+    inputRef.current?.focus();
+    consumedRef.current?.(autoAsk.nonce);
+  }, [autoAsk]);
+
   /** Enter asks (as the single-line box did); Shift+Enter keeps a new line. */
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
@@ -1268,10 +1231,11 @@ export function AskPanel({
   const onAnswerRef = useRef(onAnswer);
   onAnswerRef.current = onAnswer;
   const pending = ask.isPending;
+  const shownAsked = shownAnswer === data ? asked : kept?.asked;
   useEffect(() => {
     if (pending) return;
-    onAnswerRef.current(shownAnswer);
-  }, [shownAnswer, pending]);
+    onAnswerRef.current(shownAnswer, shownAsked);
+  }, [shownAnswer, shownAsked, pending]);
 
   const ctx: PanelCtxFull = {
     threadId,
@@ -1279,6 +1243,7 @@ export function AskPanel({
     onFocus: onFocusCitation,
     bulkCreated,
     matchesHost,
+    onOpen: onOpenProperty ?? ((cid: string) => void navigate(`/?sel=${encodeURIComponent(cid)}`)),
     addBulkCreated: (ids) => setBulkCreated((prev) => new Set([...prev, ...ids])),
   };
 
@@ -1372,7 +1337,7 @@ export function AskPanel({
                               className={styles.suggestion}
                               disabled={ask.isPending}
                               data-golden={golden}
-                              onClick={() => setQuestion(text)}
+                              onClick={() => askNow(text)}
                             >
                               <Icon name="lightbulb" size="medium" />
                               <span className={styles.suggestionText}>{text}</span>
