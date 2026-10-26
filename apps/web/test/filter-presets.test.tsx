@@ -111,7 +111,7 @@ describe("FilterSheet Suggestions", () => {
   it("shows the section after Owner, presses a preset, and Clear resets", () => {
     let last = new URLSearchParams();
     render(<Harness onUrl={(p) => (last = p)} />);
-    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
     const section = document.querySelector("[data-filter-suggestions]") as HTMLElement;
     const owner = screen.getByRole("group", { name: "Owner" });
     expect(owner.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -138,7 +138,7 @@ describe("FilterSheet Suggestions", () => {
         .getAttribute("aria-pressed"),
     ).toBe("false");
 
-    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    fireEvent.click(screen.getByText("Clear"));
     expect(last.get("roof")).toBeNull();
     expect(last.get("permit")).toBeNull();
     expect(last.get("lat")).toBe("30.3");
