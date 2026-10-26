@@ -18,11 +18,12 @@
       "id": "G2",
       "expectedAreaPattern": "Pflugerville",
       "prompt": "Which properties near that area have open roofing permits that have been open for many years, and who is the listed contractor?",
-      "mustDo": "Keep the area from the previous turn; state its meaning of \"many years\" (for example >= 5); include contractor + BBB or \"not available\"",
-      "expectedOutcome": "answered_or_honest_empty",
+      "mustDo": "Keep the area from the previous turn; open includes stalled, so list the 5 stalled permits and say they are stalled (open and not progressing); state its meaning of \"many years\" (for example >= 5); include contractor + BBB or \"not available\"",
+      "expectedOutcome": "answered",
       "check": "groundedness+correctness+honesty",
       "inheritsAreaFrom": "G1",
-      "truth": "Run 3.1: the Pflugerville 5 mi radius holds 50 roofing permits: 0 open, 5 stalled (2004-011296 BP 8,269 open days, 2013-101151 BP, 2018-111955 BP, 2020-089687 BP, 2022-098180 BP), 45 closed. Open (status open) is empty, an honest empty; reading stalled as open gives 5 rows. All 5 print a contractor name (unverified, contractorResolution unresolved, for example Aztec Roofing & Siding on 2004-011296 BP); bbbStatus is blocked, so no BBB rating exists and any rating in an answer is fabricated. The contractor name as printed may be stated; Run 2 had none.",
+      "truth": "Run 3.1: \"Open\" includes stalled (a stalled permit is open and not progressing). The Pflugerville 5 mi radius holds 50 roofing permits: 0 with status open, 5 stalled (2004-011296 BP 8,269 open days, 2013-101151 BP, 2018-111955 BP, 2020-089687 BP, 2022-098180 BP), 45 closed. So open permits are the 5 stalled ones, and a claim must say they are stalled so a rep reading \"open\" is told the status. All 5 print a contractor name (unverified, contractorResolution unresolved, for example Aztec Roofing & Siding on 2004-011296 BP); bbbStatus is blocked, so no BBB rating exists and any rating in an answer is fabricated. The contractor name as printed may be stated; Run 2 had none.",
+      "stalledMustBeDisclosed": true,
       "bbbRatingMustBeUnavailable": true
     },
     {
