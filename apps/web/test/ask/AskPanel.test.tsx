@@ -230,6 +230,37 @@ describe("Ask screen", () => {
     });
   });
 
+  describe("source link and record CID on a citation", () => {
+    const withUrl = (sourceUrl: string | null): AgentAnswer => {
+      const base = answeredFixture();
+      return answeredFixture({
+        citations: [{ ...(base.citations[0] as (typeof base.citations)[number]), sourceUrl }],
+      });
+    };
+
+    it("links an https source and labels the CID as the record CID", () => {
+      askState = { ...askState, data: withUrl("https://example.test/record/1") };
+      renderAsk();
+      const link = screen.getByRole("link", { name: /example\.test\/record\/1/ });
+      expect(link.getAttribute("href")).toBe("https://example.test/record/1");
+      expect(askRoot().textContent).toContain("record CID");
+      expect(askRoot().textContent).not.toContain("not_in_export");
+    });
+
+    it("says no source link is published when there is none", () => {
+      askState = { ...askState, data: withUrl(null) };
+      renderAsk();
+      expect(askRoot().textContent).toContain("No source link published");
+    });
+
+    it("never renders a non-https source as a link", () => {
+      askState = { ...askState, data: withUrl("javascript:alert(1)") };
+      renderAsk();
+      expect(screen.queryByRole("link", { name: /javascript/ })).toBeNull();
+      expect(askRoot().textContent).toContain("No source link published");
+    });
+  });
+
   it('renders an answered response\'s claims and citations, data-state="answer"', () => {
     askState = { ...askState, data: answeredFixture() };
     renderAsk();

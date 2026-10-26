@@ -27,6 +27,9 @@ export const LeadSignals = z.object({
   roofAgeConfidence: z.enum(["high", "medium", "low", "none"]).optional(),
   openPermitId: z.string().optional(),
   openDays: z.number().optional(),
+  /** Whether the saved permit was open or stalled when the lead was created (a stalled permit is
+   *  not shown as "Open N days"). Absent on leads saved before this was recorded. */
+  openPermitStatus: z.enum(["open", "stalled"]).optional(),
   contractor: z.string().optional(),
   /** Only shown as a rating when bbb_status = rated (constitution P0-4); otherwise a missing reason. */
   bbbRating: z.string().optional(),

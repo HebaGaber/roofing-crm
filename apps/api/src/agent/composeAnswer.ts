@@ -52,7 +52,11 @@ import {
   scanQuestionForRadius,
 } from "./placeScan.js";
 import { verifyCitations, type CitationFacts } from "../services/agent/verifyCitations.js";
-import { createAgentDispatch, type AgentDispatch } from "../services/agent/tools.js";
+import {
+  createAgentDispatch,
+  withoutOwnerName,
+  type AgentDispatch,
+} from "../services/agent/tools.js";
 import { generateOnce, withAgentTimeout, type CacheStrategy } from "./runAgent.js";
 import type { LanguageModel } from "ai";
 
@@ -174,7 +178,10 @@ const COMPOSE_SYSTEM_PROMPT =
   '{"claims":[{"text":"<=400 chars","citationIds":[<citationId>,...]}]}. ' +
   "Each claim cites the citationId of every DATA row it relies on, and every number in a claim " +
   "must be one of that row's values or one of the DATA counts. When DATA.area.note or " +
-  "DATA.area.notApplied is present, your first claim states it in your own words.";
+  "DATA.area.notApplied is present, your first claim states it in your own words. " +
+  "On a permit row, contractorResolution says whether the contractor was matched to a known " +
+  'business ("unresolved" means it was not); contractorNameAsPrinted is the name exactly as ' +
+  "printed on the permit and is not verified, so never present it as a verified business.";
 
 /** ADR §4 governance: source text is untrusted data — control characters stripped, capped. */
 function sourceText(value: string | null): string | null {
@@ -211,18 +218,20 @@ function buildComposePrompt(plan: QueryPlan, gathered: Gathered, evidence: Evide
         openDays: p.openDays,
         issueDate: p.issueDate,
         jurisdiction: sourceText(p.jurisdiction),
-        contractor: sourceText(p.contractorResolution),
+        contractorResolution: sourceText(p.contractorResolution),
+        contractorNameAsPrinted: sourceText(p.contractorNameAsPrinted),
         missing: p.missingReasons,
       };
     }
     return { citationId: row.id, type: "run" };
   });
+  const notes = answerNotes(plan, gathered);
   const data = {
     intent: plan.intent,
     area: {
       name: plan.area.resolved?.name ?? plan.area.query,
       radiusMi: gathered.countyWide ? null : plan.area.radiusMi,
-      ...(answerNotes(plan).length === 0 ? {} : { notApplied: answerNotes(plan).join(" ") }),
+      ...(notes.length === 0 ? {} : { notApplied: notes.join(" ") }),
       ...(plan.area.kind === "zip" && !gathered.countyWide
         ? { note: zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query) }
         : {}),
@@ -670,10 +679,9 @@ function propertyRow(property: PropertyResult, id: number): EvidenceRow {
       kind: "property",
       tcadId: property.requestIdentifier,
       propertyCid: property.propertyCid,
-      sourceUrl: null,
+      sourceUrl: property.sourceUrl ?? null,
       capturedAt: property.capturedAt,
-      // `Provenanced<CrmProperty>` carries the row's own content-addressed `cid`, not a separate
-      // per-table CID — the closest provenance handle this round's index-schema exposes.
+      // `tableCid` is the row's own record CID (the index has no separate per-table CID).
       tableCid: property.cid,
       manifestCid: property.sourceManifestCid,
       asOf: property.capturedAt,
@@ -707,7 +715,7 @@ function permitRow(
       ...(tcadId === undefined ? {} : { tcadId }),
       propertyCid: permit.propertyCid,
       permitCid: permit.permitCid,
-      sourceUrl: null,
+      sourceUrl: permit.sourceUrl ?? null,
       capturedAt: permit.capturedAt,
       tableCid: permit.cid,
       manifestCid: permit.sourceManifestCid,
@@ -774,7 +782,7 @@ async function evidenceRows(gathered: Gathered, leadIndex: LeadIndex): Promise<E
   await Promise.all(
     missingOwners.map(async (cid) => {
       const found = await leadIndex.getProperty(cid);
-      if (found !== null) propertyByCid.set(cid, found);
+      if (found !== null) propertyByCid.set(cid, withoutOwnerName(found));
     }),
   );
   for (const p of permits) {
@@ -876,7 +884,7 @@ function zipSuffix(plan: QueryPlan, gathered: Gathered): string {
     plan.area.kind !== "zip" || gathered.countyWide
       ? ""
       : ` ${zipMeaning(plan.area.radiusMi, plan.area.resolved?.name ?? plan.area.query)}`;
-  const notes = answerNotes(plan).join(" ");
+  const notes = answerNotes(plan, gathered).join(" ");
   return notes === "" ? zip : `${zip} ${notes}`;
 }
 
@@ -936,7 +944,7 @@ function allowedNumbers(plan: QueryPlan, gathered: Gathered): number[] {
     plan.filters.roofAgeMinYears,
     plan.filters.openYearsMin,
     plan.filters.tenureYearsMin,
-    tenureNote(plan) === "" ? undefined : 10,
+    tenureNote(plan, gathered) === "" ? undefined : 10,
     gathered.proposals.length,
   ]);
 }
@@ -971,25 +979,46 @@ function tryParsePlan(text: string): { ok: true; plan: QueryPlan } | { ok: false
   return { ok: true, plan: parsed.data };
 }
 
-/** Filters on fields the Run 2 index does not publish. Owner location (`owner_area_class`,
- *  `owner_is_out_of_area`) is `not_in_export` for every property, so a filter on it can only ever
- *  return "none" for the wrong reason. This is the one place that Run 2 fact lives: a later run
- *  that publishes owner location removes the entry. */
+/** Filters this search path cannot honour: the plan may carry them, but no search applies them,
+ *  so an answer must never imply they ran. Owner location (`owner_area_class`) is `not_in_export`
+ *  for the served data, so a filter on it can only ever return "none" for the wrong reason; the
+ *  roof-age confidence floor and the residential/commercial kind are accepted by the plan but not
+ *  passed to the property search. Removing an entry here (once the search applies it) is all it
+ *  takes to stop dropping it. */
 const UNPUBLISHED_FILTERS = [
   {
     key: "ownerAreaClass",
     constraint: "owners outside the area",
     plain: "owner location is not published in this data",
+    label: "owner location",
+    match: /owner/i,
+  },
+  {
+    key: "roofConfidenceMin",
+    constraint: "roof age confidence level",
+    plain: "this search does not filter by roof age confidence",
+    label: "roof age confidence",
+    match: /confidence/i,
+  },
+  {
+    key: "kind",
+    constraint: "residential or commercial type",
+    plain: "this search does not filter by residential or commercial type",
+    label: "property type",
+    match: /residential|commercial|property type/i,
   },
 ] as const satisfies readonly {
   key: keyof QueryPlan["filters"];
   constraint: string;
   plain: string;
+  label: string;
+  match: RegExp;
 }[];
 
-const OWNER_CONSTRAINT = /owner/i;
+const gapRecorded = (plan: QueryPlan, match: RegExp): boolean =>
+  plan.unsupported.some((u) => u.reason === "not_in_export" && match.test(u.constraint));
 
-/** Code-enforced: a filter the index cannot honour is never applied. The filter and its slot
+/** Code-enforced: a filter the search cannot honour is never applied. The filter and its slot
  *  source are removed, and one `not_in_export` entry is recorded in `unsupported` (not duplicated
  *  when the model already made it), so the answer says what was not applied instead of returning
  *  a bare empty result. */
@@ -999,14 +1028,11 @@ export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
     if (next.filters[gap.key] === undefined) continue;
     const { [gap.key]: _dropped, ...filters } = next.filters;
     const { [gap.key]: _source, ...slotSources } = next.slotSources;
-    const has = next.unsupported.some(
-      (u) => u.reason === "not_in_export" && OWNER_CONSTRAINT.test(u.constraint),
-    );
     next = {
       ...next,
       filters,
       slotSources,
-      unsupported: has
+      unsupported: gapRecorded(next, gap.match)
         ? next.unsupported
         : [...next.unsupported, { constraint: gap.constraint, reason: "not_in_export" }],
     };
@@ -1019,26 +1045,31 @@ export function dropUnpublishedFilters(plan: QueryPlan): QueryPlan {
 const TENURE_NOTE =
   "Tenure is answered as more than 10 years, the only tenure cutoff this data holds.";
 
-function tenureNote(plan: QueryPlan): string {
+function tenureNote(plan: QueryPlan, gathered: Gathered): string {
   const asked = plan.filters.tenureYearsMin;
-  return asked !== undefined && asked !== 10 ? TENURE_NOTE : "";
+  if (asked === undefined || asked === 10) return "";
+  return servedIndexHasTenureYears(gathered) ? "" : TENURE_NOTE;
+}
+
+/** Read-only: an index built with the stored `tenureYears` column returns it (a number or null)
+ *  on every property row, and the tenure filter is then exact at any N; an older index returns no
+ *  such key. Judged from the rows this turn actually received. */
+function servedIndexHasTenureYears(gathered: Gathered): boolean {
+  return gathered.properties.some((p) => p.tenureYears !== undefined);
 }
 
 /** Every plain-words label this answer must carry. */
-function answerNotes(plan: QueryPlan): string[] {
-  return [unpublishedNote(plan), tenureNote(plan)].filter((n) => n !== "");
+function answerNotes(plan: QueryPlan, gathered: Gathered): string[] {
+  return [unpublishedNote(plan), tenureNote(plan, gathered)].filter((n) => n !== "");
 }
 
 /** The plain-words label for an answer that was not narrowed by an unpublished field, or "". */
 function unpublishedNote(plan: QueryPlan): string {
-  const gaps = UNPUBLISHED_FILTERS.filter((_gap) =>
-    plan.unsupported.some(
-      (u) => u.reason === "not_in_export" && OWNER_CONSTRAINT.test(u.constraint),
-    ),
-  );
+  const gaps = UNPUBLISHED_FILTERS.filter((gap) => gapRecorded(plan, gap.match));
   if (gaps.length === 0) return "";
   return (
-    "These matches are not narrowed by owner location; " + `${gaps.map((g) => g.plain).join("; ")}.`
+    `These matches are not narrowed by ${gaps.map((g) => g.label).join(" or ")}; ` +
+    `${gaps.map((g) => g.plain).join("; ")}.`
   );
 }
 
@@ -1611,11 +1642,7 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
   // Code-enforced label: an answer that could not apply a filter says so, whatever the model wrote.
   const gapNote = unpublishedNote(plan);
   const first = claims[0];
-  if (
-    gapNote !== "" &&
-    first !== undefined &&
-    !/not narrowed by owner location/i.test(first.text)
-  ) {
+  if (gapNote !== "" && first !== undefined && !/not narrowed by/i.test(first.text)) {
     claims = [{ ...first, text: `${first.text} ${gapNote}`.slice(0, 400) }, ...claims.slice(1)];
   }
 

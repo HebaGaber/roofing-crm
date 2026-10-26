@@ -45,4 +45,13 @@ describe("lead schemas", () => {
     }
     expect(LeadSignals.safeParse({ ...base, roofAgeConfidence: "certain" }).success).toBe(false);
   });
+
+  it("accepts an optional openPermitStatus of open or stalled only", () => {
+    const base = { capturedAt: "2026-10-01T00:00:00Z" };
+    expect(LeadSignals.safeParse(base).success).toBe(true);
+    for (const v of ["open", "stalled"]) {
+      expect(LeadSignals.parse({ ...base, openPermitStatus: v }).openPermitStatus).toBe(v);
+    }
+    expect(LeadSignals.safeParse({ ...base, openPermitStatus: "closed" }).success).toBe(false);
+  });
 });

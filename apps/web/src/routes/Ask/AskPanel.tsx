@@ -31,7 +31,7 @@
 // heading; focus moves to that heading when the result arrives. Limit banners are `role="alert"`.
 import { answerPins, type AgentAnswer } from "@crm/shared";
 import { missingReasonLabel } from "@crm/oracle-contract";
-import { CidDisplay, formatUtc, Icon, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import { CidDisplay, formatUtc, Icon, Provenance, StatusPill } from "@crm/ui";
 import {
   useCallback,
   useEffect,
@@ -55,6 +55,7 @@ import {
 } from "./askApi.js";
 import { bulkSummary } from "../Map/Candidates/bulkCreate.js";
 import { Snackbar, snackbarActionClass } from "../Map/Candidates/Snackbar.js";
+import { safeSourceHref, SourceLink } from "../Map/SourceLink.js";
 import { UndoStatusRow } from "../Map/Candidates/UndoStatusRow.js";
 import { undoOneText, undoSummary } from "../Map/Candidates/undoCopy.js";
 import { AskConfirmSheet, type AskConfirmRow } from "./AskConfirmSheet.js";
@@ -347,6 +348,8 @@ function SourceRow({
   readonly ctx: PanelCtx;
 }): ReactElement {
   const cid = citation.propertyCid ?? citation.permitCid;
+  const href = safeSourceHref(citation.sourceUrl);
+  const sourceHref = href !== null && href.startsWith("https:") ? href : null;
   const focused = ctx.focused === number;
   return (
     <li
@@ -376,19 +379,12 @@ function SourceRow({
           </span>
         )}
         <Provenance>
-          {citation.sourceUrl === null ? (
-            <MissingReason field="source_url" reason="not_in_export" />
+          {sourceHref === null ? (
+            "No source link published"
           ) : (
-            <a
-              href={citation.sourceUrl}
-              className={styles.link}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              {citation.sourceUrl}
-            </a>
+            <SourceLink url={sourceHref} label={sourceHref} />
           )}
-          {` · collected ${formatUtc(citation.capturedAt)} UTC · table `}
+          {` · collected ${formatUtc(citation.capturedAt)} UTC · record CID `}
           <CidDisplay cid={citation.tableCid} />
           {" · manifest "}
           <CidDisplay cid={citation.manifestCid} />

@@ -141,3 +141,36 @@ describe("runAsk with an unpublished filter (G4)", () => {
     expect(answer.claims[0]?.text).not.toMatch(/owner location/i);
   });
 });
+
+describe("filters the search does not apply (roofConfidenceMin, kind)", () => {
+  const base: QueryPlan = {
+    intent: "find_properties",
+    area: { kind: "place", query: "Lakeway", radiusMi: 5 },
+    filters: { roofAgeMinYears: 20, roofConfidenceMin: "high", kind: "commercial" },
+    slotSources: { roofAgeMinYears: "stated", roofConfidenceMin: "stated", kind: "stated" },
+    unsupported: [],
+  };
+
+  it("moves both to unsupported as not_in_export and removes them from filters", () => {
+    const out = dropUnpublishedFilters(base);
+    expect(out.filters).toEqual({ roofAgeMinYears: 20 });
+    expect(out.slotSources).toEqual({ roofAgeMinYears: "stated" });
+    expect(out.unsupported.map((u) => u.reason)).toEqual(["not_in_export", "not_in_export"]);
+    expect(out.unsupported[0]?.constraint).toMatch(/confidence/i);
+    expect(out.unsupported[1]?.constraint).toMatch(/commercial/i);
+  });
+
+  it("the answer says they were not applied, and the DATA does not echo them as filters", async () => {
+    const index = new FakeLeadIndex([property({ roofAgeYears: 30 })]);
+    const { run, model } = ask(
+      [plan({ roofAgeMinYears: 20, roofConfidenceMin: "high", kind: "commercial" }), NOT_JSON],
+      index,
+    );
+    const answer = await run;
+    expect(answer.outcome).toBe("answered");
+    expect(answer.claims[0]?.text).toMatch(/not narrowed by roof age confidence or property type/i);
+    const composePrompt = JSON.stringify(model.doGenerateCalls[1]?.prompt);
+    expect(composePrompt).not.toContain("roofConfidenceMin");
+    expect(index.searchPropertiesCalls[0]).not.toHaveProperty("roofConfidenceMin");
+  });
+});
