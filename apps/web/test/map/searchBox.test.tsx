@@ -1,10 +1,18 @@
 // Map search box: combobox semantics, keyboard, selection, samples, exact lookups and the
 // disabled address path.
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetSearchMemory } from "../../src/routes/Map/recentSearches";
 import { SearchBox, type ExactLookupResult } from "../../src/routes/Map/SearchBox";
 
-afterEach(cleanup);
+beforeEach(() => {
+  localStorage.clear();
+  resetSearchMemory();
+});
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 function setup(result: ExactLookupResult = { found: false, runId: "run-3" }) {
   const onCentre = vi.fn();
