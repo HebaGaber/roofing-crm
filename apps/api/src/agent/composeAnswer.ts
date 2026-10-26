@@ -130,7 +130,9 @@ export const PLAN_SYSTEM_PROMPT =
   '"unsupported":[{"constraint":"<text>","reason":"not_in_export"|"no_lexicon_carrier"|"out_of_scope"|"no_free_text"}]}. ' +
   'area.query is a place name for kind "place", a 5-digit ZIP for "zip", "lat, lon" for ' +
   '"point", and the county name for "county". For lookup_property put the TCAD property id in ' +
-  "area.query; for lookup_permit put the permit number in filters.permitNumber; coverage needs " +
+  "area.query; for lookup_permit put the permit number in filters.permitNumber " +
+  "(use lookup_permit ONLY when the rep typed a permit number; a question for the oldest, longest-open " +
+  "or most stalled permit near a place is find_permits, which lists permits longest open first); coverage needs " +
   "no area. Default radiusMi to 5, and roofAgeMinYears to " +
   String(DEFAULT_ROOF_AGE_YEARS) +
   " only when the question is about roofs and the rep didn't state it, and " +
@@ -140,9 +142,12 @@ export const PLAN_SYSTEM_PROMPT =
   "the radius goes in radiusMi and everything else in filters. A permit condition on a property " +
   'question ("with a stalled roofing permit", "an open permit", "permit open 5+ years") always ' +
   "goes in filters.statusClass (and filters.openYearsMin), whatever the intent; never drop it. " +
-  "Owner location (owners outside the " +
-  "area, out-of-state owners, owner mailing address) is never published: put it in unsupported with " +
-  'reason "not_in_export", not in filters. tenureYearsMin is a whole-year minimum, inclusive: ' +
+  "Owner location is published as the owner's mailing area, and filters.ownerAreaClass applies it " +
+  '(it is a list of in_county, regional, out_of_area). "Owners outside the area", absentee owners, ' +
+  'owners who live out of town or elsewhere -> ["regional","out_of_area"] (the same as the map\'s ' +
+  'Out-of-area filter); owners out of state or far away -> ["out_of_area"]; owners who live ' +
+  'locally or in the county -> ["in_county"]. Mark it "stated". Never ask for or return an owner ' +
+  "name or mailing address; the filter only uses the area class. tenureYearsMin is a whole-year minimum, inclusive: " +
   '"more than 10 years" or "over 10 years" is 11 (tenure above 10 years is Task A\'s long-tenure rule), ' +
   '"at least 10 years" is 10. Examples (question -> plan ' +
   "fields): " +
@@ -152,14 +157,19 @@ export const PLAN_SYSTEM_PROMPT =
   '"openYearsMin":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
   '"Which homes near Lakeway haven\'t changed owners in over 10 years and have owners outside the area?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Lakeway","radiusMi":5},' +
-  '"filters":{"tenureYearsMin":11},"slotSources":{"tenureYearsMin":"stated","radiusMi":"default"},' +
-  '"unsupported":[{"constraint":"owners outside the area","reason":"not_in_export"}]}; ' +
+  '"filters":{"tenureYearsMin":11,"ownerAreaClass":["regional","out_of_area"]},' +
+  '"slotSources":{"tenureYearsMin":"stated","ownerAreaClass":"stated","radiusMi":"default"},' +
+  '"unsupported":[]}; ' +
   '"How many properties have roofs older than 20 years in ZIP 78701?" -> ' +
   '{"intent":"find_properties","area":{"kind":"zip","query":"78701","radiusMi":5},' +
   '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"default"},"unsupported":[]}; ' +
   '"Which properties within 3 miles of Austin have roofs older than 20 years?" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Austin","radiusMi":3},' +
   '"filters":{"roofAgeMinYears":20},"slotSources":{"roofAgeMinYears":"stated","radiusMi":"stated"},"unsupported":[]}; ' +
+  '"What is the oldest stalled roofing permit within 2 miles of Austin?" -> ' +
+  '{"intent":"find_permits","area":{"kind":"place","query":"Austin","radiusMi":2},' +
+  '"filters":{"statusClass":["stalled"]},"slotSources":{"statusClass":"stated","radiusMi":"stated"},' +
+  '"unsupported":[]}; ' +
   '"Roofs older than 25 years within 2 miles of Austin with a stalled roofing permit" -> ' +
   '{"intent":"find_properties","area":{"kind":"place","query":"Austin","radiusMi":2},' +
   '"filters":{"roofAgeMinYears":25,"statusClass":["stalled"]},"slotSources":{"roofAgeMinYears":"stated",' +
@@ -173,7 +183,9 @@ function buildPlanPrompt(question: string, previousPlan: QueryPlan | undefined):
     `instructions): ${JSON.stringify(previousPlan)}\n` +
     "If this question is a follow-up to it (for example 'near that area', 'only the ones…'), " +
     "keep the previous area and every filter this question does not change, and mark each kept " +
-    'slot "inherited" in slotSources (use the key "area" for the area).'
+    'slot "inherited" in slotSources (use the key "area" for the area). A question that names ' +
+    "a place of its own (any place, even one outside Travis County) is not a follow-up on the area: " +
+    "put that place in area.query exactly as typed and do not inherit the previous area."
   );
 }
 
@@ -200,7 +212,11 @@ const COMPOSE_SYSTEM_PROMPT =
   "1,000 or more with thousands separators (14,394) and never run a number into the next word. " +
   "On a permit row, contractorResolution says whether the contractor was matched to a known " +
   'business ("unresolved" means it was not); contractorNameAsPrinted is the name exactly as ' +
-  "printed on the permit and is not verified, so never present it as a verified business.";
+  "printed on the permit and is not verified, so never present it as a verified business. " +
+  'Roof age comes from roofAgeBasis: "built_year" means the age is an estimate from the year the ' +
+  'house was built (low confidence), so any claim about such a roof says "estimated from the year ' +
+  'built" next to the age; "permit" means it comes from a closed roofing permit, so say that. ' +
+  "Never state a roof age as a measured fact.";
 
 /** ADR §4 governance: source text is untrusted data — control characters stripped, capped. */
 function sourceText(value: string | null): string | null {
@@ -420,19 +436,67 @@ function resolvedArea(point: ScopePoint): NonNullable<QueryPlan["area"]["resolve
 // Follow-up inheritance (ADR-06 §6.3, G2)
 // ---------------------------------------------------------------------------------------------
 
+const TYPED_PLACE =
+  /\b(?:[Nn]ear|[Aa]round|[Oo]f|[Ii]n|[Ff]rom|[Oo]utside)\s+([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,2})/;
+
+/** The place a follow-up question names itself, when it differs from the thread's previous place:
+ *  the plan's own area.query if the question contains it, else a gazetteer place in the text, else
+ *  a capitalised name after near/around/of/in/from (which may be outside Travis County, e.g.
+ *  Houston). Undefined when the question names no new place. */
+function placeNamedInQuestion(
+  plan: QueryPlan,
+  previous: QueryPlan,
+  question: string,
+): { kind: "place" | "zip"; query: string } | undefined {
+  const prev = previous.area.query.trim().toLowerCase();
+  const differs = (q: string) => q.trim() !== "" && q.trim().toLowerCase() !== prev;
+  const q = plan.area.query.trim();
+  if (
+    (plan.area.kind === "place" || plan.area.kind === "zip") &&
+    differs(q) &&
+    question.toLowerCase().includes(q.toLowerCase())
+  ) {
+    return { kind: plan.area.kind, query: q };
+  }
+  const scanned = scanQuestionForArea(question);
+  if (scanned !== undefined) return differs(scanned.query) ? scanned : undefined;
+  const typed = TYPED_PLACE.exec(question)?.[1]?.trim();
+  if (typed !== undefined && differs(typed) && !/^Travis\b/.test(typed)) {
+    return { kind: "place", query: typed };
+  }
+  return undefined;
+}
+
 /** The model decides *which* slots a follow-up inherits (it reads the language); the server
  *  supplies their *values* from the thread's last recorded plan, so a mis-copied value never
  *  survives. A slot marked `inherited` that the previous plan never had is dropped, with its
  *  value — it would otherwise be a value nobody stated. A place area with no name inherits the
  *  previous area even when the model forgot to mark it. */
-export function applyInheritance(plan: QueryPlan, previous: QueryPlan | undefined): QueryPlan {
+export function applyInheritance(
+  plan: QueryPlan,
+  previous: QueryPlan | undefined,
+  question?: string,
+): QueryPlan {
   const slotSources = { ...plan.slotSources };
   const filters: Record<string, unknown> = { ...plan.filters };
   let area = plan.area;
   let dropAreaSource = false;
 
   const areaUnnamed = plan.area.kind === "place" && plan.area.query.trim() === "";
-  if (slotSources.area === "inherited" || (areaUnnamed && previous !== undefined)) {
+  // A question that names a place of its own never inherits the thread's previous place, however
+  // the model marked the slot (an outside-Travis place such as Houston must reach the scope gate).
+  const named =
+    previous === undefined || question === undefined
+      ? undefined
+      : placeNamedInQuestion(plan, previous, question);
+  if (named !== undefined) {
+    area = {
+      kind: named.kind,
+      query: named.query,
+      radiusMi: plan.area.radiusMi,
+    };
+    slotSources.area = "stated";
+  } else if (slotSources.area === "inherited" || (areaUnnamed && previous !== undefined)) {
     if (previous === undefined) {
       dropAreaSource = true; // nothing to inherit: the area slot has no source
     } else {
@@ -955,7 +1019,9 @@ function templateText(plan: QueryPlan, gathered: Gathered): string {
       const roof =
         p.roofAgeYears === null
           ? "its roof age is not published in this run"
-          : `its roof is ${p.roofAgeYears} years old (basis ${p.roofAgeBasis}, ${p.roofAgeConfidence} confidence)`;
+          : `its roof is ${p.roofAgeYears} years old (basis ${p.roofAgeBasis}, ${p.roofAgeConfidence} confidence${
+              roofBasisPhrase([p]) === "" ? "" : `; ${roofBasisPhrase([p])}`
+            })`;
       return `Property ${p.requestIdentifier} is in this run; ${roof}.`;
     }
     case "permits":
@@ -964,10 +1030,12 @@ function templateText(plan: QueryPlan, gathered: Gathered): string {
         `showing the top ${gathered.counts.shown}, longest open first.${zipSuffix(plan, gathered)}`
       );
     case "properties": {
+      const basis = roofBasisPhrase(gathered.properties);
+      const basisSuffix = basis === "" ? "" : ` (${basis})`;
       const roof =
         plan.filters.roofAgeMinYears === undefined
           ? ""
-          : ` with a roof at least ${plan.filters.roofAgeMinYears} years old`;
+          : ` with a roof at least ${plan.filters.roofAgeMinYears} years old${basisSuffix}`;
       const permit = permitConditionText(plan);
       return (
         `Found ${plural(gathered.counts.matched, "matching property", "matching properties")} ` +
@@ -977,6 +1045,25 @@ function templateText(plan: QueryPlan, gathered: Gathered): string {
     }
   }
 }
+
+/** Where a roof age comes from, in plain words, for the rows an answer shows: most Run 3.1 roof
+ *  ages are the year built (low confidence), the rest come from a closed roofing permit. Empty when
+ *  no shown row has a roof age with a stated basis. */
+export function roofBasisPhrase(
+  rows: readonly Pick<PropertyResult, "roofAgeYears" | "roofAgeBasis">[],
+): string {
+  const aged = rows.filter((r) => r.roofAgeYears !== null);
+  const built = aged.some((r) => r.roofAgeBasis === "built_year");
+  const permit = aged.some((r) => r.roofAgeBasis === "permit");
+  if (built && permit) {
+    return "roof age is from a closed roofing permit where there is one, otherwise estimated from the year built";
+  }
+  if (built) return "roof age estimated from the year built";
+  if (permit) return "roof age from a closed roofing permit";
+  return "";
+}
+
+const ROOF_BASIS_DISCLOSED = /year[- ]built|built[- ]year|estimated from|closed roofing permit/i;
 
 /** Numbers any claim may state: the counts and the validated plan's own values. */
 function allowedNumbers(plan: QueryPlan, gathered: Gathered): number[] {
@@ -1150,6 +1237,50 @@ export function zipMeaning(radiusMi: number, name: string): string {
 
 const REPAIR_INTENTS = new Set(["find_properties", "find_permits", "propose_leads"]);
 
+const PERMIT_NUMBER_IN_TEXT = /\b\d{4}-\d{3,}\b/;
+const AGED_PERMIT_WORDS =
+  /\b(oldest|longest|most\s+(?:overdue|delayed|stalled)|worst|older|aged|stalled|open(?:ed)?)\b/i;
+
+/** A permit lookup needs a permit number. "The oldest stalled permit within 2 miles of Austin" has
+ *  none, so a `lookup_permit` plan for it can only ever answer not_found. When the plan carries no
+ *  permit number and the question names none, asks for an oldest/longest/stalled/open permit and
+ *  names a place, it is a `find_permits` list (longest open first) around that place, with the
+ *  permit status the rep stated carried over. */
+export function repairLookupPermitWithoutNumber(
+  plan: QueryPlan,
+  question: string,
+): QueryPlan | undefined {
+  if (plan.intent !== "lookup_permit") return undefined;
+  if ((plan.filters.permitNumber ?? "").trim() !== "") return undefined;
+  if (PERMIT_NUMBER_IN_TEXT.test(question) || PERMIT_NUMBER_IN_TEXT.test(plan.area.query)) {
+    return undefined;
+  }
+  if (!AGED_PERMIT_WORDS.test(question)) return undefined;
+  const found =
+    plan.area.query.trim() === "" ? undefined : gazetteer.lookup(plan.area.query.trim());
+  const place =
+    found !== undefined && found.status === "found" && found.kind !== "zcta"
+      ? { kind: "place" as const, query: plan.area.query.trim() }
+      : scanQuestionForArea(question);
+  if (place === undefined) return undefined;
+  const status = scanQuestionForPermitStatus(question) ?? plan.filters.statusClass;
+  const radius = scanQuestionForRadius(question)?.radiusMi;
+  const { permitNumber: _n, ...rest } = plan.filters;
+  const { permitNumber: _s, ...sources } = plan.slotSources;
+  return {
+    ...plan,
+    intent: "find_permits",
+    area: { kind: place.kind, query: place.query, radiusMi: radius ?? plan.area.radiusMi },
+    filters: { ...rest, ...(status === undefined ? {} : { statusClass: [...status] }) },
+    slotSources: {
+      ...sources,
+      area: "stated",
+      ...(status === undefined ? {} : { statusClass: "stated" as const }),
+      ...(radius === undefined ? {} : { radiusMi: "stated" as const }),
+    },
+  };
+}
+
 /** GAP-2: when the plan's area is unusable (blank, the sentence, not a gazetteer name or ZIP) but
  *  the question itself names a gazetteer place or a ZIP, take the area from the question. Never
  *  overrides an area the plan resolved to a real place, never fires for an "inherited" area, and
@@ -1160,13 +1291,19 @@ export function repairPlanFromQuestion(
   question: string,
 ): { plan: QueryPlan; repairs: string[] } {
   const repairs: string[] = [];
-  if (!REPAIR_INTENTS.has(plan.intent)) return { plan, repairs };
   let next = plan;
+  const asList = repairLookupPermitWithoutNumber(next, question);
+  if (asList !== undefined) {
+    repairs.push("intent lookup_permit -> find_permits (no permit number)");
+    next = asList;
+  }
+  if (!REPAIR_INTENTS.has(next.intent)) return { plan: next, repairs };
 
   if (
-    plan.slotSources.area !== "inherited" &&
-    (plan.area.kind === "place" || plan.area.kind === "zip")
+    next.slotSources.area !== "inherited" &&
+    (next.area.kind === "place" || next.area.kind === "zip")
   ) {
+    const plan = next;
     const q = plan.area.query.trim();
     const found = q === "" ? undefined : gazetteer.lookup(q);
     const usable =
@@ -1448,6 +1585,28 @@ function onlyUnsupported(plan: QueryPlan): boolean {
   );
 }
 
+/** Appends the roof-age basis to the first claim when the answer rests on roof ages and no claim
+ *  already says where they come from. The sentence has no number, so it never needs a citation. */
+export function discloseRoofBasis(
+  claims: readonly Claim[],
+  plan: QueryPlan,
+  gathered: Pick<Gathered, "properties">,
+): Claim[] {
+  const first = claims[0];
+  if (first === undefined) return [...claims];
+  const basis = roofBasisPhrase(gathered.properties);
+  const aboutRoofAge =
+    plan.filters.roofAgeMinYears !== undefined || claims.some((c) => /\broofs?\b/i.test(c.text));
+  if (basis === "" || !aboutRoofAge) return [...claims];
+  if (claims.some((c) => ROOF_BASIS_DISCLOSED.test(c.text))) return [...claims];
+  const note = `${basis.charAt(0).toUpperCase()}${basis.slice(1)}.`;
+  const lead = /[.!?]$/.test(first.text.trim()) ? first.text.trim() : `${first.text.trim()}.`;
+  // Keep the disclosure inside the 400-character limit by trimming the lead, never the note.
+  const room = 400 - note.length - 1;
+  const text = `${lead.length > room ? `${lead.slice(0, Math.max(0, room - 1)).trimEnd()}…` : lead} ${note}`;
+  return [{ ...first, text }, ...claims.slice(1)];
+}
+
 /** contracts/agent-api.md's `agent.ask` steps 2-7 as one function. The model is called **at most
  *  3 times** (plan, <=1 repair, compose), from 3 fixed call sites — no loop a model's output could
  *  extend. The 23 s timeout (`withAgentTimeout`) wraps the whole sequence. */
@@ -1518,7 +1677,10 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       };
     }
     let plan = dropUnpublishedFilters(
-      dropDefaultRoofFilter(applyInheritance(repaired.plan, input.previousPlan), question),
+      dropDefaultRoofFilter(
+        applyInheritance(repaired.plan, input.previousPlan, question),
+        question,
+      ),
     );
     const blocked = (
       outcome: "out_of_scope" | "not_found" | "needs_clarification" | "field_not_published",
@@ -1717,6 +1879,10 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
     const lead = /[.!?]$/.test(first.text.trim()) ? first.text.trim() : `${first.text.trim()}.`;
     claims = [{ ...first, text: `${lead} ${gapNote}`.slice(0, 400) }, ...claims.slice(1)];
   }
+
+  // Code-enforced disclosure: a claim about roof age must say where the age comes from, whatever
+  // the model wrote (most ages are an estimate from the year built).
+  claims = discloseRoofBasis(claims, plan, gathered);
 
   emitCitationMetrics(obs, {
     citationsTotal,

@@ -101,7 +101,9 @@ describe("F-2: the permit condition reaches the property search", () => {
     expect(answer.counts.matched).toBe(1);
     expect(answer.plan.filters.statusClass).toEqual(["stalled"]);
     expect(answer.claims[0]?.text).toContain("1 matching property");
-    expect(answer.claims[0]?.text).toContain("roof at least 25 years old and a stalled permit");
+    expect(answer.claims[0]?.text).toContain(
+      "roof at least 25 years old (roof age estimated from the year built) and a stalled permit",
+    );
   });
 
   it("a plan that dropped the permit is repaired from the question text", async () => {
@@ -199,7 +201,9 @@ describe("F-2: number formatting in the answer", () => {
       "roofs older than 25 years within 2 miles of Austin city center",
     );
     const text = answer.claims[0]?.text ?? "";
-    expect(text).toMatch(/roof at least 25 years old; showing the top 25\./);
+    expect(text).toMatch(
+      /roof at least 25 years old \(roof age estimated from the year built\); showing the top 25\./,
+    );
     expect(text).not.toMatch(/\d\.\d/);
   });
 });

@@ -198,7 +198,7 @@ describe("tenure is answered at more than 10 years", () => {
 
   it("the prompt maps over 10 years to 11 and names the roof-age default", () => {
     expect(PLAN_SYSTEM_PROMPT).toMatch(/"over 10 years" is 11/);
-    expect(PLAN_SYSTEM_PROMPT).toContain('"filters":{"tenureYearsMin":11}');
+    expect(PLAN_SYSTEM_PROMPT).toContain('"filters":{"tenureYearsMin":11,');
     expect(PLAN_SYSTEM_PROMPT).toContain("roofAgeMinYears to 15 only");
   });
 

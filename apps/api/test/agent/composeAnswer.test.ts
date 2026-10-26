@@ -383,7 +383,9 @@ describe("finding 11: a claim stating a number its rows don't carry is dropped",
       index,
     );
     const answer = await run;
-    expect(answer.claims.map((c) => c.text)).toEqual(["R-0001 has a 32-year-old roof."]);
+    expect(answer.claims.map((c) => c.text)).toEqual([
+      "R-0001 has a 32-year-old roof. Roof age estimated from the year built.",
+    ]);
   });
 });
 
@@ -511,7 +513,9 @@ describe("finding 17: citationsTotal counts every citation the model produced", 
       index,
     );
     const answer = await run;
-    expect(answer.claims.map((c) => c.text)).toEqual(["R-0001 qualifies."]);
+    expect(answer.claims.map((c) => c.text)).toEqual([
+      "R-0001 qualifies. Roof age estimated from the year built.",
+    ]);
     expect(answer.citations.map((c) => c.id)).toEqual([1]);
   });
 });
