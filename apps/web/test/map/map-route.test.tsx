@@ -543,7 +543,7 @@ describe("Map route county overview (search.countyOverview)", () => {
     expect(lastOverviewCells?.map((c) => c.count)).toEqual([120]);
     expect(lastOverviewPermits?.map((p) => p.permits)).toEqual([5]);
     expect(screen.getByText(/5 not on the map: no coordinates published/)).not.toBeNull();
-    expect(screen.getByText(new RegExp(`Source: run ${RUN}`))).not.toBeNull();
+    expect(screen.getByText(new RegExp(`Source: ${RUN}`))).not.toBeNull();
     // The overview chip shows with county cells even before any pin.
     expect(screen.getByText("Click a hexagon to search there")).not.toBeNull();
   });

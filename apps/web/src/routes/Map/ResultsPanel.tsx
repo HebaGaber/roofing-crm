@@ -9,6 +9,9 @@ import styles from "./ResultsPanel.module.css";
 
 export interface ResultsPanelProps {
   readonly count: number;
+  /** The number on the Triage button: the swipe stack's length (the rows actually listed), which
+   *  can be below `count` when the server total is more than one page. Defaults to `count`. */
+  readonly triageCount?: number;
   readonly children: ReactNode;
   /** The pager, drawn under the rows. */
   readonly footer?: ReactNode;
@@ -32,6 +35,7 @@ const COVERAGE_NOTE =
 
 export function ResultsPanel({
   count,
+  triageCount,
   children,
   footer,
   onTriage,
@@ -93,7 +97,7 @@ export function ResultsPanel({
         {onTriage === undefined ? null : (
           <button type="button" className={styles.triage} onClick={onTriage}>
             <Icon name="swipe" size="medium" />
-            <span className={styles.triageText}>{`Triage ${count}`}</span>
+            <span className={styles.triageText}>{`Triage ${triageCount ?? count}`}</span>
           </button>
         )}
       </header>

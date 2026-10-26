@@ -6,7 +6,7 @@
 // Skip has Undo (local). Create has Undo too: `leads.undoCreate` deletes only the lead this tap
 // created, while it is untouched and under 15 minutes old; when the server keeps it, the snackbar
 // says why and the card stays done. Offline: Skip still works and Create returns the card with "You're offline. The lead was not saved."
-import { MAX_RADIUS_MI } from "@crm/domain";
+import { MAX_RADIUS_MI, WIDEN_STEP_MI } from "@crm/domain";
 import { Icon } from "@crm/ui";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link } from "react-router";
@@ -34,7 +34,6 @@ import { undoOneText } from "../Candidates/undoCopy.js";
 import { TriageCard, type TriageBbb } from "./TriageCard.js";
 import styles from "./Triage.module.css";
 
-const WIDEN_STEP_MI = 1;
 const OFFLINE_ERROR = "You’re offline. The lead was not saved.";
 const FAILED_ERROR = "Couldn’t create the lead. Nothing was saved.";
 

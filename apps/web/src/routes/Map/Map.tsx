@@ -37,6 +37,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
+import { COUNTY_ZOOM, WIDEN_STEP_MI, yearsToDays } from "@crm/domain";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
 import {
   CrmMap,
@@ -88,17 +89,13 @@ import { usePaneCollapsed } from "./paneState.js";
 import { newThreadId, patchMapMode, readThreadId, useMapMode } from "./mapMode.js";
 import styles from "./Map.module.css";
 
-const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
 /** Owner filters reach `search.properties` only; the county overview is not filtered by them. */
 const OWNER_OVERVIEW_NOTE = "Owner filters apply once you pick an area";
 const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, leads: true, gaps: false };
 const NO_PROPERTIES: readonly { readonly requestIdentifier: string }[] = [];
-/** The map opens on the whole county at this zoom (CrmMap's COUNTY_ZOOM). */
-const COUNTY_ZOOM_STEP = 9;
 /** The county overview changes only with a new promoted run; refetching it on every focus is waste. */
 const OVERVIEW_STALE_MS = 5 * 60_000;
-const DAYS_PER_YEAR = 365.25;
 /** From this width the map has a pointer to aim with (the board's 1440/768 pin mode); under it, a
  *  fixed crosshair and "Place pin here" (the 390 board). Same break as Map.module.css's panes. */
 const WIDE_QUERY = "(min-width: 1280px)";
@@ -157,7 +154,7 @@ export function Component(): ReactElement {
   // map and cards, the list and triage show the same properties and the same count.
   const permitFilterActive = permitStatus !== "any" || permitOpenYrs !== undefined;
   const [viewMode, setViewMode] = useState<MapViewMode>("overview");
-  const [zoomStep, setZoomStep] = useState(COUNTY_ZOOM_STEP);
+  const [zoomStep, setZoomStep] = useState(COUNTY_ZOOM);
   // Pin mode (boards CrmMapPinMode*), the GPS fix's accuracy circle, whether the centre came from
   // GPS (its own card says if it is outside the county), and the map's status stack (a portal
   // target for the GPS, pin-mode and pin-outside cards).
@@ -709,7 +706,7 @@ export function Component(): ReactElement {
             ...(permitStatus === "any" ? {} : { permitStatus }),
             ...(permitOpenYrs === undefined
               ? {}
-              : { permitOpenDaysMin: Math.ceil(permitOpenYrs * DAYS_PER_YEAR) }),
+              : { permitOpenDaysMin: yearsToDays(permitOpenYrs) }),
           }
         : {}),
     }),

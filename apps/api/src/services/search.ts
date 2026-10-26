@@ -5,7 +5,11 @@
 // radius-join for permits (SC-06). Routers/search.ts now only validates input and shapes the
 // tRPC response (manifestCid/traceId, error mapping); the new agent tools (Phase 4,
 // services/agent/tools.ts) call these same functions instead of a second copy.
-import { isLongOpen } from "@crm/domain";
+import {
+  isLongOpen,
+  MAX_PERMIT_ROWS as DOMAIN_MAX_PERMIT_ROWS,
+  MAX_PROPERTY_ROWS as DOMAIN_MAX_PROPERTY_ROWS,
+} from "@crm/domain";
 import type {
   CountyOverview,
   CountyOverviewQuery,
@@ -54,10 +58,10 @@ export interface SearchPropertiesResult {
 }
 
 /** Hard ceiling on `search.properties` rows (architecture-constitution.md section 6 page limit). */
-export const MAX_PROPERTY_ROWS = 100;
+export const MAX_PROPERTY_ROWS = DOMAIN_MAX_PROPERTY_ROWS;
 /** `search.permits` page: default and ceiling (a permit row is about 0.7 KB, so even the ceiling
  *  keeps the response far below 1 MB). */
-export const MAX_PERMIT_ROWS = 500;
+export const MAX_PERMIT_ROWS = DOMAIN_MAX_PERMIT_ROWS;
 
 /** contracts/search-api.md step 4: the counts run over the full radius-matching set and `limit`
  *  applies only to the returned page. With the DuckDB adapter all of it happens inside SQL (counts

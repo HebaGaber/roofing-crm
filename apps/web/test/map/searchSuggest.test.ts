@@ -99,7 +99,8 @@ describe("optionsFor", () => {
       disabled: true,
       detail: ADDRESS_UNAVAILABLE_REASON,
     });
-    expect(ADDRESS_UNAVAILABLE_REASON).toMatch(/Run 3\.1/);
+    expect(ADDRESS_UNAVAILABLE_REASON).toBe("Street addresses are not published yet");
+    expect(ADDRESS_UNAVAILABLE_REASON).not.toMatch(/\bRun\b/i);
   });
 });
 

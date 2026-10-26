@@ -5,7 +5,15 @@
 // error mapping).
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { HEX_OVERVIEW_MAX_ZOOM, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import {
+  DEFAULT_SIMILAR_ROWS,
+  HEX_OVERVIEW_MAX_ZOOM,
+  MAX_PERMIT_ROWS,
+  MAX_PROPERTY_ROWS,
+  MAX_RADIUS_MI,
+  MAX_SIMILAR_ROWS,
+  MIN_RADIUS_MI,
+} from "@crm/domain";
 import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import {
   countyOverview as countyOverviewService,
@@ -57,7 +65,7 @@ const SearchPropertiesInput = z.object({
   tenureYearsMin: z.number().int().min(0).max(100).optional(),
   outOfArea: z.boolean().optional(),
   // architecture-constitution.md §6's page-limit bound.
-  limit: z.number().int().positive().max(100).optional(),
+  limit: z.number().int().positive().max(MAX_PROPERTY_ROWS).optional(),
 });
 
 export const searchRouter = router({
@@ -80,7 +88,7 @@ export const searchRouter = router({
         sort: z.literal("openDays"),
         // Page size (default and ceiling 500: a permit row is about 0.7 KB). The response carries
         // `total` and `truncated`, so a clipped page is never presented as the whole set.
-        limit: z.number().int().positive().max(500).optional(),
+        limit: z.number().int().positive().max(MAX_PERMIT_ROWS).optional(),
         // Server-side filters (previously applied by the client over every permit in the radius).
         statusClass: z
           .array(z.enum(["open", "stalled", "closed"]))
@@ -169,7 +177,7 @@ export const searchRouter = router({
     .input(
       z.object({
         propertyCid: z.string().min(1).max(100),
-        limit: z.number().int().min(1).max(10).default(5),
+        limit: z.number().int().min(1).max(MAX_SIMILAR_ROWS).default(DEFAULT_SIMILAR_ROWS),
       }),
     )
     .query(async ({ input, ctx }) => {

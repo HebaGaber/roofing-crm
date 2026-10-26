@@ -25,7 +25,7 @@
 //  - `needs_clarification` returns the resolver's top candidates (finding 7).
 //  - Slots the plan marks `inherited` take the thread's last plan's values (finding 8 remainder).
 import { gazetteer } from "@crm/oracle-views";
-import { distanceMeters, milesToMeters } from "@crm/domain";
+import { distanceMeters, milesToMeters, TRAVIS_COUNTY_BBOX } from "@crm/domain";
 import { z } from "zod";
 import {
   classifyPlaceConfidence,
@@ -73,10 +73,10 @@ const MAX_SOURCE_TEXT = 120;
 const PROMPT_VERSION = "2026-10-25.1";
 const RANK_VERSION = "2026-10-24";
 
-/** Travis County's bounding box (Census TIGER county extent, rounded outward to 4 dp). A point
- *  outside it is out of scope; one inside the box but outside the county line simply matches no
- *  rows, because the index holds Travis rows only. */
-const TRAVIS_BBOX = { south: 30.0246, north: 30.6286, west: -98.173, east: -97.3694 } as const;
+/** Travis County's bounding box, the same one the web map uses (`@crm/domain`). A point outside
+ *  it is out of scope; one inside the box but outside the county line simply matches no rows,
+ *  because the index holds Travis rows only. */
+const TRAVIS_BBOX = TRAVIS_COUNTY_BBOX;
 const TRAVIS_CENTER = {
   lat: (TRAVIS_BBOX.south + TRAVIS_BBOX.north) / 2,
   lon: (TRAVIS_BBOX.west + TRAVIS_BBOX.east) / 2,

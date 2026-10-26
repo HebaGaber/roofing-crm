@@ -1,15 +1,18 @@
 // Clicking a hexagon of the county overview opens the radius view there: the pin goes to the cell's
 // centre (the same grid and centres the API computes, @crm/domain hexGrid) and the radius covers
 // the clicked cell. Pure helpers, so the map component and its tests share one rule.
-import { HEX_RADIUS_PX, HEX_TILE_PX, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import {
+  DEFAULT_RADIUS_MI,
+  HEX_RADIUS_PX,
+  HEX_TILE_PX,
+  MAX_RADIUS_MI,
+  METERS_PER_MILE,
+  MIN_RADIUS_MI,
+  RADIUS_STEP_MI,
+} from "@crm/domain";
 
-const METERS_PER_MILE = 1609.344;
 /** Metres in a Web Mercator world at the equator (the same projection the hex grid uses). */
 const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
-/** The radius control's step (RadiusControl `step="0.5"`). */
-const RADIUS_STEP_MI = 0.5;
-/** The radius used when the rep never set one (ExploreFilters.state DEFAULT_RADIUS_MI). */
-export const HEX_DEFAULT_RADIUS_MI = 5;
 
 /** A cell's circumradius (centre to corner) in miles at `lat`, for a grid at whole-number `zoom`. */
 export function hexCircumradiusMi(lat: number, zoom: number): number {
@@ -26,7 +29,7 @@ export function hexSearchRadiusMi(
   zoom: number,
   currentRadiusMi: number | undefined,
 ): number {
-  const base = currentRadiusMi ?? HEX_DEFAULT_RADIUS_MI;
+  const base = currentRadiusMi ?? DEFAULT_RADIUS_MI;
   const cover = Math.ceil(hexCircumradiusMi(lat, zoom) / RADIUS_STEP_MI) * RADIUS_STEP_MI;
   return Math.min(MAX_RADIUS_MI, Math.max(MIN_RADIUS_MI, base, cover));
 }

@@ -75,7 +75,7 @@ describe("MapLegend", () => {
     expect(
       screen.getByText(/12,345 counted but left out of the median: no roof age published/),
     ).not.toBeNull();
-    expect(screen.getByText(/run travis-202609-permits-20261021t103516z/)).not.toBeNull();
+    expect(screen.getByText(/Source: travis-202609-permits-20261021t103516z/)).not.toBeNull();
     expect(screen.queryByText(/roof-age filter/)).toBeNull();
   });
 
@@ -92,7 +92,7 @@ describe("MapLegend", () => {
           excludedNoCoordinates: 0,
           excludedNoRoofDate: 4,
           binnedWithoutRoofAge: 0,
-          runId: "run-3",
+          runId: "travis-full-run3-20261025",
         }}
       />,
     );
@@ -100,6 +100,8 @@ describe("MapLegend", () => {
       screen.getByText(/4 left out by the roof-age filter: no roof date published/),
     ).not.toBeNull();
     expect(screen.queryByText(/not on the map/)).toBeNull();
+    // The run is shown as its label, never the raw run id.
+    expect(screen.getByText("Source: Run 3.")).not.toBeNull();
   });
 
   it("says when no property matches the filters", () => {

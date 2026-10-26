@@ -3,7 +3,15 @@
 // `search.properties` rows with the `search.permits` rows of the same ring and the caller's lead
 // presence (`leads.list`), then sorts. Every value is read verbatim from those responses; nothing
 // is derived that the contract does not publish (no address, no contractor name, no BBB score).
-import { distanceMeters, isLongOpen, type LatLng } from "@crm/domain";
+import {
+  DAYS_PER_YEAR,
+  distanceMeters,
+  isLongOpen,
+  MAX_PERMIT_ROWS,
+  METERS_PER_MILE,
+  yearsToDays,
+  type LatLng,
+} from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type { LeadStatus } from "@crm/shared";
 import { permitStatusShortLabel, roofAgeConfidenceLabel } from "../../../format/index.js";
@@ -47,8 +55,6 @@ export interface Candidate {
   readonly lead: CandidateLead | null;
 }
 
-const METERS_PER_MILE = 1609.344;
-const YEAR_DAYS = 365.25;
 const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"] as const;
 
 /** 8-point compass bearing from `from` to `to` (initial great-circle bearing). */
@@ -69,7 +75,7 @@ function permitPasses(permit: CandidatePermit, filters: CandidateFilters): boole
   const status = filters.permitStatus ?? "any";
   if (status !== "any" && permit.statusClass !== status) return false;
   if (filters.permitOpenYrs !== undefined) {
-    if (permit.openDays === null || permit.openDays / YEAR_DAYS < filters.permitOpenYrs)
+    if (permit.openDays === null || permit.openDays / DAYS_PER_YEAR < filters.permitOpenYrs)
       return false;
   }
   return true;
@@ -98,7 +104,7 @@ export function permitQueryInput(
     ...(status === "any" ? {} : { statusClass: [status] }),
     // The same cut the map's own "Permit open at least N yrs" filter always made: openDays is a
     // whole number, so at least ceil(N years in days).
-    ...(permitOpenYrs === undefined ? {} : { openDaysMin: Math.ceil(permitOpenYrs * YEAR_DAYS) }),
+    ...(permitOpenYrs === undefined ? {} : { openDaysMin: yearsToDays(permitOpenYrs) }),
   };
 }
 
@@ -113,7 +119,7 @@ export function leadsNote(reason: LeadsReason | null): string | null {
 }
 
 /** The server's permit page ceiling (`search.permits` caps at 500). */
-export const PERMIT_PAGE_MAX = 500;
+export const PERMIT_PAGE_MAX = MAX_PERMIT_ROWS;
 
 /** The honest line when the server clipped the permits: never a page presented as the whole set. */
 export function permitNote(
@@ -314,7 +320,7 @@ export function sortCandidates(list: readonly Candidate[], sort: CandidateSort):
 /** `6.4 yrs` from the published `openDays`; never recomputed from dates. */
 export function openYearsText(openDays: number | null): string | null {
   if (openDays === null) return null;
-  return `${Math.round((openDays / YEAR_DAYS) * 10) / 10} yrs`;
+  return `${Math.round((openDays / DAYS_PER_YEAR) * 10) / 10} yrs`;
 }
 
 /** "Stalled 6.4 yrs · derived: no status in source" / "Open 3.8 yrs" (design-review-log row 6). */

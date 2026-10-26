@@ -155,7 +155,7 @@ describe("LeadsList filters write the URL", () => {
     expect(params().get("permitOpen")).toBe("5");
     expect(useLeadsList).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        filters: expect.objectContaining({ permitOpenDaysMin: 5 * 365 }),
+        filters: expect.objectContaining({ permitOpenDaysMin: 1827 }),
       }),
     );
     expect(within(group).getByRole("button", { name: "5 yrs" }).getAttribute("aria-pressed")).toBe(

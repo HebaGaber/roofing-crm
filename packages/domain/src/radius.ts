@@ -5,6 +5,8 @@
 // the "nearest first" sort key. Earth radius matches testplans/B-03-test-cases.md §3's
 // haversine convention (3,958.8 mi == 6,371,008.8 m) so the UI, the API and the test cases never
 // disagree on what "inside the circle" means.
+import { EARTH_RADIUS_M, METERS_PER_MILE } from "./constants.js";
+
 export interface LatLng {
   readonly lat: number;
   readonly lng: number;
@@ -17,8 +19,7 @@ export interface BoundingBox {
   readonly east: number;
 }
 
-const EARTH_RADIUS_METERS = 6_371_008.8;
-const METERS_PER_MILE = 1609.344;
+const EARTH_RADIUS_METERS = EARTH_RADIUS_M;
 const DEGREES_PER_RADIAN = 180 / Math.PI;
 
 /** The 0.5-25 mi radius bound (FR-001/data-model.md) — the one source of truth: every caller

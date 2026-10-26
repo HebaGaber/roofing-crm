@@ -1,10 +1,8 @@
 // Pure helpers behind the results panel (boards CrmMap768 / CrmMapPin390): the row's "2.8 mi NW"
 // distance and direction from the search centre, and the numbered pager over the rows the search
 // loaded. No React, no I/O, so both are unit-tested on their own.
-import { distanceMeters, type LatLng } from "@crm/domain";
+import { distanceMeters, METERS_PER_MILE, type LatLng } from "@crm/domain";
 import { compassBearing } from "./Candidates/candidates.js";
-
-const METERS_PER_MILE = 1609.344;
 
 /** Rows per page of the results panel. The server returns at most 100 rows; ten a page keeps the
  *  panel short and renders ten cards, not a hundred. */

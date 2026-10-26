@@ -79,11 +79,11 @@ describe("leadFilters.state", () => {
     expect(parseLeadQuery(new URLSearchParams("cursor=50&page=2")).page).toBe(2);
   });
 
-  it("Permit open >= : permitOpen years (1, 3, 5, 10) become filters.permitOpenDaysMin = years x 365", () => {
+  it("Permit open >= : permitOpen years (1, 3, 5, 10) become filters.permitOpenDaysMin = years x 365.25, rounded up", () => {
     for (const years of [1, 3, 5, 10]) {
       const q = parseLeadQuery(new URLSearchParams(`permitOpen=${years}`));
       expect(q.permitOpenYears).toBe(years);
-      expect(toLeadsListInput(q).filters).toEqual({ permitOpenDaysMin: years * 365 });
+      expect(toLeadsListInput(q).filters).toEqual({ permitOpenDaysMin: Math.ceil(years * 365.25) });
     }
     expect(parseLeadQuery(new URLSearchParams("permitOpen=2")).permitOpenYears).toBeUndefined();
     expect(parseLeadQuery(new URLSearchParams("permitOpen=x")).permitOpenYears).toBeUndefined();

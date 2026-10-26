@@ -308,7 +308,7 @@ describe("PropertyDetail drawer", () => {
 
   it("keeps provenance visible: run id and captured time for the property and each permit", () => {
     renderDrawer();
-    expect(screen.getAllByText(/run travis-202609-permits-20261021t103516z/).length).toBe(2);
+    expect(screen.getAllByText(/^Source: .*travis-202609-permits-20261021t103516z/).length).toBe(2);
   });
 
   it("says why when the property is not in this run", () => {

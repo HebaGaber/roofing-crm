@@ -20,6 +20,8 @@ import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import {
   bboxFor,
   DEFAULT_ROOF_AGE_YEARS,
+  EARTH_RADIUS_M,
+  MAX_PERMIT_ROWS,
   HEX_RADIUS_PX,
   hexCellCenter,
   hexWorldSize,
@@ -29,7 +31,7 @@ import {
 
 /** Same constant as `@crm/domain`'s `distanceMeters` (3,958.8 mi); pinned by test/search.sql.test.ts
  *  against `distanceMeters` itself so the two cannot drift. */
-const EARTH_RADIUS_METERS = 6_371_008.8;
+const EARTH_RADIUS_METERS = EARTH_RADIUS_M;
 
 /** DuckDB's own single-quote escaping (double the quote) — the one rule every string literal
  *  interpolated into a SQL string in this adapter must follow consistently (CR-B-02 finding #4:
@@ -126,7 +128,7 @@ export interface SearchPropertiesQuery {
 
 /** Hard ceiling on rows one call may return (bytes follow: a permit row is about 0.7 KB, so 500
  *  rows stay far below 1 MB). The page `limit` is clamped to this and to at least 1. */
-export const MAX_PAGE_ROWS = 500;
+export const MAX_PAGE_ROWS = MAX_PERMIT_ROWS;
 /** Page size when a caller gives no `limit`. */
 export const DEFAULT_PAGE_ROWS = 100;
 /** Per-query wall-clock budget (ms): well inside the 23 s agent abort and the 28 s Lambda. */
