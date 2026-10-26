@@ -163,6 +163,30 @@ describe("signals snapshot holds the permit", () => {
     expect(input?.signals).not.toHaveProperty("contractor");
   });
 
+  it("saves the main permit's printed contractor and BBB state (the drawer shows them)", () => {
+    const printed = permit({
+      contractorNameAsPrinted: "ACME ROOFING LLC",
+      bbbStatus: "not_checked",
+    } as Partial<Provenanced<CrmPermit>>);
+    const signals = toCreateInput(property, [closed, printed])?.signals;
+    expect(signals).toMatchObject({
+      contractor: "ACME ROOFING LLC",
+      bbbStatus: "not_checked",
+      contractorRecorded: true,
+    });
+    expect(signals).not.toHaveProperty("bbbRating");
+  });
+
+  it("records that the permit printed no contractor, so the lead can say so truthfully", () => {
+    const none = permit({ contractorNameAsPrinted: null, bbbStatus: null } as Partial<
+      Provenanced<CrmPermit>
+    >);
+    const signals = toCreateInput(property, [none])?.signals;
+    expect(signals).not.toHaveProperty("contractor");
+    expect(signals).toMatchObject({ contractorRecorded: true });
+    expect(toCreateInput(property, [closed])?.signals).not.toHaveProperty("contractorRecorded");
+  });
+
   it("has no permit fields when no permit is open, and omits null number/days", () => {
     expect(toCreateInput(property, [closed])?.signals).not.toHaveProperty("openPermitId");
     const bare = permit({ permitNumber: null, openDays: null });

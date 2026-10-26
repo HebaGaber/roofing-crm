@@ -365,13 +365,51 @@ describe("Lead page review fixes", () => {
     expect(section.textContent).toMatch(/From CountyLens, collected 2026-10-20 00:00:00 UTC/);
   });
 
-  it("says plainly that Task A's published data has no contractor name (no contract/v1)", () => {
+  function renderWithSignals(signals: Record<string, unknown>): HTMLElement {
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...lead, signals: { ...lead.signals, ...signals } },
+      refetch: vi.fn(),
+    });
+    render(
+      <MemoryRouter initialEntries={[`/leads/${encodeURIComponent(KEY)}`]}>
+        <Routes>
+          <Route path="/leads/:leadKey" element={<LeadDetail />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    return screen.getByRole("region", { name: "Current signals" });
+  }
+
+  it("an older lead says the contractor was not saved with it, never 'not published'", () => {
     renderDetail();
     const section = screen.getByRole("region", { name: "Current signals" });
-    expect(section.textContent).toContain(
-      "Task A's published data does not include a contractor name",
-    );
+    expect(section.textContent).toContain("Not saved with the lead");
+    expect(section.textContent).not.toContain("does not include a contractor name");
+    expect(section.textContent).not.toContain("Contractor not published");
     expect(section.textContent).not.toContain("contract/v1");
+  });
+
+  it("regression: a lead saved with the permit's printed contractor shows it, no missing text", () => {
+    const section = renderWithSignals({
+      openPermitId: "2025-100",
+      openDays: 100,
+      contractor: "ACME ROOFING LLC",
+      bbbStatus: "not_checked",
+      contractorRecorded: true,
+    });
+    expect(section.textContent).toContain("ACME ROOFING LLC");
+    expect(section.textContent).toContain("as printed, unverified");
+    expect(section.textContent).not.toContain("Contractor not published");
+    expect(section.textContent).not.toContain("does not include a contractor name");
+    expect(section.textContent).toContain("BBB rating not available · not checked");
+  });
+
+  it("says no contractor was printed only when the snapshot recorded that there was none", () => {
+    const section = renderWithSignals({ contractorRecorded: true });
+    expect(section.textContent).toContain("Contractor not published");
+    expect(section.textContent).toContain("No contractor name was printed on this permit");
+    expect(section.textContent).toContain("Not checked · no name to look up");
   });
 
   it("keeps Add note disabled while the box is empty", () => {

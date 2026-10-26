@@ -10,7 +10,13 @@ import { z } from "zod";
 import { gazetteer } from "@crm/oracle-views";
 import { createObservability, METRIC_NAMES } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
-import { isLivePermit, mainLeadPermit, type AgentAnswer, type QueryPlan } from "@crm/shared";
+import {
+  contractorSnapshot,
+  isLivePermit,
+  mainLeadPermit,
+  type AgentAnswer,
+  type QueryPlan,
+} from "@crm/shared";
 import {
   causeWithCode,
   mapIndexNotReady,
@@ -288,6 +294,7 @@ function leadInputFromProperty(
       ...(main !== null && isLivePermit(main)
         ? { openPermitStatus: main.statusClass === "stalled" ? "stalled" : "open" }
         : {}),
+      ...contractorSnapshot(main),
     },
     // Constitution B2 / AC-7: the lead records the manifest this property row actually came from,
     // exactly as `leads.create` on the map path does. Never a pinned constant.

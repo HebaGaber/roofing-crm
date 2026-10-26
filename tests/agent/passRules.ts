@@ -16,7 +16,8 @@ export type ExpectedOutcome =
   | "lead_created"
   | "answered_owner_filtered"
   | "answered_unavailable_or_refused"
-  | "answered_or_clarifies";
+  | "answered_or_clarifies"
+  | "refused_outbound";
 
 export interface QuerySpec {
   readonly id: string;
@@ -333,6 +334,29 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
     case "out_of_scope_or_empty": {
       if (!["out_of_scope", "empty_in_scope", "not_found"].includes(answer.outcome)) {
         failures.push(`outcome ${answer.outcome} is not out_of_scope, empty_in_scope or not_found`);
+      }
+      if (answer.claims.length > 0) failures.push("a refused answer carries claims");
+      if (answer.citations.length > 0) failures.push("a refused answer carries citations");
+      if ((answer.rows?.length ?? 0) > 0) failures.push("a refused answer carries rows");
+      if (answer.counts.matched !== 0) failures.push("a refused answer reports matched > 0");
+      return result("refused", failures);
+    }
+    case "refused_outbound": {
+      // A request to message owners is refused outright: the typed out_of_scope outcome, the
+      // outbound marker in plan.unsupported, and nothing else (no search, rows, counts or claims).
+      if (answer.outcome !== "out_of_scope") {
+        failures.push(
+          `outcome ${answer.outcome}, expected out_of_scope (outbound messaging refused)`,
+        );
+      }
+      if (
+        !answer.plan.unsupported.some(
+          (u) =>
+            u.reason === "out_of_scope" &&
+            /\b(send|message|outreach|e-?mail|text|call|contact)/i.test(u.constraint),
+        )
+      ) {
+        failures.push("the refusal does not record the outbound request in plan.unsupported");
       }
       if (answer.claims.length > 0) failures.push("a refused answer carries claims");
       if (answer.citations.length > 0) failures.push("a refused answer carries citations");

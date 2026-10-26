@@ -6,7 +6,7 @@
 // CrmAskSlow390 / CrmAgentSlow390/1440, CrmAskCreateFailed390 (all `dc-import` the shared
 // Explore1440 board with a `crmask*` / `ai*` preset).
 import { DAYS_PER_YEAR } from "@crm/domain";
-import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
+import { AGENT_TURN_LIMIT_MS, isOutboundConstraint, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
 import {
@@ -45,6 +45,18 @@ export function hasModelPlan(answer: AgentAnswer): boolean {
   if (!PLANNED_OUTCOMES.has(answer.outcome)) return false;
   if (answer.outcome === "needs_clarification") return answer.candidates !== undefined;
   return true;
+}
+
+/** True for the refusal of a request to message owners: `out_of_scope` with the outbound marker the
+ *  server's scope gate writes into `plan.unsupported`. No place is involved, so the screen says
+ *  why instead of the place-based "outside the area" message. */
+export function isOutboundRefusal(answer: AgentAnswer): boolean {
+  return (
+    answer.outcome === "out_of_scope" &&
+    answer.plan.unsupported.some(
+      (u) => u.reason === "out_of_scope" && isOutboundConstraint(u.constraint),
+    )
+  );
 }
 
 /** The place the plan searched: the gazetteer name when resolved, else what the rep typed. */

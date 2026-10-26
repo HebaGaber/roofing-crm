@@ -501,6 +501,25 @@ describe("Ask screen", () => {
       expect(screen.getByText(/“Round Rock” is outside the area this CRM covers/)).toBeTruthy();
     });
 
+    it("out_of_scope for a request to message owners says so, with no place and no plan line", () => {
+      askState = {
+        ...askState,
+        data: blockedFixture({
+          outcome: "out_of_scope",
+          plan: {
+            ...PLAN,
+            unsupported: [{ constraint: "send messages to owners", reason: "out_of_scope" }],
+          },
+        }),
+      };
+      renderAsk();
+      expect(screen.getByText(/does not send messages to owners/)).toBeTruthy();
+      expect(screen.getByText(/Coming soon/)).toBeTruthy();
+      expect(screen.queryByText(/outside the area this CRM covers/)).toBeNull();
+      expect(screen.queryByText(/How I read this/)).toBeNull();
+      expect(screen.queryByRole("button", { name: /Widen/ })).toBeNull();
+    });
+
     it("not_found", () => {
       askState = {
         ...askState,

@@ -29,7 +29,7 @@
 //
 // Accessibility: one polite live region (`role="status"`) announces "working" and then the result
 // heading; focus moves to that heading when the result arrives. Limit banners are `role="alert"`.
-import { answerPins, type AgentAnswer } from "@crm/shared";
+import { answerPins, OUTBOUND_REFUSAL_TEXT, type AgentAnswer } from "@crm/shared";
 import { missingReasonLabel } from "@crm/oracle-contract";
 import { CidDisplay, formatUtc, Icon, Provenance, StatusPill } from "@crm/ui";
 import {
@@ -69,6 +69,7 @@ import {
   exclusionNotes,
   fieldNotPublishedText,
   hasModelPlan,
+  isOutboundRefusal,
   matchesEmptyText,
   missingText,
   nextRadius,
@@ -128,7 +129,9 @@ function headingOf(answer: AgentAnswer): string {
         ? "I couldn't read that question"
         : "Which place did you mean?";
     case "out_of_scope":
-      return missingReasonLabel("out_of_scope");
+      return isOutboundRefusal(answer)
+        ? "Messaging owners is not available"
+        : missingReasonLabel("out_of_scope");
     case "not_found":
       return "Place not found";
     case "rate_limited":
@@ -993,6 +996,13 @@ function AnswerBody({
       );
     }
     case "out_of_scope":
+      if (isOutboundRefusal(answer)) {
+        return (
+          <Banner tone="info" icon="block" alert={false}>
+            {OUTBOUND_REFUSAL_TEXT}
+          </Banner>
+        );
+      }
       return (
         <Banner tone="warning" icon="wrong_location" alert={false}>
           {`“${answer.plan.area.query}” is outside the area this CRM covers, so I didn't search. Try a place inside it.`}
@@ -1077,7 +1087,7 @@ function AskedLine({ text }: { readonly text: string }): ReactElement {
 /** "How I read this" plus the step count (CrmAsk390 "4 steps done") — both only for a real model
  *  plan; the steps line only when the server ran tools (`trace.toolSteps`). */
 function PlanBlock({ answer }: { readonly answer: AgentAnswer }): ReactElement | null {
-  if (!hasModelPlan(answer)) return null;
+  if (!hasModelPlan(answer) || isOutboundRefusal(answer)) return null;
   const steps = answer.trace.toolSteps;
   return (
     <>

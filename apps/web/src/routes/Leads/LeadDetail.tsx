@@ -150,25 +150,22 @@ function Signals({ lead }: { readonly lead: LeadDetailData }): ReactElement {
           )}
         </Field>
         <Field label="Contractor, as printed on permit">
-          {s.contractor === undefined ? (
+          {s.contractor !== undefined ? (
+            <>
+              {s.contractor}
+              <span className={styles.sub}>as printed, unverified</span>
+            </>
+          ) : s.contractorRecorded === true ? (
             <>
               {missing("Contractor not published")}
-              <span className={styles.sub}>
-                Task A's published data does not include a contractor name for permits.
-              </span>
+              <span className={styles.sub}>No contractor name was printed on this permit.</span>
             </>
           ) : (
-            s.contractor
+            missing("Not saved with the lead (created before the contractor was recorded)")
           )}
         </Field>
         <Field label="BBB">
-          {s.bbbRating !== undefined
-            ? s.bbbRating
-            : missing(
-                s.contractor === undefined
-                  ? "Not checked · no name to look up"
-                  : "BBB rating not available",
-              )}
+          {s.bbbRating !== undefined ? s.bbbRating : missing(bbbSnapshotText(s))}
         </Field>
       </dl>
       <p className={styles.prose}>
@@ -652,4 +649,25 @@ export function Component(): ReactElement {
       </div>
     </div>
   );
+}
+
+/** Why the lead shows no BBB rating: no rating is ever published, so the saved BBB state or the
+ *  absence of a name to look up is the reason; an older lead says it was not saved. */
+function bbbSnapshotText(s: {
+  readonly contractor?: string | undefined;
+  readonly contractorRecorded?: boolean | undefined;
+  readonly bbbStatus?: string | undefined;
+}): string {
+  if (s.bbbStatus === "blocked") return "BBB rating not available · BBB blocked the lookup";
+  if (s.bbbStatus === "not_found") return "BBB rating not available · no BBB listing found";
+  if (s.bbbStatus === "not_checked") {
+    return s.contractor === undefined
+      ? "Not checked · no name to look up"
+      : "BBB rating not available · not checked";
+  }
+  if (s.contractor === undefined && s.contractorRecorded === true) {
+    return "Not checked · no name to look up";
+  }
+  if (s.contractorRecorded !== true) return "Not saved with the lead";
+  return "BBB rating not available";
 }
