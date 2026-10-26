@@ -87,7 +87,20 @@ function qualifiersOf(plan: Plan): string[] {
   const f = plan.filters;
   const parts: string[] = [];
   if (f.permitNumber !== undefined) parts.push(`permit # ${f.permitNumber}`);
-  if (f.openYearsMin !== undefined) parts.push(`open ${f.openYearsMin}+ years`);
+  // A property question narrowed by a permit condition says so (a permit question already names
+  // its status in the subject). "Open" includes stalled, as everywhere else in the product.
+  const permitCondition =
+    !isPermitPlan(plan) && f.statusClass !== undefined && f.statusClass.length > 0;
+  if (permitCondition) {
+    const word = f.statusClass?.includes("open")
+      ? "an open or stalled permit"
+      : `a ${joinOr(f.statusClass ?? [])} permit`;
+    parts.push(
+      `with ${word}${f.openYearsMin === undefined ? "" : ` open ${f.openYearsMin}+ years`}`,
+    );
+  } else if (f.openYearsMin !== undefined) {
+    parts.push(`open ${f.openYearsMin}+ years`);
+  }
   if (f.roofAgeMinYears !== undefined) parts.push(`roof ${f.roofAgeMinYears}+ years old`);
   if (f.roofConfidenceMin !== undefined) parts.push(`roof confidence ${f.roofConfidenceMin}+`);
   if (f.tenureYearsMin !== undefined) parts.push(`same owner ${f.tenureYearsMin}+ years`);

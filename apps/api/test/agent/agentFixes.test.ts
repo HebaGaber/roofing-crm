@@ -520,3 +520,157 @@ describe("a TCAD account id is a property lookup, never a radius search", () => 
     expect(PLAN_SYSTEM_PROMPT).toMatch(/Tell me about TCAD 181990/);
   });
 });
+
+describe("follow-up inherits the previous plan's filters and adds the new one", () => {
+  const previousPlan: QueryPlan = {
+    intent: "find_properties",
+    area: { kind: "place", query: "Lakeway", radiusMi: 2 },
+    filters: { roofAgeMinYears: 25 },
+    slotSources: { roofAgeMinYears: "stated", radiusMi: "stated", area: "stated" },
+    unsupported: [],
+  };
+  const FOLLOW = "Only the ones with an open permit";
+  const index = () => new FakeLeadIndex([property()], [permit()]);
+
+  it("applyInheritance: previous filters are the base, the follow-up's statusClass is added", () => {
+    const plan: QueryPlan = {
+      intent: "find_properties",
+      area: { kind: "place", query: "", radiusMi: 5 },
+      filters: { statusClass: ["open"] },
+      slotSources: { area: "inherited", statusClass: "stated", radiusMi: "default" },
+      unsupported: [],
+    };
+    const out = applyInheritance(plan, previousPlan, FOLLOW);
+    expect(out.filters).toEqual({ roofAgeMinYears: 25, statusClass: ["open"] });
+    expect(out.area).toMatchObject({ query: "Lakeway", radiusMi: 2 });
+    expect(out.slotSources.roofAgeMinYears).toBe("inherited");
+    expect(out.slotSources.statusClass).toBe("stated");
+  });
+
+  it("runAsk: the exact scenario searches roof 25+, 2 mi, Lakeway and the live-permit condition", async () => {
+    const idx = index();
+    const { run } = ask(
+      FOLLOW,
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "", radiusMi: 5 },
+          filters: { statusClass: ["open"] },
+          slotSources: { area: "inherited", statusClass: "inherited", radiusMi: "default" },
+        }),
+        NOT_JSON,
+      ],
+      idx,
+      { previousPlan },
+    );
+    const answer = await run;
+    expect(answer.plan.filters).toMatchObject({ roofAgeMinYears: 25, statusClass: ["open"] });
+    expect(answer.plan.area).toMatchObject({ query: "Lakeway", radiusMi: 2 });
+    const call = idx.searchPropertiesCalls.at(-1);
+    expect(call?.roofAgeMinYears).toBe(25);
+    expect(call?.permitStatusClass).toEqual(expect.arrayContaining(["open", "stalled"]));
+    expect(call?.radiusMi).toBe(2);
+  });
+
+  it("a follow-up that states a new radius changes only the radius", async () => {
+    const idx = index();
+    const { run } = ask(
+      "Only the ones with an open permit within 4 miles",
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "", radiusMi: 4 },
+          filters: { statusClass: ["open"] },
+          slotSources: { area: "inherited", statusClass: "stated", radiusMi: "stated" },
+        }),
+        NOT_JSON,
+      ],
+      idx,
+      { previousPlan },
+    );
+    const answer = await run;
+    expect(answer.plan.area.radiusMi).toBe(4);
+    expect(answer.plan.filters.roofAgeMinYears).toBe(25);
+    expect(answer.plan.filters.statusClass).toEqual(["open"]);
+  });
+
+  it("a follow-up that states a new roof age overrides only the roof age", async () => {
+    const idx = index();
+    const { run } = ask(
+      "Same area but roofs 30 years or older with an open permit",
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "", radiusMi: 5 },
+          filters: { roofAgeMinYears: 30, statusClass: ["open"] },
+          slotSources: {
+            area: "inherited",
+            roofAgeMinYears: "stated",
+            statusClass: "stated",
+            radiusMi: "default",
+          },
+        }),
+        NOT_JSON,
+      ],
+      idx,
+      { previousPlan },
+    );
+    const answer = await run;
+    expect(answer.plan.filters.roofAgeMinYears).toBe(30);
+    expect(answer.plan.filters.statusClass).toEqual(["open"]);
+    expect(answer.plan.area.radiusMi).toBe(2);
+  });
+
+  it("a plan that lost the permit condition gets it back from the question", async () => {
+    const idx = index();
+    const { run } = ask(
+      FOLLOW,
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "", radiusMi: 5 },
+          slotSources: { area: "inherited" },
+        }),
+        NOT_JSON,
+      ],
+      idx,
+      { previousPlan },
+    );
+    const answer = await run;
+    expect(answer.plan.filters.statusClass).toEqual(["open"]);
+    expect(answer.plan.filters.roofAgeMinYears).toBe(25);
+  });
+
+  it("a question with its own place does NOT inherit the previous filters", async () => {
+    const idx = index();
+    const { run } = ask(
+      "Which properties within 3 miles of Pflugerville have an open permit?",
+      [
+        planText({
+          intent: "find_properties",
+          area: { kind: "place", query: "Pflugerville", radiusMi: 3 },
+          filters: { statusClass: ["open"] },
+          slotSources: { statusClass: "stated", radiusMi: "stated", area: "stated" },
+        }),
+        NOT_JSON,
+      ],
+      idx,
+      { previousPlan },
+    );
+    const answer = await run;
+    expect(answer.plan.area).toMatchObject({ query: "Pflugerville", radiusMi: 3 });
+    expect(answer.plan.filters.roofAgeMinYears).toBeUndefined();
+    expect(idx.searchPropertiesCalls.at(-1)?.roofAgeMinYears).toBeUndefined();
+  });
+
+  it("no previous plan: nothing is inherited", () => {
+    const plan: QueryPlan = {
+      intent: "find_properties",
+      area: { kind: "place", query: "Austin", radiusMi: 5 },
+      filters: { statusClass: ["open"] },
+      slotSources: { statusClass: "stated" },
+      unsupported: [],
+    };
+    expect(applyInheritance(plan, undefined, "x").filters).toEqual({ statusClass: ["open"] });
+  });
+});

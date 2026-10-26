@@ -577,3 +577,18 @@ describe("permit-only pins note and one-property matches", () => {
     expect(answerShowsDistance(answer)).toBe(false);
   });
 });
+
+describe("planSummary: a property question with a permit condition (follow-up)", () => {
+  it("lists the permit condition with the other filters", () => {
+    const plan = {
+      intent: "find_properties",
+      area: { kind: "place", query: "Lakeway", radiusMi: 2 },
+      filters: { roofAgeMinYears: 25, statusClass: ["open"] },
+      slotSources: {},
+      unsupported: [],
+    } as unknown as Parameters<typeof planSummary>[0];
+    expect(planSummary(plan)).toBe(
+      "properties, with an open or stalled permit, roof 25+ years old, within 2 mi of Lakeway",
+    );
+  });
+});

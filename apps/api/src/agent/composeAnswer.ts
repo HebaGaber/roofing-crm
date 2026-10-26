@@ -524,15 +524,31 @@ export function applyInheritance(
         radiusMi: slotSources.radiusMi === "stated" ? plan.area.radiusMi : previous.area.radiusMi,
       };
       slotSources.area = "inherited";
+      if (slotSources.radiusMi !== "stated") slotSources.radiusMi = "inherited";
     }
   }
 
+  // A follow-up keeps the area of the previous question, so it also keeps that question's
+  // filters: the previous plan is the base, and only a filter this question states itself
+  // overrides or adds to it. The model often returns just the new constraint (or a defaulted
+  // roof age), so the merge is done here, not trusted to the model's "inherited" marks.
+  const followUp = previous !== undefined && slotSources.area === "inherited";
+
   const dropped = new Set<string>(dropAreaSource ? ["area"] : []);
   for (const key of FILTER_KEYS) {
-    if (slotSources[key] !== "inherited") continue;
+    const own = filters[key];
+    const stated =
+      own !== undefined && slotSources[key] !== "default" && slotSources[key] !== "inherited";
+    if (stated) continue;
     const value = previous?.filters[key];
-    if (value === undefined) dropped.add(key);
-    else filters[key] = value;
+    if (value !== undefined && (followUp || slotSources[key] === "inherited")) {
+      filters[key] = value;
+      slotSources[key] = "inherited";
+    } else if (slotSources[key] === "inherited") {
+      // Marked inherited but the previous plan never had it: a value nobody stated, so dropped.
+      // (A permit condition the question really states is restored from its words afterwards.)
+      dropped.add(key);
+    }
   }
   const keep = ([key]: [string, unknown]) => !dropped.has(key);
 
@@ -1458,16 +1474,26 @@ export function repairPlanFromQuestion(
     }
   }
   // Only a property question can lose its permit condition (a permit question already is one).
-  const permit = next.intent === "find_permits" ? undefined : scanQuestionForPermitStatus(question);
-  if (permit !== undefined && next.filters.statusClass === undefined) {
-    repairs.push(`statusClass -> ${permit.join(",")}`);
-    next = {
-      ...next,
-      filters: { ...next.filters, statusClass: permit },
-      slotSources: { ...next.slotSources, statusClass: "stated" },
-    };
+  const restored = restorePermitCondition(next, question);
+  if (restored !== undefined) {
+    repairs.push(`statusClass -> ${(restored.filters.statusClass ?? []).join(",")}`);
+    next = restored;
   }
   return { plan: next, repairs };
+}
+
+/** A property question whose text states a permit condition ("with an open permit") but whose
+ *  plan has none gets it back. Undefined when nothing needs restoring. Also run after follow-up
+ *  inheritance, so a stated condition can never be lost between the model and the search. */
+export function restorePermitCondition(plan: QueryPlan, question: string): QueryPlan | undefined {
+  if (!REPAIR_INTENTS.has(plan.intent)) return undefined;
+  const permit = plan.intent === "find_permits" ? undefined : scanQuestionForPermitStatus(question);
+  if (permit === undefined || plan.filters.statusClass !== undefined) return undefined;
+  return {
+    ...plan,
+    filters: { ...plan.filters, statusClass: permit },
+    slotSources: { ...plan.slotSources, statusClass: "stated" },
+  };
 }
 
 /** A permit condition the rep stated that the plan dropped: "a stalled permit", "an open roofing
@@ -1793,12 +1819,11 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
         slotSources: { ...repaired.plan.slotSources, radiusMi: "default" },
       };
     }
-    let plan = dropUnpublishedFilters(
-      dropDefaultRoofFilter(
-        applyInheritance(repaired.plan, input.previousPlan, question),
-        question,
-      ),
-    );
+    const inherited = applyInheritance(repaired.plan, input.previousPlan, question);
+    const withPermit = restorePermitCondition(inherited, question);
+    if (withPermit !== undefined)
+      planRepairs = [...planRepairs, "statusClass restored (follow-up)"];
+    let plan = dropUnpublishedFilters(dropDefaultRoofFilter(withPermit ?? inherited, question));
     const blocked = (
       outcome: "out_of_scope" | "not_found" | "needs_clarification" | "field_not_published",
       toolSteps: number,
