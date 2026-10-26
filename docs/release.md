@@ -80,7 +80,8 @@ Deploy: see "How to redeploy and where the data comes from" in `docs/pr-body.md`
 | Unit and integration tests | 2,693 passed, 0 failed | `pnpm turbo run test` on the branch head, 2026-10-26 |
 | Hosted Playwright | Parallel and isolated phases at 390, 768 and 1440 px, green on the last full CI run | GitHub Actions |
 | Golden queries on the deployed agent | 51 of 51 (17 queries, 3 repeats) at commit `098fb75`; the plan prompt gained one example afterwards and the suite was not re-run | `docs/evidence/B-09.md` |
-| Agent latency | p95 15.1 s, max 15.8 s on 54 timed asks (target under 20 s) | same |
+| Map search latency | p95 1.11 s, p50 0.86 s over 20 timed radius changes (6 to 25 mi) on the deployed index; first search after a cold start 4 to 10 s | `tests/e2e/perf.spec.ts` on the hosted URL, 2026-10-26 |
+| Agent latency | p95 15.1 s, max 15.8 s on 54 timed asks (target under 20 s) | `docs/evidence/B-09.md` |
 | Coverage of new code, defect fix time, deploy downtime | Not measured in this round | |
 
 ## 6. Post-deploy verification
