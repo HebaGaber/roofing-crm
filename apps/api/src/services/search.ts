@@ -12,6 +12,7 @@ import type {
   LeadIndex,
   PermitResult,
   PropertyResult,
+  SimilarPropertyRow,
 } from "../adapters/duckDbParquet.js";
 
 export interface SearchCenter {
@@ -240,4 +241,48 @@ export async function countyOverview(
       : { permitOpenDaysMin: input.permitOpenDaysMin }),
   };
   return leadIndex.countyOverview(query);
+}
+
+/** Similar properties: within this radius and this many years of the property's roof age. */
+export const SIMILAR_RADIUS_MI = 1;
+export const SIMILAR_ROOF_AGE_BAND_YEARS = 5;
+
+export type SimilarReason = "no_coordinates" | "no_roof_age" | "none_found";
+
+export interface SimilarPropertiesResult {
+  /** False when the property is not in the promoted run. */
+  found: boolean;
+  similar: SimilarPropertyRow[];
+  /** Why the list is empty; null when it has rows. */
+  reason: SimilarReason | null;
+}
+
+export class SimilarUnavailableError extends Error {
+  constructor() {
+    super("similar properties are not available on this index");
+    this.name = "SimilarUnavailableError";
+  }
+}
+
+export async function similarProperties(
+  leadIndex: LeadIndex,
+  input: { propertyCid: string; limit: number },
+): Promise<SimilarPropertiesResult> {
+  if (leadIndex.similarProperties === undefined) throw new SimilarUnavailableError();
+  const property = await leadIndex.getProperty(input.propertyCid);
+  if (property === null) return { found: false, similar: [], reason: "none_found" };
+  if (property.latitude === null || property.longitude === null) {
+    return { found: true, similar: [], reason: "no_coordinates" };
+  }
+  if (property.roofAgeYears === null) return { found: true, similar: [], reason: "no_roof_age" };
+  const similar = await leadIndex.similarProperties({
+    center: { lat: property.latitude, lng: property.longitude },
+    radiusMi: SIMILAR_RADIUS_MI,
+    propertyType: property.propertyType,
+    roofAgeYears: property.roofAgeYears,
+    roofAgeBand: SIMILAR_ROOF_AGE_BAND_YEARS,
+    excludePropertyCid: property.propertyCid,
+    limit: input.limit,
+  });
+  return { found: true, similar, reason: similar.length === 0 ? "none_found" : null };
 }

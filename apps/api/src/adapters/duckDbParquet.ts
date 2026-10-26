@@ -194,6 +194,28 @@ export type SearchPropertiesPageQuery = SearchPropertiesQuery & {
   radiusMi: number;
 };
 
+/** "Similar properties" (drawer): same property type, roof age within a band, near a point. */
+export interface SimilarPropertiesQuery {
+  center: LatLng;
+  radiusMi: number;
+  /** Exact match; a null type matches only other null types. */
+  propertyType: string | null;
+  roofAgeYears: number;
+  /** Inclusive plus or minus years around `roofAgeYears`. */
+  roofAgeBand: number;
+  excludePropertyCid: string;
+  limit: number;
+}
+
+export interface SimilarPropertyRow {
+  propertyCid: string;
+  requestIdentifier: string;
+  distanceMi: number;
+  roofAgeYears: number;
+  roofAgeConfidence: CrmProperty["roofAgeConfidence"];
+  roofAgeBasis: CrmProperty["roofAgeBasis"];
+}
+
 export type PropertyResult = Provenanced<CrmProperty>;
 export type PermitResult = Provenanced<CrmPermit>;
 
@@ -216,6 +238,9 @@ export interface LeadIndex {
    *  ready. Optional on the port: test doubles need no stub, the warm-up skips an index without it. */
   warm?(): Promise<{ manifestCid: string }>;
   getProperty(propertyCid: string): Promise<(PropertyResult & { permits: PermitResult[] }) | null>;
+  /** Bounded nearest-first query for the drawer's "Similar properties". Optional on the port so
+   *  test doubles need no stub; the service answers a typed "not implemented" without it. */
+  similarProperties?(query: SimilarPropertiesQuery): Promise<SimilarPropertyRow[]>;
   /** One property by its `requestIdentifier` (tcadId) — an indexed `WHERE` filter, not a
    *  full-table scan (CR finding: `services/agent/tools.ts`'s `propertyCidForTcadId` and
    *  `routers/agent.ts`'s `confirmLead` both used to pull the whole table into memory to find one
@@ -862,6 +887,32 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const total = raw[0]?.__total ?? 0;
       const rows = raw.map(({ __total: _total, ...row }) => row as unknown as PermitResult);
       return { rows, total };
+    });
+  }
+
+  async similarProperties(query: SimilarPropertiesQuery): Promise<SimilarPropertyRow[]> {
+    return withObservabilityOperation(this.obs, "LeadIndex.similarProperties", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      const { where, dist } = radiusSql(query.center, query.radiusMi, (n) => `"${n}"`);
+      const typeSql =
+        query.propertyType === null
+          ? `"propertyType" IS NULL`
+          : `"propertyType" = '${sqlEscapeString(query.propertyType)}'`;
+      const lo = sqlNumber(query.roofAgeYears - query.roofAgeBand);
+      const hi = sqlNumber(query.roofAgeYears + query.roofAgeBand);
+      const limit = String(Math.min(10, Math.max(1, Math.floor(query.limit))));
+      const reader = await this.runBounded(
+        connection,
+        `SELECT "propertyCid", "requestIdentifier", (${dist} / ${sqlNumber(milesToMeters(1))}) AS "distanceMi",
+           "roofAgeYears", "roofAgeConfidence", "roofAgeBasis"
+         FROM crm_property
+         WHERE ${where} AND ${typeSql}
+           AND "roofAgeYears" BETWEEN ${lo} AND ${hi}
+           AND "propertyCid" <> '${sqlEscapeString(query.excludePropertyCid)}'
+         ORDER BY ${dist}, "propertyCid" LIMIT ${limit}`,
+      );
+      return reader.getRowObjectsJS() as unknown as SimilarPropertyRow[];
     });
   }
 
