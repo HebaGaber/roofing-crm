@@ -47,3 +47,7 @@ Written 2026-10-25 by the CRM side. Source: Run 3 manifest `bafkreifndsdibdllvgp
 | 11, 12, 13 | Every run is a full snapshot. CloudFront now holds all 255 table parts and the manifest. Additive columns stay in contract/v1 (named v1.2). | No chain-following needed. |
 | 14 | Open. | Lineage link uses `at`, `r` and `sel` meanwhile. |
 
+
+## Status on 2026-10-26: Run 3.1 is live
+
+The CRM serves Run 3.1 (`bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, contract v1.2) and was rebuilt with Task A's review changes (fa6771a). Counts read from the served index: 441,961 properties, 15,025 permits (4,552 with a printed contractor name, none verified, BBB `blocked`). Owner area: in county 346,950, regional 7,399, out of area 41,953, unknown 45,659. Situs address text is published for the properties tested; situs city and ZIP read `source_missing`. Questions 1 to 4 are answered by this run; question 14 (a stable property link in the Explorer) is still open.

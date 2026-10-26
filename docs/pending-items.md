@@ -8,7 +8,7 @@ Rules that carry over: never merge the PR into `prismteam-ai/roofing-crm`; no `#
 
 | Item | Value |
 | --- | --- |
-| Data the app serves | Task A **Run 3**, run `travis-full-run3-20261025`, manifest `bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`, promoted 2026-10-25 20:27Z. Run 2 (`bafkreife3vk3c...`) is `previous`. |
+| Data the app serves | Task A **Run 3.1** (contract v1.2), run `travis-full-run3-1-20261025`, manifest `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, promoted 2026-10-26 05:16Z and rebuilt with Task A's review changes (fa6771a) the same day. Run 3 (`bafkreifndsdibdllvgpzwmif6getzwvc6rupk5tgeak4eypccaw3t7vlfm`) is `previous` and the rollback. |
 | Index size | 441,961 properties, 15,025 Austin roofing permits; 190 of 255 table parts fetched (0.78 GB); all 255 table parts are 0.92 GB |
 | Done for Run 3 | contract v1.1 and views vendored (`docs/reuse-log.md`); index carries tenure basis, address-point coordinates, owner name (ADR-03 amended: shown, never sent to the model), printed contractor, BBB state and link; cost-gate document limit 1,000,000; BuildIndex DuckDB limit 2,400 MB (first sync ran out of memory at 1,800 MB); e2e fixtures refreshed; lineage link fixed (`/tx/travis/explore`) |
 | Still Run 2 | `tests/agent/golden.json` (`manifestCid`), `testplans/B-09-test-cases.md` section 5, `docs/evidence/B-09.md`, golden queries (about $1 of Bedrock) and the real-data perf test (`CRM_PERF=1`) have not been re-run on Run 3 |
