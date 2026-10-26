@@ -3,7 +3,7 @@
 // finds a street address from Run 3.1, and the results-header info popover stays
 // inside the screen. Read-only browsing as the seeded admin.
 import { expect, test, type Page } from "@playwright/test";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, requirePassword } from "./lib/auth.js";
 import { LAYOUT_SEARCH_PATH, OPEN_PERMIT_NUMBER } from "./lib/run-fixtures.js";
 
 test.use({ storageState: AUTH_STATE_PATH });
@@ -16,7 +16,7 @@ const shot = async (page: Page, name: string, project: string): Promise<void> =>
 test.describe("Search box (responsive)", () => {
   // eslint-disable-next-line no-empty-pattern
   test.beforeEach(async ({}) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
   });
 
   test("editable; a place and a ZIP are suggested and centre the search; a permit number and an address are handled", async ({

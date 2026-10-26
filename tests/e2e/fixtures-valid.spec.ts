@@ -3,7 +3,7 @@
 // map, layout and leads specs failing for a reason that looks unrelated. Fast and read-only: a
 // handful of API reads as the signed-in admin, no screenshots, one project (desktop-1440).
 import { expect, test, type Page } from "@playwright/test";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, requirePassword } from "./lib/auth.js";
 import {
   EAST_TRAVIS,
   FIXTURES_MANIFEST_CID,
@@ -47,7 +47,7 @@ const radiusCount = async (
 
 test.describe("Fixtures still match the served run", () => {
   test.beforeEach(async ({ page }, testInfo) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     test.skip(testInfo.project.name !== "desktop-1440", "data check, once per run");
     await openSignedIn(page);
   });

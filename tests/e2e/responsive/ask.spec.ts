@@ -21,7 +21,7 @@
 // trigger, so it stays covered by apps/web/test/ask/Ask.test.tsx only.
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "../lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, requirePassword } from "../lib/auth.js";
 
 // Signed in once by the `setup` project; this file tests the Ask screen, not sign-in.
 test.use({ storageState: AUTH_STATE_PATH });
@@ -79,7 +79,7 @@ const ANSWER_STATES_ONCE =
 
 test.describe("Responsive design: Ask screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await gotoAsk(page);
   });
 

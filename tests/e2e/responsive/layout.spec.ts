@@ -10,7 +10,8 @@
 // admin with the saved session; runs in the parallel phase.
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { LAYOUT_SEARCH_PATH } from "../lib/run-fixtures.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "../lib/auth.js";
+import { settledBox } from "../lib/layout.js";
+import { AUTH_STATE_PATH, requirePassword } from "../lib/auth.js";
 
 test.use({ storageState: AUTH_STATE_PATH });
 
@@ -153,7 +154,7 @@ async function openMapSearch(page: Page): Promise<void> {
 
 test.describe("Layout: Map screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await openMapSearch(page);
   });
 
@@ -313,7 +314,8 @@ test.describe("Layout: Map screen", () => {
     await expect(screen.drawer).toBeVisible({ timeout: 20_000 });
     await ready(page);
 
-    const drawer = await ensureBox(screen.drawer);
+    // The drawer slides in: measure it once its box stopped moving, not after a guessed delay.
+    const drawer = await settledBox(screen.drawer);
     const region = await ensureBox(screen.region);
     const { width } = viewportOf(page);
     expect(
@@ -363,7 +365,7 @@ test.describe("Layout: Map screen", () => {
 
 test.describe("Layout: app shell", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await page.goto("/");
     await expect(mapScreen(page).region).toBeVisible();
     await ready(page);
@@ -426,7 +428,7 @@ test.describe("Layout: app shell", () => {
 
 test.describe("Layout: Leads filters", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     // With filters in the URL the panel is shown whether or not this user has leads (with no
     // leads at all and no filter, the page shows "No leads yet" and hides the panel by design), so
     // the layout check does not depend on what other specs have created.
@@ -465,7 +467,7 @@ test.describe("Layout: Leads filters", () => {
 
 test.describe("Layout: top bar below 840 px and the open Coming-soon page", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await page.goto("/leads");
     await expect(page.getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
     await ready(page);
@@ -558,7 +560,7 @@ test.describe("Layout: no horizontal scroll at 360, 600 and 1280 px", () => {
   // Playwright requires the first argument to be a destructuring pattern, even an empty one.
   // eslint-disable-next-line no-empty-pattern
   test.beforeEach(async ({}, testInfo) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     test.skip(testInfo.project.name !== "desktop-1440", "viewport is set per case; run once");
   });
 

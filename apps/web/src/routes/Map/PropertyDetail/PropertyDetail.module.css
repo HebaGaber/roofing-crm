@@ -30,6 +30,12 @@
   gap: var(--space-2);
 }
 
+/* The Close button keeps its 48 px square: a long address wraps in the title instead of
+   squeezing it (it measured 42 px wide at 390 px). */
+.drawerHead > button {
+  flex: none;
+}
+
 .drawerTitle {
   margin: 0;
   font-family: var(--md-sys-typescale-headline-small-font);
@@ -221,4 +227,11 @@
   font-family: var(--md-sys-typescale-label-medium-font);
   font-size: var(--md-sys-typescale-label-medium-size);
   cursor: not-allowed;
+}
+
+/* The BBB search link is a tap target: 48 px tall (it was a 16 px line of text). */
+.permitField a[data-field="bbb_url"] {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--space-9);
 }

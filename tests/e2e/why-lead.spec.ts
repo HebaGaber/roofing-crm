@@ -3,7 +3,7 @@
 // CID, Verify CID and Details are there, nothing overflows sideways, Details opens the property and
 // Back returns to the list. Read-only browsing as the seeded admin; nothing is created.
 import { expect, test, type Page } from "@playwright/test";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, requirePassword } from "./lib/auth.js";
 import { LAYOUT_SEARCH_PATH } from "./lib/run-fixtures.js";
 
 test.use({ storageState: AUTH_STATE_PATH });
@@ -17,7 +17,7 @@ async function shot(page: Page, name: string, project: string): Promise<void> {
 test.describe("Why is this a lead? (responsive)", () => {
   // eslint-disable-next-line no-empty-pattern
   test.beforeEach(async ({}) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
   });
 
   test("a row opens its panel; rules, Verify CID and Details fit the screen; Details opens the property; Back returns", async ({

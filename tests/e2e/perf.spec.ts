@@ -9,7 +9,7 @@
 import { expect, test } from "@playwright/test";
 import { PERF_PIN } from "./lib/run-fixtures.js";
 import { runtimeUrl } from "./lib/runtime.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, SEEDED_PASSWORD, requirePassword } from "./lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
 test.use({ storageState: AUTH_STATE_PATH });
@@ -86,7 +86,7 @@ test.describe("B-03-TC-NF-01: radius change p95 < 3 s end to end, 20 runs", () =
     // The timing is the API's, not the layout's: one viewport is enough, and three would triple
     // a run that already takes minutes.
     test.skip(testInfo.project.name !== "desktop-1440", "API timing, measured once (desktop)");
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
 
     await openPinAndWait(page);

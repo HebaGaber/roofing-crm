@@ -7,7 +7,7 @@
 // the "opens a real page, never a 404" behaviour is already asserted by B-01.spec.ts.
 import { expect, test } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "../lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, requirePassword } from "../lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); this file tests layout, not sign-in.
 test.use({ storageState: AUTH_STATE_PATH });
@@ -26,7 +26,7 @@ async function openComingSoon(page: import("@playwright/test").Page): Promise<vo
 
 test.describe("Responsive design: Coming Soon screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await openComingSoon(page);
     await page.evaluate(() => document.fonts.ready);
   });
