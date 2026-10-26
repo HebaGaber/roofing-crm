@@ -445,15 +445,19 @@ test.describe("B-07 leads", () => {
     await shot(page, "003", "snapshot");
   });
 
-  test("B-07-TC-004 no contractor shows reason", async ({ page }) => {
+  test("B-07-TC-004 contractor is shown as printed or with its reason", async ({ page }) => {
     await page.goto(leadPath(factsOf(P_5_52).requestIdentifier));
     const signals = page.getByRole("region", { name: "Current signals" });
     const contractor = signals
       .locator("div", { hasText: "Contractor, as printed on permit" })
       .last();
-    // Reason surfaced (not an invented name or a blank), and no BBB rating either (GAP-2: copy
-    // is asserted by meaning, not by the literal string).
-    await expect(contractor).toContainText(/not (published|available)|unresolved/i);
+    // The contractor row is never blank or invented: either the name as printed on the permit,
+    // labelled unverified (Task A prints one for this property since contract v1.1), or the reason
+    // it is missing; and no BBB rating either (GAP-2: copy is asserted by meaning, not by the
+    // literal string).
+    await expect(contractor).toContainText(
+      /as printed, unverified|not (published|available|saved)|unresolved/i,
+    );
     await expect(signals.locator("div", { hasText: /^BBB/ }).last()).toContainText(
       /not (available|checked)|unresolved/i,
     );
