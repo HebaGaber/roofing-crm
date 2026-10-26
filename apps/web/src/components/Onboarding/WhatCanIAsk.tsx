@@ -18,10 +18,20 @@ import {
 } from "./firstVisit.js";
 import styles from "./WhatCanIAsk.module.css";
 
-export function WhatCanIAsk(): ReactElement | null {
+export interface WhatCanIAskProps {
+  /** Told whenever the card opens or closes, so the map can step its own overlays (legend, chips,
+   *  results sheet reserve) aside while it is up: one overlay at a time (CRM-HANDOFF rule 11). */
+  readonly onOpenChange?: ((open: boolean) => void) | undefined;
+}
+
+export function WhatCanIAsk({ onOpenChange }: WhatCanIAskProps = {}): ReactElement | null {
   const [searchParams] = useSearchParams();
   const forced = searchParams.get(FIRST_VISIT_PARAM) === "1";
   const [open, setOpen] = useState(() => forced || !isDismissed());
+  useEffect(() => {
+    onOpenChange?.(open);
+    return () => onOpenChange?.(false);
+  }, [open, onOpenChange]);
   const titleId = useId();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const returnFocusRef = useRef<Element | null>(null);

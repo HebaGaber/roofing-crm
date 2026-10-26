@@ -125,3 +125,34 @@ describe("owner filters in the URL (tenure, ooa)", () => {
     expect(patchMapParams(set, { ooa: false }).has("ooa")).toBe(false);
   });
 });
+
+describe("permit filters in the URL (permit, permitYrs)", () => {
+  it("restores the permit status and open-years", () => {
+    const q = parseMapQuery(params("permit=open&permitYrs=3"));
+    expect([q.permitStatus, q.permitOpenYrs]).toEqual(["open", 3]);
+    expect(parseMapQuery(params("permit=stalled")).permitStatus).toBe("stalled");
+  });
+
+  it("defaults to any status and no open-years", () => {
+    const q = parseMapQuery(params(""));
+    expect([q.permitStatus, q.permitOpenYrs]).toEqual(["any", undefined]);
+  });
+
+  it("drops invalid values, never clamps", () => {
+    for (const bad of ["any", "closed", "OPEN", ""]) {
+      expect(parseMapQuery(params(`permit=${bad}`)).permitStatus).toBe("any");
+    }
+    for (const bad of ["-1", "101", "1.5", "abc", ""]) {
+      expect(parseMapQuery(params(`permitYrs=${bad}`)).permitOpenYrs).toBeUndefined();
+    }
+  });
+
+  it("round-trips beside the roof age, which is what a shared link needs", () => {
+    const set = patchMapParams(params("roof=15"), { permit: "open", permitYrs: 0 });
+    expect(set.toString()).toBe("roof=15&permit=open&permitYrs=0");
+    const q = parseMapQuery(set);
+    expect([q.roofAgeMinYears, q.permitStatus, q.permitOpenYrs]).toEqual([15, "open", 0]);
+    const cleared = patchMapParams(set, { permit: null, permitYrs: null });
+    expect(cleared.toString()).toBe("roof=15");
+  });
+});

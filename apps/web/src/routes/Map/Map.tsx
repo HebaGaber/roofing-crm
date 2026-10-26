@@ -63,7 +63,12 @@ import {
 import type { CountyOverviewStatus } from "../../components/Map/MapLegend.js";
 import { RadiusControl } from "../../components/Map/RadiusControl.js";
 import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
-import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
+import {
+  overviewFilterNote,
+  parseMapQuery,
+  patchMapParams,
+  RADIUS_BOUNDS,
+} from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
 import {
@@ -76,7 +81,11 @@ import {
 import { useLeadMarks } from "./Candidates/useLeadMarks.js";
 import { runLabel } from "./whyLead.js";
 import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
-import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
+import {
+  PropertyDetail,
+  PropertyNotInRun,
+  type PropertyDetailData,
+} from "./PropertyDetail/PropertyDetail.js";
 import { ResultsList } from "./ResultsList.js";
 import { ResultsSheet } from "./ResultsSheet.js";
 import type { ExactLookupResult } from "./SearchBox.js";
@@ -92,8 +101,13 @@ import { COUNTY_NAME } from "../../components/AppShell/navigation.js";
 import styles from "./Map.module.css";
 
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
-/** Owner filters reach `search.properties` only; the county overview is not filtered by them. */
-const OWNER_OVERVIEW_NOTE = "Owner filters apply once you pick an area";
+/** `property.get` rejects an id that is not a property id with BAD_REQUEST (or NOT_FOUND): the link
+ *  names nothing in the run, which the drawer says, rather than a failed lookup. */
+function isBadPropertyId(error: unknown): boolean {
+  const code = (error as { data?: { code?: unknown } } | null)?.data?.code;
+  return code === "BAD_REQUEST" || code === "NOT_FOUND";
+}
+
 const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, leads: true, gaps: false };
 const NO_PROPERTIES: readonly { readonly requestIdentifier: string }[] = [];
 /** The county overview changes only with a new promoted run; refetching it on every focus is waste. */
@@ -138,8 +152,17 @@ export function Component(): ReactElement {
   const trpc = useTRPC();
   const [searchParams, setSearchParams] = useSearchParams();
   const mapQuery = useMemo(() => parseMapQuery(searchParams), [searchParams]);
-  const { center, radiusMi, roofAgeMinYears, tenureYearsMin, outOfArea, permitView, sel } =
-    mapQuery;
+  const {
+    center,
+    radiusMi,
+    roofAgeMinYears,
+    tenureYearsMin,
+    outOfArea,
+    permitStatus,
+    permitOpenYrs,
+    permitView,
+    sel,
+  } = mapQuery;
   const ownerFilterActive = tenureYearsMin !== undefined || outOfArea;
   // AC-1's edge case 2: a center outside Travis County is never itself the search point (the
   // pin still shows — see CrmMap's `center` prop below), so this is its own derived flag rather
@@ -150,8 +173,9 @@ export function Component(): ReactElement {
   const mapAreaRef = useRef<HTMLDivElement | null>(null);
   const [layers, setLayers] = useState<LayersState>(DEFAULT_LAYERS);
   const [legendOpen, setLegendOpen] = useLegendOpen();
-  const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
-  const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
+  // The first-visit card is up: the map's chips, legend and Layers step aside (one overlay at a
+  // time, CRM-HANDOFF rule 11) and the card keeps clear of the results sheet (Map.module.css).
+  const [welcomeOpen, setWelcomeOpen] = useState(false);
   // A permit filter narrows the matches to properties with a matching permit, in every view: the
   // map and cards, the list and triage show the same properties and the same count.
   const permitFilterActive = permitStatus !== "any" || permitOpenYrs !== undefined;
@@ -376,6 +400,21 @@ export function Component(): ReactElement {
     [setSearchParams],
   );
 
+  // The permit filters live in the URL beside the roof age, so a shared link or a reload keeps them.
+  const setPermitStatus = useCallback(
+    (value: PermitStatusFilter) => {
+      setSearchParams((prev) => patchMapParams(prev, { permit: value === "any" ? null : value }));
+    },
+    [setSearchParams],
+  );
+
+  const setPermitOpenYrs = useCallback(
+    (value: number | undefined) => {
+      setSearchParams((prev) => patchMapParams(prev, { permitYrs: value ?? null }));
+    },
+    [setSearchParams],
+  );
+
   const setOutOfArea = useCallback(
     (value: boolean) => {
       setSearchParams((prev) => patchMapParams(prev, { ooa: value ? true : null }));
@@ -545,6 +584,8 @@ export function Component(): ReactElement {
   const detailQuery = useQuery({
     ...trpc.property.get.queryOptions({ propertyCid: sel ?? "" }),
     enabled: sel !== null,
+    // A rejected id will be rejected again: say so at once instead of retrying.
+    retry: (failures: number, error: unknown) => !isBadPropertyId(error) && failures < 1,
   });
 
   // The selected property's position: from the results row when it is there, else from its detail.
@@ -828,6 +869,9 @@ export function Component(): ReactElement {
       aria-label="Map"
       data-route="map"
       data-view={view}
+      {...(welcomeOpen
+        ? { "data-welcome": "open", "data-sheet-peek": compactPeek ? "compact" : "results" }
+        : {})}
       {...(ai ? { "data-mode": "ai" } : {})}
       className={styles.page}
     >
@@ -899,14 +943,15 @@ export function Component(): ReactElement {
               outOfArea={outOfArea}
               onOutOfAreaChange={setOutOfArea}
               matchNote={
-                ownerFilterActive && (searchInput === null || query.data === undefined)
-                  ? OWNER_OVERVIEW_NOTE
+                searchInput === null || query.data === undefined
+                  ? overviewFilterNote(permitFilterActive, ownerFilterActive)
                   : undefined
               }
               matchCount={
                 searchInput === null || query.data === undefined
-                  ? // The county overview is not filtered by owner: no count rather than a wrong one.
-                    ownerFilterActive
+                  ? // The county overview is not filtered by owner or permit: no count rather than a
+                    // wrong one.
+                    ownerFilterActive || permitFilterActive
                     ? undefined
                     : (overview?.counts.matched ?? undefined)
                   : matchTotal
@@ -926,10 +971,14 @@ export function Component(): ReactElement {
               onClear={() => {
                 // One URL update: two in a row would each start from the same params.
                 setSearchParams((prev) =>
-                  patchMapParams(prev, { roof: null, tenure: null, ooa: null }),
+                  patchMapParams(prev, {
+                    roof: null,
+                    tenure: null,
+                    ooa: null,
+                    permit: null,
+                    permitYrs: null,
+                  }),
                 );
-                setPermitStatus("any");
-                setPermitOpenYrs(undefined);
               }}
               open={mode === "filters"}
               onOpenChange={(open) => setMode(open ? "filters" : "map")}
@@ -1019,7 +1068,9 @@ export function Component(): ReactElement {
               <p className={styles.chip} role="status" data-view-chip="overview">
                 <span>
                   Click a hexagon to search there
-                  {ownerFilterActive ? `. ${OWNER_OVERVIEW_NOTE}` : ""}
+                  {overviewFilterNote(permitFilterActive, ownerFilterActive) === undefined
+                    ? ""
+                    : `. ${overviewFilterNote(permitFilterActive, ownerFilterActive) ?? ""}`}
                 </span>
                 <button
                   type="button"
@@ -1055,7 +1106,7 @@ export function Component(): ReactElement {
               </span>
             </p>
           ) : null}
-          <WhatCanIAsk />
+          <WhatCanIAsk onOpenChange={setWelcomeOpen} />
           {statusHost !== null && pinMode
             ? createPortal(
                 <MapStatusCard
@@ -1228,6 +1279,15 @@ export function Component(): ReactElement {
         </div>
       ) : null}
       {askPanelPortal}
+      {sel !== null && detailQuery.isError ? (
+        <div className={styles.drawerSlot}>
+          <PropertyNotInRun
+            onClose={closeDetail}
+            reason={isBadPropertyId(detailQuery.error) ? "not-in-run" : "unavailable"}
+            onRetry={() => void detailQuery.refetch()}
+          />
+        </div>
+      ) : null}
       {sel !== null && detailQuery.data !== undefined ? (
         <div className={styles.drawerSlot} onPointerDownCapture={cancelDeepLinkFocus}>
           <PropertyDetail

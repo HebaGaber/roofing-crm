@@ -44,6 +44,26 @@
   line-height: var(--md-sys-typescale-headline-small-line-height);
 }
 
+.drawerNote {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  line-height: var(--md-sys-typescale-body-medium-line-height);
+}
+
+.drawerRetry {
+  align-self: flex-start;
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
 .pills {
   display: flex;
   flex-wrap: wrap;
