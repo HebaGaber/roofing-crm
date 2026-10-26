@@ -20,6 +20,7 @@ vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLeadsList: (...a: unknown[]) => useLeadsList(...a),
   useUpdateLeadStatus: () => ({ mutate: statusMutate, reset: statusReset, ...statusState }),
   useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }),
+  useAssignLead: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }),
 }));
 let wide = false;
 vi.mock("../../src/routes/Leads/useWide", () => ({

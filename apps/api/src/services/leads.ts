@@ -85,6 +85,8 @@ export interface LeadService {
     expectedSequence?: number,
   ): Promise<StoredLead>;
   addNote(key: string, text: string, by: string, expectedSequence?: number): Promise<StoredLead>;
+  /** Gives the lead to `assignee` (the router passes the caller). */
+  assign(key: string, assignee: string, by: string, expectedSequence?: number): Promise<StoredLead>;
   get(key: string): Promise<LeadDetailView | null>;
   /** Deletes a lead the caller just created, only while it is untouched and recent. */
   undoCreate(key: string, by: string, leadId?: string): Promise<UndoCreateResult>;
@@ -148,6 +150,7 @@ function activityFromEvent(event: LeadEvent): LeadLastActivity {
     const excerpt = text === undefined ? "" : noteExcerpt(text);
     return { at: event.at, kind: "note", ...(excerpt === "" ? {} : { excerpt }) };
   }
+  if (event.kind === "assignee") return { at: event.at, kind: "assignee" };
   return { at: event.at, kind: event.kind === "create" ? "created" : "status" };
 }
 /** Fallback path only (an index without `matchingRequestIdentifiers`): the index search applies
@@ -280,6 +283,16 @@ export function createLeadService(
       return leadRepo.addNote({
         leadKey: key,
         text,
+        by,
+        at: now().toISOString(),
+        ...(expectedSequence === undefined ? {} : { expectedSequence }),
+      });
+    },
+
+    assign(key, assignee, by, expectedSequence) {
+      return leadRepo.assign({
+        leadKey: key,
+        assignee,
         by,
         at: now().toISOString(),
         ...(expectedSequence === undefined ? {} : { expectedSequence }),

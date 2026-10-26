@@ -4,6 +4,7 @@
 //   create        LEAD put  attribute_not_exists(pk)   <- duplicate protection (P0-6), no read first
 //                 SIGNALS put, EVT#0 put (both attribute_not_exists(pk))
 //   updateStatus  LEAD update  eventSequence = :expected   (the optimistic sequence check)
+//   assign        LEAD update  assignee = :to, eventSequence = :expected (GSI1 follows `assignee`)
 //   / addNote     EVT#n put    attribute_not_exists(pk)    (gapless: n = expected + 1 or refused)
 // `status`/`assignee` on LEAD are written only inside these transactions (PO-approved ADR-04
 // deviation, architecture-constitution.md §13).
@@ -95,6 +96,9 @@ export interface LeadRepo {
   create(record: NewLeadRecord): Promise<StoredLead>;
   updateStatus(input: WriteBase & { status: LeadStatus }): Promise<StoredLead>;
   addNote(input: WriteBase & { text: string }): Promise<StoredLead>;
+  /** Makes `assignee` the lead's assignee and appends an "assignee" event, in ONE transaction.
+   *  Already the assignee: nothing is written and the lead is returned as it is (idempotent). */
+  assign(input: WriteBase & { assignee: string }): Promise<StoredLead>;
   get(leadKey: string): Promise<LeadDetailRecord | null>;
   /** Deletes LEAD + SIGNALS + EVT#0 in ONE conditional transaction, or nothing (see impl). */
   undoCreate(input: UndoCreateInput): Promise<UndoCreateResult>;
@@ -145,7 +149,7 @@ export function noteExcerpt(text: string): string {
  *  plain SET overwrites a stale note excerpt. */
 function activityAttributes(
   at: string,
-  kind: "created" | "status" | "note",
+  kind: "created" | "status" | "note" | "assignee",
   excerpt = "",
 ): { lastActivityAt: string; lastActivityKind: string; lastActivityExcerpt: string } {
   return { lastActivityAt: at, lastActivityKind: kind, lastActivityExcerpt: excerpt };
@@ -153,10 +157,16 @@ function activityAttributes(
 
 function activityOf(
   at: string,
-  kind: "created" | "status" | "note",
+  kind: "created" | "status" | "note" | "assignee",
   excerpt: string,
 ): LeadLastActivity {
   return { at, kind, ...(excerpt === "" ? {} : { excerpt }) };
+}
+
+function activityKindOf(kind: LeadEvent["kind"]): "created" | "status" | "note" | "assignee" {
+  if (kind === "note") return "note";
+  if (kind === "assignee") return "assignee";
+  return "status";
 }
 
 const ACTIVITY_KINDS = new Set(["created", "status", "note", "assignee", "other"]);
@@ -293,6 +303,7 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
       excerptOf?: string;
     },
     nextStatus?: LeadStatus,
+    nextAssignee?: string,
   ): Promise<StoredLead> {
     const item = await getLeadItem(input.leadKey);
     if (item === undefined) throw new LeadNotFoundError(input.leadKey);
@@ -303,9 +314,10 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
     const values: Record<string, unknown> = { ":expected": expected, ":next": next };
     // Last activity rides in the SAME conditional Update as the sequence bump, so it is written
     // atomically with the event (or not at all when the sequence/duplicate condition fails).
+    const activityKind = activityKindOf(event.kind);
     const activity = activityAttributes(
       input.at,
-      event.kind === "note" ? "note" : "status",
+      activityKind,
       event.excerptOf === undefined ? "" : noteExcerpt(event.excerptOf),
     );
     values[":laAt"] = activity.lastActivityAt;
@@ -317,6 +329,11 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
       update += ", #status = :status";
       names["#status"] = "status";
       values[":status"] = nextStatus;
+    }
+    if (nextAssignee !== undefined) {
+      // GSI1's partition key IS `assignee`: rewriting it moves the lead into the new list.
+      update += ", assignee = :assignee";
+      values[":assignee"] = nextAssignee;
     }
     try {
       await client.send(
@@ -358,11 +375,8 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
       ...current,
       eventSequence: next,
       status: nextStatus ?? current.status,
-      lastActivity: activityOf(
-        activity.lastActivityAt,
-        event.kind === "note" ? "note" : "status",
-        activity.lastActivityExcerpt,
-      ),
+      assignee: nextAssignee ?? current.assignee,
+      lastActivity: activityOf(activity.lastActivityAt, activityKind, activity.lastActivityExcerpt),
     };
   }
 
@@ -567,6 +581,22 @@ export function createDynamoLeadRepo(deps: LeadRepoDeps): LeadRepo {
           excerptOf: input.text,
         }),
       );
+    },
+
+    assign(input) {
+      return withConflictRetry(async () => {
+        const item = await getLeadItem(input.leadKey);
+        if (item === undefined) throw new LeadNotFoundError(input.leadKey);
+        const current = toStoredLead(item);
+        if (current.assignee === input.assignee) return current; // already theirs: no event
+        // The event records from and to as stored ids, never names: `assignee: <from> -> <to>`.
+        return append(
+          input,
+          { kind: "assignee", change: (cur) => `assignee: ${cur.assignee} -> ${input.assignee}` },
+          undefined,
+          input.assignee,
+        );
+      });
     },
 
     async get(leadKey) {

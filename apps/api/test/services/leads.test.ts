@@ -25,6 +25,7 @@ function fakeRepo(overrides: Partial<LeadRepo> = {}): LeadRepo {
     create: vi.fn(async () => lead),
     updateStatus: vi.fn(async () => lead),
     addNote: vi.fn(async () => lead),
+    assign: vi.fn(async () => lead),
     get: vi.fn(async () => ({ lead, signals: undefined, events: [] })),
     listByAssignee: vi.fn(async () => [lead]),
     listByStatus: vi.fn(async () => [lead]),
@@ -64,6 +65,19 @@ describe("createLeadService (T009)", () => {
         createdAt: NOW.toISOString(),
       }),
     );
+  });
+
+  it("assign delegates to repo.assign with the assignee, the author, a timestamp and the sequence", async () => {
+    const repo = fakeRepo();
+    const svc = createLeadService(repo, opts);
+    await svc.assign(KEY, "rep-2", "rep-2", 3);
+    expect(repo.assign).toHaveBeenCalledWith({
+      leadKey: KEY,
+      assignee: "rep-2",
+      by: "rep-2",
+      at: NOW.toISOString(),
+      expectedSequence: 3,
+    });
   });
 
   it("updateStatus / addNote / get / list delegate to the matching repo methods", async () => {

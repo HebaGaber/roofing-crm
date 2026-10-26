@@ -104,3 +104,54 @@ describe("leadRepo events (T008)", () => {
     expect((await repo.listByStatus("won")).map((l) => l.leadKey)).toEqual([KEY]);
   });
 });
+
+describe("leadRepo assign", () => {
+  it("moves the lead to the new assignee's list and appends an assignee event, in one transaction", async () => {
+    const { table, repo } = await seeded();
+    const updated = await repo.assign({ leadKey: KEY, assignee: "rep-2", by: "rep-2", at });
+    expect(updated).toMatchObject({ assignee: "rep-2", eventSequence: 1 });
+    expect(updated.lastActivity).toMatchObject({ kind: "assignee", at });
+    expect(table.items.get(`${KEY}\u0000EVT#0000000001`)).toMatchObject({
+      sequence: 1,
+      kind: "assignee",
+      by: "rep-2",
+      change: "assignee: rep-1 -> rep-2",
+    });
+    expect(table.items.get(`${KEY}\u0000LEAD`)).toMatchObject({
+      assignee: "rep-2",
+      eventSequence: 1,
+      lastActivityKind: "assignee",
+    });
+    expect(table.transactions.at(-1)).toHaveLength(2);
+    expect(await repo.listByAssignee("rep-1")).toEqual([]);
+    expect((await repo.listByAssignee("rep-2")).map((l) => l.leadKey)).toEqual([KEY]);
+  });
+
+  it("is a no-op when the lead is already theirs: no event, no transaction", async () => {
+    const { table, repo } = await seeded();
+    const before = table.transactions.length;
+    const result = await repo.assign({ leadKey: KEY, assignee: "rep-1", by: "rep-1", at });
+    expect(result).toMatchObject({ assignee: "rep-1", eventSequence: 0 });
+    expect(table.transactions).toHaveLength(before);
+    expect(table.items.has(`${KEY}\u0000EVT#0000000001`)).toBe(false);
+  });
+
+  it("refuses a stale expectedSequence and writes nothing", async () => {
+    const { table, repo } = await seeded();
+    await repo.addNote({ leadKey: KEY, text: "n", by: "rep-1", at });
+    await expect(
+      repo.assign({ leadKey: KEY, assignee: "rep-2", by: "rep-2", at, expectedSequence: 0 }),
+    ).rejects.toBeInstanceOf(LeadSequenceConflictError);
+    expect(table.items.get(`${KEY}\u0000LEAD`)).toMatchObject({
+      assignee: "rep-1",
+      eventSequence: 1,
+    });
+  });
+
+  it("throws LeadNotFoundError for an unknown key", async () => {
+    const { repo } = await seeded();
+    await expect(
+      repo.assign({ leadKey: "48453:tcad:nope", assignee: "rep-2", by: "rep-2", at }),
+    ).rejects.toBeInstanceOf(LeadNotFoundError);
+  });
+});

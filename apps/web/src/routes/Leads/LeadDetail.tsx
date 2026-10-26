@@ -11,7 +11,7 @@ import { useState, type FormEvent, type ReactElement, type ReactNode } from "rea
 import { Link, useParams } from "react-router";
 import { roofAgeConfidenceLabel } from "../../format/index.js";
 import { Skeleton } from "../../components/Skeleton.js";
-import { isNotFoundError, isStaleError } from "./leadErrors.js";
+import { assignErrorCopy, isNotFoundError, isStaleError, STALE_ASSIGN_COPY } from "./leadErrors.js";
 import { LeadBanner } from "./LeadBanner.js";
 import { LeadCid } from "./LeadCid.js";
 import { LeadProgress } from "./LeadProgress.js";
@@ -25,7 +25,13 @@ import {
 import { LeadsPane } from "./LeadsPane.js";
 import { leadTime, myIds, originLabel, personLabel } from "./leadFormat.js";
 import { openYearsText as yearsOf, roofBasisText as basisText } from "./leadRowFacts.js";
-import { useAddLeadNote, useLead, useUpdateLeadStatus, type LeadDetailData } from "./leadsApi.js";
+import {
+  useAddLeadNote,
+  useAssignLead,
+  useLead,
+  useUpdateLeadStatus,
+  type LeadDetailData,
+} from "./leadsApi.js";
 import { useWide } from "./useWide.js";
 import styles from "./Leads.module.css";
 
@@ -200,9 +206,16 @@ const toStatus = (word: string): LeadStatus | undefined => LEAD_STATUSES.find((s
 export function historyText(
   event: { readonly kind: string; readonly change: string },
   createdFrom: string,
+  mine: readonly string[] = [],
 ): string {
   if (event.kind === "create") return `Created from ${originLabel(createdFrom)}`;
   if (event.kind === "note") return "Note added";
+  if (event.kind === "assignee") {
+    // Stored as `assignee: <from> -> <to>` (ids). Only the stored ids are shown, "Me" for yours.
+    const moved = /^assignee: (\S+) -> (\S+)$/.exec(event.change);
+    if (moved === null) return "Reassigned";
+    return `Assigned to ${personLabel(moved[2] ?? "", mine)} (was ${personLabel(moved[1] ?? "", mine)})`;
+  }
   const match = /^(?:status: )?(\w+) -> (\w+)$/.exec(event.change);
   if (match !== null) {
     const from = toStatus(match[1] ?? "");
@@ -218,6 +231,7 @@ const HISTORY_ICON: Readonly<Record<string, string>> = {
   create: "add_circle",
   statusChange: "swap_horiz",
   note: "edit_note",
+  assignee: "person",
 };
 
 function Notes({
@@ -260,7 +274,7 @@ function Timeline({
             <Icon name={HISTORY_ICON[event.kind] ?? "history"} size="medium" />
           </span>
           <div>
-            <div className={styles.eventText}>{historyText(event, createdFrom)}</div>
+            <div className={styles.eventText}>{historyText(event, createdFrom, mine)}</div>
             <div className={styles.meta}>
               {`${personLabel(event.by, mine)} · ${leadTime(event.at)}`}
             </div>
@@ -314,6 +328,8 @@ function LeadBody({
 }): ReactElement {
   const updateStatus = useUpdateLeadStatus();
   const addNote = useAddLeadNote();
+  const assign = useAssignLead();
+  const [assignNotice, setAssignNotice] = useState<"saved" | "stale" | null>(null);
   const [text, setText] = useState("");
   const [attempt, setAttempt] = useState<LeadStatus | null>(null);
   const mine = myIds();
@@ -333,11 +349,31 @@ function LeadBody({
   const reload = (): void => {
     updateStatus.reset();
     addNote.reset();
+    assign.reset();
+    setAssignNotice(null);
     onReload();
   };
+  const assignToMe = (): void => {
+    setAssignNotice(null);
+    assign.mutate(
+      { leadKey, expectedSequence },
+      {
+        onSuccess: () => setAssignNotice("saved"),
+        onError: (error) => {
+          // Someone changed the lead first: show it as it is now, and say so.
+          if (isStaleError(error)) {
+            onReload();
+            setAssignNotice("stale");
+          }
+        },
+      },
+    );
+  };
+  const assignedToMe = mine.includes(lead.assignee);
 
   const statusFailed = updateStatus.error !== null && updateStatus.error !== undefined;
   const noteFailed = addNote.error !== null && addNote.error !== undefined;
+  const assignFailed = assign.error !== null && assign.error !== undefined;
   const stale =
     (statusFailed && isStaleError(updateStatus.error)) ||
     (noteFailed && isStaleError(addNote.error));
@@ -390,11 +426,29 @@ function LeadBody({
         </label>
         <span
           className={styles.assignee}
-          title="Reassigning needs a team list, which is not available yet."
+          title="Only you can take a lead for now. Giving it to someone else needs a team list, which is not available yet."
         >
           <Icon name="person" size="medium" />
           <span>{`Assignee: ${personLabel(lead.assignee, mine)}`}</span>
         </span>
+        {assignedToMe || mine.length === 0 ? null : (
+          <button
+            type="button"
+            className={styles.tonal}
+            aria-label="Assign this lead to me"
+            disabled={assign.isPending}
+            onClick={assignToMe}
+          >
+            <Icon name="person_add" size="medium" />
+            {assign.isPending ? "Assigning…" : "Assign to me"}
+          </button>
+        )}
+        {assignNotice !== "saved" ? null : (
+          <span className={styles.saved} role="status">
+            <Icon name="cloud_done" size="small" />
+            Assigned to you
+          </span>
+        )}
         {updateStatus.isPending ? (
           <span className={styles.saving} role="status">
             <Icon name="progress_activity" size="small" />
@@ -438,6 +492,22 @@ function LeadBody({
           onAction={() => attempt !== null && changeStatus(attempt)}
         >
           The change is undone. Nothing else changed.
+        </LeadBanner>
+      ) : null}
+      {assignNotice === "stale" ? (
+        <LeadBanner kind="info" icon="group" headline={STALE_ASSIGN_COPY}>
+          Nothing was assigned. Assign it again if you still want it.
+        </LeadBanner>
+      ) : null}
+      {assignFailed && !isStaleError(assign.error) ? (
+        <LeadBanner
+          kind="error"
+          icon="sync_problem"
+          headline={assignErrorCopy(assign.error)}
+          actionLabel="Try again"
+          onAction={assignToMe}
+        >
+          Nothing changed.
         </LeadBanner>
       ) : null}
       {noteFailed && !stale ? (

@@ -11,6 +11,7 @@ vi.mock("../../src/routes/Leads/leadsApi", () => ({
   useLead: (...args: unknown[]) => useLead(...args),
   useUpdateLeadStatus: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: statusPending }),
   useAddLeadNote: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false }),
+  useAssignLead: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, error: null }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";

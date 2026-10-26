@@ -140,6 +140,56 @@ describe("leads router (T010)", () => {
     ).toEqual({ code: "CONFLICT", cause: "STALE_SEQUENCE" });
   });
 
+  it("assign gives the lead to the CALLER, appends an assignee event, and ignores a supplied assignee", async () => {
+    const { table, c } = ctx();
+    await c.leads.create(input);
+    const service = createLeadService(
+      createDynamoLeadRepo({ tableName: "crm-leads", client: table.client() }),
+    );
+    const rep2 = caller({ requestId: "r2", userId: "rep-2", leadService: service });
+    const res = await rep2.leads.assign({
+      leadKey: KEY,
+      expectedSequence: 0,
+      assignee: "someone-else",
+    } as never);
+    expect(res).toMatchObject({ assignee: "rep-2", eventSequence: 1 });
+    const d = await c.leads.get({ leadKey: KEY });
+    expect(d.assignee).toBe("rep-2");
+    expect(d.history.map((h) => [h.kind, h.by, h.change])).toEqual([
+      ["create", "rep-1", "created"],
+      ["assignee", "rep-2", "assignee: rep-1 -> rep-2"],
+    ]);
+  });
+
+  it("assign validates input and maps typed errors (NOT_FOUND, STALE_SEQUENCE)", async () => {
+    const { c, table } = ctx();
+    await expect(c.leads.assign({ leadKey: "", expectedSequence: 0 })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(c.leads.assign({ leadKey: KEY, expectedSequence: -1 })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(c.leads.assign({ leadKey: KEY } as never)).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      c.leads.assign({ leadKey: "48453:tcad:none", expectedSequence: 0 }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await c.leads.create(input);
+    await c.leads.addNote({ leadKey: KEY, text: "n" });
+    const rep2 = caller({
+      requestId: "r2",
+      userId: "rep-2",
+      leadService: createLeadService(
+        createDynamoLeadRepo({ tableName: "crm-leads", client: table.client() }),
+      ),
+    });
+    expect(await causeCode(rep2.leads.assign({ leadKey: KEY, expectedSequence: 0 }))).toEqual({
+      code: "CONFLICT",
+      cause: "STALE_SEQUENCE",
+    });
+  });
+
   it("procedures need an authenticated user and a wired service", async () => {
     const noUser = caller({
       requestId: "r",

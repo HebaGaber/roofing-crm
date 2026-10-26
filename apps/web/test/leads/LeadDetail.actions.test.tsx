@@ -7,6 +7,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const useLead = vi.fn();
 const statusMutate = vi.fn();
 const noteMutate = vi.fn();
+const assignMutate = vi.fn();
+let assignState: { isPending: boolean; error: unknown } = { isPending: false, error: null };
+// "Me" is whoever the session says: this test signs in as `rep-me`.
+vi.mock("../../src/routes/Leads/leadFormat", async (importActual) => ({
+  ...(await importActual<typeof import("../../src/routes/Leads/leadFormat")>()),
+  myIds: () => ["rep-me"],
+}));
 let statusState: { isPending: boolean; error: unknown } = { isPending: false, error: null };
 let noteState: { isPending: boolean; error: unknown } = { isPending: false, error: null };
 vi.mock("../../src/routes/Leads/leadsApi", () => ({
@@ -18,6 +25,7 @@ vi.mock("../../src/routes/Leads/leadsApi", () => ({
     ...statusState,
   }),
   useAddLeadNote: () => ({ mutate: noteMutate, reset: vi.fn(), ...noteState }),
+  useAssignLead: () => ({ mutate: assignMutate, reset: vi.fn(), ...assignState }),
 }));
 
 import { Component as LeadDetail } from "../../src/routes/Leads/LeadDetail";
@@ -27,6 +35,8 @@ afterEach(() => {
   useLead.mockReset();
   statusMutate.mockReset();
   noteMutate.mockReset();
+  assignMutate.mockReset();
+  assignState = { isPending: false, error: null };
   statusState = { isPending: false, error: null };
   noteState = { isPending: false, error: null };
 });
@@ -252,5 +262,93 @@ describe("LeadDetail signals", () => {
     expect(within(state).getByText(/the run now served is manifest/)).toBeTruthy();
     expect(within(state).getByText(/Signals withheld/)).toBeTruthy();
     expect(screen.queryByText("23 yrs")).toBeNull();
+  });
+});
+
+describe("LeadDetail Assign to me", () => {
+  it("offers the button when someone else holds the lead, and assigns with the loaded sequence", () => {
+    show({ assignee: "rep-other", eventSequence: 4 });
+    renderDetail();
+    const button = screen.getByRole("button", { name: "Assign this lead to me" });
+    fireEvent.click(button);
+    expect(assignMutate).toHaveBeenCalledWith(
+      { leadKey: KEY, expectedSequence: 4 },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+  });
+
+  it("shows nothing extra when the lead is already mine", () => {
+    show({ assignee: "rep-me" });
+    renderDetail();
+    expect(screen.queryByRole("button", { name: /assign/i })).toBeNull();
+    expect(screen.getByText("Assignee: Me")).toBeTruthy();
+  });
+
+  it("says Assigned to you after success", () => {
+    show({ assignee: "rep-other" });
+    renderDetail();
+    fireEvent.click(screen.getByRole("button", { name: "Assign this lead to me" }));
+    const opts = assignMutate.mock.calls[0]?.[1] as { onSuccess: () => void };
+    act(() => opts.onSuccess());
+    expect(screen.getByRole("status").textContent).toContain("Assigned to you");
+  });
+
+  it("on a stale sequence refetches and says the lead is shown as it is now", () => {
+    const refetch = vi.fn();
+    useLead.mockReturnValue({
+      status: "success",
+      data: { ...base, assignee: "rep-other" },
+      refetch,
+    });
+    renderDetail();
+    fireEvent.click(screen.getByRole("button", { name: "Assign this lead to me" }));
+    const opts = assignMutate.mock.calls[0]?.[1] as { onError: (e: unknown) => void };
+    act(() => opts.onError({ data: { appCode: "STALE_SEQUENCE" } }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/This lead changed while you were looking\./)).toBeTruthy();
+  });
+
+  it("disables the button while assigning", () => {
+    assignState = { isPending: true, error: null };
+    show({ assignee: "rep-other" });
+    renderDetail();
+    expect(
+      (screen.getByRole("button", { name: "Assign this lead to me" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("a failed assignment shows an error banner with Try again", () => {
+    assignState = { isPending: false, error: new Error("boom") };
+    show({ assignee: "rep-other" });
+    renderDetail();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't assign the lead.");
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(assignMutate).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an assignee event in the history from what it stored, naming no one it does not know", () => {
+    show({
+      assignee: "rep-me",
+      history: [
+        {
+          sequence: 1,
+          at: "2026-10-21T09:00:00Z",
+          by: "rep-me",
+          kind: "assignee",
+          change: "assignee: rep-other -> rep-me",
+        },
+        {
+          sequence: 2,
+          at: "2026-10-21T10:00:00Z",
+          by: "rep-me",
+          kind: "assignee",
+          change: "odd text",
+        },
+      ],
+    });
+    renderDetail();
+    expect(screen.getByText("Assigned to Me (was rep-other)")).toBeTruthy();
+    expect(screen.getByText("Reassigned")).toBeTruthy();
   });
 });
