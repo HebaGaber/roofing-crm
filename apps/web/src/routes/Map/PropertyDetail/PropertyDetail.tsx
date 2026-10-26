@@ -30,11 +30,12 @@ import {
 } from "../../../format/index.js";
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
-import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
+import { MissingSummary, OutOfAreaPill, RowProvenance, TypePill } from "../ResultRow.js";
 import { BbbLink } from "../BbbLink.js";
 import { SourceLink, safeSourceHref } from "../SourceLink.js";
 import { patchMapMode } from "../mapMode.js";
-import { runLabel } from "../whyLead.js";
+import { hasUnfinaledRoofPermit, roofSourceLabel, runLabel } from "../whyLead.js";
+import { SimilarProperties } from "./SimilarProperties.js";
 import styles from "./PropertyDetail.module.css";
 
 /** `bbb_status` (contract v1.1): `rated` is never published; `blocked` means BBB blocked the lookup. */
@@ -65,6 +66,44 @@ export interface NearPlace {
 export interface PropertyDetailProps {
   readonly data: PropertyDetailData;
   readonly onClose: () => void;
+  /** Opens another property (a "Similar properties" row); the Map route sets `sel`. */
+  readonly onSelectProperty?: ((propertyCid: string) => void) | undefined;
+}
+
+/** A design row for something the published data cannot support yet: disabled, with the reason on
+ *  hover and for assistive tech. Never a working control. */
+function ComingSoonRow({
+  label,
+  reason,
+}: {
+  readonly label: string;
+  readonly reason: string;
+}): ReactElement {
+  return (
+    <div className={styles.permitField} data-coming-soon={label}>
+      <dt>{label}</dt>
+      <dd>
+        <button
+          type="button"
+          disabled
+          title={reason}
+          aria-label={`${label}: coming soon. ${reason}`}
+        >
+          Coming soon
+        </button>
+      </dd>
+    </div>
+  );
+}
+
+/** Basis, source, run and CID of the roof age, from the row itself. */
+function RoofEvidence({ property }: { readonly property: Provenanced<CrmProperty> }): ReactElement {
+  return (
+    <p className={styles.titleSub} data-roof-evidence="">
+      {`Evidence: ${roofAgeBasisLabel(property.roofAgeBasis)} · ${roofSourceLabel(property)} · ${runLabel(property.runId)} · `}
+      <CidDisplay cid={property.cid} />
+    </p>
+  );
 }
 
 /** "BBB rating not available" + the literal reason text (AC-7) — never a blank field, `0`,
@@ -325,6 +364,15 @@ function OwnerSection({
             )}
           </dd>
         </div>
+        {property.ownerIsOutOfArea == null ? null : (
+          <div className={styles.permitField}>
+            <dt>Owner location</dt>
+            <dd>
+              <OutOfAreaPill isOutOfArea={property.ownerIsOutOfArea} />
+            </dd>
+          </div>
+        )}
+        <ComingSoonRow label="Merged from" reason="No merge data in the published contract" />
       </dl>
     </section>
   );
@@ -484,7 +532,11 @@ function MetadataSection({
   );
 }
 
-export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactElement {
+export function PropertyDetail({
+  data,
+  onClose,
+  onSelectProperty,
+}: PropertyDetailProps): ReactElement {
   const [searchParams] = useSearchParams();
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
@@ -590,7 +642,15 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
               {roofAgeConfidenceLabel(property.roofAgeConfidence)}
             </dd>
           </div>
+          <ComingSoonRow label="Street View" reason="No imagery in the published data" />
         </dl>
+        {property.roofAgeYears === null ? null : <RoofEvidence property={property} />}
+        {property.roofAgeBasis === "built_year" && hasUnfinaledRoofPermit(data.permits) ? (
+          <p className={styles.titleSub} data-reroof-note="">
+            A reroof permit exists but was never finaled, so it is not counted as a reroof. Roof age
+            is estimated from year built.
+          </p>
+        ) : null}
       </section>
 
       <OwnerSection property={property} titleId={titleId} />
@@ -626,6 +686,11 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           <MissingSummary row={property} />
         )}
       </section>
+      <SimilarProperties
+        propertyCid={property.propertyCid}
+        titleId={titleId}
+        onSelectProperty={onSelectProperty}
+      />
       <MetadataSection property={property} permits={data.permits} titleId={titleId} />
       <RowProvenance row={property} />
     </aside>

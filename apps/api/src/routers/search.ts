@@ -12,6 +12,8 @@ import {
   CountyOverviewUnavailableError,
   searchPermits as searchPermitsService,
   searchProperties as searchPropertiesService,
+  similarProperties as similarPropertiesService,
+  SimilarUnavailableError,
 } from "../services/search.js";
 
 const CountyOverviewInput = z.object({
@@ -153,6 +155,28 @@ export const searchRouter = router({
           traceId: ctx.requestId,
         };
       } catch (error) {
+        mapIndexNotReady(error);
+      }
+    }),
+
+  // Drawer "Similar properties": same property type, roof age within 5 years, within 1 mile,
+  // nearest first. Read-only; an empty list always says why (`reason`).
+  similar: publicProcedure
+    .input(
+      z.object({
+        propertyCid: z.string().min(1).max(100),
+        limit: z.number().int().min(1).max(10).default(5),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const leadIndex = requireLeadIndex(ctx);
+      try {
+        const result = await similarPropertiesService(leadIndex, input);
+        return { ...result, traceId: ctx.requestId };
+      } catch (error) {
+        if (error instanceof SimilarUnavailableError) {
+          throw new TRPCError({ code: "NOT_IMPLEMENTED", message: error.message, cause: error });
+        }
         mapIndexNotReady(error);
       }
     }),

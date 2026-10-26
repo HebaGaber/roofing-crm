@@ -1,0 +1,209 @@
+// Drawer extras (CRM-HANDOFF §4.3): out-of-area pill, "reroof permit not counted" note with the
+// roof evidence line, disabled "Coming soon" rows, and the lazy "Similar properties" section.
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+
+vi.mock("../../src/routes/Leads/leadsApi", () => ({
+  useCreateLead: () => ({ mutate: vi.fn(), isPending: false, isSuccess: false, error: null }),
+  useLeadPresence: () => ({ isPending: false, data: null }),
+  usePrefetchLeadsList: () => () => Promise.resolve(),
+}));
+
+const similarState = vi.hoisted(() => ({
+  enabledCalls: [] as boolean[],
+  result: { isPending: false, isError: false, data: undefined } as Record<string, unknown>,
+}));
+vi.mock("../../src/routes/Map/PropertyDetail/similarApi", () => ({
+  useSimilarProperties: (_cid: string, enabled: boolean) => {
+    similarState.enabledCalls.push(enabled);
+    return similarState.result;
+  },
+}));
+
+import {
+  PropertyDetail,
+  type PropertyDetailData,
+} from "../../src/routes/Map/PropertyDetail/PropertyDetail";
+import { ResultRow } from "../../src/routes/Map/ResultRow";
+
+afterEach(() => {
+  cleanup();
+  similarState.enabledCalls = [];
+});
+
+const base = {
+  propertyCid: "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaq4xa",
+  requestIdentifier: "192820",
+  latitude: 30.2655,
+  longitude: -97.743,
+  coordinateSource: "gis_centroid",
+  propertyType: "Building",
+  propertyUsageType: null,
+  roofAgeYears: 41,
+  roofAgeBasis: "built_year",
+  roofAgeConfidence: "low",
+  structureBuiltYear: 1985,
+  isLongTenure: null,
+  ownerKind: null,
+  ownerAreaClass: null,
+  ownerIsOutOfArea: null,
+  missingReasons: [],
+  capturedAt: "2026-10-21T10:40:04Z",
+  cid: "bafkreitablecid",
+  runId: "travis-full-run3-20261025",
+} as unknown as Provenanced<CrmProperty>;
+
+const permit = (over: Record<string, unknown>) =>
+  ({
+    propertyCid: base.propertyCid,
+    permitCid: "bafkreipermit1",
+    permitNumber: "2026-115882 BP",
+    improvementType: "Roofing",
+    improvementAction: "Replace",
+    statusClass: "open",
+    issueDate: "2026-09-04T00:00:00.000Z",
+    finalDate: null,
+    openDays: 47,
+    contractorResolution: "unresolved",
+    missingReasons: [],
+    capturedAt: "2026-10-21T10:35:59Z",
+    cid: "bafkreipermittablecid",
+    runId: "travis-full-run3-20261025",
+    ...over,
+  }) as unknown as Provenanced<CrmPermit>;
+
+function drawer(
+  property: Provenanced<CrmProperty>,
+  permits: Provenanced<CrmPermit>[],
+  onSelectProperty?: (cid: string) => void,
+) {
+  const data: PropertyDetailData = {
+    property,
+    permits,
+    bbbStatus: null,
+    bbbStatusReason: null,
+    lineageUrl: "https://example.com/lineage",
+  };
+  render(
+    <MemoryRouter>
+      <PropertyDetail data={data} onClose={() => undefined} onSelectProperty={onSelectProperty} />
+    </MemoryRouter>,
+  );
+}
+
+describe("out-of-area pill", () => {
+  it("shows Out-of-area owner, Local owner, and nothing for null on a result row", () => {
+    const { rerender } = render(
+      <ResultRow row={{ ...base, ownerIsOutOfArea: true } as typeof base} />,
+    );
+    expect(screen.getByText("Out-of-area owner")).toBeTruthy();
+    rerender(<ResultRow row={{ ...base, ownerIsOutOfArea: false } as typeof base} />);
+    expect(screen.getByText("Local owner")).toBeTruthy();
+    rerender(<ResultRow row={base} />);
+    expect(screen.queryByText("Out-of-area owner")).toBeNull();
+    expect(screen.queryByText("Local owner")).toBeNull();
+  });
+
+  it("shows it in the drawer Owner section only when known", () => {
+    drawer({ ...base, ownerIsOutOfArea: true } as typeof base, []);
+    expect(screen.getByText("Out-of-area owner")).toBeTruthy();
+  });
+});
+
+describe("roof evidence and the unfinaled reroof note", () => {
+  it("explains an open permit that is not counted, with the evidence line", () => {
+    drawer(base, [permit({})]);
+    expect(
+      screen.getByText(/A reroof permit exists but was never finaled, so it is not counted/),
+    ).toBeTruthy();
+    const evidence = document.querySelector("[data-roof-evidence]");
+    expect(evidence?.textContent).toContain("TCAD parcels");
+    expect(evidence?.textContent).toContain("Run 3");
+    expect(evidence?.textContent).toContain("bafk");
+  });
+
+  it("is absent with no permits, with a finaled closed permit, or when a permit dated the roof", () => {
+    drawer(base, []);
+    expect(document.querySelector("[data-reroof-note]")).toBeNull();
+    cleanup();
+    drawer(base, [permit({ statusClass: "closed", finalDate: "2020-01-01T00:00:00.000Z" })]);
+    expect(document.querySelector("[data-reroof-note]")).toBeNull();
+    cleanup();
+    drawer({ ...base, roofAgeBasis: "permit" } as typeof base, [permit({})]);
+    expect(document.querySelector("[data-reroof-note]")).toBeNull();
+    expect(document.querySelector("[data-roof-evidence]")?.textContent).toContain("Austin permits");
+  });
+});
+
+describe("coming soon rows", () => {
+  it("are disabled and say why", () => {
+    drawer(base, []);
+    const street = screen.getByRole("button", { name: /Street View/ });
+    expect((street as HTMLButtonElement).disabled).toBe(true);
+    expect(street.getAttribute("title")).toBe("No imagery in the published data");
+    const merged = screen.getByRole("button", { name: /Merged from/ });
+    expect((merged as HTMLButtonElement).disabled).toBe(true);
+    expect(merged.getAttribute("title")).toBe("No merge data in the published contract");
+  });
+});
+
+describe("Similar properties", () => {
+  const open = () => {
+    const details = document.querySelector("[data-similar-properties]") as HTMLDetailsElement;
+    details.open = true;
+    fireEvent(details, new Event("toggle"));
+  };
+
+  it("does not load until opened, then lists rows that open the property", () => {
+    similarState.result = {
+      isPending: false,
+      isError: false,
+      data: {
+        found: true,
+        reason: null,
+        similar: [
+          {
+            propertyCid: "cid-2",
+            requestIdentifier: "555",
+            distanceMi: 0.456,
+            roofAgeYears: 38,
+            roofAgeConfidence: "medium",
+            roofAgeBasis: "built_year",
+          },
+        ],
+      },
+    };
+    const onSelect = vi.fn();
+    drawer(base, [], onSelect);
+    expect(similarState.enabledCalls).toEqual([]);
+    open();
+    expect(screen.getByText(/TCAD 555 · 0.46 mi · roof 38 yrs/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open TCAD 555" }));
+    expect(onSelect).toHaveBeenCalledWith("cid-2");
+  });
+
+  it("shows loading, the empty reason and an error", () => {
+    similarState.result = { isPending: true, isError: false, data: undefined };
+    drawer(base, []);
+    open();
+    expect(screen.getByText(/Loading similar properties/)).toBeTruthy();
+    cleanup();
+
+    similarState.result = {
+      isPending: false,
+      isError: false,
+      data: { found: true, similar: [], reason: "no_roof_age" },
+    };
+    drawer(base, []);
+    open();
+    expect(screen.getByText(/no roof age to compare/)).toBeTruthy();
+    cleanup();
+
+    similarState.result = { isPending: false, isError: true, data: undefined };
+    drawer(base, []);
+    open();
+    expect(screen.getByRole("alert").textContent).toContain("could not be loaded");
+  });
+});

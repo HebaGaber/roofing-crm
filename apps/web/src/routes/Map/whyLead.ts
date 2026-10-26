@@ -41,6 +41,21 @@ export function runLabel(runId: string): string {
   return match?.[1] === undefined ? runId : `Run ${match[1]}`;
 }
 
+/** Where a roof age came from: the permit that dated it, or the TCAD parcel record (year built). */
+export function roofSourceLabel(property: Pick<CrmProperty, "roofAgeBasis">): string {
+  return property.roofAgeBasis === "permit" ? "Austin permits" : "TCAD parcels";
+}
+
+/** A roofing permit that is open, stalled or never finaled: it is not counted as a reroof, so a
+ *  roof age based on year built may be older than the roof really is. Own permits only. */
+export function hasUnfinaledRoofPermit(
+  permits: readonly Pick<CrmPermit, "statusClass" | "finalDate">[] | undefined,
+): boolean {
+  return (permits ?? []).some(
+    (p) => p.statusClass === "open" || p.statusClass === "stalled" || p.finalDate == null,
+  );
+}
+
 const COORDINATE_SOURCES: Record<CrmProperty["coordinateSource"], string> = {
   gis_centroid: "TCAD parcel centroid",
   address_point: "City of Austin address point",
@@ -91,7 +106,7 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
       key: "roof",
       rule: `Roof age ${String(property.roofAgeYears)} yrs`,
       value: `${humanizeCode(property.roofAgeBasis)}${estimated ? " (estimated from year built)" : ""}${property.roofAgeBasis === "built_year" && property.structureBuiltYear != null ? ` · Year built ${String(property.structureBuiltYear)}` : ""} · ${roofAgeConfidenceLabel(property.roofAgeConfidence).toLowerCase()} confidence`,
-      source: `${property.roofAgeBasis === "permit" ? "Austin permits" : "TCAD parcels"} · ${run}`,
+      source: `${roofSourceLabel(property)} · ${run}`,
       cid: property.cid,
     });
   }

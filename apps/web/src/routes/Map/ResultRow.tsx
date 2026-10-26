@@ -85,6 +85,23 @@ export function TypePill({ usageType }: { readonly usageType: string | null }): 
   );
 }
 
+/** Owner area as a pill: "Out-of-area owner" or "Local owner". Nothing when the index does not say
+ *  (`null` or absent: the drawer's Owner section states the reason). */
+export function OutOfAreaPill({
+  isOutOfArea,
+}: {
+  readonly isOutOfArea: boolean | null | undefined;
+}): ReactElement | null {
+  if (isOutOfArea == null) return null;
+  return (
+    <StatusPill
+      status={isOutOfArea ? "warning" : "info"}
+      text={isOutOfArea ? "Out-of-area owner" : "Local owner"}
+      data={{ field: "owner_is_out_of_area" }}
+    />
+  );
+}
+
 /** Spread-able optional `label` (the prop is optional under exactOptionalPropertyTypes). */
 const labelProp = (label: string | undefined): { label?: string } =>
   label === undefined ? {} : { label };
@@ -379,6 +396,7 @@ function ResultRowView({
           </ul>
         )}
         <TypePill usageType={row.propertyUsageType} />
+        <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} />
       </div>
       {expanded ? (
         <div id={detailId} className={styles.detail}>
@@ -386,6 +404,7 @@ function ResultRowView({
             Property <CidDisplay cid={row.propertyCid} />
           </p>
           <PropertyFields row={row} />
+          <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} />
           <PermitSignals permits={permits} />
           {onWhy === undefined ? null : (
             <button

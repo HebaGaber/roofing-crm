@@ -1101,6 +1101,7 @@ export function Component(): ReactElement {
           <PropertyDetail
             data={detailQuery.data satisfies PropertyDetailData}
             onClose={closeDetail}
+            onSelectProperty={selectProperty}
           />
         </div>
       ) : null}
