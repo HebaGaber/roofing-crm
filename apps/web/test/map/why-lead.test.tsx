@@ -80,9 +80,10 @@ describe("whyLead", () => {
     expect(why.rules.map((r) => r.key)).toEqual(["distance", "roof", "permit", "owner"]);
     expect(why.rules[0]).toMatchObject({
       rule: "Within 5 mi of the pin",
-      source: "TCAD parcels · Run 3",
+      source: "Parcel centre (GIS) · Run 3",
       cid: TABLE_CID,
     });
+    expect(why.rules[0]?.value).toContain("to the property's coordinates");
     expect(why.rules[1]?.value).toContain("estimated from year built");
     expect(why.rules[2]).toMatchObject({ source: "Austin permits · Run 3", cid: PERMIT_CID });
     expect(why.rules[2]?.value).toContain(
@@ -137,7 +138,7 @@ describe("WhyPanel", () => {
     expect(screen.getByRole("region", { name: "Why TCAD 138273 is a lead" })).toBeTruthy();
     expect(document.querySelectorAll("[data-why-rule]")).toHaveLength(4);
     expect(document.querySelector("[data-why-coordinates]")?.textContent).toContain(
-      "TCAD parcel centroid",
+      "Parcel centre (GIS)",
     );
     const verify = document.querySelector("a[data-why-verify]") as HTMLAnchorElement;
     expect(verify.getAttribute("href")).toBe("https://lens.example/data/verify/bafkreimanifest");

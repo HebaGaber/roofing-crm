@@ -19,7 +19,7 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 | Year built on the basis line                  | Shown now (expanded card, drawer, Why rule; `structureBuiltYear`)          |
 | Permit chip (class, open years, derived word) | Shown                                                                                    |
 | Source's own permit status word               | Not in published data (`status_raw`: `no_lexicon_carrier`; stalled is derived)           |
-| Out-of-area owner pill                        | Design only for the row (`ownerIsOutOfArea` is carried, only used by filters)            |
+| Out-of-area owner pill                        | Shown (collapsed badge row, expanded card and the drawer's Owner section)                |
 | Lead pill, checkbox, Hide existing leads      | Shown (Leads and Candidates)                                                             |
 | Source record link                            | Shown now (expanded card provenance line, https only)                                    |
 
@@ -31,19 +31,19 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 | Create lead, Open lead, lineage link, Ask about it        | Shown                                                                      |
 | Roof: age, confidence, basis                              | Shown                                                                      |
 | Roof basis "Year built 1995"                              | Shown now (when basis is built_year and the year exists)                   |
-| Evidence chain (reroof permit, CID, copy)                 | Design only (the Roof rule in the Why panel carries source, run, CID)      |
-| "Reroof permit not counted: never finaled" note           | Design only                                                                |
-| Street View / imagery                                     | Design only (no imagery in the contract; "coming soon" in the design)      |
+| Evidence chain (reroof permit, CID, copy)                 | Shown (Evidence line under Roof: basis, source, run, CID)                  |
+| "Reroof permit not counted: never finaled" note           | Shown (worded "A roofing permit exists but was never finaled")             |
+| Street View / imagery                                     | Shown as a disabled "Coming soon" row (no imagery in the contract)        |
 | Owner name, kind                                          | Shown                                                                      |
 | Owner mailing location (city, state, ZIP)                 | Blocked on Run 3.1 (`owner_mailing_postal_code`, `_state_code`)            |
 | Owner area (in county, regional, out of area)             | Shown; unknown carries its reason. Blocked on Run 3.1 for most rows        |
-| Last sale                                                 | Shown now (year; reason `no_dated_sale` when null)                         |
+| Last sale                                                 | Shown now (the date; reason `no_dated_sale` when null)                     |
 | Tenure "22 yrs"                                           | Shown now (reason `no_dated_sale` when null); tenure basis line kept       |
-| Owner merged from N records                               | Design only (no merge data in the contract)                                |
+| Owner merged from N records                               | Shown as a disabled "Coming soon" row (no merge data in the contract)      |
 | Location: coordinates, coordinate source                  | Shown                                                                      |
 | Metadata: source, captured date, run, CID per field       | Shown (licence column is design only)                                      |
 | "source record" link in provenance                        | Shown now (`sourceUrl`, https only; stated reason when absent)             |
-| Similar properties                                        | Design only                                                                |
+| Similar properties                                        | Shown (collapsed section; rules read from `search.similar`)                |
 | Show on map, Open field meanings in the catalog           | Design only                                                                |
 
 ## Permit cards
@@ -75,8 +75,9 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 
 ## Other design-only items noted
 
-Save search, lead-status outlines on markers, Street View and Similar properties need a product
-decision before any build. They have no data behind them in the contract.
+Save search and lead-status outlines on markers need a product decision before any build. They
+have no data behind them in the contract. Street View and Merged from are disabled "Coming soon"
+rows in the drawer; Similar properties is built.
 
 ## Roof-age confidence audit
 

@@ -1,17 +1,29 @@
-// Drawer "Similar properties" (CRM-HANDOFF §4.3): up to 5 properties within 1 mile with the same
-// property type and a roof age within 5 years, nearest first. Collapsed by default; the query runs
+// Drawer "Similar properties" (CRM-HANDOFF §4.3): properties with the same structure type
+// (`property_type`) and a roof age within a band, within a radius, nearest first. The radius, the
+// band and the limit come from the `search.similar` response, never copied here. Collapsed by default; the query runs
 // only once the section is opened. Each row opens that property (the Map route sets `sel`).
 import { useState, type ReactElement } from "react";
 import { roofAgeConfidenceLabel } from "../../../format/index.js";
 import { useSimilarProperties, type SimilarOutput } from "./similarApi.js";
 import styles from "./PropertyDetail.module.css";
 
-const EMPTY_REASONS: Record<NonNullable<SimilarOutput["reason"]>, string> = {
-  no_coordinates: "No similar properties shown · this property has no coordinates in the data",
-  no_roof_age: "No similar properties shown · this property has no roof age to compare",
-  none_found:
-    "No similar properties found · none within 1 mile with the same type and a roof age within 5 years",
-};
+const plural = (n: number, unit: string): string => `${String(n)} ${unit}${n === 1 ? "" : "s"}`;
+
+/** The matching rules in words, read from the response. */
+function rulesText(rules: Pick<SimilarOutput, "radiusMi" | "roofAgeBandYears">): string {
+  return `within ${plural(rules.radiusMi, "mile")} with the same structure type and a roof age within ${plural(rules.roofAgeBandYears, "year")}`;
+}
+
+function emptyText(data: SimilarOutput): string {
+  switch (data.reason ?? "none_found") {
+    case "no_coordinates":
+      return "No similar properties shown · this property has no coordinates in the data";
+    case "no_roof_age":
+      return "No similar properties shown · this property has no roof age to compare";
+    case "none_found":
+      return `No similar properties found · none ${rulesText(data)}`;
+  }
+}
 
 function SimilarList({
   propertyCid,
@@ -33,29 +45,34 @@ function SimilarList({
   if (similar.length === 0) {
     return (
       <p className={styles.empty} data-similar-empty={reason ?? "none_found"}>
-        {EMPTY_REASONS[reason ?? "none_found"]}
+        {emptyText(query.data)}
       </p>
     );
   }
   return (
-    <ul className={styles.metaList} data-similar-list="">
-      {similar.map((row) => (
-        <li key={row.propertyCid} className={styles.metaRow} data-similar-cid={row.propertyCid}>
-          <span>
-            {`TCAD ${row.requestIdentifier} · ${row.distanceMi.toFixed(2)} mi · roof ${String(row.roofAgeYears)} yrs (${roofAgeConfidenceLabel(row.roofAgeConfidence).toLowerCase()} confidence)`}
-          </span>
-          {onSelectProperty === undefined ? null : (
-            <button
-              type="button"
-              className={styles.linkButton}
-              onClick={() => onSelectProperty(row.propertyCid)}
-            >
-              {`Open TCAD ${row.requestIdentifier}`}
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
+    <>
+      <p className={styles.empty} data-similar-rules="">
+        {`Up to ${String(query.data.limit)}, nearest first, ${rulesText(query.data)}`}
+      </p>
+      <ul className={styles.metaList} data-similar-list="">
+        {similar.map((row) => (
+          <li key={row.propertyCid} className={styles.metaRow} data-similar-cid={row.propertyCid}>
+            <span>
+              {`TCAD ${row.requestIdentifier} · ${row.distanceMi.toFixed(2)} mi · roof ${String(row.roofAgeYears)} yrs (${roofAgeConfidenceLabel(row.roofAgeConfidence).toLowerCase()} confidence)`}
+            </span>
+            {onSelectProperty === undefined ? null : (
+              <button
+                type="button"
+                className={styles.linkButton}
+                onClick={() => onSelectProperty(row.propertyCid)}
+              >
+                {`Open TCAD ${row.requestIdentifier}`}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 

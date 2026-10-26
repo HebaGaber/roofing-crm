@@ -3,9 +3,17 @@
 // listed, and every value is read from the row (never recomputed or invented); a signal the data
 // does not carry is left out rather than shown as met.
 import type { LatLng } from "@crm/domain";
-import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { humanizeCode, roofAgeConfidenceLabel } from "../../format/index.js";
+import {
+  SOURCE_PARCELS_LABEL,
+  coordinateSourceLabel,
+  humanizeCode,
+  openDurationText,
+  permitsSourceLabel,
+  roofAgeConfidenceLabel,
+  tenureBandLabel,
+  SOURCE_PERMITS_LABEL,
+} from "../../format/index.js";
 import { bbbHref } from "./BbbLink.js";
 import { safeSourceHref } from "./SourceLink.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
@@ -43,11 +51,12 @@ export function runLabel(runId: string): string {
 
 /** Where a roof age came from: the permit that dated it, or the TCAD parcel record (year built). */
 export function roofSourceLabel(property: Pick<CrmProperty, "roofAgeBasis">): string {
-  return property.roofAgeBasis === "permit" ? "Austin permits" : "TCAD parcels";
+  return property.roofAgeBasis === "permit" ? SOURCE_PERMITS_LABEL : SOURCE_PARCELS_LABEL;
 }
 
-/** A roofing permit that is open, stalled or never finaled: it is not counted as a reroof, so a
- *  roof age based on year built may be older than the roof really is. Own permits only. */
+/** A roofing permit (any roofing permit, not only a reroof) that is open, stalled or never
+ *  finaled: it is not counted as a reroof, so a roof age based on year built may be older than the
+ *  roof really is. Own permits only. */
 export function hasUnfinaledRoofPermit(
   permits: readonly Pick<CrmPermit, "statusClass" | "finalDate">[] | undefined,
 ): boolean {
@@ -55,13 +64,6 @@ export function hasUnfinaledRoofPermit(
     (p) => p.statusClass === "open" || p.statusClass === "stalled" || p.finalDate == null,
   );
 }
-
-const COORDINATE_SOURCES: Record<CrmProperty["coordinateSource"], string> = {
-  gis_centroid: "TCAD parcel centroid",
-  address_point: "City of Austin address point",
-  permit_point: "Austin permit location",
-  none: "No coordinates",
-};
 
 /** The open or stalled permit open longest: the lead's main signal (candidates.ts uses the same). */
 export function mainPermitOf(
@@ -93,8 +95,8 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
     rules.push({
       key: "distance",
       rule: `Within ${String(radiusMi)} mi of ${centreLabel ?? "the search centre"}`,
-      value: `${from.miles.toFixed(1)} mi from the search centre to the parcel centre`,
-      source: `${property.coordinateSource === "address_point" ? "City of Austin address points" : "TCAD parcels"} · ${run}`,
+      value: `${from.miles.toFixed(1)} mi from the search centre to the property's coordinates`,
+      source: `${coordinateSourceLabel(property.coordinateSource)} · ${run}`,
       cid: property.cid,
     });
   }
@@ -120,8 +122,8 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
     rules.push({
       key: "permit",
       rule: `Roofing permit ${main.statusClass ?? "open"}${main.statusClass === "stalled" ? " · derived: no status in source" : ""}`,
-      value: `${openDurationLabel(main.openDays)} · ${contractor}`,
-      source: `Austin permits · ${runLabel(main.runId)}`,
+      value: `${openDurationText(main)} · ${contractor}`,
+      source: `${permitsSourceLabel(main)} · ${runLabel(main.runId)}`,
       cid: main.cid,
       ...(bbbHref(main.bbbUrl) === null
         ? {}
@@ -135,9 +137,7 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
     const tenure =
       property.isLongTenure == null
         ? null
-        : property.isLongTenure
-          ? "owned 10+ years"
-          : "owned under 10 years";
+        : `owned ${tenureBandLabel(property.isLongTenure).toLowerCase()}`;
     const basis =
       property.tenureBasis != null && property.tenureBasis !== "unknown"
         ? ` (from ${humanizeCode(property.tenureBasis).toLowerCase()})`
@@ -157,7 +157,7 @@ export function whyLead({ property, permits, center, radiusMi, centreLabel }: Wh
       ? null
       : {
           text: `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`,
-          source: `${COORDINATE_SOURCES[property.coordinateSource]} · ${run}`,
+          source: `${coordinateSourceLabel(property.coordinateSource)} · ${run}`,
           direction: from === null ? null : directionLabel(from),
           osmUrl: `https://www.openstreetmap.org/?mlat=${latitude.toFixed(5)}&mlon=${longitude.toFixed(5)}#map=18/${latitude.toFixed(5)}/${longitude.toFixed(5)}`,
           sourceUrl: safeSourceHref(property.sourceUrl),

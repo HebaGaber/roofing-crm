@@ -81,17 +81,26 @@ export function fieldList(fields: readonly string[]): string {
   return fields.map((f, i) => (i === 0 ? fieldLabel(f) : midSentence(fieldLabel(f)))).join(", ");
 }
 
-/** The contract's label for one missing entry; an unknown reason is humanized, never thrown. */
+/** Owner columns whose `no_owner_record` entry covers two cases (§25.025 confidential owners and
+ *  names Task A's splitter could not parse), so "no owner on record" is wrong for both. */
+const OWNER_FIELDS = new Set(["owner_name", "owner_kind", "owner_area_class"]);
+
+/** The contract's label for one missing entry; an unknown reason is humanized, never thrown. The
+ *  field decides the wording where the vendored label is wrong for it (ADR-07 leaves the vendored
+ *  table as it is; the screen says what is known). */
 export function missingReasonText(field: string, reason: string): string {
-  // Task A, 2026-10-26: `no_owner_record` on an owner field covers two cases, §25.025 confidential
-  // owners and names Task A's splitter could not parse, so "no owner on record" is wrong for both.
-  // The vendored label is left as it is (ADR-07); the screen says what is known, and does not
-  // single out which properties are confidential.
-  if (reason === "no_owner_record" && (field === "owner_name" || field === "owner_kind")) {
+  const column = toSnake(field);
+  if (reason === "no_owner_record" && OWNER_FIELDS.has(column)) {
     return "Owner not published (confidential or name not parsed)";
   }
+  // Run 3: 10,886 permits printed no contractor at all, so "not matched to a company" misleads.
+  if (reason === "contractor_unresolved" && column === "contractor_name_as_printed") {
+    return "No contractor printed on the permit";
+  }
+  // Run 3: a finaled or closed permit has no open duration; say so in the permit's own terms.
+  if (reason === "not_open" && column === "open_days") return "Not open (finaled)";
   try {
-    return missingLabel(field, reason as MissingReason);
+    return missingLabel(column, reason as MissingReason);
   } catch {
     return humanizeCode(reason);
   }
@@ -110,14 +119,20 @@ export interface MissingGroup {
 export function groupMissing(
   entries: readonly { readonly field: string; readonly reason: string }[],
 ): MissingGroup[] {
-  const byReason = new Map<string, string[]>();
+  // Grouped by reason AND wording: one reason can read differently per field (an owner field's
+  // `no_owner_record`), so the label is decided per field and never taken from the first one.
+  const groups = new Map<string, { reason: string; label: string; fields: string[] }>();
   for (const entry of entries) {
-    byReason.set(entry.reason, [...(byReason.get(entry.reason) ?? []), entry.field]);
+    const label = missingReasonText(entry.field, entry.reason);
+    const key = `${entry.reason}|${label}`;
+    const group = groups.get(key) ?? { reason: entry.reason, label, fields: [] };
+    group.fields.push(entry.field);
+    groups.set(key, group);
   }
-  return [...byReason].map(([reason, fields]) => ({
-    reason,
-    reasonLabel: missingReasonText(fields[0] ?? "", reason),
-    fields,
-    fieldsLabel: fieldList(fields),
+  return [...groups.values()].map((group) => ({
+    reason: group.reason,
+    reasonLabel: group.label,
+    fields: group.fields,
+    fieldsLabel: fieldList(group.fields),
   }));
 }

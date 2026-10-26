@@ -1,8 +1,9 @@
 // The Atlas § 8 provenance line (A-03 T055): body-small, on-surface-variant, leading
 // `description` icon. For a permit row (plan § "Atlas element map" → Row provenance):
-// `Source: {source_url as link} · collected {captured_at} UTC · table {table_cid, truncated +
+// `Source: {source_url as link} · collected {captured_at} UTC · record {record CID, truncated +
 // copy} · run {run_id}` (TC-021); an absent source URL shows the Missing-reason label of its
-// `missing` entry, never a blank. The generic form renders any children on the same line (the
+// `missing` entry when the row has one, else "No source link published", never a blank. The CID is
+// the row's own record CID (the CRM index holds no Parquet part CID, so it is not called a table). The generic form renders any children on the same line (the
 // Runs card: `Index: this site (/runs/index.json) · Manifest: {CID}`). Render-only: the caller
 // picks the values; this file formats them.
 import type { ReactElement, ReactNode } from "react";
@@ -20,14 +21,15 @@ export function formatUtc(iso: string): string {
 }
 
 export interface PermitProvenanceProps {
-  /** The row's `source_url`; null only with a `missing` entry for `source_url`. */
+  /** The row's `source_url`; null when the source published no link. */
   readonly sourceUrl: string | null;
-  /** The row's `missing` entry for `source_url`, shown when `sourceUrl` is null. */
+  /** The row's own `missing` entry for `source_url`, if it has one; shown when `sourceUrl` is
+   *  null. Without one the line says no link was published, and invents no reason code. */
   readonly sourceUrlMissing?: Missing;
   /** The row's `captured_at` (manifest `sources[].captured_at`). */
   readonly capturedAt: string;
-  /** The row's `table_cid`: the part artifact's CID from the manifest. */
-  readonly tableCid: string;
+  /** The row's own record CID (`row.cid` / `permit.cid`). */
+  readonly recordCid: string;
   /** The row's `run_id` (manifest `runId`). */
   readonly runId: string;
 }
@@ -46,16 +48,18 @@ function PermitLine({
   sourceUrl,
   sourceUrlMissing,
   capturedAt,
-  tableCid,
+  recordCid,
   runId,
 }: PermitProvenanceProps): ReactElement {
-  // contract/v1 Provenance: source_url is null only with a `not_in_export` entry.
-  const missing: Missing = sourceUrlMissing ?? { field: "source_url", reason: "not_in_export" };
   return (
     <>
       Source:{" "}
       {sourceUrl === null ? (
-        <MissingReason field={missing.field} reason={missing.reason} />
+        sourceUrlMissing === undefined ? (
+          <span data-field="source_url">No source link published</span>
+        ) : (
+          <MissingReason field={sourceUrlMissing.field} reason={sourceUrlMissing.reason} />
+        )
       ) : (
         <a href={sourceUrl} className={styles.link} rel="noopener noreferrer" target="_blank">
           {sourceUrl}
@@ -63,8 +67,8 @@ function PermitLine({
       )}
       {" · collected "}
       <time dateTime={capturedAt}>{formatUtc(capturedAt)}</time>
-      {" UTC · table "}
-      <CidDisplay cid={tableCid} />
+      {" UTC · record "}
+      <CidDisplay cid={recordCid} />
       {` · run ${runId}`}
     </>
   );

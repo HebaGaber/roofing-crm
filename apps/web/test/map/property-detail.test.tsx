@@ -170,7 +170,7 @@ describe("PropertyDetail drawer", () => {
     } as unknown as Provenanced<CrmPermit>;
     const drawer = renderDrawer({ ...data, permits: [none] });
     expect(drawer.querySelector("[data-field='contractor_name_as_printed']")?.textContent).toBe(
-      "Contractor name not published · Contractor not matched to a company",
+      "Contractor name not published · No contractor printed on the permit",
     );
     expect(drawer.querySelector("a[data-field='bbb_url']")).toBeNull();
   });
@@ -283,7 +283,7 @@ describe("PropertyDetail drawer", () => {
     expect(drawer.querySelector("[data-field='owner_name']")?.textContent).toBe("DOE, JANE");
     expect(drawer.querySelector("[data-field='owner_kind']")?.textContent).toBe("Person");
     expect(drawer.querySelector("[data-field='is_long_tenure']")?.textContent).toBe(
-      "10+ years · from Deed date",
+      "Over 10 years · from Deed date",
     );
     expect(drawer.querySelector("[data-field='owner_area_class']")?.textContent).not.toBe("");
     expect(drawer.querySelector("[data-field='owner_area_class']")?.textContent).toContain(

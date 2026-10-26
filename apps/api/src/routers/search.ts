@@ -20,6 +20,8 @@ import {
   CountyOverviewUnavailableError,
   searchPermits as searchPermitsService,
   searchProperties as searchPropertiesService,
+  SIMILAR_RADIUS_MI,
+  SIMILAR_ROOF_AGE_BAND_YEARS,
   similarProperties as similarPropertiesService,
   SimilarUnavailableError,
 } from "../services/search.js";
@@ -184,7 +186,14 @@ export const searchRouter = router({
       const leadIndex = requireLeadIndex(ctx);
       try {
         const result = await similarPropertiesService(leadIndex, input);
-        return { ...result, traceId: ctx.requestId };
+        // The matching rules travel with the answer so the drawer states them from the server.
+        return {
+          ...result,
+          radiusMi: SIMILAR_RADIUS_MI,
+          roofAgeBandYears: SIMILAR_ROOF_AGE_BAND_YEARS,
+          limit: input.limit,
+          traceId: ctx.requestId,
+        };
       } catch (error) {
         if (error instanceof SimilarUnavailableError) {
           throw new TRPCError({ code: "NOT_IMPLEMENTED", message: error.message, cause: error });

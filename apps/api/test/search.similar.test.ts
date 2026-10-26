@@ -144,6 +144,10 @@ describe("search.similar router", () => {
       found: true,
       similar: [],
       reason: "none_found",
+      // The matching rules travel with the answer, so the drawer states them from the server.
+      radiusMi: 1,
+      roofAgeBandYears: 5,
+      limit: 5,
       traceId: "r",
     });
     await expect(api.search.similar({ propertyCid: "p1", limit: 0 })).rejects.toThrow();

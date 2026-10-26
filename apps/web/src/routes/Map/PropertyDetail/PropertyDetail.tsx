@@ -12,17 +12,26 @@
 // Create lead"), with View lineage beside it; every value goes through src/format (dates as
 // calendar days, enum codes and field names as plain labels). Placement (side sheet ≥ 1280 px,
 // full-height sheet below) is Map.module.css's `.drawerSlot`.
-import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
 import type { MissingReason as Reason } from "@crm/oracle-contract";
 import { useEffect, useId, useRef, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
+  BBB_SOURCE_LABEL,
+  SOURCE_PARCELS_LABEL,
+  addressLine,
+  bbbGapText,
+  contractorReasonText,
+  coordinateSourceLabel,
   formatDate,
   humanizeCode,
+  missingEntry,
   missingReasonText,
+  openDurationText,
   permitStatusLabel,
+  permitsSourceLabel,
+  tenureBandLabel,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
   roofAgeGapLabel,
@@ -107,24 +116,16 @@ function RoofEvidence({ property }: { readonly property: Provenanced<CrmProperty
   );
 }
 
-/** "BBB rating not available" + the literal reason text (AC-7) — never a blank field, `0`,
- *  `N/A` or `—`, and never an invented rating (constitution P0-4). */
-function BbbField({
-  bbbStatus,
-  bbbStatusReason,
-}: {
-  readonly bbbStatus: BbbStatus | null;
-  readonly bbbStatusReason: string | null;
-}): ReactElement {
-  if (bbbStatus === null || bbbStatusReason === null) {
-    return <StatusPill status="unavailable" text="BBB rating not available" />;
-  }
-  const reasonLabel = missingReasonText("bbb_rating", bbbStatusReason);
+/** "BBB rating not available" + the reason from the permit's own `missing` entry (AC-7) — never a
+ *  blank field, `0`, `N/A` or `—`, and never an invented rating (constitution P0-4). */
+function BbbField({ permit }: { readonly permit: Provenanced<CrmPermit> }): ReactElement {
+  const entry = missingEntry(permit.missingReasons, "bbb_rating", "bbb_status");
+  const reason = entry?.reason ?? permit.bbbStatusReason;
   return (
     <StatusPill
       status="unavailable"
-      text={`BBB rating not available · ${reasonLabel}`}
-      data={{ reason: bbbStatusReason }}
+      text={bbbGapText(permit)}
+      {...(reason == null ? {} : { data: { reason } })}
     />
   );
 }
@@ -141,26 +142,40 @@ function ContractorName({ permit }: { readonly permit: Provenanced<CrmPermit> })
       </span>
     );
   }
-  const reason =
-    (permit.missingReasons ?? []).find((m) => m.field === "contractor_name_as_printed")?.reason ??
-    "contractor_unresolved";
+  const reason = missingEntry(permit.missingReasons, "contractor_name_as_printed")?.reason;
   return (
-    <span data-field="contractor_name_as_printed" data-reason={reason}>
-      Contractor name not published · {missingReasonText("contractor_name_as_printed", reason)}
+    <span
+      data-field="contractor_name_as_printed"
+      {...(reason === undefined ? {} : { "data-reason": reason })}
+    >
+      Contractor name not published · {contractorReasonText(permit)}
     </span>
   );
 }
 
+/** "Open for": the duration, or the pill with the reason from the permit's own `missing` entry
+ *  (a finaled permit reads "Not open (finaled)"); never a bare "not available". */
+function OpenForValue({ permit }: { readonly permit: Provenanced<CrmPermit> }): ReactElement {
+  if (permit.openDays !== null) return <>{openDurationText(permit)}</>;
+  const entry = missingEntry(permit.missingReasons, "open_days");
+  if (entry === undefined) return <>{openDurationText(permit)}</>;
+  return (
+    <MissingReason
+      field={entry.field}
+      reason={entry.reason as Reason}
+      label={missingReasonText(entry.field, entry.reason)}
+    />
+  );
+}
+
+const PERMIT_STATUS_PILL = { open: "info", stalled: "warning", closed: "verified" } as const;
+
 function PermitDetail({
   permit,
   property,
-  bbbStatus,
-  bbbStatusReason,
 }: {
   readonly permit: Provenanced<CrmPermit>;
   readonly property: Provenanced<CrmProperty>;
-  readonly bbbStatus: BbbStatus | null;
-  readonly bbbStatusReason: string | null;
 }): ReactElement {
   const issued = formatDate(permit.issueDate);
   const finaled = formatDate(permit.finalDate);
@@ -175,7 +190,13 @@ function PermitDetail({
           {permit.permitNumber ?? "Permit number not published"}
         </span>
         <StatusPill
-          status={permit.statusClass === "open" ? "info" : "unavailable"}
+          status={
+            permit.statusClass === "open" ||
+            permit.statusClass === "stalled" ||
+            permit.statusClass === "closed"
+              ? PERMIT_STATUS_PILL[permit.statusClass]
+              : "unavailable"
+          }
           text={permitStatusLabel(permit.statusClass)}
           data={{ field: "status_class" }}
         />
@@ -194,7 +215,9 @@ function PermitDetail({
         </div>
         <div className={styles.permitField}>
           <dt>Open for</dt>
-          <dd data-field="open_days">{openDurationLabel(permit.openDays)}</dd>
+          <dd data-field="open_days">
+            <OpenForValue permit={permit} />
+          </dd>
         </div>
         <div className={styles.permitField}>
           <dt>Contractor, as printed on permit</dt>
@@ -206,11 +229,7 @@ function PermitDetail({
         <div className={styles.permitField}>
           <dt>BBB</dt>
           <dd>
-            <BbbField
-              bbbStatus={permit.bbbStatus ?? bbbStatus}
-              bbbStatusReason={permit.bbbStatusReason ?? bbbStatusReason}
-            />{" "}
-            <BbbLink url={permit.bbbUrl} />
+            <BbbField permit={permit} /> <BbbLink url={permit.bbbUrl} />
           </dd>
         </div>
       </dl>
@@ -219,7 +238,7 @@ function PermitDetail({
         <Provenance
           sourceUrl={null}
           capturedAt={permit.capturedAt}
-          tableCid={permit.cid}
+          recordCid={permit.cid}
           runId={permit.runId}
         />
       ) : (
@@ -227,11 +246,11 @@ function PermitDetail({
           Source:{" "}
           <SourceLink
             url={permit.sourceUrl}
-            label={`Austin permits ${permit.permitNumber ?? "record"}`}
+            label={`${permitsSourceLabel(permit)} ${permit.permitNumber ?? "record"}`}
           />
           {" · collected "}
           <time dateTime={permit.capturedAt}>{formatUtc(permit.capturedAt)}</time>
-          {" UTC · table "}
+          {" UTC · record "}
           <CidDisplay cid={permit.cid} />
           {` · run ${permit.runId}`}
         </Provenance>
@@ -295,8 +314,8 @@ function OwnerSection({
     property.isLongTenure === null || property.isLongTenure === undefined
       ? null
       : property.isLongTenure
-        ? "10+ years"
-        : "Under 10 years";
+        ? tenureBandLabel(true)
+        : tenureBandLabel(false);
   return (
     <section className={styles.section} aria-labelledby={`${titleId}-owner`}>
       <h4 id={`${titleId}-owner`} className={styles.sectionTitle}>
@@ -316,9 +335,11 @@ function OwnerSection({
         <div className={styles.permitField}>
           <dt>Kind</dt>
           <dd data-field="owner_kind">
-            {property.ownerKind == null
-              ? "Owner kind not published"
-              : humanizeCode(property.ownerKind)}
+            {property.ownerKind == null || property.ownerKind === "unknown" ? (
+              <MissingValue property={property} field="owner_kind" what="Owner kind" />
+            ) : (
+              humanizeCode(property.ownerKind)
+            )}
           </dd>
         </div>
         <div className={styles.permitField}>
@@ -335,7 +356,7 @@ function OwnerSection({
           <dt>Last sale</dt>
           <dd data-field="last_ownership_transfer_date">
             {property.lastSaleDate != null ? (
-              property.lastSaleDate.slice(0, 4)
+              (formatDate(property.lastSaleDate) ?? property.lastSaleDate)
             ) : (
               <MissingValue
                 property={property}
@@ -449,7 +470,7 @@ function DrawerTitle({
         )}
       </span>
       <span className={styles.titleSub}>
-        Address not published in this run
+        {addressLine(property)}
         {property.latitude === null || property.longitude === null
           ? ""
           : ` · ${property.latitude.toFixed(5)}, ${property.longitude.toFixed(5)}`}
@@ -478,10 +499,22 @@ function MetadataSection({
   const permit = permits[0];
   const run = runLabel(property.runId);
   const captured = (iso: string): string => formatDate(iso) ?? iso;
-  const rows: { field: string; source: string; at: string; run: string; cid: string }[] = [
+  const permitAt = permit === undefined ? "" : captured(permit.capturedAt);
+  const permitRun = permit === undefined ? "" : runLabel(permit.runId);
+  const rows: {
+    field: string;
+    label?: string;
+    source: string;
+    at: string;
+    run: string;
+    cid: string;
+  }[] = [
     {
       field: "roof_age_years",
-      source: property.roofAgeBasis === "permit" ? "Austin permits + TCAD" : "TCAD parcels",
+      source:
+        property.roofAgeBasis === "permit"
+          ? `${permitsSourceLabel(permit)} + TCAD`
+          : SOURCE_PARCELS_LABEL,
       at: captured(property.capturedAt),
       run,
       cid: property.cid,
@@ -495,25 +528,41 @@ function MetadataSection({
     },
     {
       field: "lat, lon",
-      source:
-        property.coordinateSource === "address_point"
-          ? "City of Austin address points"
-          : property.coordinateSource === "permit_point"
-            ? "Austin permit location"
-            : "TCAD parcels",
+      source: coordinateSourceLabel(property.coordinateSource),
       at: captured(property.capturedAt),
       run,
       cid: property.cid,
     },
     ...(permit === undefined
       ? []
-      : ["permits", "contractor", "bbb_status"].map((field) => ({
-          field,
-          source: "Austin permits",
-          at: captured(permit.capturedAt),
-          run: runLabel(permit.runId),
-          cid: permit.cid,
-        }))),
+      : [
+          // The three rows below read the first permit only, and say so.
+          {
+            field: "permits",
+            label: "permits (first permit)",
+            source: permitsSourceLabel(permit),
+            at: permitAt,
+            run: permitRun,
+            cid: permit.cid,
+          },
+          {
+            field: "contractor",
+            label: "contractor (first permit)",
+            source: permitsSourceLabel(permit),
+            at: permitAt,
+            run: permitRun,
+            cid: permit.cid,
+          },
+          {
+            // BBB is never contacted; the status is Task A's, carried on the permit row.
+            field: "bbb_status",
+            label: "bbb_status (first permit)",
+            source: BBB_SOURCE_LABEL,
+            at: permitAt,
+            run: permitRun,
+            cid: permit.cid,
+          },
+        ]),
   ];
   return (
     <details className={styles.section} data-lineage-metadata="">
@@ -523,7 +572,7 @@ function MetadataSection({
       <ul className={styles.metaList} aria-labelledby={`${titleId}-metadata`}>
         {rows.map((row) => (
           <li key={row.field} className={styles.metaRow} data-meta-field={row.field}>
-            <code>{row.field}</code>
+            <code>{row.label ?? row.field}</code>
             <span>{`${row.source} · ${row.at} · ${row.run} · `}</span>
             <CidDisplay cid={row.cid} />
           </li>
@@ -594,7 +643,7 @@ export function PropertyDetail({
         <IconButton icon="close" label="Close" onClick={onClose} />
       </header>
       <div className={styles.pills}>
-        <TypePill usageType={property.propertyUsageType} />
+        <TypePill usageType={property.propertyUsageType} missing={property.missingReasons} />
       </div>
       <div className={styles.primaryAction}>
         <LeadCreateAction property={property} permits={data.permits} />
@@ -648,8 +697,8 @@ export function PropertyDetail({
         {property.roofAgeYears === null ? null : <RoofEvidence property={property} />}
         {property.roofAgeBasis === "built_year" && hasUnfinaledRoofPermit(data.permits) ? (
           <p className={styles.titleSub} data-reroof-note="">
-            A reroof permit exists but was never finaled, so it is not counted as a reroof. Roof age
-            is estimated from year built.
+            A roofing permit exists but was never finaled, so it is not counted as a reroof. Roof
+            age is estimated from year built.
           </p>
         ) : null}
       </section>
@@ -665,13 +714,7 @@ export function PropertyDetail({
         ) : (
           <div className={styles.permitList}>
             {data.permits.map((permit) => (
-              <PermitDetail
-                key={permit.permitCid}
-                permit={permit}
-                property={property}
-                bbbStatus={data.bbbStatus}
-                bbbStatusReason={data.bbbStatusReason}
-              />
+              <PermitDetail key={permit.permitCid} permit={permit} property={property} />
             ))}
           </div>
         )}

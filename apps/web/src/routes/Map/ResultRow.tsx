@@ -20,8 +20,12 @@ import {
   type ReactNode,
 } from "react";
 import {
+  addressLine,
+  bbbGapText,
+  contractorReasonText,
   coordinateSourceLabel,
   groupMissing,
+  missingEntry,
   missingReasonText,
   propertyKind,
   roofAgeBasisLabel,
@@ -44,7 +48,7 @@ export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): R
   return (
     <span className={styles.titleStack}>
       <span className={styles.titleMain}>{`TCAD ${row.requestIdentifier}`}</span>
-      <span className={styles.titleSub}>Address not published in this run</span>
+      <span className={styles.titleSub}>{addressLine(row)}</span>
     </span>
   );
 }
@@ -72,10 +76,32 @@ function RowDistance({
 
 /** E-51 Residential / Commercial from the published usage type; "Type not published" when it
  *  is null (E-93). The structure form (`propertyType`, e.g. "Building") is not the design's type. */
-export function TypePill({ usageType }: { readonly usageType: string | null }): ReactElement {
+export function TypePill({
+  usageType,
+  missing,
+}: {
+  readonly usageType: string | null;
+  /** The row's `missingReasons`, for the reason behind an unpublished type. */
+  readonly missing?: readonly Missing[] | undefined;
+}): ReactElement {
   const kind = propertyKind(usageType);
   if (!kind.published) {
-    return <StatusPill status="unavailable" text={kind.label} icon="help" />;
+    const entry = missingEntry(missing, "property_usage_type");
+    return (
+      <StatusPill
+        status="unavailable"
+        text={
+          entry === undefined
+            ? kind.label
+            : `${kind.label} · ${missingReasonText(entry.field, entry.reason)}`
+        }
+        icon="help"
+        data={{
+          field: "property_usage_type",
+          ...(entry === undefined ? {} : { reason: entry.reason }),
+        }}
+      />
+    );
   }
   return (
     <span className={styles.typePill} data-field="property_usage_type">
@@ -210,8 +236,6 @@ export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty>
   );
 }
 
-/** The row's `missingReasons` entries, grouped by reason (constitution XI/P0-4): the fields in
- *  plain language, then the contract's reason label. The raw names stay in `data-fields`. */
 /** The lead permit's contractor as printed (unverified) and its BBB state, each with the reason
  *  when empty (CRM-HANDOFF §4.3: contractor "as printed on permit", BBB in one of its states). */
 function PermitSignals({
@@ -221,16 +245,15 @@ function PermitSignals({
 }): ReactElement | null {
   const permit = mainPermitOf(permits) ?? permits?.[0];
   if (permit === undefined) return null;
-  const reason = permit.bbbStatusReason ?? "contractor_unresolved";
   return (
     <div className={styles.signals} data-permit-signals="">
       <p className={styles.signal} data-field="contractor_name_as_printed">
         {permit.contractorNameAsPrinted != null
           ? `Contractor “${permit.contractorNameAsPrinted}” as printed on permit · not verified`
-          : `Contractor not published · ${missingReasonText("contractor_name_as_printed", "contractor_unresolved")}`}
+          : `Contractor not published · ${contractorReasonText(permit)}`}
       </p>
       <p className={styles.signal} data-field="bbb_status">
-        {`BBB rating not available · ${missingReasonText("bbb_rating", reason)}`}
+        {bbbGapText(permit)}
         {permit.bbbUrl == null ? null : (
           <>
             {" · "}
@@ -242,6 +265,9 @@ function PermitSignals({
   );
 }
 
+/** The row's `missingReasons` entries, grouped by reason and wording (constitution XI/P0-4): the
+ *  fields in plain language, then the label decided per field. The raw names stay in
+ *  `data-fields`. */
 export function MissingSummary({
   row,
 }: {
@@ -252,13 +278,17 @@ export function MissingSummary({
     <ul className={styles.missing} aria-label="Missing data">
       {groupMissing(row.missingReasons).map((group) => (
         <li
-          key={group.reason}
+          key={`${group.reason}|${group.reasonLabel}`}
           className={styles.missingGroup}
           data-missing-group={group.reason}
           data-fields={group.fields.join(",")}
         >
           <span className={styles.fieldNames}>{group.fieldsLabel}</span>
-          <MissingReason field={group.fields[0] ?? ""} reason={group.reason as Reason} />
+          <MissingReason
+            field={group.fields[0] ?? ""}
+            reason={group.reason as Reason}
+            label={group.reasonLabel}
+          />
         </li>
       ))}
     </ul>
@@ -266,11 +296,12 @@ export function MissingSummary({
 }
 
 export function RowProvenance({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
-  // No usable source link: say why (contract/v1: `source_url` is null only with `not_in_export`).
-  // Written here rather than through the shared line, which prints the raw run id.
+  // No usable source link: say so plainly (the real `missing` lists carry no source_url entry, so no
+  // contract code is invented). Written here rather than through the shared line, which prints the
+  // raw run id.
   const source =
     safeSourceHref(row.sourceUrl) === null ? (
-      <MissingReason field="source_url" reason="not_in_export" />
+      <span data-source-missing="">No source link published</span>
     ) : (
       <SourceLink url={row.sourceUrl} label="source record" />
     );
@@ -279,7 +310,7 @@ export function RowProvenance({ row }: { readonly row: Provenanced<CrmProperty> 
       Source: {source}
       {" · collected "}
       <time dateTime={row.capturedAt}>{formatUtc(row.capturedAt)}</time>
-      {" UTC · table "}
+      {" UTC · record "}
       <CidDisplay cid={row.cid} />
       {` · ${runLabel(row.runId)}`}
     </Provenance>
@@ -393,7 +424,7 @@ function ResultRowView({
             ) : null}
           </ul>
         )}
-        <TypePill usageType={row.propertyUsageType} />
+        <TypePill usageType={row.propertyUsageType} missing={row.missingReasons} />
         <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} />
       </div>
       {expanded ? (
