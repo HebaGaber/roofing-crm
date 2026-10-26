@@ -235,6 +235,22 @@ describe("PropertyDetail drawer", () => {
     );
   });
 
+  it("has a collapsed Lineage · Metadata section (source, date, run, CID per field) and an Ask about it link", () => {
+    const drawer = renderDrawer();
+    const meta = drawer.querySelector("details[data-lineage-metadata]") as HTMLDetailsElement;
+    expect(meta).not.toBeNull();
+    expect(meta.open).toBe(false);
+    expect(meta.querySelector("summary")?.textContent).toBe("Lineage · Metadata");
+    const fields = [...meta.querySelectorAll("[data-meta-field]")].map((e) =>
+      e.getAttribute("data-meta-field"),
+    );
+    expect(fields).toEqual(
+      expect.arrayContaining(["roof_age_years", "lat, lon", "permits", "contractor", "bbb_status"]),
+    );
+    const ask = drawer.querySelector("a[data-ask-about]") as HTMLAnchorElement;
+    expect(ask.getAttribute("href") ?? "").toBe("/?mode=ai&q=Tell+me+about+TCAD+192820");
+  });
+
   it("a Run 2 row (no v1.1 columns at all) still renders, with the reason instead of a name", () => {
     const drawer = renderDrawer();
     expect(

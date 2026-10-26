@@ -963,6 +963,8 @@ export function Component(): ReactElement {
                       permitsQuery.data === undefined ? null : permitsByPropertyCid
                     }
                     onTriage={wide ? undefined : openTriage}
+                    radiusMi={radiusMi}
+                    centreLabel={fromGps ? "you" : "the pin"}
                   />
                 ) : null}
               </ResultsSheet>

@@ -14,9 +14,10 @@
 // full-height sheet below) is Map.module.css's `.drawerSlot`.
 import { openDurationLabel } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
-import { IconButton, MissingReason, Provenance, StatusPill } from "@crm/ui";
+import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill } from "@crm/ui";
 import type { MissingReason as Reason } from "@crm/oracle-contract";
 import { useEffect, useId, useRef, type ReactElement } from "react";
+import { Link, useSearchParams } from "react-router";
 import {
   formatDate,
   humanizeCode,
@@ -30,6 +31,8 @@ import {
 import { LeadCreateAction } from "../../Leads/LeadCreateAction.js";
 import { ContractorBadge } from "./ContractorBadge.js";
 import { MissingSummary, RowProvenance, TypePill } from "../ResultRow.js";
+import { patchMapMode } from "../mapMode.js";
+import { runLabel } from "../whyLead.js";
 import styles from "./PropertyDetail.module.css";
 
 /** `bbb_status` (contract v1.1): `rated` is never published; `blocked` means BBB blocked the lookup. */
@@ -396,7 +399,77 @@ function DrawerTitle({
   );
 }
 
+/** Where each value came from: source, capture date, run and CID, one row per field (CRM-HANDOFF
+ *  §4.3: the drawer's collapsed "Lineage · Metadata"). Read from the rows; nothing is added. */
+function MetadataSection({
+  property,
+  permits,
+  titleId,
+}: {
+  readonly property: Provenanced<CrmProperty>;
+  readonly permits: readonly Provenanced<CrmPermit>[];
+  readonly titleId: string;
+}): ReactElement {
+  const permit = permits[0];
+  const run = runLabel(property.runId);
+  const captured = (iso: string): string => formatDate(iso) ?? iso;
+  const rows: { field: string; source: string; at: string; run: string; cid: string }[] = [
+    {
+      field: "roof_age_years",
+      source: property.roofAgeBasis === "permit" ? "Austin permits + TCAD" : "TCAD parcels",
+      at: captured(property.capturedAt),
+      run,
+      cid: property.cid,
+    },
+    {
+      field: "owner_kind, owner_name, tenure",
+      source: "TCAD owners and deeds",
+      at: captured(property.capturedAt),
+      run,
+      cid: property.cid,
+    },
+    {
+      field: "lat, lon",
+      source:
+        property.coordinateSource === "address_point"
+          ? "City of Austin address points"
+          : property.coordinateSource === "permit_point"
+            ? "Austin permit location"
+            : "TCAD parcels",
+      at: captured(property.capturedAt),
+      run,
+      cid: property.cid,
+    },
+    ...(permit === undefined
+      ? []
+      : ["permits", "contractor", "bbb_status"].map((field) => ({
+          field,
+          source: "Austin permits",
+          at: captured(permit.capturedAt),
+          run: runLabel(permit.runId),
+          cid: permit.cid,
+        }))),
+  ];
+  return (
+    <details className={styles.section} data-lineage-metadata="">
+      <summary className={styles.sectionTitle} id={`${titleId}-metadata`}>
+        Lineage · Metadata
+      </summary>
+      <ul className={styles.metaList} aria-labelledby={`${titleId}-metadata`}>
+        {rows.map((row) => (
+          <li key={row.field} className={styles.metaRow} data-meta-field={row.field}>
+            <code>{row.field}</code>
+            <span>{`${row.source} · ${row.at} · ${row.run} · `}</span>
+            <CidDisplay cid={row.cid} />
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactElement {
+  const [searchParams] = useSearchParams();
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
   const propertyCid = data.property?.propertyCid ?? null;
@@ -428,6 +501,10 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
   }
 
   const { property } = data;
+  const askSearch = patchMapMode(searchParams, {
+    mode: "ai",
+    q: `Tell me about TCAD ${property.requestIdentifier}`,
+  }).toString();
   return (
     <aside
       ref={ref}
@@ -461,6 +538,9 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
         >
           View lineage in Explorer
         </a>
+        <Link to={{ search: askSearch }} className={styles.link} data-ask-about="">
+          Ask about it
+        </Link>
       </div>
 
       <section className={styles.section} aria-labelledby={`${titleId}-roof`}>
@@ -524,6 +604,7 @@ export function PropertyDetail({ data, onClose }: PropertyDetailProps): ReactEle
           <MissingSummary row={property} />
         )}
       </section>
+      <MetadataSection property={property} permits={data.permits} titleId={titleId} />
       <RowProvenance row={property} />
     </aside>
   );

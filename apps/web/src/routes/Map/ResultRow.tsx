@@ -22,6 +22,7 @@ import {
 import {
   coordinateSourceLabel,
   groupMissing,
+  missingReasonText,
   propertyKind,
   roofAgeBasisLabel,
   roofAgeConfidenceLabel,
@@ -29,6 +30,7 @@ import {
   roofAgeText,
 } from "../../format/index.js";
 import { PermitChip } from "./PermitChip.js";
+import { mainPermitOf } from "./whyLead.js";
 import { directionLabel, distanceFromCentre } from "./resultsView.js";
 import styles from "./ResultRow.module.css";
 
@@ -188,6 +190,30 @@ export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty>
 
 /** The row's `missingReasons` entries, grouped by reason (constitution XI/P0-4): the fields in
  *  plain language, then the contract's reason label. The raw names stay in `data-fields`. */
+/** The lead permit's contractor as printed (unverified) and its BBB state, each with the reason
+ *  when empty (CRM-HANDOFF §4.3: contractor "as printed on permit", BBB in one of its states). */
+function PermitSignals({
+  permits,
+}: {
+  readonly permits: readonly Provenanced<CrmPermit>[] | undefined;
+}): ReactElement | null {
+  const permit = mainPermitOf(permits) ?? permits?.[0];
+  if (permit === undefined) return null;
+  const reason = permit.bbbStatusReason ?? "contractor_unresolved";
+  return (
+    <div className={styles.signals} data-permit-signals="">
+      <p className={styles.signal} data-field="contractor_name_as_printed">
+        {permit.contractorNameAsPrinted != null
+          ? `Contractor “${permit.contractorNameAsPrinted}” as printed on permit · not verified`
+          : `Contractor not published · ${missingReasonText("contractor_name_as_printed", "contractor_unresolved")}`}
+      </p>
+      <p className={styles.signal} data-field="bbb_status">
+        {`BBB rating not available · ${missingReasonText("bbb_rating", reason)}`}
+      </p>
+    </div>
+  );
+}
+
 export function MissingSummary({
   row,
 }: {
@@ -220,6 +246,8 @@ export function RowProvenance({ row }: { readonly row: Provenanced<CrmProperty> 
 export interface ResultRowProps {
   readonly row: Provenanced<CrmProperty>;
   readonly onSelect?: (propertyCid: string) => void;
+  /** Opens "Why is this a lead?" for this row (the results pane shows the panel). */
+  readonly onWhy?: (propertyCid: string) => void;
   readonly selected?: boolean;
   /** This property's permits (longest open first), shown as chips: the first one in the collapsed
    *  line, all of them once expanded. `undefined` or empty renders nothing: a permit is never
@@ -240,6 +268,7 @@ export interface ResultRowProps {
 function ResultRowView({
   row,
   onSelect,
+  onWhy,
   selected = false,
   permits,
   center,
@@ -329,6 +358,18 @@ function ResultRowView({
             Property <CidDisplay cid={row.propertyCid} />
           </p>
           <PropertyFields row={row} />
+          <PermitSignals permits={permits} />
+          {onWhy === undefined ? null : (
+            <button
+              type="button"
+              className={styles.whyBtn}
+              data-why-open=""
+              onClick={() => onWhy(row.propertyCid)}
+            >
+              <Icon name="account_tree" size="medium" />
+              Why is this a lead?
+            </button>
+          )}
           {permits !== undefined && permits.length > 1 ? (
             <ul className={styles.permits} aria-label="All permits">
               {permits.map((permit) => (

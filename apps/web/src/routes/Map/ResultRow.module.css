@@ -225,3 +225,38 @@
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* Contractor and BBB lines of the lead permit, and the "Why is this a lead?" button (board
+   Explore1440). */
+.signals {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.signal {
+  margin: 0;
+  font-family: var(--md-sys-typescale-body-medium-font);
+  font-size: var(--md-sys-typescale-body-medium-size);
+  color: var(--md-sys-color-on-surface);
+}
+
+.whyBtn {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-1);
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--md-sys-color-outline);
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  cursor: pointer;
+}
+
+.whyBtn:hover {
+  background: var(--md-sys-color-surface-container-high);
+}

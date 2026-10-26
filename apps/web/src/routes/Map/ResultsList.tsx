@@ -9,6 +9,7 @@ import { Icon } from "@crm/ui";
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
 import { ResultRow } from "./ResultRow.js";
 import { ResultsPanel } from "./ResultsPanel.js";
+import { WhyPanel } from "./WhyPanel.js";
 import { pageNumbers, pageSlice } from "./resultsView.js";
 import styles from "./ResultsList.module.css";
 
@@ -25,6 +26,9 @@ export interface ResultsListProps {
   /** This property's permits, by property CID; null when permits were not requested. */
   readonly permitsByPropertyCid: ReadonlyMap<string, readonly Provenanced<CrmPermit>[]> | null;
   readonly onTriage?: (() => void) | undefined;
+  /** The search radius and where it is centred, for the "Why is this a lead?" panel's rule. */
+  readonly radiusMi?: number | undefined;
+  readonly centreLabel?: string | undefined;
 }
 
 export function ResultsList({
@@ -37,12 +41,17 @@ export function ResultsList({
   onSelect,
   permitsByPropertyCid,
   onTriage,
+  radiusMi,
+  centreLabel,
 }: ResultsListProps): ReactElement {
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  // The property whose "Why is this a lead?" panel replaces the list; a new answer closes it.
+  const [whyCid, setWhyCid] = useState<string | null>(null);
   // A new answer starts on page 1 with every row collapsed.
   useEffect(() => {
     setPage(1);
+    setWhyCid(null);
     setExpanded((open) => (open.size === 0 ? open : new Set()));
   }, [rows]);
   const slice = pageSlice(rows.length, page);
@@ -75,6 +84,21 @@ export function ResultsList({
     rows.length === 0
       ? ""
       : `Showing ${String(slice.start + 1)}–${String(slice.end)} of ${clipped ? "the nearest " : ""}${String(rows.length)}`;
+
+  const whyRow = whyCid === null ? undefined : rows.find((r) => r.propertyCid === whyCid);
+  if (whyRow !== undefined) {
+    return (
+      <WhyPanel
+        property={whyRow}
+        permits={permitsByPropertyCid?.get(whyRow.propertyCid)}
+        center={stableCenter}
+        radiusMi={radiusMi}
+        centreLabel={centreLabel}
+        onBack={() => setWhyCid(null)}
+        onDetails={onSelect}
+      />
+    );
+  }
 
   return (
     <ResultsPanel
@@ -136,6 +160,7 @@ export function ResultsList({
               row={property}
               selected={selectedCid === property.propertyCid}
               onSelect={onSelect}
+              onWhy={setWhyCid}
               expanded={expanded.has(property.propertyCid)}
               onToggleExpanded={toggle}
               {...(stableCenter === undefined ? {} : { center: stableCenter })}
