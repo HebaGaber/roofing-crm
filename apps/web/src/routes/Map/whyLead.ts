@@ -57,12 +57,14 @@ export function roofSourceLabel(property: Pick<CrmProperty, "roofAgeBasis">): st
   return property.roofAgeBasis === "permit" ? SOURCE_PERMITS_LABEL : SOURCE_PARCELS_LABEL;
 }
 
-/** A roofing permit (any roofing permit, not only a reroof) that is still live: open or stalled.
+/** A roofing permit (any roofing permit, not only a reroof) that is still live: open or stalled with no final date.
  *  It is not counted as a reroof, so a roof age based on year built may be older than the roof
  *  really is. A closed permit with no final date is not live (the contract's `status_class` is the
  *  one source of "open", ASM-3), and neither is one with no status. Own permits only. */
 export function hasUnfinaledRoofPermit(
-  permits: readonly Pick<CrmPermit, "statusClass">[] | undefined,
+  permits:
+    | readonly (Pick<CrmPermit, "statusClass"> & Partial<Pick<CrmPermit, "finalDate">>)[]
+    | undefined,
 ): boolean {
   return (permits ?? []).some(isLivePermit);
 }

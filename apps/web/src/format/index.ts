@@ -8,6 +8,7 @@ export {
   contractorResolutionLabel,
   coordinateSourceLabel,
   humanizeCode,
+  finaledPermitLabel,
   permitStatusLabel,
   permitStatusShortLabel,
   propertyKind,

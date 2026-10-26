@@ -38,6 +38,7 @@ import {
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router";
 import { COUNTY_ZOOM, WIDEN_STEP_MI, yearsToDays } from "@crm/domain";
+import { isFinaledPermit } from "@crm/shared";
 import { isInTravisCounty } from "../../components/Map/bounds.js";
 import {
   CrmMap,
@@ -704,7 +705,8 @@ export function Component(): ReactElement {
           propertyCid: permit.propertyCid,
           lat: property.latitude,
           lng: property.longitude,
-          statusClass: permit.statusClass,
+          // A permit with a final date is finished: never pinned as open or stalled.
+          statusClass: isFinaledPermit(permit) ? "closed" : permit.statusClass,
           isLongOpen: permit.isLongOpen,
           openDays: permit.openDays,
         };

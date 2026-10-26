@@ -18,8 +18,8 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 | Roof age, basis, confidence                   | Shown (pill pair on the collapsed row; cells when expanded)                              |
 | Roof age missing, with its reason             | Shown                                                                                    |
 | Year built on the basis line                  | Shown now (expanded card, drawer, Why rule; `structureBuiltYear`)          |
-| Permit chip (class, open years, derived word) | Shown                                                                                    |
-| Permit status filter: Open, Stalled, Any       | Shown; Open = open or stalled (a stalled permit is open and not progressing), Stalled = stalled only, applied by the server to every property in range before paging and counting |
+| Permit chip (class, open years, derived word) | Shown; a permit with a final date reads `Finaled {date} (status not in source)` with no open duration |
+| Permit status filter: Open, Stalled, Any       | Shown; Open = open or stalled (a stalled permit is open and not progressing), Stalled = stalled only; a permit with a final date is finished and never matches either (952 of the 1,674 stalled permits and 7 of the 80 open ones carry one in Run 3.1, leaving 722 stalled and 73 open); applied by the server to every property in range before paging and counting |
 | Source's own permit status word               | Not in published data (`status_raw`: `no_lexicon_carrier`; stalled is derived)           |
 | Out-of-area owner pill                        | Shown (collapsed badge row, expanded card and the drawer's Owner section)                |
 | Lead pill, checkbox, Hide existing leads      | Shown (Leads and Candidates)                                                             |

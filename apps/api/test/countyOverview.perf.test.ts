@@ -40,7 +40,8 @@ describe.skipIf(process.env.CRM_PERF !== "1")("countyOverview on 441,961 rows", 
     await writer.run(`COPY (
       SELECT 'p' || (random() * ${ROWS - 1})::INTEGER AS "propertyCid",
         CASE WHEN random() < 0.1 THEN 'open' WHEN random() < 0.2 THEN 'stalled' ELSE 'closed' END AS "statusClass",
-        (random() * 4000)::INTEGER AS "openDays"
+        (random() * 4000)::INTEGER AS "openDays",
+        CAST(NULL AS VARCHAR) AS "finalDate"
       FROM range(${PERMITS}) t(i)) TO '${join(dir, "crm_permit.parquet")}' (FORMAT parquet)`);
 
     ddbMock.on(GetCommand).resolves({

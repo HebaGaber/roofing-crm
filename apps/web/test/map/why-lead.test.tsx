@@ -120,9 +120,12 @@ describe("whyLead", () => {
 });
 
 describe("hasUnfinaledRoofPermit", () => {
-  it("is true only for a live (open or stalled) permit, whether or not it has a final date", () => {
+  it("is true only for a live (open or stalled) permit with no final date", () => {
     expect(hasUnfinaledRoofPermit([{ statusClass: "open" }])).toBe(true);
-    expect(hasUnfinaledRoofPermit([{ statusClass: "stalled" }])).toBe(true);
+    expect(hasUnfinaledRoofPermit([{ statusClass: "stalled", finalDate: null }])).toBe(true);
+    expect(hasUnfinaledRoofPermit([{ statusClass: "stalled", finalDate: "1991-04-15" }])).toBe(
+      false,
+    );
   });
 
   it("a closed permit with no final date is not live, and neither is one with no status", () => {

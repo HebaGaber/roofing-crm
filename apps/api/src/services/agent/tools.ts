@@ -43,7 +43,8 @@ async function propertyCidForTcadId(
 }
 
 /** "Open" includes stalled (a stalled permit is open and not progressing), the one definition the
- *  map filter, the lead reasoning and the agent share (`isLivePermit`). */
+ *  map filter, the lead reasoning and the agent share (`isLivePermit`). The classes go to the index,
+ *  which also requires no final date for open and stalled (a finaled permit is finished). */
 export function withStalledWhenOpen(
   statusClass: readonly ("open" | "stalled" | "closed")[],
 ): ("open" | "stalled" | "closed")[] {

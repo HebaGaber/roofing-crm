@@ -25,7 +25,13 @@ const CENTER = { lat: 30.2672, lng: -97.7431 };
 // open or stalled permit at all.
 const COUNT = 250;
 const pad = (n: number): string => String(n).padStart(3, "0");
-function permitFor(n: number): { status: string; days: number } | null {
+// 146..155 hold a "stalled" permit and 156..158 an "open" one that both have a final date (Task A
+// classes a finaled permit with no status as stalled): finished, so no open or stalled filter,
+// count or list may include them. They have no open days.
+const FINAL_DATE = "1991-04-15";
+function permitFor(n: number): { status: string; days: number | null; final?: string } | null {
+  if (n >= 146 && n <= 155) return { status: "stalled", days: null, final: FINAL_DATE };
+  if (n >= 156 && n <= 158) return { status: "open", days: null, final: FINAL_DATE };
   if (n <= 120) return { status: "closed", days: 0 };
   if (n <= 130) return { status: "open", days: 200 };
   if (n <= 140) return { status: "stalled", days: 400 };
@@ -46,9 +52,10 @@ const PROPERTY_SQL = Array.from({ length: COUNT }, (_, i) => i + 1)
 const PERMIT_SQL = Array.from({ length: COUNT }, (_, i) => i + 1)
   .filter((n) => permitFor(n) !== null)
   .map((n) => {
-    const p = permitFor(n) as { status: string; days: number };
+    const p = permitFor(n) as { status: string; days: number | null; final?: string };
     return `SELECT 'cid-${pad(n)}' AS "propertyCid", 'p${pad(n)}' AS "permitCid", 'p${pad(n)}' AS "cid",
-      '2026-${n} BP' AS "permitNumber", '${p.status}' AS "statusClass", ${p.days}::INTEGER AS "openDays",
+      '2026-${n} BP' AS "permitNumber", '${p.status}' AS "statusClass", ${p.days === null ? "NULL" : p.days}::INTEGER AS "openDays",
+      ${p.final === undefined ? "CAST(NULL AS VARCHAR)" : `'${p.final}'`} AS "finalDate",
       '${RUN}' AS "runId", 'm' AS "sourceManifestCid", '2026-10-26' AS "capturedAt", ${MISSING}`;
   })
   .join(" UNION ALL ");
@@ -172,6 +179,26 @@ describe("search.properties permit filters (applied before the page and the coun
       statusClass: ["stalled"],
     });
     expect(permits.total).toBe(props.counts.afterRoofAge);
+  });
+
+  it("a permit with a final date is never open or stalled, whatever its class says", async () => {
+    const caller = api();
+    // 13 properties have a finaled permit classed stalled (10) or open (3): none is counted.
+    const stalled = await caller.search.properties({ ...base, permitStatusClass: ["stalled"] });
+    expect(stalled.counts.afterRoofAge).toBe(15);
+    const open = await caller.search.properties({
+      ...base,
+      permitStatusClass: ["open", "stalled"],
+    });
+    expect(open.counts.afterRoofAge).toBe(25);
+    const permits = await caller.search.permits({
+      center: CENTER,
+      radiusMi: 25,
+      sort: "openDays",
+      statusClass: ["open", "stalled"],
+    });
+    expect(permits.total).toBe(25);
+    expect(permits.permits.every((p) => p.finalDate === null)).toBe(true);
   });
 
   it("rejects an empty status list", async () => {

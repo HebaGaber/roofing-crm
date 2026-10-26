@@ -498,6 +498,9 @@ function pageLimit(limit: number | undefined): number {
   return Math.min(MAX_PAGE_ROWS, Math.max(1, n));
 }
 
+/** SQL for "this permit has no final date" (alias `pm`): part of the live-permit rule. */
+const NOT_FINALED_SQL = `pm."finalDate" IS NULL`;
+
 /** WHERE conditions for a permit query (alias `pm`), the radius scope as a semi-join to
  *  `crm_property` evaluated inside DuckDB: no property list ever reaches JavaScript and no giant
  *  `IN (...)` list is built. A `permitNumber` lookup is exact and ignores the radius entirely. */
@@ -527,13 +530,26 @@ function permitConditions(query: SearchPermitsQuery): string[] {
   }
   // statusClass/isOpen are read verbatim from the vendored query-core derivation — never
   // recomputed here (contracts/lead-index-port.md).
+  // A permit is live (open or stalled) only if it has no final date: Task A classes a finaled
+  // permit with no status as "stalled", so a status filter on open/stalled also requires
+  // `finalDate IS NULL` (the same rule as `isLivePermit` in @crm/shared).
   if (query.isOpen !== undefined)
-    conditions.push(`pm."statusClass" ${query.isOpen ? "=" : "<>"} 'open'`);
+    conditions.push(
+      query.isOpen
+        ? `(pm."statusClass" = 'open' AND ${NOT_FINALED_SQL})`
+        : `NOT (pm."statusClass" = 'open' AND ${NOT_FINALED_SQL})`,
+    );
   if (query.statusClass !== undefined) {
     conditions.push(
       query.statusClass.length === 0
         ? "FALSE"
-        : `pm."statusClass" IN (${query.statusClass.map((v) => `'${sqlEscapeString(v)}'`).join(", ")})`,
+        : `(${query.statusClass
+            .map((v) =>
+              v === "open" || v === "stalled"
+                ? `(pm."statusClass" = '${v}' AND ${NOT_FINALED_SQL})`
+                : `pm."statusClass" = '${sqlEscapeString(v)}'`,
+            )
+            .join(" OR ")})`,
     );
   }
   if (query.openDaysMinimum !== undefined)
@@ -1197,6 +1213,8 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       query.permitStatus === "stalled"
         ? `"statusClass" = 'stalled'`
         : `"statusClass" IN ('open', 'stalled')`,
+      // A permit with a final date is finished, whatever its class (see NOT_FINALED_SQL).
+      `"finalDate" IS NULL`,
       ...(query.permitOpenDaysMin === undefined
         ? []
         : [`"openDays" >= ${String(Number(query.permitOpenDaysMin))}`]),

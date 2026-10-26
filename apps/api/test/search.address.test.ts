@@ -63,7 +63,7 @@ function propertySql(withAddress: boolean): string {
 }
 
 const PERMIT_SQL = `SELECT 'cid-1' AS "propertyCid", 'p1' AS "permitCid", 'p1' AS "cid",
-  '2026-1 BP' AS "permitNumber", 'open' AS "statusClass", 1::INTEGER AS "openDays",
+  '2026-1 BP' AS "permitNumber", 'open' AS "statusClass", 1::INTEGER AS "openDays", CAST(NULL AS VARCHAR) AS "finalDate",
   '${RUN}' AS "runId", 'm' AS "sourceManifestCid", '2026-10-26' AS "capturedAt",
   CAST([] AS STRUCT(field VARCHAR, reason VARCHAR)[]) AS "missingReasons"`;
 
