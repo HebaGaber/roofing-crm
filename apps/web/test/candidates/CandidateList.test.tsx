@@ -291,7 +291,7 @@ describe("CandidateList", () => {
         "No properties with an open permit (open 5+ yrs) within 5 mi.",
       );
       expect(empty.textContent).not.toMatch(/roofs match/);
-      expect(empty.textContent).toContain("carry no open status; stalled permits are derived");
+      expect(empty.textContent).toContain("Open permits are rare in this data");
       expect(
         document.querySelector(".num, [data-matches]")?.getAttribute("data-matches") ?? "0",
       ).toBe("0");

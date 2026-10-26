@@ -309,3 +309,65 @@
     margin-left: var(--space-1);
   }
 }
+
+/* The pane's match count (board Explore1440: "128 properties match · Clear"), from 1280 px where
+   the sheet's own "Show n results" footer is hidden. Sticky at the bottom of the scrolling pane. */
+.matchBar {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .matchBar {
+    position: sticky;
+    bottom: calc(var(--space-4) * -1);
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: var(--space-2) calc(var(--space-4) * -1) calc(var(--space-4) * -1);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    background: var(--md-sys-color-surface);
+  }
+}
+
+.matchRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.matchText {
+  color: var(--md-sys-color-on-surface);
+  font-family: var(--md-sys-typescale-body-large-font);
+  font-size: var(--md-sys-typescale-body-large-size);
+}
+
+.matchText strong {
+  font-size: var(--md-sys-typescale-title-medium-size);
+}
+
+.clearBtn {
+  min-height: var(--space-9);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--md-sys-shape-corner-full);
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  cursor: pointer;
+}
+
+.clearBtn:disabled {
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: default;
+}
+
+.matchSummary {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-medium-font);
+  font-size: var(--md-sys-typescale-label-medium-size);
+}

@@ -202,9 +202,7 @@ describe("emptyStateCopy (names what was filtered)", () => {
     const c = emptyStateCopy({ ...base, permitStatus: "open", permitOpenYrs: 5 });
     expect(c.title).toBe("No properties with an open permit (open 5+ yrs) within 5 mi.");
     expect(c.title).not.toMatch(/roof/i);
-    expect(c.text).toContain(
-      "This run's permits carry no open status; stalled permits are derived.",
-    );
+    expect(c.text).toContain("Open permits are rare in this data (Austin permits only;");
     expect(c.text).toContain("Try a bigger radius or relax the permit filter.");
     expect(c.permitFilter).toBe(true);
   });

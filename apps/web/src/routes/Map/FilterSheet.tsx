@@ -55,6 +55,26 @@ export interface FilterSheetProps {
   readonly onOpenChange?: ((open: boolean) => void) | undefined;
   /** True where the panel is a permanent pane beside the map (a region, not a dialog). */
   readonly inline?: boolean | undefined;
+  /** The pane's footer (board Explore1440, "128 properties match · Clear"): what the count covers
+   *  ("within 5 mi of the pin", "county-wide") and the run it is read from ("Run 3"). */
+  readonly matchScope?: string | undefined;
+  readonly runLabel?: string | undefined;
+  /** Clears the roof-age and permit filters. */
+  readonly onClear?: (() => void) | undefined;
+}
+
+/** "roof ≥ 13 · permit open · open 3+ yrs", or "none" when no filter is set. */
+export function filterSummary(
+  roofAgeMinYears: number | undefined,
+  permitStatus: PermitStatusFilter,
+  permitOpenYrs: number | undefined,
+): string {
+  const parts = [
+    roofAgeMinYears === undefined ? null : `roof ≥ ${String(roofAgeMinYears)}`,
+    permitStatus === "any" ? null : `permit ${permitStatus}`,
+    permitOpenYrs === undefined ? null : `open ${String(permitOpenYrs)}+ yrs`,
+  ].filter((part): part is string => part !== null);
+  return parts.length === 0 ? "none" : parts.join(" · ");
 }
 
 /** The URL/control value of typed text: an integer >= 0, or `undefined` for an empty box
@@ -78,6 +98,9 @@ export function FilterSheet({
   open: controlledOpen,
   onOpenChange,
   inline = false,
+  matchScope,
+  runLabel,
+  onClear,
 }: FilterSheetProps): ReactElement {
   const id = useId();
   const [ownOpen, setOwnOpen] = useState(false);
@@ -261,6 +284,34 @@ export function FilterSheet({
             ))}
           </select>
         </div>
+        {inline && matchCount !== undefined ? (
+          <div className={styles.matchBar} data-match-bar="">
+            <div className={styles.matchRow}>
+              <span className={styles.matchText} aria-live="polite">
+                <strong data-match-total="">{matchCount.toLocaleString("en-US")}</strong>
+                {matchCount === 1 ? " property matches" : " properties match"}
+                {matchScope === undefined ? "" : ` ${matchScope}`}
+              </span>
+              {onClear === undefined ? null : (
+                <button
+                  type="button"
+                  className={styles.clearBtn}
+                  disabled={
+                    roofAgeMinYears === undefined &&
+                    permitStatus === "any" &&
+                    permitOpenYrs === undefined
+                  }
+                  onClick={onClear}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <p className={styles.matchSummary}>
+              {`Filters: ${filterSummary(roofAgeMinYears, permitStatus, permitOpenYrs)}${runLabel === undefined ? "" : ` · ${runLabel}`}`}
+            </p>
+          </div>
+        ) : null}
         <div className={styles.footer}>
           <button type="button" className={styles.showResults} onClick={close}>
             {matchCount === undefined

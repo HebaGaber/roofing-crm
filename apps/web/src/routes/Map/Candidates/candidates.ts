@@ -151,7 +151,7 @@ export function emptyStateCopy(filters: CandidateFilters): {
   }
   const why =
     status === "open"
-      ? "This run's permits carry no open status; stalled permits are derived. "
+      ? "Open permits are rare in this data (Austin permits only; most are stalled, a status the CRM derives). "
       : "";
   return {
     title: roofFilter

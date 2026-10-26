@@ -64,7 +64,8 @@ import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
-import { permitNote, permitQueryInput } from "./Candidates/candidates.js";
+import { emptyStateCopy, permitNote, permitQueryInput } from "./Candidates/candidates.js";
+import { runLabel } from "./whyLead.js";
 import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultsList } from "./ResultsList.js";
@@ -139,6 +140,9 @@ export function Component(): ReactElement {
   const [legendOpen, setLegendOpen] = useLegendOpen();
   const [permitStatus, setPermitStatus] = useState<PermitStatusFilter>("any");
   const [permitOpenYrs, setPermitOpenYrs] = useState<number | undefined>(undefined);
+  // A permit filter narrows the matches to properties with a matching permit, in every view: the
+  // map and cards, the list and triage show the same properties and the same count.
+  const permitFilterActive = permitStatus !== "any" || permitOpenYrs !== undefined;
   const [viewMode, setViewMode] = useState<MapViewMode>("overview");
   const [zoomStep, setZoomStep] = useState(COUNTY_ZOOM_STEP);
   // Pin mode (boards CrmMapPinMode*), the GPS fix's accuracy circle, whether the centre came from
@@ -332,7 +336,7 @@ export function Component(): ReactElement {
   // T028 (B-03, US3): search.permits over the same radius-filtered set. Fetched whenever either
   // the permit-view toggle (results list) or the Layers popover's "permits" marker layer is on —
   // the two controls share one request, never two separately-derived ones.
-  const wantPermits = permitView || layers.permits;
+  const wantPermits = permitView || layers.permits || permitFilterActive;
   // The server filters (status, open years) and pages (the 500 longest open); the input is built
   // by the same helper the Candidate list and Field triage use, so all three share one cache entry.
   const permitsQuery = useQuery({
@@ -365,6 +369,17 @@ export function Component(): ReactElement {
     }
     return map;
   }, [filteredPermits]);
+
+  // The properties the map and the cards list: the nearest page of the ring, and with a permit
+  // filter only those with a matching permit (the rule the Candidate list applies, buildCandidates).
+  // While the permits load the filtered set is not known yet.
+  const permitsReady = !permitFilterActive || permitsQuery.data !== undefined;
+  const listProperties = useMemo(() => {
+    const all = query.data?.properties ?? [];
+    if (!permitFilterActive) return all;
+    if (permitsQuery.data === undefined) return [];
+    return all.filter((p) => permitsByPropertyCid.has(p.propertyCid));
+  }, [query.data, permitFilterActive, permitsQuery.data, permitsByPropertyCid]);
 
   const detailQuery = useQuery({
     ...trpc.property.get.queryOptions({ propertyCid: sel ?? "" }),
@@ -435,7 +450,7 @@ export function Component(): ReactElement {
 
   const widenTo = radiusMi + WIDEN_STEP_MI <= MAX_RADIUS_MI ? radiusMi + WIDEN_STEP_MI : null;
   const isZeroResult =
-    searchInput !== null && query.data !== undefined && query.data.properties.length === 0;
+    searchInput !== null && query.data !== undefined && permitsReady && listProperties.length === 0;
 
   // The map's own question, handed to the Candidate list and Field triage. Same centre rule as the
   // map's search (an outside pin is never a search centre), so the three share one React Query
@@ -485,7 +500,7 @@ export function Component(): ReactElement {
 
   const roofMarkers = useMemo(
     () =>
-      (query.data?.properties ?? [])
+      listProperties
         .filter((p) => p.latitude !== null && p.longitude !== null)
         .map((p) => ({
           propertyCid: p.propertyCid,
@@ -494,7 +509,7 @@ export function Component(): ReactElement {
           roofAgeConfidence: p.roofAgeConfidence,
           roofAgeYears: p.roofAgeYears,
         })),
-    [query.data],
+    [listProperties],
   );
 
   const permitMarkers = useMemo(() => {
@@ -505,6 +520,7 @@ export function Component(): ReactElement {
         if (property?.latitude == null || property.longitude == null) return null;
         return {
           permitCid: permit.permitCid,
+          propertyCid: permit.propertyCid,
           lat: property.latitude,
           lng: property.longitude,
           statusClass: permit.statusClass,
@@ -568,8 +584,9 @@ export function Component(): ReactElement {
     };
   }, [overviewQuery.isError, overview]);
 
-  const hasResults = query.data !== undefined && query.data.properties.length > 0;
-  const isLoading = searchInput !== null && query.isLoading;
+  const hasResults = query.data !== undefined && listProperties.length > 0;
+  const isLoading =
+    searchInput !== null && (query.isLoading || (permitFilterActive && permitsQuery.isLoading));
   const isIndexDown = searchInput !== null && query.isError;
   const sheetEmpty =
     !pinOutsideCounty && !isLoading && !isIndexDown && !isZeroResult && !hasResults;
@@ -583,13 +600,19 @@ export function Component(): ReactElement {
   );
   const rightCollapsed = wide && rightCollapsedState;
   // Counts come from the server's totals; a clipped page says so (never a page as the whole set).
-  const matchTotal = query.data?.counts?.afterRoofAge ?? query.data?.properties.length ?? 0;
-  const propertiesClipped = query.data !== undefined && matchTotal > query.data.properties.length;
+  // With a permit filter the count is the rows listed (as in the Candidate list, listedCount): the
+  // server only knows the properties in range, not which of them have a matching permit.
+  const serverTotal = query.data?.counts?.afterRoofAge ?? query.data?.properties.length ?? 0;
+  const matchTotal = permitFilterActive ? listProperties.length : serverTotal;
+  const propertiesClipped =
+    query.data !== undefined && serverTotal > (query.data?.properties.length ?? 0);
   const resultsNote =
     propertiesClipped || permitClipNote !== null
       ? [
           propertiesClipped
-            ? `Showing the nearest ${String(query.data?.properties.length ?? 0)} of ${matchTotal.toLocaleString("en-US")} properties; narrow the radius or raise the roof age.`
+            ? permitFilterActive
+              ? `Permit filter applied to the nearest ${String(query.data?.properties.length ?? 0)} of ${serverTotal.toLocaleString("en-US")} properties in range; narrow the radius or raise the roof age.`
+              : `Showing the nearest ${String(query.data?.properties.length ?? 0)} of ${serverTotal.toLocaleString("en-US")} properties; narrow the radius or raise the roof age.`
             : null,
           permitClipNote,
         ]
@@ -684,7 +707,28 @@ export function Component(): ReactElement {
               onPermitStatusChange={setPermitStatus}
               permitOpenYrs={permitOpenYrs}
               onPermitOpenYrsChange={setPermitOpenYrs}
-              matchCount={searchInput === null || query.data === undefined ? undefined : matchTotal}
+              matchCount={
+                searchInput === null || query.data === undefined
+                  ? (overview?.counts.matched ?? undefined)
+                  : matchTotal
+              }
+              matchScope={
+                searchInput === null || query.data === undefined
+                  ? "county-wide"
+                  : `within ${String(radiusMi)} mi`
+              }
+              runLabel={
+                listProperties[0] === undefined
+                  ? overview?.runId == null
+                    ? undefined
+                    : runLabel(overview.runId)
+                  : runLabel(listProperties[0].runId)
+              }
+              onClear={() => {
+                setRoofAgeMinYears(undefined);
+                setPermitStatus("any");
+                setPermitOpenYrs(undefined);
+              }}
               open={mode === "filters"}
               onOpenChange={(open) => setMode(open ? "filters" : "map")}
               inline={wide}
@@ -739,6 +783,8 @@ export function Component(): ReactElement {
             focusedPin={focusedCitation}
             onPinSelect={setFocusedCitation}
             onHexSelect={selectHex}
+            onPropertySelect={selectProperty}
+            focusResults={!ai && !triage && sel === null && view === "map"}
             selectedPoint={selectedPoint}
           />
           <MapControls
@@ -932,7 +978,9 @@ export function Component(): ReactElement {
                 ) : null}
                 {isZeroResult ? (
                   <p role="status" data-state="CrmMapNoResults390" className={styles.notice}>
-                    No properties within {radiusMi} mi.
+                    {permitFilterActive
+                      ? `${emptyStateCopy(candidateFilters).title} ${emptyStateCopy(candidateFilters).text}`
+                      : `No properties within ${String(radiusMi)} mi.`}
                     {widenTo === null ? null : (
                       <button
                         type="button"
@@ -952,7 +1000,7 @@ export function Component(): ReactElement {
                 ) : null}
                 {query.data !== undefined && hasResults ? (
                   <ResultsList
-                    rows={query.data.properties}
+                    rows={listProperties}
                     total={matchTotal}
                     clipped={propertiesClipped}
                     note={resultsNote}

@@ -429,6 +429,48 @@ describe("Map route tablet alignment (A3, A4, C1, C6)", () => {
     expect(within(list).getAllByLabelText("Permits")).toHaveLength(1);
   });
 
+  it("a permit filter narrows the cards to properties with a matching permit, same as the List: rows, count and empty state agree", async () => {
+    const other = {
+      ...property,
+      propertyCid: "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbq4xb",
+      requestIdentifier: "0201885123",
+    };
+    searchResult = { properties: [property, other], counts: { afterRadius: 2, afterRoofAge: 2 } };
+    permitsReply = {
+      permits: [
+        {
+          propertyCid: property.propertyCid,
+          permitCid: "bafkreipermit",
+          statusClass: "open",
+          openDays: 803,
+          permitNumber: "2024-1",
+          isLongOpen: false,
+        },
+      ],
+    };
+    renderAt("/?lat=30.4394&lng=-97.62&r=5");
+    const list = await screen.findByTestId("search-results");
+    // No permit filter: both properties, the server's count.
+    expect(within(list).getAllByRole("article")).toHaveLength(2);
+    expect(screen.getByText("Matches 2")).not.toBeNull();
+    // Permit status Open: only the property with an open permit, and the count equals the rows.
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const group = screen.getByRole("group", { name: "Permit status" });
+    fireEvent.click(within(group).getByRole("button", { name: "Open" }));
+    await vi.waitFor(() =>
+      expect(within(screen.getByTestId("search-results")).getAllByRole("article")).toHaveLength(1),
+    );
+    expect(screen.getByText("Matches 1")).not.toBeNull();
+    // No property has a matching permit: the empty state names the permit filter, as the List does.
+    permitsReply = { permits: [] };
+    fireEvent.click(within(group).getByRole("button", { name: "Stalled" }));
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-state="CrmMapNoResults390"]')?.textContent).toMatch(
+        /stalled permit/,
+      ),
+    );
+  });
+
   it("the Triage entry still opens triage (phones: filled button; 768 px and up: icon, same name)", async () => {
     renderAt("/?lat=30.4394&lng=-97.62&r=5");
     await screen.findByTestId("search-results");
@@ -798,6 +840,27 @@ describe("Map route AI mode (mode=ai&q=)", () => {
       expect(screen.getByRole("button", { name: /^Filters/ }).getAttribute("aria-expanded")).toBe(
         "true",
       ),
+    );
+  });
+});
+
+describe("Map route filter pane match count (board Explore1440 footer)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  it("wide: shows the property match total with its scope and run, and Clear resets the filters", async () => {
+    stubWide(true);
+    renderAt("/?lat=30.4394&lng=-97.62&r=5&roof=15");
+    await screen.findByTestId("search-results");
+    const bar = await vi.waitFor(() => {
+      const el = document.querySelector("[data-match-bar]") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(bar.querySelector("[data-match-total]")?.textContent).toBe("1");
+    expect(bar.textContent).toContain("property matches within 5 mi");
+    expect(bar.textContent).toContain("Filters: roof ≥ 15");
+    fireEvent.click(bar.querySelector("button") as HTMLElement);
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-match-bar]")?.textContent).toContain("Filters: none"),
     );
   });
 });

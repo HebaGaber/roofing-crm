@@ -19,6 +19,7 @@
 // WebGL layers, not DOM markers, so they stay fast with a full county. Every colour is an Atlas
 // token, resolved from the DOM.
 import {
+  LngLatBounds,
   Map as MapLibreMap,
   Marker,
   type ExpressionSpecification,
@@ -204,6 +205,8 @@ export interface RoofMarkerPoint {
  *  here — `packages/domain`'s `isLongOpen` is the only source, computed by the caller). */
 export interface PermitMarkerPoint {
   readonly permitCid: string;
+  /** The property the permit belongs to: a click on the marker opens that property. */
+  readonly propertyCid?: string;
   readonly lat: number;
   readonly lng: number;
   readonly statusClass: string | null;
@@ -281,6 +284,12 @@ export interface CrmMapProps {
   /** A hexagon of the county overview was clicked, tapped or activated from the keyboard: search
    *  there (the pin goes to the cell's centre). */
   readonly onHexSelect?: (cell: HexSelection) => void;
+  /** A property marker was clicked or activated from the keyboard: open that property. */
+  readonly onPropertySelect?: (propertyCid: string) => void;
+  /** When true, a new set of results (a changed radius, roof age or permit filter) moves the
+   *  camera to fit them: the map focuses on the centre of the results. Off while a property is
+   *  selected, in AI mode or triage, whose own cameras apply. */
+  readonly focusResults?: boolean;
 }
 
 export interface HexSelection {
@@ -306,13 +315,32 @@ function permitMarkerColor(point: PermitMarkerPoint): string {
 
 /** A DOM marker: a round dot (roof) or a diamond (permit, the legend's "◆"). Colours are CSS
  *  token references, so they follow dark mode with no re-render. */
-function dot(
+export function dot(
   color: string,
   ringed: boolean,
   shape: "round" | "diamond" = "round",
   triage = false,
+  activate?: { readonly label: string; readonly run: () => void },
 ): HTMLDivElement {
   const el = document.createElement("div");
+  if (activate !== undefined) {
+    // A click or Enter/Space on a marker opens its property. The click must not reach the map,
+    // whose own click drops a search pin there (and re-fits the view to its ring).
+    el.setAttribute("role", "button");
+    el.tabIndex = 0;
+    el.setAttribute("aria-label", activate.label);
+    el.style.cursor = "pointer";
+    el.addEventListener("click", (event) => {
+      event.stopPropagation();
+      activate.run();
+    });
+    el.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      event.stopPropagation();
+      activate.run();
+    });
+  }
   if (triage) {
     // The card being triaged: a primary ring around the dot (the board's current-card marker).
     el.className = "is-tri";
@@ -354,6 +382,8 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     focusedPin = null,
     onPinSelect,
     onHexSelect,
+    onPropertySelect,
+    focusResults = false,
     selectedPoint = null,
   }: CrmMapProps,
   ref,
@@ -385,6 +415,8 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   onPinSelectRef.current = onPinSelect;
   const onHexSelectRef = useRef(onHexSelect);
   onHexSelectRef.current = onHexSelect;
+  const onPropertySelectRef = useRef(onPropertySelect);
+  onPropertySelectRef.current = onPropertySelect;
   const pinsRef = useRef(answerPins);
   pinsRef.current = answerPins;
   const onZoomStepChangeRef = useRef(onZoomStepChange);
@@ -556,6 +588,31 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
 
   // Leaving a search for the overview (Escape, Back, "Recentre" with no pin): the camera goes back
   // out to the whole county too, so the hexagons are there to click again.
+  // Search criteria changed (radius, roof age, permit filter): fit the camera to the new results,
+  // so the map is centred on them rather than on the pin's ring. Keyed on the result set, so
+  // re-renders, a selection or a closed drawer never move the camera again.
+  const resultsKey =
+    roofMarkers.length === 0
+      ? ""
+      : `${String(roofMarkers.length)}|${roofMarkers[0]?.propertyCid ?? ""}|${roofMarkers[roofMarkers.length - 1]?.propertyCid ?? ""}`;
+  const lastFocusedKeyRef = useRef("");
+  useEffect(() => {
+    const map = mapRef.current;
+    if (resultsKey === "") lastFocusedKeyRef.current = "";
+    if (map === null || !styleReady || overview || !focusResults || resultsKey === "") return;
+    if (center === null || lastFocusedKeyRef.current === resultsKey) return;
+    lastFocusedKeyRef.current = resultsKey;
+    const bounds = new LngLatBounds();
+    for (const point of roofMarkers) bounds.extend([point.lng, point.lat]);
+    const duration = prefersReducedMotion() ? 0 : 400;
+    if (roofMarkers.length === 1) {
+      map.easeTo({ center: bounds.getCenter(), zoom: 15, duration });
+    } else {
+      map.fitBounds(bounds, { padding: 64, maxZoom: 16, duration });
+    }
+    // roofMarkers is read through resultsKey on purpose: only a changed result set moves the camera.
+  }, [resultsKey, styleReady, overview, focusResults, center?.lat, center?.lng]);
+
   const hadCenterRef = useRef(false);
   useEffect(() => {
     const map = mapRef.current;
@@ -741,7 +798,13 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     if (map === null || !styleReady || !layers.roofs || overview) return;
     for (const point of roofMarkers) {
       const marker = new Marker({
-        element: dot(roofMarkerColor(point), false, "round", point.propertyCid === triageCid),
+        element: dot(roofMarkerColor(point), false, "round", point.propertyCid === triageCid, {
+          label:
+            point.roofAgeYears == null
+              ? "Open this property · no roof age published"
+              : `Open this property · roof ${String(point.roofAgeYears)} yrs`,
+          run: () => onPropertySelectRef.current?.(point.propertyCid),
+        }),
       })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
@@ -760,7 +823,21 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     if (map === null || !styleReady || !layers.permits || overview) return;
     for (const point of permitMarkers) {
       const marker = new Marker({
-        element: dot(permitMarkerColor(point), point.isLongOpen, "diamond"),
+        element: dot(
+          permitMarkerColor(point),
+          point.isLongOpen,
+          "diamond",
+          false,
+          point.propertyCid === undefined
+            ? undefined
+            : {
+                label: `Open this property · ${point.statusClass ?? "open"} permit`,
+                run: () => {
+                  if (point.propertyCid !== undefined)
+                    onPropertySelectRef.current?.(point.propertyCid);
+                },
+              },
+        ),
       })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
