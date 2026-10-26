@@ -237,7 +237,7 @@ Consolidated per ADR (D7): the stricter number wherever the four consults' propo
 | Index fidelity | Index `properties` = manifest `coverage.parcels_published`; permits = published roofing-permit count; difference 0 or each difference documented; **0** rows without provenance; rejects ≤ 0.1% (0 for A-03) | `Validate` step, `porygon` review, `donphan` MCP cross-check after A-14 |
 | Freshness | A validated newer run promoted ≤ 24 h after it appears in `runs/index.json` or `list_runs` (when `AUTO_PROMOTE`) | Daily schedule; `IndexManifestAgeHours` metric |
 | Lead integrity | Duplicate create refused 100%, including 20 concurrent creates (exactly 1 winner); 0 lost updates (a write that targets an already-taken `EVT#{sequence}` is refused, per ADR-04's gapless event sequence, not a mutable `version` attribute); created leads survive a reload 100% | Concurrency test on the deployed table |
-| Agent | First useful answer p95 < 20 s; server abort 23 s; ≤ 3 model calls per ask; 5 asks/min/user; $3/day cap | Golden-query Vitest ×20 against the deployed endpoint |
+| Agent | First useful answer p95 < 20 s; server abort 23 s; ≤ 3 model calls per ask; 5 asks/min/user; $10/day cap | Golden-query Vitest ×20 against the deployed endpoint |
 | Agent groundedness | 100% of cited CIDs exist in the current index; 0 invented addresses, names or ratings; recall ≥ 80% of top-N against `query-core` SQL | Server-side citation gate + golden replay |
 | Cost | Idle cost ≤ $1/month excluding credits-covered requests (search store is DuckDB/S3, ADR-01); budget alerts at **$10 actual / $20 forecast** | AWS Budgets, cost tags `Project=roofing-crm` |
 | Security | JWT on every route except `health.ping`; S3 private (Block Public Access, SSE, `enforceSSL`); no secrets in git, logs, or CDK context; owner names are indexed and shown in the UI but never sent to the model and never logged: the agent strips them with `withoutOwnerName` (ADR-03, amended 2026-10-25) | cdk-nag, log-grep test, review |
@@ -318,6 +318,7 @@ These were raised by one consult and not settled by the others (`docs/decisions/
 - 2026-10-25: ADR-03 amended by the PO: owner name is indexed and shown in the UI, never sent to the model.
 - 2026-10-26: ADR-05 amended to describe what is implemented (manifest CID pinned in SSM).
 - 2026-10-26: reconciled the security NFR row and P0 rule 7 with amended ADR-03 (they still said owner names are never indexed or displayed); added `packages/travis-austin@1.0.0` to the module table and the `RemovalPolicy.DESTROY` demo exception to § 11.
+- 2026-10-26: per-user daily agent spend cap raised from $3 to $10 (1,000 cents) by the PO, so a demo plus the golden-query runs fit one day's budget; the pre-call estimate, atomic reservation and reconcile are unchanged.
 
 ---
 

@@ -1,4 +1,4 @@
-// T016 (Phase 2 Foundational): the `crm-agent-usage` spend-cap guard — $3/day = 300 cents, checked
+// T016 (Phase 2 Foundational): the `crm-agent-usage` spend-cap guard — $10/day = 1000 cents, checked
 // before any model call via one atomic conditional UpdateItem (data-model.md "agent usage /
 // rate+spend guard"), same pattern as leadRepo.ts's `expectedSequence` conditional update.
 // DynamoDB is doubled with aws-sdk-client-mock; nothing reaches AWS.
@@ -41,7 +41,7 @@ describe("spendCap (T016)", () => {
     });
   });
 
-  it("rejects with OverBudgetError when the estimated cost would exceed the $3/day cap, checked before any model call", async () => {
+  it("rejects with OverBudgetError when the estimated cost would exceed the $10/day cap, checked before any model call", async () => {
     ddbMock.on(UpdateCommand).rejects(conditionalCheckFailed());
     const spendCap = makeSpendCap();
 
@@ -60,7 +60,7 @@ describe("spendCap (T016)", () => {
     expect(input?.TableName).toBe("crm-agent-usage");
     expect(input?.Key?.pk).toBe("USER#user-42#DAY#2026-10-24");
     expect(input?.ConditionExpression).toMatch(/attribute_not_exists\(pk\)\s+OR/);
-    expect(DAILY_CAP_CENTS).toBe(300);
+    expect(DAILY_CAP_CENTS).toBe(1000);
     // The condition compares the *pre-reservation* balance against (cap - estimate), so a call
     // that would push the running total over the cap fails before it is ever added.
     expect(input?.ExpressionAttributeValues?.[":threshold"]).toBe(DAILY_CAP_CENTS - 75);

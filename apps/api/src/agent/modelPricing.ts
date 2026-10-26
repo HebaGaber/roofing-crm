@@ -1,5 +1,5 @@
 // CR finding 5 (B-09 review): the one constants module for agent model cost. The spend cap
-// (agent/spendCap.ts, $3/day/user, NFR-001) reserves a conservative estimate before the first model
+// (agent/spendCap.ts, $10/day/user, NFR-001) reserves a conservative estimate before the first model
 // call and reconciles to the real, token-metered cost after the turn; both numbers come from here.
 //
 // Prices are USD per million tokens, Anthropic list price for the model family, and the entry is
@@ -60,7 +60,7 @@ const CENTS_PER_USD = 100;
 export class UnpricedModelError extends Error {
   constructor(readonly modelId: string) {
     super(
-      `modelPricing: no price entry for model "${modelId}" — the $3/day spend cap can't be computed, refusing to run the agent.`,
+      `modelPricing: no price entry for model "${modelId}" — the daily spend cap can't be computed, refusing to run the agent.`,
     );
     this.name = "UnpricedModelError";
   }

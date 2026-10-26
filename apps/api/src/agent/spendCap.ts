@@ -1,4 +1,4 @@
-// NFR-001 / data-model.md "agent usage / rate+spend guard": $3/day = 300 cents, checked (and
+// NFR-001 / data-model.md "agent usage / rate+spend guard": $10/day = 1000 cents (raised from $3 on 2026-10-26, see the amendment history in docs/architecture-constitution.md), checked (and
 // reserved) before any model call via one atomic conditional DynamoDB UpdateItem against
 // `crm-agent-usage` — same conditional-write pattern as leadRepo.ts's `expectedSequence` handling,
 // and the same constructor-injected-client DI seam as `services/leads.ts`'s `createLeadService`.
@@ -16,8 +16,9 @@
 import { UpdateCommand, type DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { isConditionalCheckFailed, OverBudgetError } from "../agentErrors.js";
 
-/** $3/day (data-model.md, NFR-001), in cents. */
-export const DAILY_CAP_CENTS = 300;
+/** $10/day per user (NFR-001; raised from $3 on 2026-10-26 so a demo plus the golden-query runs fit
+ *  one day's budget), in cents. */
+export const DAILY_CAP_CENTS = 1000;
 
 /** Items are harmless to keep past their day; TTL just reclaims storage (data-model.md). */
 const ITEM_TTL_SECONDS = 2 * 24 * 60 * 60;
@@ -40,7 +41,7 @@ export interface SpendReservation {
 
 export interface SpendCap {
   /** Throws `OverBudgetError` when `estimatedCostCents` would push the user's running UTC-day
-   *  total over the $3/day cap; otherwise atomically reserves it against that total. */
+   *  total over the $10/day cap; otherwise atomically reserves it against that total. */
   reserve(userId: string, estimatedCostCents: number): Promise<SpendReservation>;
   /** Replaces a reservation with the turn's measured cost (never conditional on the cap: the
    *  money is already spent, so the record must reflect it). */

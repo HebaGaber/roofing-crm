@@ -24,7 +24,7 @@ export class RateLimitedError extends Error {
   }
 }
 
-/** A call whose estimated cost would push the caller's running UTC-day total over the $3/day cap
+/** A call whose estimated cost would push the caller's running UTC-day total over the $10/day cap
  *  (checked before any model call, never after). `code` is the DynamoDB cancellation reason. */
 export class OverBudgetError extends Error {
   readonly code = "ConditionalCheckFailed";
@@ -33,7 +33,7 @@ export class OverBudgetError extends Error {
     readonly userId: string,
     readonly resetsAt: string,
   ) {
-    super(`User ${userId} would exceed the $3/day agent spend cap`);
+    super(`User ${userId} would exceed the $10/day agent spend cap`);
     this.name = "OverBudgetError";
   }
 }
