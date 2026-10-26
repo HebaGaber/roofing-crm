@@ -1,6 +1,6 @@
 # Roofing CRM, Travis County TX: all five stories built and proven on a hosted URL
 
-> **Draft.** Stories B-01, B-02, B-03, B-07 and B-09 are built, reviewed and merged (`--no-ff`, one merge per story). Since 2026-10-26 the app serves Task A's full-county **Run 3.1** (contract v1.2: street addresses and owner mailing ZIPs) at **https://crm.aldarraj.com**. A whole-repo review by eight kit agents and an evaluator self-score ran on 2026-10-26 (see Progress since the last update); the fixes it found are on the branch. Still to do before this is ready for final review: the demo video and marking the PR ready.
+> Stories B-01, B-02, B-03, B-07 and B-09 are built, reviewed and merged (`--no-ff`, one merge per story). Since 2026-10-26 the app serves Task A's full-county **Run 3.1** (contract v1.2: street addresses and owner mailing ZIPs) at **https://crm.aldarraj.com**. A whole-repo review by eight kit agents and an evaluator self-score ran on 2026-10-26 (see Progress since the last update); the fixes it found are on the branch. Still to do before this is ready for final review: the demo video and marking the PR ready.
 
 ## Outcome
 
@@ -93,6 +93,22 @@ The work follows the assessment guide's gated, story-by-story loop. Nothing was 
 | Defects | Every recorded defect has a file, a root cause and a regression test; the ones found only on the live stack are listed in the Verification table | [`docs/defects/`](https://github.com/HebaGaber/roofing-crm/tree/feature/roofing-crm/docs/defects/) |
 
 What was **not** proven is listed under Known gaps, not hidden: the demo video is not recorded, nine test cases from B-09 were approved by the PO as exceptions, and the BBB rating and verified contractors do not exist in Task A's data.
+
+## How to redeploy and where the data comes from
+
+The data is Task A's published manifest, named by `DATA_MANIFEST_CID` (currently `bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai`, run `travis-full-run3-1-20261025`). The sync fetches it and every part by CID (CloudFront, then Filebase, then Pinata), checks each against its SHA-256, and promotes the index only if every check passes; the manifest CID is recorded on every index row and every lead. Requests never go to Task A at run time.
+
+To deploy from a clean checkout (AWS profile `assess`, account 515618610572, region `eu-north-1`):
+
+```text
+eval "$(aws configure export-credentials --profile assess --format env)"
+cd infra
+AWS_REGION=eu-north-1 CDK_DEFAULT_REGION=eu-north-1 CDK_DEFAULT_ACCOUNT=515618610572 \
+DATA_MANIFEST_CID=<manifest cid> AI_PROVIDER=bedrock AGENT_MODEL_ID=eu.anthropic.claude-sonnet-4-6 \
+npx cdk deploy --all --require-approval never
+```
+
+The web app deploys from the branch through Amplify. A deploy starts one sync; moving to a new Task A run means changing `DATA_MANIFEST_CID` (also the GitHub variable) and deploying. Rollback, forced rebuild, alarms and the DLQ are in [`docs/runbook.md`](https://github.com/HebaGaber/roofing-crm/blob/feature/roofing-crm/docs/runbook.md); `scripts/sync-ops.sh` gives one-command status, rollback and replay.
 
 ## Architecture
 

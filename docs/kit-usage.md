@@ -74,3 +74,15 @@ Each agent reviewed the whole repository read-only at commit 96b85a3 (a targeted
 Everything the review found that is not fixed is listed in [`docs/pending-items.md`](pending-items.md) section 3. Every reviewer score on record is now 75 or higher.
 
 An independent README and demo walk-through (live, read-only) and two evaluator self-scores by `slowking` ran the same day; their findings and fixes are in the PR text (Progress since the last update).
+
+## Fix rounds after the stories merged (2026-10-26)
+
+After the whole-repo review the fixes were made by general-purpose agents working to the findings of the kit agent that owns each area; only the style cleanup ran as a kit builder (`audino`). The owning kit agent re-scored where its score was below 75.
+
+| Fix round | Owning kit agent (findings) | Who made it | Re-check |
+| --- | --- | --- | --- |
+| Permit filter in SQL before the page, "Open" includes stalled, finished permits are not live | `porygon` (one rule everywhere), `metagross` | general-purpose agents | Unit tests on real Parquet; hosted suites; golden queries 48 of 48 |
+| Agent: owner-area filter, roof-age basis wording, A3 planning, no place inheritance, stalled wording | `alakazam`, `ash` | general-purpose agents | Stubbed-model tests; golden queries 48 of 48 |
+| Alarms, named failure state, memory alarm, rollback and replay script, runbook | `machamp`, `espeon` | Claude (infra tests) | `machamp` re-scored 79 |
+| Responsive tests, tap-target CSS | `smeargle` | general-purpose agents | `smeargle` re-scored 83 |
+| Tokens, mobile-first queries, focus-ring tests | `audino` | `audino` (builder) | Web unit tests; hosted suites |
