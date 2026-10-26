@@ -196,6 +196,9 @@ importers:
       '@crm/oracle-contract':
         specifier: workspace:*
         version: link:../../packages/oracle-contract
+      '@crm/oracle-views':
+        specifier: workspace:*
+        version: link:../../packages/oracle-views
       '@crm/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -5801,7 +5804,7 @@ snapshots:
       obug: 3.0.0
       std-env: 4.3.0
       tinyrainbow: 3.2.0
-      vitest: 5.0.5(@types/node@22.10.5)(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(@types/node@22.10.5)(tsx@4.19.2))
+      vitest: 5.0.5(@vitest/coverage-v8@5.0.5)(jsdom@25.0.1)(vite@8.3.5(tsx@4.19.2))
 
   '@vitest/istanbul-lib-coverage@1.0.2': {}
 

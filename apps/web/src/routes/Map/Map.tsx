@@ -25,7 +25,7 @@
 // only the fallback when that overview cannot be read (the legend says so). The first-visit
 // "What can I ask?" card (components/Onboarding) floats over the map area.
 import { useTRPC } from "@crm/api-client/react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useCallback,
   useEffect,
@@ -70,6 +70,7 @@ import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
 import { ResultsList } from "./ResultsList.js";
 import { ResultsSheet } from "./ResultsSheet.js";
+import type { ExactLookupResult } from "./SearchBox.js";
 import { TopBar } from "./TopBar.js";
 import { TriageStack } from "./Triage/index.js";
 import { AskPanel } from "../Ask/AskPanel.js";
@@ -317,6 +318,44 @@ export function Component(): ReactElement {
       setSearchParams((prev) => patchMapParams(prev, { sel: propertyCid }));
     },
     [setSearchParams],
+  );
+
+  // The top-bar search box: a chosen place or ZIP centres the radius search like a pin drop does
+  // (the radius in the URL is kept); a found permit or TCAD account opens its property.
+  const queryClient = useQueryClient();
+  const searchCentre = useCallback(
+    (point: LatLng) => {
+      setFromHex(false);
+      setPinMode(false);
+      setAccuracyM(null);
+      setFromGps(false);
+      setSearchParams((prev) =>
+        patchMapParams(prev, { lat: point.lat, lng: point.lng, sel: null }),
+      );
+    },
+    [setSearchParams],
+  );
+  const searchOpenProperty = useCallback(
+    (propertyCid: string, point: LatLng) => {
+      setFromHex(false);
+      setPinMode(false);
+      setAccuracyM(null);
+      setFromGps(false);
+      setSearchParams((prev) =>
+        patchMapParams(prev, { lat: point.lat, lng: point.lng, sel: propertyCid }),
+      );
+    },
+    [setSearchParams],
+  );
+  // Called only when a permit/TCAD option is chosen, so nothing is requested while typing.
+  const searchLookup = useCallback(
+    (kind: "permit" | "tcad", value: string): Promise<ExactLookupResult> =>
+      queryClient.fetchQuery(
+        kind === "permit"
+          ? trpc.search.byPermitNumber.queryOptions({ value })
+          : trpc.search.byTcadId.queryOptions({ value }),
+      ),
+    [queryClient, trpc],
   );
 
   const closeDetail = useCallback(() => {
@@ -652,7 +691,7 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <div className={styles.top}>
-        <TopBar />
+        <TopBar onCentre={searchCentre} onOpenProperty={searchOpenProperty} lookup={searchLookup} />
       </div>
       <div
         className={styles.controls}

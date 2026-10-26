@@ -7,26 +7,6 @@
   padding: var(--space-4) var(--space-4) 0;
 }
 
-.search {
-  display: flex;
-  flex: 1 1 240px;
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 48px;
-  padding: 0 var(--space-4);
-  border-radius: var(--md-sys-shape-corner-full);
-  background: var(--md-sys-color-surface-container-high);
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.placeholder {
-  overflow: hidden;
-  font-family: var(--md-sys-typescale-body-large-font);
-  font-size: var(--md-sys-typescale-body-large-size);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .county {
   display: inline-flex;
   align-items: center;
