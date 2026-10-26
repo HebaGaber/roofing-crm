@@ -176,7 +176,8 @@ export function leadsMapHref(query: LeadQuery): string {
     params.set("lng", String(query.center.lng));
     params.set("r", String(query.radiusMi));
   }
-  if (query.roofAgeMinYears !== undefined) params.set("roof", String(query.roofAgeMinYears));
+  // The map defaults to roofs of 15+ years, so "no roof filter" on the list is sent as `any`.
+  params.set("roof", query.roofAgeMinYears === undefined ? "any" : String(query.roofAgeMinYears));
   if (query.permitStatus !== undefined) params.set("permits", "1");
   const search = params.toString();
   return search === "" ? "/map" : `/map?${search}`;

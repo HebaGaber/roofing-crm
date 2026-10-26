@@ -543,7 +543,7 @@ describe("Map route county overview (search.countyOverview)", () => {
   it("with no centre, loads the whole county at the opening zoom and hands its cells to the map", async () => {
     renderAt("/");
     await screen.findByText(/Hexagons cover the whole county: 120 properties/);
-    expect(overviewCalls[0]).toEqual({ zoom: 9, permits: true });
+    expect(overviewCalls[0]).toEqual({ zoom: 9, roofAgeMinYears: 15, permits: true });
     expect(lastOverviewCells?.map((c) => c.count)).toEqual([120]);
     expect(lastOverviewPermits?.map((p) => p.permits)).toEqual([5]);
     expect(screen.getByText(/5 not on the map: no coordinates published/)).not.toBeNull();
@@ -906,10 +906,33 @@ describe("Map route filter pane match count (board Explore1440 footer)", () => {
     expect(bar.querySelector("[data-match-total]")?.textContent).toBe("1");
     expect(bar.textContent).toContain("property matches within 5 mi");
     expect(bar.textContent).toContain("Filters: roof ≥ 15");
-    fireEvent.click(bar.querySelector("button") as HTMLElement);
+    // Clear is disabled while everything is at its default (roof 15, nothing else).
+    expect((bar.querySelector("button") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "25", hidden: true }));
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-match-bar]")?.textContent).toContain(
+        "Filters: roof ≥ 25",
+      ),
+    );
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true })).getByRole(
+        "button",
+        { name: "Any", hidden: true },
+      ),
+    );
     await vi.waitFor(() =>
       expect(document.querySelector("[data-match-bar]")?.textContent).toContain("Filters: none"),
     );
+    expect(screen.getByTestId("url-search").textContent).toContain("roof=any");
+    fireEvent.click(
+      document.querySelector("[data-match-bar] button:not([disabled])") as HTMLElement,
+    );
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-match-bar]")?.textContent).toContain(
+        "Filters: roof ≥ 15",
+      ),
+    );
+    expect(screen.getByTestId("url-search").textContent).not.toContain("roof=");
   });
 });
 
@@ -1470,7 +1493,7 @@ describe("Map route owner filters (tenure, out-of-area)", () => {
     expect(propertyInputs).toContainEqual({
       center: { lat: 30.4394, lng: -97.62 },
       radiusMi: 5,
-      roofAgeMinYears: undefined,
+      roofAgeMinYears: 15,
       tenureYearsMin: 10,
     });
     cleanup();
@@ -1479,6 +1502,41 @@ describe("Map route owner filters (tenure, out-of-area)", () => {
     await screen.findByTestId("search-results");
     expect(propertyInputs.every((i) => !("tenureYearsMin" in (i as object)))).toBe(true);
     expect(propertyInputs.every((i) => !("outOfArea" in (i as object)))).toBe(true);
+  });
+
+  it("roof age defaults to 15 on load, roof=any means no filter, and both reach search.properties", async () => {
+    stubWide(true);
+    renderAt(PIN);
+    await screen.findByTestId("search-results");
+    expect(
+      propertyInputs.every((i) => (i as { roofAgeMinYears?: number }).roofAgeMinYears === 15),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "15", hidden: true }).getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true }))
+        .getByRole("button", { name: "Any", hidden: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
+    cleanup();
+    propertyInputs.length = 0;
+    renderAt(`${PIN}&roof=any`);
+    await screen.findByTestId("search-results");
+    expect(propertyInputs.length).toBeGreaterThan(0);
+    expect(
+      propertyInputs.every(
+        (i) => (i as { roofAgeMinYears?: number }).roofAgeMinYears === undefined,
+      ),
+    ).toBe(true);
+    expect(
+      within(screen.getByRole("group", { name: "Roof age threshold", hidden: true }))
+        .getByRole("button", { name: "Any", hidden: true })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("button", { name: "15", hidden: true }).getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 
   it("an invalid tenure is dropped, never clamped", async () => {
@@ -1556,7 +1614,7 @@ describe("Map route permit filters are part of the shareable URL", () => {
       expect(url.get("roof")).toBe("15");
       expect(url.get("permit")).toBe("open");
     });
-    fireEvent.click(within(group).getByRole("button", { name: "Any" }));
+    fireEvent.click(within(group).getByRole("button", { name: "Any", hidden: true }));
     await vi.waitFor(() =>
       expect(screen.getByTestId("url-search").textContent ?? "").not.toContain("permit"),
     );

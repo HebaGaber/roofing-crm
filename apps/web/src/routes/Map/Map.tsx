@@ -68,6 +68,7 @@ import {
   parseMapQuery,
   patchMapParams,
   RADIUS_BOUNDS,
+  ROOF_ANY,
 } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
@@ -388,7 +389,7 @@ export function Component(): ReactElement {
 
   const setRoofAgeMinYears = useCallback(
     (value: number | undefined) => {
-      setSearchParams((prev) => patchMapParams(prev, { roof: value ?? null }));
+      setSearchParams((prev) => patchMapParams(prev, { roof: value ?? ROOF_ANY }));
     },
     [setSearchParams],
   );
@@ -479,7 +480,7 @@ export function Component(): ReactElement {
           lat: view.lat,
           lng: view.lng,
           r: view.radiusMi,
-          roof: view.roofAgeMinYears ?? null,
+          roof: view.roofAgeMinYears ?? ROOF_ANY,
           sel: null,
         }),
       );

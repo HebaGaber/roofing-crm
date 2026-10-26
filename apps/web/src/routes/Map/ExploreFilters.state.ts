@@ -7,15 +7,23 @@
 // file's location/name (tasks.md T023a).
 //
 // URL keys: `lat`,`lng` (the search center pin/GPS point), `r` (radiusMi, 0.5-25),
-// `roof` (roofAgeMinYears), `tenure` (tenureYearsMin, whole years 0-100), `ooa` (out-of-area
+// `roof` (roofAgeMinYears; PO decision 2026-10-26: absent = DEFAULT_ROOF_AGE_YEARS (15), `any` =
+// no roof filter, a whole number = that threshold), `tenure` (tenureYearsMin, whole years 0-100), `ooa` (out-of-area
 // owner, "1" or "true"), `permit` (permit status filter, "open" or "stalled"; absent = any),
 // `permitYrs` (permit open at least this many whole years, 0-100), `permits` (permit-view toggle,
 // "1"), `sel` (the selected
 // propertyCid, opens the detail drawer). Values outside bounds are dropped, never clamped into a
 // different question (FR-001/FR-003, matching the pattern the original file used).
-import { DEFAULT_RADIUS_MI, MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
+import {
+  DEFAULT_RADIUS_MI,
+  DEFAULT_ROOF_AGE_YEARS,
+  MAX_RADIUS_MI,
+  MIN_RADIUS_MI,
+} from "@crm/domain";
 
-export { DEFAULT_RADIUS_MI };
+export { DEFAULT_RADIUS_MI, DEFAULT_ROOF_AGE_YEARS };
+/** The URL value that means "no roof-age filter" (an explicit choice that survives reload). */
+export const ROOF_ANY = "any";
 export const RADIUS_BOUNDS: readonly [number, number] = [MIN_RADIUS_MI, MAX_RADIUS_MI];
 /** Upper bound of the owner-tenure filter (years); a value above it is dropped, not clamped. */
 export const MAX_TENURE_YEARS = 100;
@@ -65,13 +73,13 @@ function parseRadius(params: URLSearchParams): number {
 
 function parseRoofAgeMinYears(params: URLSearchParams): number | undefined {
   const raw = params.get("roof");
-  if (raw === null || raw.trim() === "") return undefined;
+  // Absent (or blank) is the default question: roofs of 15 years or more (README, PO 2026-10-26).
+  if (raw === null || raw.trim() === "") return DEFAULT_ROOF_AGE_YEARS;
+  if (raw.trim().toLowerCase() === ROOF_ANY) return undefined;
   const value = Number(raw);
-  // Values outside bounds are dropped (no filter), never clamped into a different question
-  // (header comment above, FR-001/FR-003) — an invalid/negative/non-integer value must NOT fall
-  // back to DEFAULT_ROOF_AGE_YEARS, which would silently apply a filter the URL never asked for
-  // (found in review, CR-B-03).
-  return Number.isInteger(value) && value >= 0 ? value : undefined;
+  // A value that is not a whole number >= 0 is dropped, never clamped into a different question:
+  // it falls back to the default, exactly what an absent param means.
+  return Number.isInteger(value) && value >= 0 ? value : DEFAULT_ROOF_AGE_YEARS;
 }
 
 function parseTenureYearsMin(params: URLSearchParams): number | undefined {
@@ -118,7 +126,8 @@ export type MapQueryPatch = Partial<{
   lat: number | null;
   lng: number | null;
   r: number | null;
-  roof: number | null;
+  /** A threshold, "any" (explicit no filter) or null (remove the key: the default of 15). */
+  roof: number | typeof ROOF_ANY | null;
   tenure: number | null;
   ooa: boolean | null;
   permit: "open" | "stalled" | null;

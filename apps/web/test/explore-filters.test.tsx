@@ -24,11 +24,29 @@ describe("parseMapQuery", () => {
     expect(query.roofAgeMinYears).toBe(15);
   });
 
-  it("defaults to no center and the default radius when the URL has none", () => {
+  it("defaults to no center, the default radius and the 15-year roof filter when the URL has none", () => {
     const query = parseMapQuery(params(""));
     expect(query.center).toBeNull();
     expect(query.radiusMi).toBe(DEFAULT_RADIUS_MI);
-    expect(query.roofAgeMinYears).toBeUndefined();
+    expect(query.roofAgeMinYears).toBe(DEFAULT_ROOF_AGE_YEARS);
+    expect(query.roofAgeMinYears).toBe(15);
+    expect(parseMapQuery(params("roof=")).roofAgeMinYears).toBe(15);
+  });
+
+  it("roof=any is an explicit no-filter state and round-trips; a number round-trips too", () => {
+    expect(parseMapQuery(params("roof=any")).roofAgeMinYears).toBeUndefined();
+    expect(parseMapQuery(params("roof=ANY")).roofAgeMinYears).toBeUndefined();
+    for (const years of [10, 13, 20, 25, 17, 0]) {
+      const set = patchMapParams(params(""), { roof: years });
+      expect(parseMapQuery(set).roofAgeMinYears).toBe(years);
+    }
+    const any = patchMapParams(params("lat=30&lng=-97"), { roof: "any" });
+    expect(any.get("roof")).toBe("any");
+    expect(parseMapQuery(new URLSearchParams(any.toString())).roofAgeMinYears).toBeUndefined();
+    // null removes the key, which is the default of 15 again (what Clear does).
+    const cleared = patchMapParams(any, { roof: null });
+    expect(cleared.has("roof")).toBe(false);
+    expect(parseMapQuery(cleared).roofAgeMinYears).toBe(15);
   });
 
   it("FR-001: drops a radius outside 0.5-25, never clamps it into a different value silently kept", () => {
@@ -52,13 +70,12 @@ describe("parseMapQuery", () => {
     expect(DEFAULT_ROOF_AGE_YEARS).toBe(15);
   });
 
-  it("drops an invalid/out-of-bounds roof-age value (undefined, never clamped to the default)", () => {
-    // header comment's own rule: "values outside bounds are dropped, never clamped into a
-    // different question" — a negative or non-integer `roof` must not silently become
-    // DEFAULT_ROOF_AGE_YEARS's filter (found in review, CR-B-03).
-    expect(parseMapQuery(params("roof=-5")).roofAgeMinYears).toBeUndefined();
-    expect(parseMapQuery(params("roof=abc")).roofAgeMinYears).toBeUndefined();
-    expect(parseMapQuery(params("roof=1.5")).roofAgeMinYears).toBeUndefined();
+  it("drops an invalid roof-age value to the default (what an absent param means), never clamps it", () => {
+    // Values outside bounds are dropped, never clamped into a different question: a negative or
+    // non-integer `roof` is read as if the param were absent (the 15-year default).
+    expect(parseMapQuery(params("roof=-5")).roofAgeMinYears).toBe(DEFAULT_ROOF_AGE_YEARS);
+    expect(parseMapQuery(params("roof=abc")).roofAgeMinYears).toBe(DEFAULT_ROOF_AGE_YEARS);
+    expect(parseMapQuery(params("roof=1.5")).roofAgeMinYears).toBe(DEFAULT_ROOF_AGE_YEARS);
   });
 });
 
