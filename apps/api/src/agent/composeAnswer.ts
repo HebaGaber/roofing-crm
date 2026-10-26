@@ -38,6 +38,7 @@ import {
   classifyPlaceConfidence,
   isOutboundConstraint,
   OUTBOUND_CONSTRAINT,
+  PLACE_CONFIDENCE_BANDS,
   QueryPlan as QueryPlanSchema,
   type AgentAnswer,
   type AnswerRow,
@@ -57,6 +58,7 @@ import { nearestPlace, rankCandidates } from "../services/agent/placeResolver.js
 import {
   extractJsonObject,
   narrowedPlace,
+  scanQuestionForNamedPlace,
   scanQuestionForArea,
   scanQuestionForRadius,
 } from "./placeScan.js";
@@ -1290,6 +1292,41 @@ const PERMIT_NUMBER_IN_TEXT = /\b\d{4}-\d{3,}\b/;
 const AGED_PERMIT_WORDS =
   /\b(oldest|longest|most\s+(?:overdue|delayed|stalled)|worst|older|aged|stalled|open(?:ed)?)\b/i;
 
+/** When the question names a place (after "miles of", "near", "in") that is not the plan's own
+ *  area, the named place decides the area: a gazetteer place replaces the plan's, and a place the
+ *  gazetteer cannot place with confidence (Houston, Dallas) is refused instead of searching
+ *  whatever area the plan carries. Undefined when the question names no place (or the plan kept
+ *  it), so a question without a place keeps its default behaviour. */
+async function namedPlaceDecision(
+  plan: QueryPlan,
+  question: string,
+  resolver: PlaceResolver,
+): Promise<
+  | {
+      readonly refuse: "out_of_scope" | "needs_clarification";
+      readonly candidates?: readonly Candidate[];
+    }
+  | { readonly useQuery: string }
+  | undefined
+> {
+  if (plan.area.kind !== "place") return undefined;
+  const named = scanQuestionForNamedPlace(question);
+  if (named === undefined) return undefined;
+  if (plan.area.query.trim().toLowerCase() === named.toLowerCase()) return undefined;
+  if (gazetteer.lookup(named).status === "found") return { useQuery: named };
+  if (narrowedPlace(named) !== undefined) return { useQuery: named };
+  const scope = await checkScope({ ...plan.area, query: named }, { placeResolver: resolver });
+  if (scope.status === "in_scope") return { useQuery: named };
+  // A close misspelling the rep can confirm; anything weaker is not a Travis County place.
+  if (
+    scope.status === "needs_clarification" &&
+    (scope.candidates[0]?.score ?? 0) >= PLACE_CONFIDENCE_BANDS.autoMinScore
+  ) {
+    return { refuse: "needs_clarification", candidates: scope.candidates };
+  }
+  return { refuse: "out_of_scope" };
+}
+
 /** A permit lookup needs a permit number. "The oldest stalled permit within 2 miles of Austin" has
  *  none, so a `lookup_permit` plan for it can only ever answer not_found. When the plan carries no
  *  permit number and the question names none, asks for an oldest/longest/stalled/open permit and
@@ -1778,6 +1815,21 @@ export async function runAsk(input: RunAskInput): Promise<AgentAnswer> {
       gathered = await gatherPermits(plan, travis, true, dispatch, permitNumber);
       if (gathered.counts.matched === 0) return blocked("not_found", 1);
     } else {
+      // The area the rep named must be the area searched. A place typed in the question that the
+      // gazetteer cannot place inside Travis County (Houston, Dallas) is refused here, even when
+      // the plan swapped in another place (live Run 3.1 X2: "within 5 miles of Houston" planned as
+      // Austin). Never a silent substitution.
+      const decision = await namedPlaceDecision(plan, question, placeResolver);
+      if (decision !== undefined && "refuse" in decision) {
+        return blocked(decision.refuse, 0, decision.candidates);
+      }
+      if (decision !== undefined) {
+        plan = {
+          ...plan,
+          area: { ...plan.area, query: decision.useQuery },
+          slotSources: { ...plan.slotSources, area: "stated" },
+        };
+      }
       const scope = await checkScope(plan.area, { placeResolver });
       if (scope.status === "needs_clarification") {
         return blocked("needs_clarification", 0, scope.candidates);
