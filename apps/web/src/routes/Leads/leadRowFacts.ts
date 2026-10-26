@@ -2,6 +2,7 @@
 // snapshot `leads.list` returns beside each lead (`signals`, `lastActivity`). Both fields are new
 // on the API: a list from an older API, or a lead whose snapshot was never stored, has neither, and
 // then every cell says why instead of showing a value (constitution: never invent, show the reason).
+import { DAYS_PER_YEAR } from "@crm/domain";
 import type { LeadLastActivity, LeadSignals } from "@crm/shared";
 import { roofAgeBasisLabel, roofAgeConfidenceLabel } from "../../format/index.js";
 import { humanizeCode, permitStatusLabel } from "../../format/labels.js";
@@ -29,7 +30,7 @@ export function roofBasisText(code: string): string {
 
 /** `6.4 yrs` from a day count (the age of an open permit). */
 export function openYearsText(days: number): string {
-  return `${(days / 365).toFixed(1)} yrs`;
+  return `${(days / DAYS_PER_YEAR).toFixed(1)} yrs`;
 }
 
 type SignalsIn = LeadSignals | null | undefined;

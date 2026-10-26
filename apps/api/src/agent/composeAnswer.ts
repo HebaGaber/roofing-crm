@@ -25,7 +25,7 @@
 //  - `needs_clarification` returns the resolver's top candidates (finding 7).
 //  - Slots the plan marks `inherited` take the thread's last plan's values (finding 8 remainder).
 import { gazetteer } from "@crm/oracle-views";
-import { distanceMeters, milesToMeters, TRAVIS_COUNTY_BBOX } from "@crm/domain";
+import { DAYS_PER_YEAR, distanceMeters, milesToMeters, TRAVIS_COUNTY_BBOX } from "@crm/domain";
 import { z } from "zod";
 import {
   classifyPlaceConfidence,
@@ -725,7 +725,7 @@ function permitRow(
     facts: {
       numbers: [
         ...present([permit.openDays]),
-        ...(permit.openDays === null ? [] : [permit.openDays / 365]),
+        ...(permit.openDays === null ? [] : [permit.openDays / DAYS_PER_YEAR]),
         ...dateParts(
           permit.issueDate,
           permit.finalDate,

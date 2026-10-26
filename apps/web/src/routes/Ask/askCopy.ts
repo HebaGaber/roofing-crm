@@ -5,6 +5,7 @@
 // CrmAskNotFound390, CrmAskLowConf390, CrmAskThrottled390, CrmAskPaused390 / CrmAgentPaused390,
 // CrmAskSlow390 / CrmAgentSlow390/1440, CrmAskCreateFailed390 (all `dc-import` the shared
 // Explore1440 board with a `crmask*` / `ai*` preset).
+import { DAYS_PER_YEAR } from "@crm/domain";
 import { AGENT_TURN_LIMIT_MS, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
 import { formatUtc } from "@crm/ui";
@@ -307,7 +308,6 @@ type Row = NonNullable<AgentAnswer["rows"]>[number];
 type Citation = AgentAnswer["citations"][number];
 
 const NO_SIGNAL = "No roof or permit signal published";
-const DAYS_PER_YEAR = 365.25;
 
 /** "near Pflugerville · 1.3 mi", only when the server sent the row's nearest place. */
 export function rowNearText(row: Row): string | undefined {

@@ -17,7 +17,7 @@
 // `apps/api/test/services/agent/toolsImportGuard.test.ts`, which greps this file's own source for
 // those two identifiers by name); only `apps/api/src/routers/agent.ts`'s separate, rep-triggered
 // `confirmLead` mutation is allowed to reach that call.
-import { leadKey } from "@crm/domain";
+import { leadKey, yearsToDays } from "@crm/domain";
 import { gazetteer } from "@crm/oracle-views";
 import type { PlaceResolver } from "@crm/shared";
 import type { LeadIndex, PropertyResult } from "../../adapters/duckDbParquet.js";
@@ -163,7 +163,7 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
       radiusMi,
       ...(permitNumber === undefined ? {} : { permitNumber }),
       ...(statusClass === undefined ? {} : { statusClass }),
-      ...(openYearsMin === undefined ? {} : { openDaysMin: Math.ceil(openYearsMin * 365) }),
+      ...(openYearsMin === undefined ? {} : { openDaysMin: yearsToDays(openYearsMin) }),
       limit: MAX_COMPACT_ROWS,
     });
     return withoutOwnerName({

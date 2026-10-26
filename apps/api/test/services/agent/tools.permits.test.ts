@@ -70,7 +70,7 @@ describe("agent permit tools (GAP-1)", () => {
     });
     expect(calls[0]).toMatchObject({
       statusClass: ["open", "stalled"],
-      openDaysMinimum: 1825,
+      openDaysMinimum: 1827,
       radiusMi: 5,
       limit: 25,
     });
