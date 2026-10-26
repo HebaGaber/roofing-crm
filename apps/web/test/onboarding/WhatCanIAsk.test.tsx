@@ -175,3 +175,26 @@ describe("WhatCanIAsk card", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
+
+describe("a card question asks at once, only because of the click", () => {
+  it("the link carries in-app askNow state with the prefilled URL, so a pasted URL alone only prefills", async () => {
+    const { useLocation } = await import("react-router");
+    const Probe = (): React.ReactElement => {
+      const loc = useLocation();
+      return (
+        <output data-testid="loc">{`${loc.pathname}${loc.search}|${JSON.stringify(loc.state)}`}</output>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={["/?first=1"]}>
+        <WhatCanIAsk />
+        <Probe />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("loc").textContent).toBe("/?first=1|null");
+    fireEvent.click(screen.getByRole("link", { name: new RegExp(EXAMPLE_QUESTIONS[0] as string) }));
+    const text = screen.getByTestId("loc").textContent ?? "";
+    expect(text).toContain("mode=ai");
+    expect(text.endsWith('|{"askNow":true}')).toBe(true);
+  });
+});

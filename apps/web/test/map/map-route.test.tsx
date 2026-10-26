@@ -202,6 +202,14 @@ const opts = (key: string, fn: () => unknown) => (input: unknown) => ({
 
 vi.mock("@crm/api-client/react", () => ({
   useTRPC: () => ({
+    shell: {
+      appLinks: {
+        queryOptions: () => ({
+          queryKey: ["shell.appLinks"],
+          queryFn: async () => ({ countyLensUrl: "https://lens.test" }),
+        }),
+      },
+    },
     leads: {
       presence: {
         queryOptions: (input: { requestIdentifiers: string[] }) => ({
@@ -310,7 +318,7 @@ function LocationProbe(): ReactElement {
   return <output data-testid="url-search">{search}</output>;
 }
 
-function renderAt(url: string): HTMLElement {
+function renderAt(url: string | { pathname: string; search: string; state: unknown }): HTMLElement {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response("{}")),
@@ -800,6 +808,74 @@ describe("Map route AI mode (mode=ai&q=)", () => {
     ],
   };
   const aiProps = (): Record<string, unknown> => lastPanelProps as Record<string, unknown>;
+
+  it("a card or 'Ask about it' click (askNow state) hands the panel a one-shot ask; a URL q alone never does", async () => {
+    renderAt({
+      pathname: "/",
+      search: "?mode=ai&q=Tell%20me%20about%20TCAD%20181990",
+      state: { askNow: true },
+    });
+    await screen.findByTestId("ask-panel");
+    await vi.waitFor(() =>
+      expect(aiProps().autoAsk).toMatchObject({ text: "Tell me about TCAD 181990" }),
+    );
+    expect(typeof (aiProps().autoAsk as { nonce: number }).nonce).toBe("number");
+    // Consumed by the panel: dropped, and not re-created by a re-render.
+    act(() =>
+      (aiProps().onAutoAskConsumed as (n: number) => void)(
+        (aiProps().autoAsk as { nonce: number }).nonce,
+      ),
+    );
+    await vi.waitFor(() => expect(aiProps().autoAsk).toBeNull());
+  });
+
+  it("a pasted or reloaded URL with q (no click state) prefills only: no ask is handed to the panel", async () => {
+    renderAt("/?mode=ai&q=Tell%20me%20about%20TCAD%20181990");
+    await screen.findByTestId("ask-panel");
+    expect(aiProps().initialQuestion).toBe("Tell me about TCAD 181990");
+    expect(aiProps().autoAsk).toBeNull();
+  });
+
+  it("List view with an answer lists the answer's rows, labelled; Show filter results goes back; a new answer returns; clearing falls back", async () => {
+    renderAt("/?mode=ai&view=list&lat=30.4394&lng=-97.62&r=5");
+    await vi.waitFor(() => expect(typeof aiProps().onAnswer).toBe("function"));
+    expect(screen.getByTestId("candidate-list")).toBeTruthy();
+    const withRows = {
+      ...ANSWER,
+      counts: {
+        matched: 120,
+        shown: 1,
+        excludedNoCoordinates: 0,
+        excludedNoRoofDate: 0,
+        truncated: true,
+      },
+      missing: [],
+      rows: [
+        {
+          propertyCid: "bafkreia",
+          tcadId: "0201885122",
+          citationId: 1,
+          lat: 30.4,
+          lon: -97.6,
+          missing: [],
+        },
+      ],
+    };
+    act(() =>
+      (aiProps().onAnswer as (a: unknown, q?: string) => void)(withRows, "roofs near Manor"),
+    );
+    await screen.findByText("From your question: roofs near Manor");
+    expect(screen.queryByTestId("candidate-list")).toBeNull();
+    expect(screen.getByText("120")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show filter results" }));
+    await screen.findByTestId("candidate-list");
+    act(() =>
+      (aiProps().onAnswer as (a: unknown, q?: string) => void)(withRows, "roofs near Manor 2"),
+    );
+    await screen.findByText("From your question: roofs near Manor 2");
+    act(() => (aiProps().onAnswer as (a: unknown) => void)(null));
+    await screen.findByTestId("candidate-list");
+  });
 
   it("mounts the panel with the prefilled question, never run, and marks the page AI", async () => {
     const page = renderAt("/?mode=ai&q=roofs%20older%20than%2015&lat=30.4394&lng=-97.62&r=5");

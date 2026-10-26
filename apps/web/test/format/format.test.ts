@@ -134,12 +134,14 @@ describe("field labels", () => {
         reasonLabel: "Not included in the published tables",
         fields: ["unnormalized_address", "city_name"],
         fieldsLabel: "Street address, city",
+        fieldsInline: "street address, city",
       },
       {
         reason: "no_roof_date",
         reasonLabel: "No roof date found",
         fields: ["roof_date"],
         fieldsLabel: "Roof date",
+        fieldsInline: "roof date",
       },
     ]);
   });

@@ -33,6 +33,10 @@ export const EXAMPLE_QUESTIONS: readonly string[] = [
 
 /** The map's AI mode with the question prefilled in its box (not run): Ask lives inside the map
  *  (CRM-HANDOFF section 4.7), `/?mode=ai&q=...`. */
+/** Navigation state a click puts on the link to `askHref`: "ask this now". It lives in the history
+ *  entry, not the URL, and the map clears it once used, so a pasted link or a reload only prefills. */
+export const ASK_NOW_STATE = { askNow: true } as const;
+
 export function askHref(question: string): string {
   return `/?mode=ai&${ASK_QUESTION_PARAM}=${encodeURIComponent(question)}`;
 }

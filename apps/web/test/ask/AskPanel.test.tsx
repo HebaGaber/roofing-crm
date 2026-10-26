@@ -414,7 +414,9 @@ describe("Ask screen", () => {
         screen.getByText("No open roofing permits, open 10+ years, within 1 mi of Manor."),
       ).toBeTruthy();
       expect(screen.getByText(/2 properties in the area have no roof date/)).toBeTruthy();
-      expect(screen.getByText("Coordinates: No coordinates for this parcel (3 rows)")).toBeTruthy();
+      const bullet = screen.getByText(/No coordinates for this parcel/);
+      expect(bullet.closest("li")?.textContent).toContain("coordinates");
+      expect(bullet.closest("li")?.textContent).toContain("(3 rows)");
       expect(screen.queryByText(/Travis County/)).toBeNull();
     });
 
@@ -593,13 +595,14 @@ describe("Ask screen", () => {
       expect(screen.getByText(/answers cite the published CountyLens run/)).toBeTruthy();
     });
 
-    it("a suggestion fills the box and asks nothing by itself", () => {
+    it("a suggestion fills the box and asks it, once, on one click", () => {
       renderAsk();
       const first = screen.getByRole("list", { name: "Try one of these" }).querySelector("button");
       fireEvent.click(first as HTMLButtonElement);
       const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
       expect(box.value).toBe(SUGGESTIONS[0]);
-      expect(askMutate).not.toHaveBeenCalled();
+      expect(askMutate).toHaveBeenCalledTimes(1);
+      expect(askMutate.mock.calls[0]?.[0]).toMatchObject({ question: SUGGESTIONS[0] });
     });
 
     it("Enter asks, Shift+Enter keeps a new line", () => {
@@ -676,6 +679,59 @@ describe("Ask screen", () => {
       renderAsk();
       expect(screen.queryByRole("region", { name: "Your last answer" })).toBeNull();
       expect(screen.getByRole("alert").textContent).toMatch(/^Ask again in 40 s\. The map and/);
+    });
+  });
+
+  describe("autoAsk (an explicit click carried in app state, never the URL)", () => {
+    const Q = "Tell me about TCAD 181990";
+
+    it("asks once for a request and tells the owner it was consumed", () => {
+      const consumed = vi.fn();
+      const { rerender } = renderAsk({
+        autoAsk: { text: Q, nonce: 1 },
+        onAutoAskConsumed: consumed,
+      });
+      expect(askMutate).toHaveBeenCalledTimes(1);
+      expect(askMutate.mock.calls[0]?.[0]).toMatchObject({ question: Q });
+      expect(consumed).toHaveBeenCalledWith(1);
+      // The same request again (a re-render, StrictMode's second effect run) does not ask twice.
+      rerender(
+        <MemoryRouter>
+          <AskPanel
+            threadId="thread-1"
+            focusedCitation={null}
+            layout="pane"
+            {...panelCallbacks}
+            autoAsk={{ text: Q, nonce: 1 }}
+          />
+        </MemoryRouter>,
+      );
+      expect(askMutate).toHaveBeenCalledTimes(1);
+    });
+
+    it("a URL question alone only prefills and never asks", () => {
+      renderAsk({ initialQuestion: Q });
+      expect(askMutate).not.toHaveBeenCalled();
+    });
+
+    it("does not send a blank or over-long request, nor one while an ask is pending", () => {
+      renderAsk({ autoAsk: { text: "   ", nonce: 1 } });
+      cleanup();
+      renderAsk({ autoAsk: { text: "y".repeat(501), nonce: 2 } });
+      cleanup();
+      askState = { ...askState, isPending: true };
+      renderAsk({ autoAsk: { text: Q, nonce: 3 } });
+      expect(askMutate).not.toHaveBeenCalled();
+    });
+
+    it("fills the box but does not send when the budget says wait", () => {
+      askState = {
+        ...askState,
+        data: { ...answeredFixture(), outcome: "rate_limited", retryAfterSec: 30 },
+      };
+      renderAsk({ autoAsk: { text: Q, nonce: 1 } });
+      expect(askMutate).not.toHaveBeenCalled();
+      expect((screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement).value).toBe(Q);
     });
   });
 
@@ -791,36 +847,39 @@ describe("Ask screen", () => {
 
     it("tells the map about each new answer, and about none before the first", () => {
       renderAsk();
-      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(null);
+      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(null, undefined);
       cleanup();
       panelCallbacks.onAnswer.mockReset();
       const answer = pinned();
       askState = { ...askState, data: answer };
       renderAsk();
-      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(answer);
+      expect(panelCallbacks.onAnswer).toHaveBeenLastCalledWith(answer, expect.anything());
     });
 
     it("shows the Matches count and lists each row with its facts", () => {
       askState = { ...askState, data: pinned() };
       renderAsk();
-      const tab = screen.getByRole("tab", { name: "Matches 1" });
+      const tab = screen.getByRole("tab", { name: /^Matches/ });
       fireEvent.click(tab);
       const list = screen.getByRole("list", { name: "Matches" });
       const text = list.textContent ?? "";
       expect(text).toContain("TCAD 0201885122");
       expect(text).toContain("near Pflugerville · 1.3 mi");
-      expect(text).toContain("Roof 24 yrs · Last reroof permit");
-      expect(text).toContain("Stalled · derived: no status in source · open 6.4 yrs");
-      expect(text).toContain("Contractor: Unresolved");
-      expect(text).toContain("Contractor name as printed");
+      expect(text).toContain("Roof 24 yrs");
+      expect(text).toContain("Stalled");
+      // Same card as the filter results: expand for the detail, the row's missing data as bullets.
+      fireEvent.click(within(list).getByRole("button", { name: "Expand details" }));
+      const detail = list.textContent ?? "";
+      expect(detail).toContain("Contractor: Unresolved");
+      expect(detail).toContain("contractor name as printed");
       expect(within(list).getByRole("button", { name: "Create lead" })).toBeTruthy();
-      expect(within(list).getByRole("link", { name: "Open on map" })).toBeTruthy();
+      expect(within(list).getByRole("button", { name: "Open details" })).toBeTruthy();
     });
 
     it("says why Matches is empty when the answer carries no rows", () => {
       askState = { ...askState, data: answeredFixture() };
       renderAsk();
-      fireEvent.click(screen.getByRole("tab", { name: "Matches 0" }));
+      fireEvent.click(screen.getByRole("tab", { name: /^Matches/ }));
       expect(screen.getByText(/did not include a list of matches/)).toBeTruthy();
     });
 
@@ -833,7 +892,7 @@ describe("Ask screen", () => {
       const list = within(host).getByRole("list", { name: "Matches" });
       expect(list.textContent).toContain("TCAD 0201885122");
       expect(within(list).getByRole("button", { name: "Create lead" })).toBeTruthy();
-      expect(within(list).getByRole("link", { name: "Open on map" })).toBeTruthy();
+      expect(within(list).getByRole("button", { name: "Open details" })).toBeTruthy();
       // The left panel keeps the answer, its actions and sources; it does not repeat the rows.
       expect(screen.getByRole("button", { name: "Show on map" })).toBeTruthy();
       expect(screen.getAllByRole("list", { name: "Matches" })).toHaveLength(1);

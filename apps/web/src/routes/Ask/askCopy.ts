@@ -8,7 +8,7 @@
 import { DAYS_PER_YEAR } from "@crm/domain";
 import { AGENT_TURN_LIMIT_MS, isOutboundConstraint, type AgentAnswer } from "@crm/shared";
 import { missingLabel, type MissingReason } from "@crm/oracle-contract";
-import { formatUtc } from "@crm/ui";
+import { formatUtc, type MissingListGroup } from "@crm/ui";
 import {
   fieldLabel,
   permitStatusLabel,
@@ -162,6 +162,54 @@ function reasonLabel(field: string, reason: string): string {
 export function missingText(missing: Missing): string {
   const count = missing.count === undefined ? "" : ` (${plural(missing.count, "row", "rows")})`;
   return `${fieldLabel(missing.field)}: ${reasonLabel(missing.field, missing.reason)}${count}`;
+}
+
+/** `missing[]` as bullets for the shared Missing list: one per distinct reason (and per-row total),
+ *  with its fields joined in plain language. Reason wording is the contract's, verbatim; a count
+ *  ("25 rows") is kept because here it is a per-row total. */
+export function missingGroups(missing: readonly Missing[]): MissingListGroup[] {
+  const groups = new Map<
+    string,
+    { reason: string; code: string; count: string | undefined; fields: string[]; raw: string[] }
+  >();
+  for (const m of missing) {
+    const reason = reasonLabel(m.field, m.reason);
+    const count = m.count === undefined ? undefined : plural(m.count, "row", "rows");
+    const key = `${m.reason}|${reason}|${count ?? ""}`;
+    const group = groups.get(key) ?? { reason, code: m.reason, count, fields: [], raw: [] };
+    const label = fieldLabel(m.field);
+    const second = label.charAt(1);
+    const inline =
+      second !== "" && second === second.toUpperCase() && /[A-Z]/.test(second)
+        ? label
+        : label.charAt(0).toLowerCase() + label.slice(1);
+    group.fields.push(inline);
+    group.raw.push(m.field);
+    groups.set(key, group);
+  }
+  return [...groups.entries()].map(([key, g]) => ({
+    key,
+    reason: g.reason,
+    fields: g.fields.join(", "),
+    count: g.count,
+    data: { reason: g.code, fields: g.raw.join(",") },
+  }));
+}
+
+/** The real number of matches an answer stands for: the server's total, never fewer than the rows. */
+export function answerMatchTotal(answer: AgentAnswer): number {
+  // `counts` is always present on the wire; a partial answer in a test or a stale cache is not fatal.
+  const matched = (answer.counts as { matched?: number } | undefined)?.matched ?? 0;
+  return Math.max(matched, answer.rows?.length ?? 0);
+}
+
+/** "Showing the top 25 of 28,062 matching properties" when the rows are only part of the total. */
+export function answerRowsNote(answer: AgentAnswer): string | undefined {
+  const shown = answer.rows?.length ?? 0;
+  const total = answerMatchTotal(answer);
+  return shown > 0 && total > shown
+    ? `Showing the top ${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} matching properties.`
+    : undefined;
 }
 
 const UNPUBLISHED_REASONS: ReadonlySet<string> = new Set([

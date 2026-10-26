@@ -51,7 +51,7 @@ export function useMapMode(): MapModeParam {
     [setParams],
   );
   const clearQuestion = useCallback(
-    () => setParams((prev) => patchMapMode(prev, { q: null }), { replace: true }),
+    () => setParams((prev) => patchMapMode(prev, { q: null }), { replace: true, state: null }),
     [setParams],
   );
   return { ...parsed, setMode, clearQuestion };

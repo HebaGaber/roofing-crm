@@ -9,7 +9,15 @@
 import type { LatLng } from "@crm/domain";
 import { missingLabel, type MissingReason as Reason } from "@crm/oracle-contract";
 import type { CrmPermit, CrmProperty, Missing, Provenanced } from "@crm/index-schema";
-import { CidDisplay, Icon, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
+import {
+  CidDisplay,
+  Icon,
+  MissingList,
+  MissingReason,
+  Provenance,
+  StatusPill,
+  formatUtc,
+} from "@crm/ui";
 import {
   memo,
   useId,
@@ -46,11 +54,39 @@ import styles from "./ResultRow.module.css";
  *  it. A row without one shows the TCAD id and the reason from its own `missing` entry, never the
  *  raw lat/lon as if it were an address (constitution P0-4). */
 export function RowTitle({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  return <TitleStack main={propertyTitle(row)} sub={propertySubtitle(row)} />;
+}
+
+/** The title block: the main line (address or TCAD id) over its secondary line. */
+export function TitleStack({
+  main,
+  sub,
+}: {
+  readonly main: string;
+  readonly sub: string;
+}): ReactElement {
   return (
     <span className={styles.titleStack}>
-      <span className={styles.titleMain}>{propertyTitle(row)}</span>
-      <span className={styles.titleSub}>{propertySubtitle(row)}</span>
+      <span className={styles.titleMain}>{main}</span>
+      <span className={styles.titleSub}>{sub}</span>
     </span>
+  );
+}
+
+/** The signal lines under a card's fields (contractor, BBB): one small paragraph each. */
+export function SignalLines({
+  lines,
+}: {
+  readonly lines: readonly { readonly field: string; readonly content: ReactNode }[];
+}): ReactElement {
+  return (
+    <div className={styles.signals} data-permit-signals="">
+      {lines.map((line) => (
+        <p key={line.field} className={styles.signal} data-field={line.field}>
+          {line.content}
+        </p>
+      ))}
+    </div>
   );
 }
 
@@ -139,34 +175,71 @@ export function OutOfAreaPill({
 const labelProp = (label: string | undefined): { label?: string } =>
   label === undefined ? {} : { label };
 
-function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
-  if (row.roofAgeYears === null) {
-    const entry =
-      row.missingReasons.find((m) => m.field === "roofAgeYears") ??
-      row.missingReasons.find((m) => m.field === "roof_age_years");
-    return entry === undefined ? (
-      <StatusPill status="unavailable" text="Roof age not available" />
-    ) : (
-      <MissingReason
-        field={entry.field}
-        reason={entry.reason as Reason}
-        {...labelProp(roofAgeGapLabel(row.propertyType, entry.reason))}
-      />
-    );
-  }
+/** The roof chips of a match: "Roof 24 yrs" with its confidence, or the stated gap. Shared by the
+ *  filter rows and the Ask AI rows. `confidence` is absent when the source does not carry one (the
+ *  chip then says so instead of guessing). */
+export function RoofChips({
+  years,
+  confidence,
+  gap,
+}: {
+  readonly years: number | null;
+  readonly confidence: CrmProperty["roofAgeConfidence"] | undefined;
+  /** The element that says why there is no roof age. */
+  readonly gap: ReactElement;
+}): ReactElement {
+  if (years === null) return gap;
   const confidenceStatus =
-    row.roofAgeConfidence === "high"
-      ? "verified"
-      : row.roofAgeConfidence === "none"
-        ? "unavailable"
-        : "warning";
+    confidence === "high" ? "verified" : confidence === "none" ? "unavailable" : "warning";
   return (
     <span className={styles.roofBadges}>
-      <StatusPill status="info" text={`Roof ${row.roofAgeYears} yrs`} icon="roofing" />
+      <StatusPill status="info" text={`Roof ${years} yrs`} icon="roofing" />
       <StatusPill
-        status={confidenceStatus}
-        text={`Confidence ${roofAgeConfidenceLabel(row.roofAgeConfidence)}`}
+        status={confidence === undefined ? "unavailable" : confidenceStatus}
+        text={
+          confidence === undefined
+            ? "Confidence not in this answer"
+            : `Confidence ${roofAgeConfidenceLabel(confidence)}`
+        }
       />
+    </span>
+  );
+}
+
+function RoofBadge({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  const entry =
+    row.missingReasons.find((m) => m.field === "roofAgeYears") ??
+    row.missingReasons.find((m) => m.field === "roof_age_years");
+  return (
+    <RoofChips
+      years={row.roofAgeYears}
+      confidence={row.roofAgeConfidence}
+      gap={
+        entry === undefined ? (
+          <StatusPill status="unavailable" text="Roof age not available" />
+        ) : (
+          <MissingReason
+            field={entry.field}
+            reason={entry.reason as Reason}
+            {...labelProp(roofAgeGapLabel(row.propertyType, entry.reason))}
+          />
+        )
+      }
+    />
+  );
+}
+
+/** A distance beside the title (the same slot and look for "2.8 mi NW" and "near X · 2.8 mi"). */
+export function DistanceLabel({
+  text,
+  title,
+}: {
+  readonly text: string;
+  readonly title: string;
+}): ReactElement {
+  return (
+    <span className={styles.distance} title={title}>
+      {text}
     </span>
   );
 }
@@ -213,33 +286,63 @@ function Cell({
   );
 }
 
-export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+/** The four detail cells (roof age, basis, confidence, coordinates), values supplied by the caller. */
+export function FieldGrid({
+  roofAge,
+  basis,
+  confidence,
+  coordinates,
+}: {
+  readonly roofAge: ReactNode;
+  readonly basis: ReactNode;
+  readonly confidence: ReactNode;
+  readonly coordinates: ReactNode;
+}): ReactElement {
   return (
     <dl className={styles.fields}>
       <Cell label="Roof age" field="roof_age_years">
-        {row.roofAgeYears === null ? (
+        {roofAge}
+      </Cell>
+      <Cell label="Basis" field="roof_age_basis">
+        {basis}
+      </Cell>
+      <Cell label="Confidence" field="roof_age_confidence">
+        {confidence}
+      </Cell>
+      <Cell label="Coordinates" field="lat_lon">
+        {coordinates}
+      </Cell>
+    </dl>
+  );
+}
+
+export function PropertyFields({ row }: { readonly row: Provenanced<CrmProperty> }): ReactElement {
+  return (
+    <FieldGrid
+      roofAge={
+        row.roofAgeYears === null ? (
           <RoofAgeGap row={row} />
         ) : (
           roofAgeText(row.roofAgeYears, row.roofAgeBasis)
-        )}
-      </Cell>
-      <Cell label="Basis" field="roof_age_basis">
-        {roofAgeBasisLabel(row.roofAgeBasis)}
-        {row.roofAgeBasis === "built_year" && row.structureBuiltYear != null
-          ? ` · Year built ${row.structureBuiltYear}`
-          : ""}
-      </Cell>
-      <Cell label="Confidence" field="roof_age_confidence">
-        {roofAgeConfidenceLabel(row.roofAgeConfidence)}
-      </Cell>
-      <Cell label="Coordinates" field="lat_lon">
-        {row.latitude === null || row.longitude === null ? (
+        )
+      }
+      basis={
+        <>
+          {roofAgeBasisLabel(row.roofAgeBasis)}
+          {row.roofAgeBasis === "built_year" && row.structureBuiltYear != null
+            ? ` · Year built ${row.structureBuiltYear}`
+            : ""}
+        </>
+      }
+      confidence={roofAgeConfidenceLabel(row.roofAgeConfidence)}
+      coordinates={
+        row.latitude === null || row.longitude === null ? (
           <span>{coordinateSourceLabel("none")}</span>
         ) : (
           `${row.latitude.toFixed(5)}, ${row.longitude.toFixed(5)} · ${coordinateSourceLabel(row.coordinateSource)}`
-        )}
-      </Cell>
-    </dl>
+        )
+      }
+    />
   );
 }
 
@@ -272,9 +375,9 @@ function PermitSignals({
   );
 }
 
-/** The row's `missingReasons` entries, grouped by reason and wording (constitution XI/P0-4): the
- *  fields in plain language, then the label decided per field. The raw names stay in
- *  `data-fields`. */
+/** The row's `missingReasons` entries, grouped by reason and wording (constitution XI/P0-4) as a
+ *  short bullet list: one bullet per distinct reason with its fields joined, up to three, the rest
+ *  behind "Show all N". The raw names stay in `data-fields`. */
 export function MissingSummary({
   row,
 }: {
@@ -282,23 +385,14 @@ export function MissingSummary({
 }): ReactElement | null {
   if (row.missingReasons.length === 0) return null;
   return (
-    <ul className={styles.missing} aria-label="Missing data">
-      {groupMissing(row.missingReasons).map((group) => (
-        <li
-          key={`${group.reason}|${group.reasonLabel}`}
-          className={styles.missingGroup}
-          data-missing-group={group.reason}
-          data-fields={group.fields.join(",")}
-        >
-          <span className={styles.fieldNames}>{group.fieldsLabel}</span>
-          <MissingReason
-            field={group.fields[0] ?? ""}
-            reason={group.reason as Reason}
-            label={group.reasonLabel}
-          />
-        </li>
-      ))}
-    </ul>
+    <MissingList
+      groups={groupMissing(row.missingReasons).map((group) => ({
+        key: `${group.reason}|${group.reasonLabel}`,
+        reason: group.reasonLabel,
+        fields: group.fieldsInline,
+        data: { "missing-group": group.reason, fields: group.fields.join(",") },
+      }))}
+    />
   );
 }
 
@@ -343,26 +437,55 @@ export interface ResultRowProps {
   readonly onToggleExpanded?: (propertyCid: string) => void;
 }
 
-/** One result: a collapsed line (address or TCAD id, distance and direction, chips, expand) and,
- *  once expanded, the full detail card (CID, basis, confidence, coordinates, source). The detail is
- *  not rendered while collapsed, so a page of rows stays cheap to draw. */
-function ResultRowView({
-  row,
+export interface MatchCardProps {
+  /** The property's CID (hooks, the title id). */
+  readonly propertyCid: string;
+  readonly title: ReactNode;
+  /** The number a citing answer gave this property (the pin's number); absent for filter results. */
+  readonly citation?: ReactNode;
+  readonly distance?: ReactNode;
+  readonly onSelect?: ((propertyCid: string) => void) | undefined;
+  readonly selected?: boolean;
+  /** The answer is pointing at this match (its citation or pin is focused). */
+  readonly focused?: boolean;
+  /** Controlled expanded state; left out, the card keeps its own and starts collapsed. */
+  readonly expanded?: boolean | undefined;
+  readonly onToggleExpanded?: ((propertyCid: string) => void) | undefined;
+  /** The chips under the title line. */
+  readonly badges: ReactNode;
+  /** Always-visible controls under the chips (the Ask answer's Create lead). */
+  readonly actions?: ReactNode;
+  /** The expanded detail (only drawn while expanded). */
+  readonly detail: ReactNode;
+  /** Extra `data-*` hooks on the article. */
+  readonly data?: Readonly<Record<string, string>> | undefined;
+}
+
+/** The ONE match card: header (number, title, distance, open, expand), chips, expandable detail.
+ *  Filter results (`ResultRow`) and Ask AI answers (`AnswerMatchRow`) both render through it, so a
+ *  match looks and reads the same whichever way it was found. */
+export function MatchCard({
+  propertyCid,
+  title,
+  citation,
+  distance,
   onSelect,
-  onWhy,
   selected = false,
-  permits,
-  center,
+  focused = false,
   expanded: expandedProp,
   onToggleExpanded,
-}: ResultRowProps): ReactElement {
+  badges,
+  actions,
+  detail,
+  data = {},
+}: MatchCardProps): ReactElement {
   const [ownExpanded, setOwnExpanded] = useState(false);
   const expanded = expandedProp ?? ownExpanded;
   const toggle = (): void => {
-    if (onToggleExpanded !== undefined) onToggleExpanded(row.propertyCid);
+    if (onToggleExpanded !== undefined) onToggleExpanded(propertyCid);
     else setOwnExpanded((open) => !open);
   };
-  const select = (): void => onSelect?.(row.propertyCid);
+  const select = (): void => onSelect?.(propertyCid);
   const onClick = (event: MouseEvent<HTMLElement>): void => {
     if ((event.target as Element).closest("a, button") !== null) return;
     select();
@@ -374,26 +497,32 @@ function ResultRowView({
       select();
     }
   };
-  const titleId = `row-${row.propertyCid}`;
+  const titleId = `row-${propertyCid}`;
   const detailId = useId();
-  const firstPermit = permits?.[0];
-  const morePermits = (permits?.length ?? 0) - 1;
+  const dataAttributes = Object.fromEntries(Object.entries(data).map(([k, v]) => [`data-${k}`, v]));
   return (
     <article
-      className={`${styles.row} ${selected ? styles.selected : ""}`}
+      className={`${styles.row} ${selected ? styles.selected : ""} ${focused ? styles.focused : ""}`}
       data-result-row=""
+      data-focused={focused}
       data-expanded={expanded ? "true" : "false"}
-      data-property-cid={row.propertyCid}
+      data-property-cid={propertyCid}
+      {...dataAttributes}
       aria-labelledby={titleId}
       tabIndex={0}
       onClick={onClick}
       onKeyDown={onKeyDown}
     >
       <header className={styles.head}>
+        {citation === undefined ? null : (
+          <span className={styles.citation} aria-hidden="true">
+            {citation}
+          </span>
+        )}
         <h4 id={titleId} className={styles.title}>
-          <RowTitle row={row} />
+          {title}
         </h4>
-        {center === undefined ? null : <RowDistance row={row} center={center} />}
+        {distance}
         {onSelect === undefined ? null : (
           <button
             type="button"
@@ -417,25 +546,62 @@ function ResultRowView({
           <Icon name={expanded ? "expand_less" : "expand_more"} size="medium" />
         </button>
       </header>
-      <div className={styles.badgeRow}>
-        <RoofBadge row={row} />
-        {firstPermit === undefined ? null : (
-          <ul className={styles.permits} aria-label="Permits">
-            <li className={styles.permitItem}>
-              <PermitChip permit={firstPermit} />
-            </li>
-            {morePermits > 0 ? (
-              <li className={styles.permitItem}>
-                <span className={styles.more}>{`+${String(morePermits)} more`}</span>
-              </li>
-            ) : null}
-          </ul>
-        )}
-        <TypePill usageType={row.propertyUsageType} missing={row.missingReasons} />
-        <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} areaClass={row.ownerAreaClass} />
-      </div>
+      <div className={styles.badgeRow}>{badges}</div>
+      {actions}
       {expanded ? (
         <div id={detailId} className={styles.detail}>
+          {detail}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+/** One result: a collapsed line (address or TCAD id, distance and direction, chips, expand) and,
+ *  once expanded, the full detail card (CID, basis, confidence, coordinates, source). The detail is
+ *  not rendered while collapsed, so a page of rows stays cheap to draw. */
+function ResultRowView({
+  row,
+  onSelect,
+  onWhy,
+  selected = false,
+  permits,
+  center,
+  expanded,
+  onToggleExpanded,
+}: ResultRowProps): ReactElement {
+  const firstPermit = permits?.[0];
+  const morePermits = (permits?.length ?? 0) - 1;
+  return (
+    <MatchCard
+      propertyCid={row.propertyCid}
+      title={<RowTitle row={row} />}
+      distance={center === undefined ? null : <RowDistance row={row} center={center} />}
+      onSelect={onSelect}
+      selected={selected}
+      expanded={expanded}
+      onToggleExpanded={onToggleExpanded}
+      badges={
+        <>
+          <RoofBadge row={row} />
+          {firstPermit === undefined ? null : (
+            <ul className={styles.permits} aria-label="Permits">
+              <li className={styles.permitItem}>
+                <PermitChip permit={firstPermit} />
+              </li>
+              {morePermits > 0 ? (
+                <li className={styles.permitItem}>
+                  <span className={styles.more}>{`+${String(morePermits)} more`}</span>
+                </li>
+              ) : null}
+            </ul>
+          )}
+          <TypePill usageType={row.propertyUsageType} missing={row.missingReasons} />
+          <OutOfAreaPill isOutOfArea={row.ownerIsOutOfArea} areaClass={row.ownerAreaClass} />
+        </>
+      }
+      detail={
+        <>
           <p className={styles.cidLine}>
             Property <CidDisplay cid={row.propertyCid} />
           </p>
@@ -464,9 +630,9 @@ function ResultRowView({
           ) : null}
           <MissingSummary row={row} />
           <RowProvenance row={row} />
-        </div>
-      ) : null}
-    </article>
+        </>
+      }
+    />
   );
 }
 
