@@ -55,3 +55,22 @@ Also left out, as arceus advised: `oracle` and the county ingestion skills (outs
 | `metagross` (B-09) | 68 → 84 → 88 | Dashboard and alarm dimensions, retryable auto-sync, batch-coverage holds, alarm email in config — fixed; final: `crm:alarmEmail` committed, static `crm-ci` key (follow-ups) |
 | `audino` (B-09) | 72 → 88 → 82 | Ask states, empty-result reasons, candidate-place buttons — fixed; final round: lead marks vanished past 1,000 properties, Tab trap, Escape scope, pin names — fixed (`cbb548e`) |
 | `porygon` (B-09) | 58 → 88 → 84 | Emitted-dimension mismatch, per-answer groundedness averaging — fixed; final: answer text shown-row count (fixed), Run 2 sync evidence section (added) |
+
+## Whole-repo review before release (R2, 2026-10-26)
+
+Each agent reviewed the whole repository read-only at commit 96b85a3 (a targeted read, not a line-by-line audit; every report states its confidence). Fixes followed and the two reviewers below 75 were re-run on the fixed code.
+
+| Agent | Area | First score | After fixes | Main findings |
+| --- | --- | --- | --- | --- |
+| `audino` | UI and Atlas design system | 84 | not re-run | Atlas tokens and provenance followed; three inputs suppress the outline (parent ring, regression test added); raw pixel sizes and max-width queries (converted to tokens and mobile-first); no automated accessibility scan |
+| `metagross` | Architecture and infra | 82 | not re-run | Structure and constitution strong; owner-name wording in the NFR row (reconciled); demo-project `RemovalPolicy.DESTROY` (noted in the constitution); cold-load and p95 to measure |
+| `espeon` | Sync pipeline | 82 | not re-run | CID and SHA-256 verification, idempotency and the guarded pointer flip are solid; cost gate is a size and count gate; single-Lambda DuckDB build |
+| `ash` | Agent runtime | 82 | not re-run | No direct provider SDKs, fixed three-call flow, spend cap and rate limit, lead proposals confirmed by the user; no AI SDK telemetry in the agent path (open); thin conversation memory |
+| `alakazam` | Retrieval and citations | 78 | not re-run | Code-driven retrieval, scope gate in code, strict citation verification; golden set was stale (re-baselined: 48 of 48 on Run 3.1) |
+| `porygon` | Consistency of numbers | 78 | not re-run | Permit rule copied in several web files, tenure wording differed between map and agent, a magic constant (all fixed in one shared rule) |
+| `machamp` | Batch workflow | 68 | **79** | No alert on failed or held runs, no catch state, thin memory headroom (fixed: alarms, named failure state, memory alarm, rollback script, runbook); rate limit per container (accepted, documented) |
+| `smeargle` | Responsive tests | 66 | **83** | Gaps in drawer, Filters owner group, search box, radius and GPS tests, silent CI skips (fixed and verified at 390, 768 and 1440 px on the hosted site) |
+
+Everything the review found that is not fixed is listed in [`docs/pending-items.md`](pending-items.md) section 3. Every reviewer score on record is now 75 or higher.
+
+An independent README and demo walk-through (live, read-only) and two evaluator self-scores by `slowking` ran the same day; their findings and fixes are in the PR text (Progress since the last update).
