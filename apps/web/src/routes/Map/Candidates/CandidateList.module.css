@@ -660,3 +660,66 @@
     width: 132px;
   }
 }
+
+/* Phone (below 600 px): each row is a card-like grid, not a table row, so the address wraps at word
+   boundaries instead of a letter at a time: select box | address (wide) | actions, with the roof
+   age and confidence under the address. The table keeps its columns from 768 px up. */
+@media (max-width: 599.98px) {
+  .table,
+  .table tbody {
+    display: block;
+  }
+
+  .table thead tr {
+    display: flex;
+    align-items: center;
+  }
+
+  .table thead th:not(.cCheck) {
+    display: none;
+  }
+
+  .table tbody tr {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--space-2);
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+
+  .table tbody td {
+    min-width: 0;
+    border-bottom: 0;
+  }
+
+  .table tbody .cCheck {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+
+  .table tbody .cAddress {
+    grid-column: 2 / span 2;
+    grid-row: 1;
+  }
+
+  .table tbody .cActions {
+    grid-column: 4;
+    grid-row: 1;
+    width: auto;
+  }
+
+  .table tbody .cRoof {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .table tbody .cConf {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .title {
+    overflow-wrap: break-word;
+  }
+}

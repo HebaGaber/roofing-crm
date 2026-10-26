@@ -225,7 +225,9 @@ export function Component(): ReactElement {
       autoAskNonce.current += 1;
       setAutoAsk({ text: q, nonce: autoAskNonce.current });
     }
-    clearQuestion();
+    // An explicit ask (the drawer's "Ask about it", a card question) closes the property drawer, or on
+    // a tablet it stays on top and hides the answer.
+    clearQuestion({ closeDrawer: askNow });
   }, [q, askNow, clearQuestion]);
   const consumeAutoAsk = useCallback(
     (nonce: number) => setAutoAsk((cur) => (cur?.nonce === nonce ? null : cur)),

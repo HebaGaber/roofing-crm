@@ -61,3 +61,29 @@ export function buildMapInitOptions(): CrmMapInitOptions {
 export function isInTravisCounty(point: { lat: number; lng: number }): boolean {
   return isInsideTravisCountyBbox(point);
 }
+
+/** [[west, south], [east, north]]. */
+export type LngLatBox = [[number, number], [number, number]];
+
+/** The smallest box holding both: used so a fit to the search results still shows the whole search
+ *  ring (the pin drop's results are usually a small cluster inside a much larger ring). `null`
+ *  `points` (no results) gives the ring box. */
+export function unionBox(
+  ring: LngLatBox,
+  points: readonly { lat: number; lng: number }[],
+): LngLatBox {
+  let west = ring[0][0];
+  let south = ring[0][1];
+  let east = ring[1][0];
+  let north = ring[1][1];
+  for (const p of points) {
+    west = Math.min(west, p.lng);
+    east = Math.max(east, p.lng);
+    south = Math.min(south, p.lat);
+    north = Math.max(north, p.lat);
+  }
+  return [
+    [west, south],
+    [east, north],
+  ];
+}

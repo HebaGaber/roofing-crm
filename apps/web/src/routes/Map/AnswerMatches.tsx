@@ -134,9 +134,11 @@ export function AnswerMatchRow({
         ...(row.citationId === undefined ? {} : { "citation-id": String(row.citationId) }),
       }}
       title={
+        // Same structure as a filter result card: the address leads and the TCAD id sits under it;
+        // a row without an address leads with the TCAD id and says why the address is missing.
         <TitleStack
-          main={`TCAD ${row.tcadId}`}
-          sub={row.address ?? `Street address ${NOT_IN_ANSWER}`}
+          main={row.address ?? `TCAD ${row.tcadId}`}
+          sub={row.address === undefined ? `Street address ${NOT_IN_ANSWER}` : `TCAD ${row.tcadId}`}
         />
       }
       distance={
@@ -163,12 +165,6 @@ export function AnswerMatchRow({
               }}
             />
           )}
-          <StatusPill
-            status="unavailable"
-            icon="help"
-            text={`Type not published · ${NOT_IN_ANSWER}`}
-            data={{ field: "property_usage_type" }}
-          />
         </>
       }
       actions={extra}
@@ -209,7 +205,20 @@ export function AnswerMatchRow({
               ]}
             />
           )}
-          <MissingList groups={missingGroups(row.missing)} />
+          <MissingList
+            groups={[
+              ...missingGroups(row.missing),
+              // The answer rows carry no property type: the chip is left out of the card and the
+              // reason is stated here instead (constitution P0-4).
+              {
+                key: "property_usage_type|not_in_answer",
+                reason: "Not part of this answer",
+                fields: "property type",
+                count: undefined,
+                data: { reason: "not_in_answer", fields: "property_usage_type" },
+              },
+            ]}
+          />
           <RowProvenanceLine row={row} answer={answer} />
         </>
       }

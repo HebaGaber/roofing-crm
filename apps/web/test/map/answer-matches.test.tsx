@@ -122,11 +122,29 @@ describe("one match design for filter and AI rows", () => {
       />,
     );
     expect(screen.getByText(/Street address not part of this answer/)).toBeTruthy();
-    expect(screen.getByText(/Type not published · not part of this answer/)).toBeTruthy();
+    // No type chip on the card (the same chips as a search card); the reason is in the detail list.
+    expect(screen.queryByText(/Type not published/)).toBeNull();
     expect(screen.getByText("Confidence not in this answer")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Expand details" }));
+    expect(document.querySelector("li[data-fields='property_usage_type']")).not.toBeNull();
     expect(screen.getByLabelText("Missing data").tagName).toBe("UL");
     expect(screen.getByText(/No source record attached/)).toBeTruthy();
+  });
+
+  it("an answer row with an address leads with it and shows the TCAD id under it, like a search card", () => {
+    inRouter(
+      <AnswerMatches
+        answer={answer([row(1, { address: "1200 CONGRESS AVE" })])}
+        focusedCitation={null}
+        onOpen={() => undefined}
+      />,
+    );
+    const title = document.querySelector("article[data-result-row] h4") as HTMLElement;
+    const parts = Array.from(title.querySelectorAll("span > span")).map((n) => n.textContent);
+    expect(parts).toEqual(["1200 CONGRESS AVE", "TCAD 0201880001"]);
+    expect(screen.queryByText(/Street address not part/)).toBeNull();
+    expect(screen.getByText("Roof 24 yrs")).toBeTruthy();
+    expect(screen.getByText(/Confidence/)).toBeTruthy();
   });
 
   it("totals and notes", () => {
