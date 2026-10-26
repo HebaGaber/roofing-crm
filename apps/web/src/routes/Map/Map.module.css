@@ -554,12 +554,15 @@
     flex-direction: column;
     gap: var(--space-2);
     min-height: 0;
-    padding: 0 var(--space-4) var(--space-4);
+    /* No side padding here: the Matches list carries its own 16 px (as in the filter results),
+       so a card sits at the same left edge and width whichever way it was found. */
+    padding: 0 0 var(--space-4);
     overflow-y: auto;
   }
 
   .matchesTitle {
     margin: 0;
+    padding: 0 var(--space-4);
     color: var(--md-sys-color-on-surface);
     font-family: var(--md-sys-typescale-title-medium-font);
     font-size: var(--md-sys-typescale-title-medium-size);

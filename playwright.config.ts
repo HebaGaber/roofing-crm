@@ -37,6 +37,10 @@ const ISOLATED = [
   // (Bedrock). Three viewports × three asks must not run concurrently with each other or with
   // anything else asking as the same user.
   "responsive/ask.spec.ts",
+  // One more paid ask per viewport (an answer with Matches, typed and sent), same limit.
+  "responsive/ask-matches.spec.ts",
+  // One paid ask on desktop-1440 only ("Ask about it" from the drawer), same limit.
+  "responsive/drawer-content.spec.ts",
   // Mutates the shared admin's leads (beforeAll deletes and recreates the test leads) and is
   // `mode: "serial"` by design; two viewports at once would delete each other's leads. On CI it
   // runs with the `crm-ci` key (infra/lib/crm-ci-user.ts) and skips itself when that is unset.

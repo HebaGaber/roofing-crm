@@ -683,6 +683,7 @@ function AnsweredBody({
         id="ask-tabpanel"
         aria-labelledby={`ask-tab-${tab}`}
         className={styles.answer}
+        data-tab={tab}
       >
         {tab === "matches" ? (
           matchesPanel

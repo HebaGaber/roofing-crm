@@ -96,3 +96,13 @@ describe("D1 Candidate list at 768 px", () => {
     expect(media(list, "(min-width: 1032px)")).toMatch(/\.narrowOnly \{[^}]*display:\s*none/);
   });
 });
+
+describe("D2 Candidate list at 1240-1639 px (three-pane list area)", () => {
+  const wide = media(list, "(min-width: 1240px) and (max-width: 1639.98px)");
+
+  it("drops the Basis column and lets address and permit wrap, so the actions are never pushed out of the list", () => {
+    expect(wide).toMatch(/td\.wide1240 \{[^}]*display:\s*none/);
+    expect(wide).toMatch(/\.title,\s*\.sub \{[^}]*white-space:\s*normal/);
+    expect(wide).toMatch(/\.cPermit \{[^}]*min-width:\s*0/);
+  });
+});

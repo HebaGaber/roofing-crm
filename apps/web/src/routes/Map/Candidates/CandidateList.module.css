@@ -661,6 +661,31 @@
   }
 }
 
+/* 1240-1639 px: with the filters pane beside it the list has 1008 px at 1440 (about the viewport
+   minus 432 px), and the full table is 1195 px wide, which pushed Lat, lon and the row actions
+   out of sight. The Basis column (also in the property drawer) waits for 1640 px, and the address
+   and permit text wrap, so every column and the actions stay on screen. */
+@media (min-width: 1240px) and (max-width: 1639.98px) {
+  th.wide1240,
+  td.wide1240 {
+    display: none;
+  }
+
+  .cAddress {
+    min-width: 0;
+  }
+
+  .title,
+  .sub {
+    white-space: normal;
+  }
+
+  .cPermit {
+    min-width: 0;
+    width: 132px;
+  }
+}
+
 /* Phone (below 600 px): each row is a card-like grid, not a table row, so the address wraps at word
    boundaries instead of a letter at a time: select box | address (wide) | actions, with the roof
    age and confidence under the address. The table keeps its columns from 768 px up. */
