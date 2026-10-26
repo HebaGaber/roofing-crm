@@ -3,7 +3,7 @@
 // — no longer "intentionally empty" (B-01 T005). T038 (Phase 4, machamp) implements
 // infra/lib/crm-sync-stack.ts to make this pass.
 import { App } from "aws-cdk-lib";
-import { Template } from "aws-cdk-lib/assertions";
+import { Match, Template } from "aws-cdk-lib/assertions";
 import { beforeAll, describe, expect, it } from "vitest";
 import { CrmSyncStack } from "../lib/crm-sync-stack.js";
 
@@ -86,6 +86,22 @@ describe("CrmSync (T038)", () => {
   beforeAll(() => {
     template = build();
   }, 240_000);
+
+  it("alarms on a failed, timed-out or aborted execution and on a held run", () => {
+    for (const alarmName of [
+      "crm-sync-execution-failed",
+      "crm-sync-execution-timed-out",
+      "crm-sync-execution-aborted",
+      "crm-sync-held-no-promotion",
+    ]) {
+      template.hasResourceProperties("AWS::CloudWatch::Alarm", { AlarmName: alarmName });
+    }
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      MetricTransformations: [
+        Match.objectLike({ MetricName: "HeldNoPromotion", MetricNamespace: "CrmSync" }),
+      ],
+    });
+  });
 
   it("creates the crm-sync Step Functions state machine", () => {
     template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);

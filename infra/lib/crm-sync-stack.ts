@@ -577,6 +577,71 @@ export class CrmSyncStack extends Stack {
       tracingEnabled: true,
       logs: { destination: stateMachineLogGroup, level: sfn.LogLevel.ALL },
     });
+    // Whole-run failure alerting (constitution P0-12). The FetchPart DLQ alarm only sees part
+    // fetch failures; a BuildIndex out-of-memory error or timeout, a Validate crash or a Promote
+    // failure ends the execution Failed/TimedOut/Aborted and used to notify nobody. LambdaInvoke
+    // already retries Lambda service errors (retryOnServiceExceptions), so what reaches these
+    // alarms is a real failure. Each alarm is state-based and returns to OK by itself.
+    const executionAlarms: ReadonlyArray<readonly [string, string, cloudwatch.Metric]> = [
+      [
+        "Failed",
+        "crm-sync-execution-failed",
+        this.stateMachine.metricFailed({ period: Duration.minutes(5) }),
+      ],
+      [
+        "TimedOut",
+        "crm-sync-execution-timed-out",
+        this.stateMachine.metricTimedOut({ period: Duration.minutes(5) }),
+      ],
+      [
+        "Aborted",
+        "crm-sync-execution-aborted",
+        this.stateMachine.metricAborted({ period: Duration.minutes(5) }),
+      ],
+    ];
+    for (const [id, alarmName, metric] of executionAlarms) {
+      const executionAlarm = new cloudwatch.Alarm(this, `Execution${id}Alarm`, {
+        alarmName,
+        alarmDescription: `A crm-sync execution ${id.toLowerCase()}: the index was not rebuilt or promoted. Open the execution in Step Functions; the previous index keeps serving.`,
+        metric,
+        threshold: 0,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+        evaluationPeriods: 1,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+      });
+      if (alarmTopic !== undefined) {
+        executionAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+        executionAlarm.addOkAction(new cloudwatchActions.SnsAction(alarmTopic));
+      }
+    }
+
+    // A held run (cost gate, digest mismatch, lineage fork, unverified part, unexplained diff)
+    // ends as a SUCCEEDED execution, so the alarms above never see it and the stale index would
+    // keep serving unnoticed. Count entries into HeldNoPromotion from the state machine's own log.
+    const heldMetric = new logs.MetricFilter(this, "HeldNoPromotionFilter", {
+      logGroup: stateMachineLogGroup,
+      metricNamespace: "CrmSync",
+      metricName: "HeldNoPromotion",
+      filterPattern: logs.FilterPattern.literal(
+        '{ $.type = "PassStateEntered" && $.details.name = "HeldNoPromotion" }',
+      ),
+      metricValue: "1",
+      defaultValue: 0,
+    });
+    const heldAlarm = new cloudwatch.Alarm(this, "HeldNoPromotionAlarm", {
+      alarmName: "crm-sync-held-no-promotion",
+      alarmDescription:
+        "A crm-sync run was held (cost gate, profile digest, lineage, unverified part or reconcile diff) and not promoted; the previous index keeps serving. See the execution's HeldNoPromotion input for the reason.",
+      metric: heldMetric.metric({ period: Duration.minutes(5), statistic: "Sum" }),
+      threshold: 0,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    if (alarmTopic !== undefined) {
+      heldAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+      heldAlarm.addOkAction(new cloudwatchActions.SnsAction(alarmTopic));
+    }
     // Defense in depth (constitution P0-1): every role this stack creates carries the Deny,
     // including the state machine's own orchestration role, even though it only ever invokes
     // this stack's own Lambdas and its own DLQ (infra/test/iam-deny.test.ts, T037).
