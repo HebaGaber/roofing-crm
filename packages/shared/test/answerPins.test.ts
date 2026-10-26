@@ -34,6 +34,33 @@ describe("answerPins", () => {
     ]);
   });
 
+  it("a permit-only answer pins each cited permit's property that carries coordinates", () => {
+    const pins = answerPins({
+      citations: [
+        {
+          ...base,
+          id: 1,
+          kind: "permit",
+          propertyCid: "c1",
+          permitCid: "p1",
+          lat: 30.1,
+          lon: -97.1,
+        },
+        {
+          ...base,
+          id: 2,
+          kind: "permit",
+          propertyCid: "c1",
+          permitCid: "p2",
+          lat: 30.1,
+          lon: -97.1,
+        },
+        { ...base, id: 3, kind: "permit", propertyCid: "c2", permitCid: "p3" },
+      ],
+    });
+    expect(pins).toEqual([{ n: 1, propertyCid: "c1", lat: 30.1, lon: -97.1 }]);
+  });
+
   it("the new wire fields are optional: an answer without them still validates", () => {
     const minimal = {
       outcome: "empty_in_scope",

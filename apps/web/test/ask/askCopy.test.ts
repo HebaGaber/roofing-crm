@@ -20,6 +20,9 @@ import {
   SUGGESTIONS,
   matchesEmptyText,
   pinsNote,
+  answerMatchTotal,
+  distinctAnswerRows,
+  answerShowsDistance,
   rowNearText,
   rowPermitText,
   rowRoofText,
@@ -529,5 +532,48 @@ describe("coverageNote (K7: honest, says only what the answer carries)", () => {
     expect(coverageNote({ ...base, citations: [citation] }, null)).toMatch(
       /published CountyLens run/,
     );
+  });
+});
+
+describe("permit-only pins note and one-property matches", () => {
+  it("a cited permit with its property counts as a cited property, not 'cites no property'", () => {
+    const permitCite = {
+      id: 1,
+      kind: "permit",
+      propertyCid: "cid1",
+      permitCid: "p1",
+      sourceUrl: null,
+      capturedAt: "2026-10-20T00:00:00Z",
+      tableCid: "t",
+      manifestCid: "m",
+      asOf: "2026-10-20",
+    } as AgentAnswer["citations"][number];
+    expect(pinsNote([{ ...permitCite, lat: 30, lon: -97 }], 1)).toBeUndefined();
+    expect(pinsNote([permitCite], 0)).toBe(
+      "No map pins: none of the cited properties has published coordinates.",
+    );
+  });
+
+  const rowOf = (over: Record<string, unknown>) =>
+    ({ propertyCid: "c1", tcadId: "181990", missing: [], ...over }) as NonNullable<
+      AgentAnswer["rows"]
+    >[number];
+
+  it("a property row plus its permit row is one match, listed once with the permit", () => {
+    const rows = [
+      rowOf({ citationId: 1 }),
+      rowOf({ permit: { permitCid: "p1", number: "2001-1 BP", statusClass: "stalled" } }),
+    ];
+    const merged = distinctAnswerRows(rows);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.permit?.number).toBe("2001-1 BP");
+    expect(merged[0]?.citationId).toBe(1);
+    const answer = {
+      counts: { matched: 1, shown: 1 },
+      rows,
+      plan: { intent: "lookup_property" },
+    } as unknown as AgentAnswer;
+    expect(answerMatchTotal(answer)).toBe(1);
+    expect(answerShowsDistance(answer)).toBe(false);
   });
 });

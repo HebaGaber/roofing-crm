@@ -599,8 +599,10 @@ describe("map wire: citation coordinates, nearPlace and rows[]", () => {
     expect(answer.rows?.[0]?.missing).toContainEqual(
       expect.objectContaining({ field: "contractor", reason: "contractor_unresolved" }),
     );
-    // A permit citation is not a pin of its own.
-    expect(answerPins(answer)).toEqual([]);
+    // A permit citation pins at its property's point (a permit-only answer still shows where).
+    expect(answerPins(answer)).toEqual([
+      expect.objectContaining({ n: 1, lat: 30.4418, lon: -97.6069 }),
+    ]);
   });
 
   it("a row without coordinates has no lat/lon and says why in missing", async () => {

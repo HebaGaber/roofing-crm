@@ -418,6 +418,8 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
   const [styleReady, setStyleReady] = useState(false);
   const onPinDropRef = useRef(onPinDrop);
   onPinDropRef.current = onPinDrop;
+  const pinModeRef = useRef(pinMode);
+  pinModeRef.current = pinMode;
   const [zoom, setZoom] = useState(COUNTY_ZOOM);
   const overview = isOverviewView(zoom, center !== null);
   const onViewModeChangeRef = useRef(onViewModeChange);
@@ -497,8 +499,10 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       ) {
         return;
       }
-      // A hexagon takes the click (its own handler below); anywhere else still drops a pin.
+      // A hexagon takes the click (its own handler below); anywhere else still drops a pin. In
+      // pin mode the click always drops the pin: the hexagon's zoom-in must not eat it.
       if (
+        !pinModeRef.current &&
         onHexSelectRef.current !== undefined &&
         map.getLayer(HEX_FILL_LAYER_ID) !== undefined &&
         map.queryRenderedFeatures(event.point, { layers: [HEX_FILL_LAYER_ID] }).length > 0
@@ -554,6 +558,7 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
       ) {
         return;
       }
+      if (pinModeRef.current) return;
       const props = event.features?.[0]?.properties;
       const select = onHexSelectRef.current;
       if (props === undefined || select === undefined) return;
