@@ -19,7 +19,6 @@
 // WebGL layers, not DOM markers, so they stay fast with a full county. Every colour is an Atlas
 // token, resolved from the DOM.
 import {
-  LngLatBounds,
   Map as MapLibreMap,
   Marker,
   type ExpressionSpecification,
@@ -52,6 +51,7 @@ import {
   computeMinZoom,
   TRAVIS_COUNTY_BOUNDS,
   TRAVIS_COUNTY_CENTER,
+  unionBox,
 } from "./bounds.js";
 import {
   OVERVIEW_MAX_ZOOM,
@@ -627,14 +627,19 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     if (map === null || !styleReady || overview || !focusResults || resultsKey === "") return;
     if (center === null || lastFocusedKeyRef.current === resultsKey) return;
     lastFocusedKeyRef.current = resultsKey;
-    const bounds = new LngLatBounds();
-    for (const point of roofMarkers) bounds.extend([point.lng, point.lat]);
     const duration = prefersReducedMotion() ? 0 : 400;
-    if (roofMarkers.length === 1) {
-      map.easeTo({ center: bounds.getCenter(), zoom: 15, duration });
-    } else {
-      map.fitBounds(bounds, { padding: 64, maxZoom: 16, duration });
-    }
+    // The fit holds the results AND the whole search ring: fitting the (usually small) cluster of
+    // results alone zoomed to street level and left the ring out of view.
+    const ring =
+      radiusRef.current === undefined ? undefined : ringBounds(center, radiusRef.current);
+    const box = unionBox(
+      ring ?? [
+        [center.lng, center.lat],
+        [center.lng, center.lat],
+      ],
+      roofMarkers,
+    );
+    map.fitBounds(box, { padding: 64, maxZoom: 16, duration });
     // roofMarkers is read through resultsKey on purpose: only a changed result set moves the camera.
   }, [resultsKey, styleReady, overview, focusResults, center?.lat, center?.lng]);
 
@@ -684,6 +689,22 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     }
     // radiusMi is read through a ref on purpose: a radius change must not refit the view.
   }, [center?.lat, center?.lng, styleReady]);
+
+  // A radius change from the radius control fits the view to the new ring, once per change (the
+  // person's own pan/zoom is left alone otherwise). The pin drop does the same in the effect above.
+  const lastFitRadiusRef = useRef(radiusMi);
+  useEffect(() => {
+    const previous = lastFitRadiusRef.current;
+    lastFitRadiusRef.current = radiusMi;
+    const map = mapRef.current;
+    if (map === null || !styleReady || center === null || radiusMi === undefined) return;
+    if (previous === undefined || previous === radiusMi) return;
+    map.fitBounds(ringBounds(center, radiusMi), {
+      padding: 32,
+      duration: prefersReducedMotion() ? 0 : 400,
+    });
+    // Only radiusMi triggers it: a centre change is fitted by the pin effect.
+  }, [radiusMi, styleReady]);
 
   runFocusRef.current = (point, padding, instant) => {
     const map = mapRef.current;

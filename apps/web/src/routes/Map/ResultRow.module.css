@@ -32,14 +32,16 @@
 
 .head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 
 .title {
-  flex: 1 1 0;
+  flex: 1 1 var(--space-10);
   min-width: 0;
+  overflow-wrap: anywhere;
   margin: 0;
   font-family: var(--md-sys-typescale-title-small-font);
   font-size: var(--md-sys-typescale-title-small-size);
@@ -138,12 +140,14 @@
   font-weight: var(--md-sys-typescale-body-small-weight);
 }
 
+/* Wraps onto its own line when the title leaves no room, so it can never overlap the address. */
 .distance {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   color: var(--md-sys-color-on-surface-variant);
   font-family: var(--md-sys-typescale-label-medium-font);
   font-size: var(--md-sys-typescale-label-medium-size);
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .badgeRow {

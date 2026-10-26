@@ -14,8 +14,10 @@ export interface MapModeParam {
   /** The prefilled question; null when none. */
   readonly q: string | null;
   readonly setMode: (mode: MapMode) => void;
-  /** Takes the prefilled question out of the URL (replace, no history entry) once it was used. */
-  readonly clearQuestion: () => void;
+  /** Takes the prefilled question out of the URL (replace, no history entry) once it was used.
+   *  With `closeDrawer`, also clears `sel` so the property drawer does not cover the answer (the
+   *  property stays pinned on the map: the search centre and answer pins are not in `sel`). */
+  readonly clearQuestion: (options?: { readonly closeDrawer?: boolean }) => void;
 }
 
 export function parseMapMode(params: URLSearchParams): { mode: MapMode; q: string | null } {
@@ -51,7 +53,15 @@ export function useMapMode(): MapModeParam {
     [setParams],
   );
   const clearQuestion = useCallback(
-    () => setParams((prev) => patchMapMode(prev, { q: null }), { replace: true, state: null }),
+    (options?: { readonly closeDrawer?: boolean }) =>
+      setParams(
+        (prev) => {
+          const next = patchMapMode(prev, { q: null });
+          if (options?.closeDrawer === true) next.delete("sel");
+          return next;
+        },
+        { replace: true, state: null },
+      ),
     [setParams],
   );
   return { ...parsed, setMode, clearQuestion };

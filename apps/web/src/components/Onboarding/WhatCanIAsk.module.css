@@ -32,6 +32,27 @@
   outline: none;
 }
 
+/* Phone: a compact card, never more than 40 percent of the viewport height; what does not fit
+   scrolls inside it, and the header (with Close) stays pinned so it can always be dismissed. */
+@media (max-width: 599.98px) {
+  .card {
+    max-height: min(40dvh, calc(100% - var(--space-8) - var(--welcome-reserve, 0px)));
+    padding: var(--space-2) var(--space-3);
+    gap: var(--space-1);
+  }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--md-sys-color-surface);
+  }
+
+  .intro {
+    font-size: var(--md-sys-typescale-body-small-size);
+  }
+}
+
 @media (min-width: 600px) {
   .card {
     right: auto;

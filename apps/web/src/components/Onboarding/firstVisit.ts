@@ -41,21 +41,39 @@ export function askHref(question: string): string {
   return `/?mode=ai&${ASK_QUESTION_PARAM}=${encodeURIComponent(question)}`;
 }
 
+/** Set the moment the card is dismissed, so it stays gone for the rest of this page load even when
+ *  both kinds of storage are blocked. */
+let dismissedThisPage = false;
+
 /** True once the person dismissed the card on this browser. Storage can be blocked or throw
  *  (private window, cleared site data): then the card simply shows, and the page still works. */
 export function isDismissed(): boolean {
-  try {
-    return localStorage.getItem(WHAT_CAN_I_ASK_STORAGE_KEY) === "dismissed";
-  } catch {
-    return false;
+  if (dismissedThisPage) return true;
+  for (const read of [() => localStorage, () => sessionStorage]) {
+    try {
+      if (read().getItem(WHAT_CAN_I_ASK_STORAGE_KEY) === "dismissed") return true;
+    } catch {
+      // Blocked storage: try the next place.
+    }
   }
+  return false;
+}
+
+/** Forgets the in-page flag (tests, and "show it again" from the Help menu). */
+export function resetDismissedForPage(): void {
+  dismissedThisPage = false;
 }
 
 export function markDismissed(): void {
-  try {
-    localStorage.setItem(WHAT_CAN_I_ASK_STORAGE_KEY, "dismissed");
-  } catch {
-    // Nothing to remember it with: the card stays dismissed for this visit only.
+  dismissedThisPage = true;
+  // localStorage lasts across visits; sessionStorage is the fallback that at least covers this tab's
+  // session when the first is blocked.
+  for (const write of [() => localStorage, () => sessionStorage]) {
+    try {
+      write().setItem(WHAT_CAN_I_ASK_STORAGE_KEY, "dismissed");
+    } catch {
+      // Nothing to remember it with here: the in-page flag still keeps it closed.
+    }
   }
 }
 
