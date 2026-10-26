@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { propertiesSearchInput } from "../../src/routes/Map/Candidates/candidates";
 import { FILTERS, must, permit, property } from "./fixtures";
 
 const presenceFn = vi.fn();
@@ -17,17 +18,21 @@ let permitReply: { permits: ReturnType<typeof permit>[]; total?: number; truncat
   permits: [permit(1)],
 };
 const permitInputs: unknown[] = [];
+const propertyInputs: unknown[] = [];
 
 const fakeTrpc = {
   search: {
     properties: {
-      queryOptions: () => ({
-        queryKey: [["search", "properties"]],
-        queryFn: () => ({
-          properties: props,
-          ...(propertyCounts === undefined ? {} : { counts: propertyCounts }),
-        }),
-      }),
+      queryOptions: (input: unknown) => {
+        propertyInputs.push(input);
+        return {
+          queryKey: [["search", "properties"], input],
+          queryFn: () => ({
+            properties: props,
+            ...(propertyCounts === undefined ? {} : { counts: propertyCounts }),
+          }),
+        };
+      },
     },
     permits: {
       queryOptions: (input: unknown) => {
@@ -81,12 +86,33 @@ beforeEach(() => {
   propertyCounts = undefined;
   permitReply = { permits: [permit(1)] };
   permitInputs.length = 0;
+  propertyInputs.length = 0;
   presenceFn.mockReset();
   listFn.mockReset();
   createManyFn.mockReset();
   undoFn.mockReset();
 });
 afterEach(cleanup);
+
+describe("candidatesApi owner filters", () => {
+  it("builds the same search.properties input as the map, with owner keys only when on", async () => {
+    props = [property(1)];
+    const center = { lat: 30.4, lng: -97.6 };
+    renderHook(() => useCandidates({ ...filters, tenureYearsMin: 10, outOfArea: true }), {
+      wrapper,
+    });
+    await waitFor(() => expect(propertyInputs.length).toBeGreaterThan(0));
+    expect(propertyInputs[0]).toEqual(
+      propertiesSearchInput(center, filters.radiusMi, filters.roofAgeMinYears, 10, true),
+    );
+    expect(propertyInputs[0]).toMatchObject({ tenureYearsMin: 10, outOfArea: true });
+    propertyInputs.length = 0;
+    renderHook(() => useCandidates(filters), { wrapper });
+    await waitFor(() => expect(propertyInputs.length).toBeGreaterThan(0));
+    expect(propertyInputs[0]).not.toHaveProperty("tenureYearsMin");
+    expect(propertyInputs[0]).not.toHaveProperty("outOfArea");
+  });
+});
 
 describe("candidatesApi lead marks", () => {
   it("marks a lead owned by someone else, from leads.presence, and never calls leads.list", async () => {

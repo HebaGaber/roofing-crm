@@ -82,6 +82,9 @@ function headerSummary(count: number, filters: CandidateFilters, originLabel: st
   const parts = [`${String(count)} within ${String(filters.radiusMi)} mi of ${originLabel}`];
   if (filters.roofAgeMinYears !== undefined)
     parts.push(`roof ≥ ${String(filters.roofAgeMinYears)} yrs`);
+  if (filters.tenureYearsMin !== undefined)
+    parts.push(`tenure ≥ ${String(filters.tenureYearsMin)} yrs`);
+  if (filters.outOfArea === true) parts.push("out-of-area owner");
   const status = filters.permitStatus ?? "any";
   if (status !== "any") parts.push(`${status} permit`);
   if (filters.permitOpenYrs !== undefined)
@@ -135,6 +138,8 @@ export function CandidateList({
     filters.center,
     filters.radiusMi,
     filters.roofAgeMinYears,
+    filters.tenureYearsMin,
+    filters.outOfArea,
     filters.permitStatus,
     filters.permitOpenYrs,
   ]);

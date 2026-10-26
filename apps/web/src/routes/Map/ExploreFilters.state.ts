@@ -2,12 +2,13 @@
 // shareable and restorable from the URL"). Replaces the A-13/ORACLE-u Explore-page version this
 // file was copied from (C1 copy, 2026-10-23): that version's `place`/`tenure`/`ooa`/`sort`/
 // gazetteer machinery belongs to Task A's place-based Explorer, not this story's pin/GPS +
-// radius Map (B-03 has no place search, no tenure or out-of-area-owner filter — ADR-03 keeps
-// owner data out of this story entirely). Kept: the URL-param pattern itself and the file's
-// location/name (tasks.md T023a).
+// radius Map (no place search). The owner filters came back later (Task A's "Owner" group):
+// `tenure` and `ooa`, parsed exactly like `roof`. Kept: the URL-param pattern itself and the
+// file's location/name (tasks.md T023a).
 //
 // URL keys: `lat`,`lng` (the search center pin/GPS point), `r` (radiusMi, 0.5-25),
-// `roof` (roofAgeMinYears), `permits` (permit-view toggle, "1"), `sel` (the selected
+// `roof` (roofAgeMinYears), `tenure` (tenureYearsMin, whole years 0-100), `ooa` (out-of-area
+// owner, "1" or "true"), `permits` (permit-view toggle, "1"), `sel` (the selected
 // propertyCid, opens the detail drawer). Values outside bounds are dropped, never clamped into a
 // different question (FR-001/FR-003, matching the pattern the original file used).
 import { MAX_RADIUS_MI, MIN_RADIUS_MI } from "@crm/domain";
@@ -16,6 +17,9 @@ export const DEFAULT_RADIUS_MI = 5;
 export const RADIUS_BOUNDS: readonly [number, number] = [MIN_RADIUS_MI, MAX_RADIUS_MI];
 /** architecture-constitution.md §6's page-limit bound. */
 export const MAX_RESULTS = 100;
+
+/** Upper bound of the owner-tenure filter (years); a value above it is dropped, not clamped. */
+export const MAX_TENURE_YEARS = 100;
 
 export interface MapCenter {
   readonly lat: number;
@@ -26,6 +30,10 @@ export interface MapQuery {
   readonly center: MapCenter | null;
   readonly radiusMi: number;
   readonly roofAgeMinYears: number | undefined;
+  /** Owner filter: years since the latest dated sale, at least this many. */
+  readonly tenureYearsMin: number | undefined;
+  /** Owner filter: the owner's mailing ZIP is outside the Travis County area. */
+  readonly outOfArea: boolean;
   readonly permitView: boolean;
   readonly sel: string | null;
 }
@@ -61,11 +69,26 @@ function parseRoofAgeMinYears(params: URLSearchParams): number | undefined {
   return Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
+function parseTenureYearsMin(params: URLSearchParams): number | undefined {
+  const raw = params.get("tenure");
+  if (raw === null || raw.trim() === "") return undefined;
+  const value = Number(raw);
+  // Dropped (no filter) when not a whole number in 0-100, never clamped.
+  return Number.isInteger(value) && value >= 0 && value <= MAX_TENURE_YEARS ? value : undefined;
+}
+
+function parseOutOfArea(params: URLSearchParams): boolean {
+  const raw = params.get("ooa");
+  return raw === "1" || raw === "true";
+}
+
 export function parseMapQuery(params: URLSearchParams): MapQuery {
   return {
     center: parseCenter(params),
     radiusMi: parseRadius(params),
     roofAgeMinYears: parseRoofAgeMinYears(params),
+    tenureYearsMin: parseTenureYearsMin(params),
+    outOfArea: parseOutOfArea(params),
     permitView: params.get("permits") === "1",
     sel: params.get("sel"),
   };
@@ -76,6 +99,8 @@ export type MapQueryPatch = Partial<{
   lng: number | null;
   r: number | null;
   roof: number | null;
+  tenure: number | null;
+  ooa: boolean | null;
   permits: boolean | null;
   sel: string | null;
 }>;

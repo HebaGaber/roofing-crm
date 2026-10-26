@@ -52,6 +52,10 @@ const SearchPropertiesInput = z.object({
   // FR-001/data-model.md: inclusive 0.5-25 mi, a Zod error outside it — never silently clamped.
   radiusMi: z.number().min(MIN_RADIUS_MI).max(MAX_RADIUS_MI),
   roofAgeMinYears: z.number().int().optional(),
+  // Owner filters: tenure in whole years (stored `tenureYears` >= N), and owners whose mailing
+  // area is outside the county area (`ownerAreaClass` regional or out_of_area).
+  tenureYearsMin: z.number().int().min(0).max(100).optional(),
+  outOfArea: z.boolean().optional(),
   // architecture-constitution.md §6's page-limit bound.
   limit: z.number().int().positive().max(100).optional(),
 });

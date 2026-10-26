@@ -107,7 +107,10 @@ export interface SearchPropertiesQuery {
    *  ("regional","out_of_area")`; callers pass the exact value(s) they mean, this adapter never
    *  guesses which values "outside" covers. */
   ownerAreaClass?: string | readonly string[];
-  /** G4 (T043): the only tenure granularity `crm_property` actually stores is the boolean
+  /** Owner filter "Tenure >= N years". When the index carries the stored `tenureYears` column the
+   *  filter is exact (`"tenureYears" >= N`; rows with no tenure are excluded and counted in
+   *  `PropertiesPage.noTenure`). Older indexes (no such column) fall back to the rule below.
+   *  G4 (T043): the older index's only tenure granularity is the boolean
    *  `isLongTenure` (`tenure_years > 10`, packages/oracle-views/src/derive.ts) — the raw
    *  `tenure_years` count is deliberately not carried into this table (data-model.md,
    *  mapPropertyRow's comment in apps/sync/handlers/buildIndex.ts). So `tenureYearsMin` is
@@ -163,6 +166,8 @@ export interface PropertiesPage {
   afterFilters: number;
   /** Inside the circle with no roof date (counted whether or not a roof-age filter was given). */
   noRoofDate: number;
+  /** Inside the circle with no tenure (`tenureYears` null; 0 on an index without the column). */
+  noTenure: number;
 }
 
 export interface PermitsPage {
@@ -403,7 +408,7 @@ function radiusSql(
 }
 
 /** The non-spatial property filters, shared by the legacy array method and the page method. */
-function propertyFilterConditions(query: SearchPropertiesQuery): string[] {
+function propertyFilterConditions(query: SearchPropertiesQuery, hasTenureYears: boolean): string[] {
   const conditions: string[] = [];
   if (query.roofAgeMinYears !== undefined)
     conditions.push(`"roofAgeYears" >= ${sqlNumber(query.roofAgeMinYears)}`);
@@ -419,10 +424,14 @@ function propertyFilterConditions(query: SearchPropertiesQuery): string[] {
     );
   }
   if (query.tenureYearsMin !== undefined) {
-    // See the SearchPropertiesQuery.tenureYearsMin doc comment above: isLongTenure is the
-    // only tenure granularity this table stores, so every tenureYearsMin value is answered
-    // at that one fixed (>10 years) cutoff.
-    conditions.push(`"isLongTenure" = TRUE`);
+    // An index that carries the stored `tenureYears` is filtered exactly (NULL tenure never
+    // passes a `>=`). An older index has only the boolean `isLongTenure`, so every value is
+    // answered at that one fixed (>10 years) cutoff, as before.
+    conditions.push(
+      hasTenureYears
+        ? `"tenureYears" >= ${sqlNumber(query.tenureYearsMin)}`
+        : `"isLongTenure" = TRUE`,
+    );
   }
   return conditions;
 }
@@ -731,6 +740,24 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     await downloadS3ObjectToFile(this.s3, this.bucket, key, destPath);
   }
 
+  /** Whether this index carries the stored `tenureYears` column (cached per manifest). */
+  private readonly tenureColumn = new Map<string, boolean>();
+  private async hasTenureColumn(
+    connection: DuckDBConnection,
+    manifestCid: string,
+  ): Promise<boolean> {
+    const known = this.tenureColumn.get(manifestCid);
+    if (known !== undefined) return known;
+    const reader = await this.runBounded(
+      connection,
+      `SELECT count(*)::INTEGER AS n FROM information_schema.columns
+       WHERE table_name = 'crm_property' AND column_name = 'tenureYears'`,
+    );
+    const n = (reader.getRowObjectsJS()[0] as unknown as { n: number }).n;
+    this.tenureColumn.set(manifestCid, n > 0);
+    return n > 0;
+  }
+
   async searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]> {
     return withObservabilityOperation(this.obs, "LeadIndex.searchProperties", async () => {
       const { manifestCid } = await this.indexInfo();
@@ -750,7 +777,13 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
           `latitude BETWEEN ${sqlNumber(box.south)} AND ${sqlNumber(box.north)} AND longitude BETWEEN ${sqlNumber(box.west)} AND ${sqlNumber(box.east)}`,
         );
       }
-      conditions.push(...propertyFilterConditions(query));
+      conditions.push(
+        ...propertyFilterConditions(
+          query,
+          query.tenureYearsMin !== undefined &&
+            (await this.hasTenureColumn(connection, manifestCid)),
+        ),
+      );
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
       const limit =
         query.limit !== undefined
@@ -775,19 +808,23 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
       const { manifestCid } = await this.indexInfo();
       const { connection } = await this.ensureLoaded(manifestCid);
       const { where, dist } = radiusSql(query.center, query.radiusMi, (n) => `"${n}"`);
-      const filters = propertyFilterConditions(query);
+      const hasTenure =
+        query.tenureYearsMin !== undefined && (await this.hasTenureColumn(connection, manifestCid));
+      const filters = propertyFilterConditions(query, hasTenure);
       const filterSql = filters.length === 0 ? "TRUE" : filters.map((f) => `(${f})`).join(" AND ");
       const countsReader = await this.runBounded(
         connection,
         `SELECT count(*)::INTEGER AS "afterRadius",
            (count(*) FILTER (WHERE ${filterSql}))::INTEGER AS "afterFilters",
-           (count(*) FILTER (WHERE "roofAgeYears" IS NULL))::INTEGER AS "noRoofDate"
+           (count(*) FILTER (WHERE "roofAgeYears" IS NULL))::INTEGER AS "noRoofDate",
+           (count(*) FILTER (WHERE ${hasTenure ? `"tenureYears" IS NULL` : "FALSE"}))::INTEGER AS "noTenure"
          FROM crm_property WHERE ${where}`,
       );
       const counts = countsReader.getRowObjectsJS()[0] as unknown as {
         afterRadius: number;
         afterFilters: number;
         noRoofDate: number;
+        noTenure: number;
       };
       let rows: PropertyResult[] = [];
       if (counts.afterFilters > 0) {

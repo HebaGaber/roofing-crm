@@ -1,8 +1,8 @@
 // B-03 Map filter sheet (tasks.md T024; AC-3, AC-5, FR-003, FR-005). Replaces the A-13/ORACLE-u
 // Explore version this file was copied from (C1 copy, 2026-10-23): that version controlled
-// place/radius/roof/permit/openYrs/tenure/ooa/sort for Task A's place-based Explorer. B-03's Map
-// has no place search and no tenure/out-of-area-owner filter (ADR-03 keeps owner data out of this
-// story entirely) — radius itself lives in `RadiusControl.tsx` (Group 1's T016). CRM-HANDOFF
+// place/radius/roof/permit/openYrs/tenure/ooa/sort for Task A's place-based Explorer. This Map
+// has no place search; it keeps the owner group of Task A's panel (tenure, out-of-area), applied
+// by the server — radius itself lives in `RadiusControl.tsx` (Group 1's T016). CRM-HANDOFF
 // §4.2 "Filters (CRM set)" names exactly three controls, and this file owns all three: the
 // roof-age threshold (chips 10/13/15/20/25, or any number in "Other"; default 15 — one control,
 // not two), the permit status (Open/Stalled/Any), and the permit-open-duration filter. Permit
@@ -24,7 +24,12 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from "react";
+import { OUT_OF_AREA_UNPUBLISHED } from "./Candidates/candidates.js";
+import { MAX_TENURE_YEARS } from "./ExploreFilters.state.js";
 import styles from "./FilterSheet.module.css";
+
+/** The "Tenure > 10 yrs" chip sets this threshold. */
+export const TENURE_CHIP_YEARS = 10;
 
 /** CRM-HANDOFF §4.2: "Roof age ≥ N (10–25 chips or any number in 'Other'; default 15)". */
 export const ROOF_AGE_CHIPS: readonly number[] = [10, 13, 15, 20, 25];
@@ -46,6 +51,15 @@ export interface FilterSheetProps {
   /** Permit open ≥ N yrs; `undefined` = "Any". */
   readonly permitOpenYrs: number | undefined;
   readonly onPermitOpenYrsChange: (value: number | undefined) => void;
+  /** Owner filter: tenure of at least N years; `undefined` = off. */
+  readonly tenureYearsMin?: number | undefined;
+  readonly onTenureYearsMinChange?: ((value: number | undefined) => void) | undefined;
+  /** Owner filter: the owner's mailing ZIP is outside the county area. */
+  readonly outOfArea?: boolean | undefined;
+  readonly onOutOfAreaChange?: ((value: boolean) => void) | undefined;
+  /** Shown in the match bar in place of a count when none can be given (for example the county
+   *  overview, which owner filters do not reach). */
+  readonly matchNote?: string | undefined;
   /** How many properties match the filters now (the chip on the phone toolbar's Filters button,
    *  boards CrmMapPin390 and CrmMap390); absent while there is no search to count. */
   readonly matchCount?: number | undefined;
@@ -59,7 +73,7 @@ export interface FilterSheetProps {
    *  ("within 5 mi of the pin", "county-wide") and the run it is read from ("Run 3"). */
   readonly matchScope?: string | undefined;
   readonly runLabel?: string | undefined;
-  /** Clears the roof-age and permit filters. */
+  /** Clears the roof-age, permit and owner filters. */
   readonly onClear?: (() => void) | undefined;
 }
 
@@ -68,9 +82,13 @@ export function filterSummary(
   roofAgeMinYears: number | undefined,
   permitStatus: PermitStatusFilter,
   permitOpenYrs: number | undefined,
+  tenureYearsMin?: number | undefined,
+  outOfArea?: boolean | undefined,
 ): string {
   const parts = [
     roofAgeMinYears === undefined ? null : `roof ≥ ${String(roofAgeMinYears)}`,
+    tenureYearsMin === undefined ? null : `tenure > ${String(tenureYearsMin)}`,
+    outOfArea === true ? "out-of-area owner" : null,
     permitStatus === "any" ? null : `permit ${permitStatus}`,
     permitOpenYrs === undefined ? null : `open ${String(permitOpenYrs)}+ yrs`,
   ].filter((part): part is string => part !== null);
@@ -87,6 +105,14 @@ export function committedRoofAge(text: string): number | undefined {
   return Math.max(0, Math.round(n));
 }
 
+/** Typed tenure text -> a value for the URL: whole years 0-100, or `undefined` when the text is not
+ *  one (a blank box is "off"; a value outside the range is never clamped into another question). */
+export function committedTenure(text: string): number | undefined {
+  if (text.trim() === "") return undefined;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= 0 && n <= MAX_TENURE_YEARS ? n : undefined;
+}
+
 export function FilterSheet({
   roofAgeMinYears,
   onRoofAgeMinYearsChange,
@@ -94,6 +120,11 @@ export function FilterSheet({
   onPermitStatusChange,
   permitOpenYrs,
   onPermitOpenYrsChange,
+  tenureYearsMin,
+  onTenureYearsMinChange,
+  outOfArea = false,
+  onOutOfAreaChange,
+  matchNote,
   matchCount,
   open: controlledOpen,
   onOpenChange,
@@ -113,6 +144,7 @@ export function FilterSheet({
   // What the person is typing, until they leave the box (mirrors the copied-from file's "drafts"
   // pattern so a half-typed value is never clobbered by the committed one re-rendering).
   const [draft, setDraft] = useState<string | undefined>(undefined);
+  const [tenureDraft, setTenureDraft] = useState<string | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const close = (): void => setOpen(false);
@@ -284,13 +316,85 @@ export function FilterSheet({
             ))}
           </select>
         </div>
-        {inline && matchCount !== undefined ? (
+        <div className={styles.group}>
+          <span className={styles.groupLabel}>Owner</span>
+          <div className={styles.chips} role="group" aria-label="Owner">
+            <button
+              type="button"
+              className={`${styles.chip} ${styles.chipWithIcon} ${tenureYearsMin === TENURE_CHIP_YEARS ? styles.chipSelected : ""}`}
+              aria-pressed={tenureYearsMin === TENURE_CHIP_YEARS}
+              onClick={() =>
+                onTenureYearsMinChange?.(
+                  tenureYearsMin === TENURE_CHIP_YEARS ? undefined : TENURE_CHIP_YEARS,
+                )
+              }
+            >
+              {tenureYearsMin === TENURE_CHIP_YEARS ? <Icon name="check" size="small" /> : null}
+              Tenure &gt; 10 yrs
+            </button>
+            <button
+              type="button"
+              className={`${styles.chip} ${styles.chipWithIcon} ${outOfArea ? styles.chipSelected : ""}`}
+              aria-pressed={outOfArea}
+              onClick={() => onOutOfAreaChange?.(!outOfArea)}
+            >
+              <Icon name={outOfArea ? "check" : "add"} size="small" />
+              Out-of-area
+            </button>
+          </div>
+          {outOfArea ? (
+            <p className={styles.hint} data-out-of-area-hint="">
+              {OUT_OF_AREA_UNPUBLISHED}
+            </p>
+          ) : null}
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor={`${id}-tenure`}>
+              Tenure, yrs or more (&gt;)
+            </label>
+            <input
+              id={`${id}-tenure`}
+              className={styles.input}
+              type="number"
+              inputMode="numeric"
+              step="1"
+              min={0}
+              max={MAX_TENURE_YEARS}
+              placeholder={`${TENURE_CHIP_YEARS}`}
+              value={tenureDraft ?? (tenureYearsMin === undefined ? "" : String(tenureYearsMin))}
+              onChange={(e) => {
+                const typed = e.target.value;
+                setTenureDraft(typed);
+                if (typed.trim() === "") onTenureYearsMinChange?.(undefined);
+                else {
+                  const committed = committedTenure(typed);
+                  if (committed !== undefined) onTenureYearsMinChange?.(committed);
+                }
+              }}
+              onBlur={() => setTenureDraft(undefined)}
+            />
+          </div>
+          <p className={styles.hint}>
+            Tenure: years since the latest dated sale on record; properties without one are left out
+            and counted.
+          </p>
+          <p className={styles.hint}>
+            Out-of-area owner: the owner&apos;s mailing ZIP is outside the Travis County area
+            (owner_area_class).
+          </p>
+        </div>
+        {inline && (matchCount !== undefined || matchNote !== undefined) ? (
           <div className={styles.matchBar} data-match-bar="">
             <div className={styles.matchRow}>
               <span className={styles.matchText} aria-live="polite">
-                <strong data-match-total="">{matchCount.toLocaleString("en-US")}</strong>
-                {matchCount === 1 ? " property matches" : " properties match"}
-                {matchScope === undefined ? "" : ` ${matchScope}`}
+                {matchCount === undefined ? (
+                  matchNote
+                ) : (
+                  <>
+                    <strong data-match-total="">{matchCount.toLocaleString("en-US")}</strong>
+                    {matchCount === 1 ? " property matches" : " properties match"}
+                    {matchScope === undefined ? "" : ` ${matchScope}`}
+                  </>
+                )}
               </span>
               {onClear === undefined ? null : (
                 <button
@@ -299,7 +403,9 @@ export function FilterSheet({
                   disabled={
                     roofAgeMinYears === undefined &&
                     permitStatus === "any" &&
-                    permitOpenYrs === undefined
+                    permitOpenYrs === undefined &&
+                    tenureYearsMin === undefined &&
+                    !outOfArea
                   }
                   onClick={onClear}
                 >
@@ -308,7 +414,7 @@ export function FilterSheet({
               )}
             </div>
             <p className={styles.matchSummary}>
-              {`Filters: ${filterSummary(roofAgeMinYears, permitStatus, permitOpenYrs)}${runLabel === undefined ? "" : ` · ${runLabel}`}`}
+              {`Filters: ${filterSummary(roofAgeMinYears, permitStatus, permitOpenYrs, tenureYearsMin, outOfArea)}${runLabel === undefined ? "" : ` · ${runLabel}`}`}
             </p>
           </div>
         ) : null}

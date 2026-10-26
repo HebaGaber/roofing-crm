@@ -16,6 +16,10 @@ export interface CandidateFilters {
   readonly center: LatLng | null;
   readonly radiusMi: number;
   readonly roofAgeMinYears?: number | undefined;
+  /** Owner filter (server-side): tenure of at least this many years. */
+  readonly tenureYearsMin?: number | undefined;
+  /** Owner filter (server-side): the owner's mailing ZIP is outside the county area. */
+  readonly outOfArea?: boolean | undefined;
   readonly permitStatus?: PermitStatusFilter | undefined;
   /** Permit open ≥ N years. */
   readonly permitOpenYrs?: number | undefined;
@@ -124,6 +128,42 @@ export function hasPermitFilter(filters: CandidateFilters): boolean {
   return (filters.permitStatus ?? "any") !== "any" || filters.permitOpenYrs !== undefined;
 }
 
+/** The one `search.properties` input shape, used by the map and the lists so React Query shares one
+ *  cache entry. Owner filters are present only when on (an absent key, never `undefined`). */
+export function propertiesSearchInput(
+  center: LatLng,
+  radiusMi: number,
+  roofAgeMinYears: number | undefined,
+  tenureYearsMin: number | undefined,
+  outOfArea: boolean | undefined,
+) {
+  return {
+    center,
+    radiusMi,
+    roofAgeMinYears,
+    ...(tenureYearsMin === undefined ? {} : { tenureYearsMin }),
+    ...(outOfArea === true ? { outOfArea: true } : {}),
+  };
+}
+
+/** True when an owner filter (tenure or out-of-area) is on. Applied by the server, unlike permits. */
+export function hasOwnerFilter(filters: CandidateFilters): boolean {
+  return filters.tenureYearsMin !== undefined || filters.outOfArea === true;
+}
+
+/** Why "Out-of-area" cannot match anything yet: shown under the chip and in the empty state. */
+export const OUT_OF_AREA_UNPUBLISHED =
+  "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.";
+
+/** "tenure 10+ yrs and out-of-area owners" (empty only when no owner filter is on). */
+export function ownerFilterPhrase(filters: CandidateFilters): string {
+  const parts = [
+    filters.tenureYearsMin === undefined ? null : `tenure ${String(filters.tenureYearsMin)}+ yrs`,
+    filters.outOfArea === true ? "out-of-area owners" : null,
+  ].filter((part): part is string => part !== null);
+  return parts.join(" and ");
+}
+
 /** What an empty candidate list says: it names what was filtered (the roof age, the permit, or
  *  both), says why when the data cannot satisfy an "open" status, and what to relax. */
 export function emptyStateCopy(filters: CandidateFilters): {
@@ -131,35 +171,54 @@ export function emptyStateCopy(filters: CandidateFilters): {
   text: string;
   permitFilter: boolean;
   roofFilter: boolean;
+  ownerFilter: boolean;
 } {
   const roof = filters.roofAgeMinYears;
   const status = filters.permitStatus ?? "any";
   const years = filters.permitOpenYrs;
   const permitFilter = hasPermitFilter(filters);
   const roofFilter = roof !== undefined;
+  const ownerFilter = hasOwnerFilter(filters);
   const radius = String(filters.radiusMi);
   const noun =
     status === "open" ? "an open permit" : status === "stalled" ? "a stalled permit" : "a permit";
   const phrase = years === undefined ? noun : `${noun} (open ${String(years)}+ yrs)`;
+  if (!permitFilter && ownerFilter) {
+    const subject = roofFilter ? `roofs of ${String(roof)}+ yrs` : "properties";
+    return {
+      title: `No ${subject} with ${ownerFilterPhrase(filters)} within ${radius} mi.`,
+      text:
+        filters.outOfArea === true
+          ? OUT_OF_AREA_UNPUBLISHED
+          : `Try a bigger radius${roofFilter ? ", a lower roof age" : ""} or a lower tenure.`,
+      permitFilter,
+      roofFilter,
+      ownerFilter,
+    };
+  }
   if (!permitFilter) {
     return {
       title: `No roofs match within ${radius} mi.`,
       text: "Try a bigger radius or a lower roof age.",
       permitFilter,
       roofFilter,
+      ownerFilter,
     };
   }
   const why =
     status === "open"
       ? "Open permits are rare in this data (Austin permits only; most are stalled, a status the CRM derives). "
       : "";
+  const title = roofFilter
+    ? `No roofs of ${String(roof)}+ yrs have ${phrase} within ${radius} mi.`
+    : `No properties with ${phrase} within ${radius} mi.`;
+  const ownerUnpublished = filters.outOfArea === true ? `${OUT_OF_AREA_UNPUBLISHED} ` : "";
   return {
-    title: roofFilter
-      ? `No roofs of ${String(roof)}+ yrs have ${phrase} within ${radius} mi.`
-      : `No properties with ${phrase} within ${radius} mi.`,
-    text: `${why}Try a bigger radius${roofFilter ? ", a lower roof age" : ""} or relax the permit filter.`,
+    title: ownerFilter ? `${title.slice(0, -1)}, with ${ownerFilterPhrase(filters)}.` : title,
+    text: `${ownerUnpublished}${why}Try a bigger radius${roofFilter ? ", a lower roof age" : ""}${ownerFilter ? ", a lower tenure" : ""} or relax the permit filter.`,
     permitFilter,
     roofFilter,
+    ownerFilter,
   };
 }
 

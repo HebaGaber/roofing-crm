@@ -84,3 +84,44 @@ describe("patchMapParams", () => {
     expect(original.get("r")).toBe("5");
   });
 });
+
+describe("owner filters in the URL (tenure, ooa)", () => {
+  it("restores tenure and ooa", () => {
+    const q = parseMapQuery(params("tenure=10&ooa=1"));
+    expect(q.tenureYearsMin).toBe(10);
+    expect(q.outOfArea).toBe(true);
+    expect(parseMapQuery(params("ooa=true")).outOfArea).toBe(true);
+    expect(parseMapQuery(params("tenure=0")).tenureYearsMin).toBe(0);
+    expect(parseMapQuery(params("tenure=100")).tenureYearsMin).toBe(100);
+  });
+
+  it("defaults to off", () => {
+    const q = parseMapQuery(params(""));
+    expect(q.tenureYearsMin).toBeUndefined();
+    expect(q.outOfArea).toBe(false);
+  });
+
+  it("drops invalid values, never clamps", () => {
+    for (const bad of ["-1", "101", "1.5", "abc", "", "1e2x"]) {
+      expect(parseMapQuery(params(`tenure=${bad}`)).tenureYearsMin).toBeUndefined();
+    }
+    for (const bad of ["0", "yes", "2", ""]) {
+      expect(parseMapQuery(params(`ooa=${bad}`)).outOfArea).toBe(false);
+    }
+  });
+
+  it("patches, removes and round-trips", () => {
+    const set = patchMapParams(params("roof=15"), { tenure: 10, ooa: true });
+    expect(set.get("tenure")).toBe("10");
+    expect(set.get("ooa")).toBe("1");
+    expect(set.get("roof")).toBe("15");
+    const q = parseMapQuery(set);
+    expect([q.tenureYearsMin, q.outOfArea, q.roofAgeMinYears]).toEqual([10, true, 15]);
+    const zero = patchMapParams(params(""), { tenure: 0 });
+    expect(zero.get("tenure")).toBe("0");
+    const cleared = patchMapParams(set, { tenure: null, ooa: null });
+    expect(cleared.has("tenure")).toBe(false);
+    expect(cleared.has("ooa")).toBe(false);
+    expect(patchMapParams(set, { ooa: false }).has("ooa")).toBe(false);
+  });
+});

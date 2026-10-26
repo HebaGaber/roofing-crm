@@ -6,7 +6,12 @@
 // field and the sheet's open/close behaviour).
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FilterSheet, ROOF_AGE_CHIPS } from "../src/routes/Map/FilterSheet";
+import {
+  committedTenure,
+  filterSummary,
+  FilterSheet,
+  ROOF_AGE_CHIPS,
+} from "../src/routes/Map/FilterSheet";
 
 afterEach(cleanup);
 
@@ -61,5 +66,128 @@ describe("FilterSheet permit status and open-years (the sheet's only permit cont
     fireEvent.click(screen.getByRole("button", { name: "Filters" }));
     fireEvent.change(screen.getByLabelText("Permit open ≥"), { target: { value: "" } });
     expect(onChange).toHaveBeenCalledWith(undefined);
+  });
+});
+
+describe("FilterSheet owner group (tenure, out-of-area)", () => {
+  const open = (): void => {
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+  };
+
+  it("the tenure chip toggles 10 on and off and shows aria-pressed", () => {
+    const onChange = vi.fn();
+    const view = renderSheet({ tenureYearsMin: undefined, onTenureYearsMinChange: onChange });
+    open();
+    const chip = screen.getByRole("button", { name: "Tenure > 10 yrs" });
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(chip);
+    expect(onChange).toHaveBeenLastCalledWith(10);
+    view.rerender(
+      <FilterSheet
+        roofAgeMinYears={15}
+        onRoofAgeMinYearsChange={vi.fn()}
+        permitStatus="any"
+        onPermitStatusChange={vi.fn()}
+        permitOpenYrs={undefined}
+        onPermitOpenYrsChange={vi.fn()}
+        tenureYearsMin={10}
+        onTenureYearsMinChange={onChange}
+      />,
+    );
+    const on = screen.getByRole("button", { name: "Tenure > 10 yrs" });
+    expect(on.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(on);
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it("the out-of-area chip toggles and gives its reason only while on", () => {
+    const onChange = vi.fn();
+    const view = renderSheet({ outOfArea: false, onOutOfAreaChange: onChange });
+    open();
+    const chip = screen.getByRole("button", { name: "Out-of-area" });
+    expect(chip.getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector("[data-out-of-area-hint]")).toBeNull();
+    fireEvent.click(chip);
+    expect(onChange).toHaveBeenLastCalledWith(true);
+    view.rerender(
+      <FilterSheet
+        roofAgeMinYears={15}
+        onRoofAgeMinYearsChange={vi.fn()}
+        permitStatus="any"
+        onPermitStatusChange={vi.fn()}
+        permitOpenYrs={undefined}
+        onPermitOpenYrsChange={vi.fn()}
+        outOfArea
+        onOutOfAreaChange={onChange}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Out-of-area" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    expect(document.querySelector("[data-out-of-area-hint]")?.textContent).toContain(
+      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1)",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Out-of-area" }));
+    expect(onChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("the tenure box commits whole years, a blank box turns it off, a bad value is not sent", () => {
+    const onChange = vi.fn();
+    renderSheet({ tenureYearsMin: 10, onTenureYearsMinChange: onChange });
+    open();
+    const box = screen.getByLabelText(/Tenure, yrs or more/);
+    fireEvent.change(box, { target: { value: "25" } });
+    expect(onChange).toHaveBeenLastCalledWith(25);
+    fireEvent.change(box, { target: { value: "" } });
+    expect(onChange).toHaveBeenLastCalledWith(undefined);
+    onChange.mockClear();
+    fireEvent.change(box, { target: { value: "150" } });
+    fireEvent.change(box, { target: { value: "2.5" } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(committedTenure("0")).toBe(0);
+    expect(committedTenure("100")).toBe(100);
+    expect(committedTenure("101")).toBeUndefined();
+    expect(committedTenure("-1")).toBeUndefined();
+  });
+
+  it("shows the two helper texts", () => {
+    renderSheet();
+    open();
+    expect(
+      screen.getByText(
+        "Tenure: years since the latest dated sale on record; properties without one are left out and counted.",
+      ),
+    ).not.toBeNull();
+    expect(
+      screen.getByText(
+        "Out-of-area owner: the owner's mailing ZIP is outside the Travis County area (owner_area_class).",
+      ),
+    ).not.toBeNull();
+  });
+
+  it("the summary names the owner filters", () => {
+    expect(filterSummary(undefined, "any", undefined, 10, true)).toBe(
+      "tenure > 10 · out-of-area owner",
+    );
+    expect(filterSummary(15, "any", undefined, undefined, false)).toBe("roof ≥ 15");
+    expect(filterSummary(undefined, "any", undefined)).toBe("none");
+  });
+
+  it("Clear is enabled by an owner filter alone, and the bar shows the note when no count", () => {
+    const onClear = vi.fn();
+    renderSheet({
+      roofAgeMinYears: undefined,
+      outOfArea: true,
+      inline: true,
+      matchCount: undefined,
+      matchNote: "Owner filters apply once you pick an area",
+      onClear,
+    });
+    const bar = document.querySelector("[data-match-bar]") as HTMLElement;
+    expect(bar.textContent).toContain("Owner filters apply once you pick an area");
+    const clear = screen.getByText("Clear");
+    expect((clear as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(clear);
+    expect(onClear).toHaveBeenCalled();
   });
 });
