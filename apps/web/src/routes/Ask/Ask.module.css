@@ -747,6 +747,12 @@
   padding: var(--space-4);
 }
 
+/* The Matches tab: the list carries its own 16 px side padding (as in the filter results), so the
+   panel bleeds out of the page's 16 px and a card sits at the same left edge and width. */
+.answer[data-tab="matches"] {
+  margin-inline: calc(-1 * var(--space-4));
+}
+
 /* The tab bar is dropped (not just hidden by the attribute) when the Matches rows live in the
    results pane. */
 .tabs[hidden] {

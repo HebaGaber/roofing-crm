@@ -140,3 +140,21 @@ describe("ring fit (item 6)", () => {
     expect(source).toMatch(/lastFitRadiusRef/);
   });
 });
+
+describe("Matches pane side padding (responsive review)", () => {
+  it("the wide Matches pane adds no side padding of its own: the list's 16 px puts the card where a filter result sits", () => {
+    const source = css("routes/Map/Map.module.css");
+    const block = /\.matchesPane \{[^}]*\}/.exec(source)?.[0] ?? "";
+    expect(block).toMatch(/padding: 0 0 var\(--space-4\);/);
+    expect(block).not.toMatch(/padding: 0 var\(--space-4\) /);
+  });
+});
+
+describe("Matches tab geometry (responsive review)", () => {
+  it("the Matches tab panel bleeds out of the page padding so its list sits like the filter results", () => {
+    expect(css("routes/Ask/AskPanel.tsx")).toMatch(/data-tab=\{tab\}/);
+    expect(css("routes/Ask/Ask.module.css")).toMatch(
+      /\.answer\[data-tab="matches"\] \{\s*margin-inline: calc\(-1 \* var\(--space-4\)\);/,
+    );
+  });
+});
