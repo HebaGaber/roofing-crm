@@ -28,6 +28,7 @@ import {
   LEAD_FIXTURES,
   LEADS_AREA,
   OLD_MANIFEST_CID,
+  leadTitle,
   FIXTURES_MANIFEST_CID,
   STALE_REQUEST_ID,
 } from "./lib/run-fixtures.js";
@@ -170,7 +171,7 @@ function createInput(f: Facts): Record<string, unknown> {
   return {
     fips: TRAVIS_FIPS,
     requestIdentifier: f.requestIdentifier,
-    address: `TCAD ${f.requestIdentifier}`,
+    address: leadTitle(f.requestIdentifier),
     lat: f.latitude,
     lon: f.longitude,
     signals: {
@@ -263,7 +264,7 @@ async function setLeadArea(page: Page, lat: number, lng: number, miles: string):
   await page.getByLabel("Radius, mi").selectOption(miles);
 }
 const leadLink = (page: Page, f: Facts): Locator =>
-  page.getByRole("link", { name: `TCAD ${f.requestIdentifier}` });
+  page.getByRole("link", { name: leadTitle(f.requestIdentifier) });
 
 /** Screenshot to docs/evidence/img/B-07-TC-{nnn}-{step}.png, attached to the report. */
 async function shot(page: Page, tc: string, step: string): Promise<void> {
@@ -359,7 +360,7 @@ test.describe("B-07 leads", () => {
 
     await page.goto("/leads");
     const first = page.locator("li[data-lead-id]").first();
-    await expect(first).toContainText(`TCAD ${f.requestIdentifier}`);
+    await expect(first).toContainText(leadTitle(f.requestIdentifier));
     await expect(first).toContainText("New");
     await expect(leadLink(page, f)).toHaveCount(1);
     // The row shows "Created Oct 20, 09:14 UTC"; the exact (minute-truncated) stamp is the <time>
@@ -794,7 +795,9 @@ test.describe("B-07 leads", () => {
     await expect(page.getByRole("region", { name: "Current signals" })).toBeVisible();
     await expect(page.getByTestId("not-in-run")).toHaveCount(0);
     await page.goto("/leads");
-    const row = page.locator("li[data-lead-id]").filter({ hasText: `TCAD ${f.requestIdentifier}` });
+    const row = page
+      .locator("li[data-lead-id]")
+      .filter({ hasText: leadTitle(f.requestIdentifier) });
     await expect(row).toHaveCount(1);
     await expect(row).not.toContainText("Not in the current run");
     // A differing manifest with the property still present is covered by the service unit tests.
@@ -888,7 +891,7 @@ test.describe("B-07 leads", () => {
         await page.waitForFunction(
           (needle) =>
             document.querySelector("li[data-lead-id]")?.textContent?.includes(needle) === true,
-          `TCAD ${f.requestIdentifier}`,
+          leadTitle(f.requestIdentifier),
           { polling: "raf", timeout: 10_000 },
         );
         samples.push(Date.now() - startedAt);

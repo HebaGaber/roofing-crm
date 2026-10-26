@@ -104,6 +104,19 @@ export const LEAD_FIXTURES = {
   },
 } as const satisfies Record<string, LeadFixture>;
 
+/** The title a lead row shows for each fixture: the street address Run 3.1 publishes
+ *  (`unnormalizedAddress`, read from the served index on 2026-10-26), as the app builds it. */
+const LEAD_TITLES: Readonly<Record<string, string>> = {
+  "138273": "3600 GREYSTONE DR, TX 78731",
+  "194540": "408 E 6 ST, TX 78701",
+  "194535": "418 E 6 ST, TX 78701",
+};
+
+/** The text of a fixture's lead row title; falls back to the TCAD id like the app does. */
+export function leadTitle(requestIdentifier: string): string {
+  return LEAD_TITLES[requestIdentifier] ?? `TCAD ${requestIdentifier}`;
+}
+
 /** A permit number that the openPermit fixture holds as an OPEN Roofing permit (read from
  *  `property.get` on the same date; the property has 16 permits, several open, 37 days). */
 export const OPEN_PERMIT_NUMBER = "2026-121002 BP";
