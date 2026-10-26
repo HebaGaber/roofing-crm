@@ -41,6 +41,11 @@ export interface SearchPropertiesInput {
   tenureYearsMin?: number | undefined;
   /** Web owner filter "Out-of-area": `ownerAreaClass IN ('regional','out_of_area')`. */
   outOfArea?: boolean | undefined;
+  /** Permit filter (map Filters → Permit status / Permit open): applied in SQL to the whole
+   *  matching set, before the limit, the order and the counts. `["open","stalled"]` is the map's
+   *  "Open" (see `permitStatusClassesFor`). */
+  permitStatusClass?: readonly ("open" | "stalled" | "closed")[] | undefined;
+  permitOpenDaysMin?: number | undefined;
   limit?: number | undefined;
 }
 
@@ -88,6 +93,12 @@ export async function searchProperties(
         ? { ownerAreaClass: ["regional", "out_of_area"] }
         : {}),
     ...(input.tenureYearsMin === undefined ? {} : { tenureYearsMin: input.tenureYearsMin }),
+    ...(input.permitStatusClass === undefined
+      ? {}
+      : { permitStatusClass: input.permitStatusClass }),
+    ...(input.permitOpenDaysMin === undefined
+      ? {}
+      : { permitOpenDaysMin: input.permitOpenDaysMin }),
   };
 
   if (leadIndex.searchPropertiesPage !== undefined) {

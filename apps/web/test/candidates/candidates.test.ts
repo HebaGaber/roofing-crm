@@ -63,17 +63,31 @@ describe("buildCandidates", () => {
     expect(list[0]?.mainPermit?.openDays).toBe(2300);
   });
 
-  it("drops properties without a matching permit when a permit filter is on", () => {
+  it("keeps every property the server returned; the permit filter only picks the permits shown (F-1)", () => {
     const filters = { ...FILTERS, permitStatus: "stalled" as const };
     const list = candidates([property(1), property(2)], [permit(1)], [], filters);
-    expect(list).toHaveLength(1);
+    // The server already applied the filter to every property in range, so a property whose
+    // permit is past the permits page is still listed, just without that permit.
+    expect(list).toHaveLength(2);
+    expect(list[1]?.permits).toEqual([]);
     expect(defaultSort(filters)).toBe("open");
+  });
+
+  it("Open keeps open and stalled permits, Stalled only stalled", () => {
+    const stalled = permit(1, { permitCid: "d".repeat(59), statusClass: "stalled", openDays: 900 });
+    const open = permit(1, { statusClass: "open", openDays: 500 });
+    const closed = permit(1, { permitCid: "e".repeat(59), statusClass: "closed", openDays: 9000 });
+    const all = [stalled, open, closed];
+    const openList = candidates([property(1)], all, [], { ...FILTERS, permitStatus: "open" });
+    expect(openList[0]?.permits.map((p) => p.statusClass).sort()).toEqual(["open", "stalled"]);
+    const stalledList = candidates([property(1)], all, [], { ...FILTERS, permitStatus: "stalled" });
+    expect(stalledList[0]?.permits.map((p) => p.statusClass)).toEqual(["stalled"]);
   });
 
   it("applies permit open years to permits, not to roofs", () => {
     const filters = { ...FILTERS, permitOpenYrs: 7 };
     const list = candidates([property(1)], [permit(1, { openDays: 2300 })], [], filters);
-    expect(list).toHaveLength(0); // 2300 days ≈ 6.3 yrs
+    expect(list[0]?.permits).toHaveLength(0); // 2300 days ≈ 6.3 yrs
   });
 
   it("keeps a null location as null distance, never 0", () => {
@@ -162,7 +176,9 @@ describe("permitQueryInput (the server filters the permits)", () => {
   });
 
   it("passes the status and the open years as the server's statusClass and openDaysMin", () => {
-    expect(permitQueryInput(center, 5, "open", undefined)).toMatchObject({ statusClass: ["open"] });
+    expect(permitQueryInput(center, 5, "open", undefined)).toMatchObject({
+      statusClass: ["open", "stalled"],
+    });
     expect(permitQueryInput(center, 5, "stalled", 5)).toMatchObject({
       statusClass: ["stalled"],
       openDaysMin: 1827,
@@ -207,7 +223,7 @@ describe("emptyStateCopy (names what was filtered)", () => {
     const c = emptyStateCopy({ ...base, permitStatus: "open", permitOpenYrs: 5 });
     expect(c.title).toBe("No properties with an open permit (open 5+ yrs) within 5 mi.");
     expect(c.title).not.toMatch(/roof/i);
-    expect(c.text).toContain("Open permits are rare in this data (Austin permits only;");
+    expect(c.text).toContain("Open includes stalled permits; few properties have one");
     expect(c.text).toContain("Try a bigger radius or relax the permit filter.");
     expect(c.permitFilter).toBe(true);
   });
@@ -242,9 +258,9 @@ describe("listedCount (the header equals the rows)", () => {
     expect(listedCount({ center: null, radiusMi: 5 }, 23775, 100)).toBe(23775);
   });
 
-  it("with a permit filter the rows are the properties with a matching permit, so it is the rows", () => {
-    expect(listedCount({ center: null, radiusMi: 5, permitStatus: "open" }, 23775, 0)).toBe(0);
-    expect(listedCount({ center: null, radiusMi: 5, permitOpenYrs: 5 }, 23775, 12)).toBe(12);
+  it("with a permit filter it is still the server's total: the server applied the filter first (F-1)", () => {
+    expect(listedCount({ center: null, radiusMi: 5, permitStatus: "open" }, 970, 100)).toBe(970);
+    expect(listedCount({ center: null, radiusMi: 5, permitOpenYrs: 5 }, 12, 12)).toBe(12);
   });
 });
 
@@ -284,6 +300,23 @@ describe("owner filters in the candidate model", () => {
 
   it("a server-side owner filter does not change the listed count", () => {
     expect(listedCount({ ...base, tenureYearsMin: 10 }, 40, 12)).toBe(40);
+  });
+
+  it("propertiesSearchInput carries the permit filter to the server (Open = open and stalled)", () => {
+    const center = { lat: 30.4, lng: -97.6 };
+    const input = propertiesSearchInput(center, 5, 25, undefined, false, "open", 3);
+    expect(input).toMatchObject({
+      permitStatusClass: ["open", "stalled"],
+      permitOpenDaysMin: 1096,
+    });
+    expect(
+      propertiesSearchInput(center, 5, 25, undefined, false, "stalled", undefined),
+    ).toMatchObject({
+      permitStatusClass: ["stalled"],
+    });
+    const none = propertiesSearchInput(center, 5, 25, undefined, false, "any", undefined);
+    expect(none).not.toHaveProperty("permitStatusClass");
+    expect(none).not.toHaveProperty("permitOpenDaysMin");
   });
 
   it("propertiesSearchInput carries owner keys only when on", () => {

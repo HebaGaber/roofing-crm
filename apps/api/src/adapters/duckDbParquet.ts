@@ -17,6 +17,7 @@ import {
 } from "@crm/observability";
 import { MetricUnit } from "@aws-lambda-powertools/metrics";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
+import { LIVE_PERMIT_STATUS_CLASSES } from "@crm/shared";
 import {
   bboxFor,
   DEFAULT_ROOF_AGE_YEARS,
@@ -103,6 +104,11 @@ export interface SearchPropertiesQuery {
   radiusMi?: number;
   roofAgeMinYears?: number;
   propertyUsageType?: string;
+  /** Permit filter, evaluated in SQL as a semi-join to `crm_permit` BEFORE the limit, the order and
+   *  every count: keep a property only if it has a permit with one of these `statusClass` values
+   *  (and, with `permitOpenDaysMin`, open at least that many days, on the SAME permit). */
+  permitStatusClass?: readonly string[];
+  permitOpenDaysMin?: number;
   /** G4 (checks.md §7.1, T043): exact match against the stored `ownerAreaClass` enum
    *  (`in_county|regional|out_of_area|unknown`) — never a second, independently-derived
    *  classification. "Owners outside the area" means `ownerAreaClass IN
@@ -307,7 +313,8 @@ export interface CountyOverviewQuery {
   propertyUsageType?: string;
   /** The Layers "Open and stalled permits" switch: add per-cell permit counts. */
   permits?: boolean;
-  /** Permit status filter (Filters → Permit status); unset = open and stalled. */
+  /** Permit status filter (Filters → Permit status): "open" = open or stalled, "stalled" = stalled
+   *  only; unset = open and stalled. */
   permitStatus?: "open" | "stalled";
   /** Permit open at least this many days (Filters → Permit open ≥ N yrs). */
   permitOpenDaysMin?: number;
@@ -453,6 +460,17 @@ function propertyFilterConditions(query: SearchPropertiesQuery, hasTenureYears: 
     conditions.push(`"roofAgeYears" >= ${sqlNumber(query.roofAgeMinYears)}`);
   if (query.propertyUsageType !== undefined) {
     conditions.push(`"propertyUsageType" = '${sqlEscapeString(query.propertyUsageType)}'`);
+  }
+  if (query.permitStatusClass !== undefined || query.permitOpenDaysMin !== undefined) {
+    const permitFilters = permitConditions({
+      ...(query.permitStatusClass === undefined ? {} : { statusClass: query.permitStatusClass }),
+      ...(query.permitOpenDaysMin === undefined
+        ? {}
+        : { openDaysMinimum: query.permitOpenDaysMin }),
+    });
+    conditions.push(
+      `"propertyCid" IN (SELECT pm."propertyCid" FROM crm_permit pm WHERE ${permitFilters.join(" AND ")})`,
+    );
   }
   if (query.ownerAreaClass !== undefined) {
     const values = Array.isArray(query.ownerAreaClass)
@@ -954,7 +972,15 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
         if (query.permitStatus !== undefined || query.permitOpenDaysMin !== undefined) {
           // Same predicates as the permit search (permitConditions), joined to the property.
           const permitFilters = permitConditions({
-            ...(query.permitStatus === undefined ? {} : { statusClass: [query.permitStatus] }),
+            // "open" includes stalled, the same definition as the map filter (isLivePermit).
+            ...(query.permitStatus === undefined
+              ? {}
+              : {
+                  statusClass:
+                    query.permitStatus === "open"
+                      ? [...LIVE_PERMIT_STATUS_CLASSES]
+                      : [query.permitStatus],
+                }),
             ...(query.permitOpenDaysMin === undefined
               ? {}
               : { openDaysMinimum: query.permitOpenDaysMin }),
@@ -1167,9 +1193,10 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
 
     const withPermits = query.permits === true;
     const permitWhere = [
-      query.permitStatus === undefined
-        ? `"statusClass" IN ('open', 'stalled')`
-        : `"statusClass" = '${query.permitStatus === "open" ? "open" : "stalled"}'`,
+      // "Open" includes stalled (a stalled permit is open and not progressing), as in isLivePermit.
+      query.permitStatus === "stalled"
+        ? `"statusClass" = 'stalled'`
+        : `"statusClass" IN ('open', 'stalled')`,
       ...(query.permitOpenDaysMin === undefined
         ? []
         : [`"openDays" >= ${String(Number(query.permitOpenDaysMin))}`]),

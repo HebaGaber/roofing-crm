@@ -98,9 +98,21 @@ export class FakeLeadIndex implements LeadIndex {
     this.searchPropertiesCalls.push(query);
     const placed = this.properties.filter((p) => p.latitude !== null && p.longitude !== null);
     const min = query.roofAgeMinYears;
-    return min === undefined
-      ? placed
-      : placed.filter((p) => p.roofAgeYears !== null && p.roofAgeYears >= min);
+    const aged =
+      min === undefined
+        ? placed
+        : placed.filter((p) => p.roofAgeYears !== null && p.roofAgeYears >= min);
+    if (query.permitStatusClass === undefined && query.permitOpenDaysMin === undefined) return aged;
+    // The permit condition, as the SQL semi-join applies it: on the SAME permit.
+    return aged.filter((p) =>
+      this.permits.some(
+        (m) =>
+          m.propertyCid === p.propertyCid &&
+          (query.permitStatusClass === undefined ||
+            (m.statusClass !== null && query.permitStatusClass.includes(m.statusClass))) &&
+          (query.permitOpenDaysMin === undefined || (m.openDays ?? -1) >= query.permitOpenDaysMin),
+      ),
+    );
   }
   async searchPermits(query: SearchPermitsQuery) {
     this.searchPermitsCalls.push(query);

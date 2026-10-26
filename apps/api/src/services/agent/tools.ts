@@ -19,7 +19,7 @@
 // `confirmLead` mutation is allowed to reach that call.
 import { leadKey, yearsToDays } from "@crm/domain";
 import { gazetteer } from "@crm/oracle-views";
-import type { PlaceResolver } from "@crm/shared";
+import { LIVE_PERMIT_STATUS_CLASSES, type PlaceResolver } from "@crm/shared";
 import type { LeadIndex, PropertyResult } from "../../adapters/duckDbParquet.js";
 import type { LeadRepo } from "../../adapters/leadRepo.js";
 import { searchPermits, searchProperties } from "../search.js";
@@ -40,6 +40,16 @@ async function propertyCidForTcadId(
   tcadId: string,
 ): Promise<string | undefined> {
   return (await propertyByTcadId(leadIndex, tcadId))?.propertyCid;
+}
+
+/** "Open" includes stalled (a stalled permit is open and not progressing), the one definition the
+ *  map filter, the lead reasoning and the agent share (`isLivePermit`). */
+export function withStalledWhenOpen(
+  statusClass: readonly ("open" | "stalled" | "closed")[],
+): ("open" | "stalled" | "closed")[] {
+  const out = new Set(statusClass);
+  if (out.has("open")) for (const live of LIVE_PERMIT_STATUS_CLASSES) out.add(live);
+  return [...out];
 }
 
 /** Caps how many full rows ever go to the model in one dispatch result (ADR §6.2: "≤25 compact
@@ -80,6 +90,11 @@ export interface SearchPropertiesArgs {
    *  ownerAreaClass enum. */
   readonly ownerAreaClass?: readonly string[] | undefined;
   readonly tenureYearsMin?: number | undefined;
+  /** Permit condition ("with a stalled roofing permit"): keep only properties that have a permit
+   *  of one of these classes (and open at least `openYearsMin` years, on the same permit). It is
+   *  applied in SQL to every property in range, before the page and the counts. */
+  readonly statusClass?: readonly ("open" | "stalled" | "closed")[] | undefined;
+  readonly openYearsMin?: number | undefined;
 }
 
 export interface SearchPermitsArgs {
@@ -131,11 +146,17 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
     roofAgeMinYears,
     ownerAreaClass,
     tenureYearsMin,
+    statusClass,
+    openYearsMin,
   }: SearchPropertiesArgs) {
     const result = await searchProperties(leadIndex, {
       center: { lat, lng: lon },
       radiusMi,
       ...(roofAgeMinYears === undefined ? {} : { roofAgeMinYears }),
+      ...(statusClass === undefined || statusClass.length === 0
+        ? {}
+        : { permitStatusClass: withStalledWhenOpen(statusClass) }),
+      ...(openYearsMin === undefined ? {} : { permitOpenDaysMin: yearsToDays(openYearsMin) }),
       ...(ownerAreaClass === undefined ? {} : { ownerAreaClass }),
       ...(tenureYearsMin === undefined ? {} : { tenureYearsMin }),
       limit: MAX_COMPACT_ROWS,
@@ -162,7 +183,7 @@ export function createAgentDispatch(deps: AgentDispatchDeps) {
       center: { lat, lng: lon },
       radiusMi,
       ...(permitNumber === undefined ? {} : { permitNumber }),
-      ...(statusClass === undefined ? {} : { statusClass }),
+      ...(statusClass === undefined ? {} : { statusClass: withStalledWhenOpen(statusClass) }),
       ...(openYearsMin === undefined ? {} : { openDaysMin: yearsToDays(openYearsMin) }),
       limit: MAX_COMPACT_ROWS,
     });

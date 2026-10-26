@@ -108,7 +108,10 @@ function oracle(ids: readonly string[], f: Filters): string[] {
           permits
             .filter(
               (m) =>
-                (f.permitStatus === undefined || m.statusClass === f.permitStatus) &&
+                // "open" includes stalled (a stalled permit is open and not progressing).
+                (f.permitStatus === undefined ||
+                  m.statusClass === f.permitStatus ||
+                  (f.permitStatus === "open" && m.statusClass === "stalled")) &&
                 (f.permitOpenDaysMin === undefined ||
                   (m.openDays !== null && m.openDays >= f.permitOpenDaysMin)),
             )
@@ -179,7 +182,11 @@ describe("LeadIndex.matchingRequestIdentifiers (SQL pushdown for leads.list)", (
       limit: 1_000_000,
     });
     const pm = await index.searchPermits({ propertyCids: props.map((p) => p.propertyCid) });
-    const open = new Set(pm.filter((m) => m.statusClass === "open").map((m) => m.propertyCid));
+    const open = new Set(
+      pm
+        .filter((m) => m.statusClass === "open" || m.statusClass === "stalled")
+        .map((m) => m.propertyCid),
+    );
     const legacy = props
       .filter((p) => open.has(p.propertyCid) && ids.has(p.requestIdentifier))
       .map((p) => p.requestIdentifier)

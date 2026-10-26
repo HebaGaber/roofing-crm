@@ -9,7 +9,13 @@
 // and return when the story that actually vendors `packages/oracle-contract` needs them.
 export { SOURCE_LABELS, isSourceName, sourceLabel, type SourceName } from "./sources.js";
 export { UNDO_WINDOW_MS } from "./leads/undoWindow.js";
-export { isLivePermit, mainLeadPermit, type LeadPermitLike } from "./leads/mainLeadPermit.js";
+export {
+  isLivePermit,
+  LIVE_PERMIT_STATUS_CLASSES,
+  mainLeadPermit,
+  permitStatusClassesFor,
+  type LeadPermitLike,
+} from "./leads/mainLeadPermit.js";
 export { Session } from "./schemas/session.js";
 export {
   ROADMAP_SECTIONS,
