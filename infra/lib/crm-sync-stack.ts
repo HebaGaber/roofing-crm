@@ -99,12 +99,14 @@ const DEFAULT_SIZING: HandlerSizing = { memoryMb: 1024, timeout: Duration.minute
  * - memory 3008 MB: the largest size proven to run in this (new, Free-plan) account — another
  *   function here already runs at 3008 MB; new accounts can be capped there, so nothing above it
  *   is assumed. ~1.7 vCPU at this size.
- * - DuckDB memory_limit 2400 MB, spilling to /tmp beyond it. Run 3 (owners parsed into persons,
- *   address-point coordinates, deed-dated tenure) failed the hosted build at 1800 MB with
- *   "failed to pin block (1.6 GiB/1.6 GiB used)"; reproduced locally, it passes from 2200 MB with
- *   a 1.2 GB peak resident size (1.8 GB at 2600 MB), so 2400 MB leaves headroom and ~600 MB of
- *   the 3008 MB for Node, the native module and the S3 upload buffers. JS-side rows are streamed
- *   per DuckDB chunk.
+ * - DuckDB memory_limit 2600 MB, spilling to /tmp beyond it. Run 3 failed the hosted build at 1800 MB;
+ *   Run 3.1 (situs address text, owner mailing ZIP/state lists) fails at 2400 MB with "could not
+ *   allocate block (2.2 GiB/2.2 GiB used)" in the v_property aggregation (threads=1 and
+ *   preserve_insertion_order=false did not help). Measured in a linux/arm64 container capped at
+ *   3008 MB (the Lambda size): 2600 MB passed 3 of 3 full builds in 51-88 s, so ~400 MB of the
+ *   3008 MB is left for Node, the native module and the S3 upload buffers. macOS resident size
+ *   reads higher (3.1-3.5 GB) and is not the Lambda measure. JS-side rows are streamed per DuckDB
+ *   chunk.
  * - /tmp 4096 MB: ~556 MB parts + ~0.5 GB NDJSON + Parquet output + DuckDB spill, ~2.5x headroom.
  * - timeout 15 min (Lambda's maximum): architecture-constitution.md §10 budgets the build step at
  *   < 12 min (else switch to Fargate); 15 min leaves margin above that budget, not a new target.
@@ -113,7 +115,7 @@ const BUILD_INDEX_SIZING: HandlerSizing = {
   memoryMb: 3008,
   timeout: Duration.minutes(15),
   ephemeralStorageMb: 4096,
-  duckDbMemoryLimit: "2400MB",
+  duckDbMemoryLimit: "2600MB",
 };
 
 /** Validate downloads BuildIndex's two full-county Parquet files and reads every row's

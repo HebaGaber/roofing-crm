@@ -164,7 +164,7 @@ describe("CrmSync (T038)", () => {
     expect(fn.EphemeralStorage).toEqual({ Size: 4096 });
     expect(fn.Timeout).toBe(900);
     const env = (fn.Environment as { Variables: Record<string, string> }).Variables;
-    expect(env.DUCKDB_MEMORY_LIMIT).toBe("2400MB");
+    expect(env.DUCKDB_MEMORY_LIMIT).toBe("2600MB");
   });
 
   it("sizes Validate (reads BuildIndex's full-county Parquet back): 2048 MB, 1 GB /tmp, 10 min", () => {
