@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  ADDRESS_UNAVAILABLE_REASON,
+  ADDRESS_NOT_IN_INDEX,
   GAZETTEER_PROVENANCE,
   SEARCH_SAMPLES,
-  addressSource,
+  addressOptions,
   classifyQuery,
   normalisePermit,
   optionsFor,
@@ -90,17 +90,58 @@ describe("optionsFor", () => {
     expect(optionsFor("10001")).toMatchObject([{ kind: "tcad", lookup: "10001" }]);
     expect(optionsFor("zip 10001")).toEqual([]);
   });
-  it("offers a single disabled address option with the reason", () => {
-    expect(addressSource("1200 Main St")).toEqual([]);
-    const out = optionsFor("1200 Main St");
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      kind: "address",
-      disabled: true,
-      detail: ADDRESS_UNAVAILABLE_REASON,
+  it("an address in the sample list stands for one option that types it into the box", () => {
+    expect(optionsFor("1200 Main St")).toMatchObject([
+      { kind: "address", label: "1200 Main St", lookup: "1200 Main St" },
+    ]);
+  });
+});
+
+describe("addressOptions", () => {
+  const run = (id: string) => (id === "run-3" ? "Run 3" : id);
+  it("lists matches with the address text and the TCAD account", () => {
+    const out = addressOptions(
+      {
+        found: true,
+        total: 2,
+        runId: "run-3",
+        matches: [
+          {
+            propertyCid: "c1",
+            requestIdentifier: "R1",
+            address: "1 A ST, AUSTIN",
+            lat: 30,
+            lng: -97,
+          },
+        ],
+      },
+      run,
+    );
+    expect(out.note).toBeNull();
+    expect(out.options).toEqual([
+      {
+        id: "address-c1",
+        kind: "address",
+        label: "1 A ST, AUSTIN",
+        detail: "TCAD R1",
+        property: { propertyCid: "c1", lat: 30, lng: -97 },
+      },
+    ]);
+  });
+  it("says no property at that address in the run searched", () => {
+    expect(addressOptions({ found: false, runId: "run-3" }, run)).toEqual({
+      options: [],
+      note: "No property at that address in Run 3",
     });
-    expect(ADDRESS_UNAVAILABLE_REASON).toBe("Street addresses are not published yet");
-    expect(ADDRESS_UNAVAILABLE_REASON).not.toMatch(/\bRun\b/i);
+    expect(addressOptions({ found: false, runId: null }, run).note).toBe(
+      "No property at that address in the current run",
+    );
+  });
+  it("says addresses are not in this index on an older index", () => {
+    expect(
+      addressOptions({ found: false, runId: "run-3", reason: "address_not_in_index" }, run),
+    ).toEqual({ options: [], note: ADDRESS_NOT_IN_INDEX });
+    expect(ADDRESS_NOT_IN_INDEX).toBe("Street addresses are not in this index yet");
   });
 });
 
@@ -108,10 +149,10 @@ describe("samples and provenance", () => {
   it("names the gazetteer version", () => {
     expect(GAZETTEER_PROVENANCE).toBe("Census 2024 Gazetteer · travis-places@1.0.0");
   });
-  it("has 5 samples, each classified and (for place/zip) found in the gazetteer", () => {
-    expect(SEARCH_SAMPLES).toHaveLength(5);
+  it("has 6 samples, each classified and (for place/zip) found in the gazetteer", () => {
+    expect(SEARCH_SAMPLES).toHaveLength(6);
     const kinds = SEARCH_SAMPLES.map((s) => classifyQuery(s.query));
-    expect(kinds).toEqual(["place", "zip", "place", "permit", "tcad"]);
+    expect(kinds).toEqual(["place", "zip", "place", "permit", "tcad", "address"]);
     for (const s of SEARCH_SAMPLES) {
       const kind = classifyQuery(s.query);
       if (kind === "place" || kind === "zip") {

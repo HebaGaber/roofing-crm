@@ -11,8 +11,8 @@ export const STORAGE_VERSION = 1;
 export const MAX_RECENT = 8;
 export const MAX_SAVED = 10;
 
-type RecentKind = "place" | "zip" | "permit" | "tcad";
-const RECENT_KINDS: readonly string[] = ["place", "zip", "permit", "tcad"];
+type RecentKind = "place" | "zip" | "permit" | "tcad" | "address";
+const RECENT_KINDS: readonly string[] = ["place", "zip", "permit", "tcad", "address"];
 
 /** A search the person ran from the box: enough to run it again without typing. */
 export interface RecentSearch {
@@ -20,9 +20,9 @@ export interface RecentSearch {
   readonly kind: RecentKind;
   readonly label: string;
   readonly detail?: string;
-  /** Place and ZIP: where the map centres. */
+  /** Place and ZIP: where the map centres. An address also keeps its coordinates here. */
   readonly point?: { readonly lat: number; readonly lng: number };
-  /** Permit and TCAD: the value sent to the API. */
+  /** Permit and TCAD: the value sent to the API. An address keeps its propertyCid here. */
   readonly lookup?: string;
 }
 
@@ -64,14 +64,17 @@ function parseRecent(v: unknown): RecentSearch | null {
   if (typeof id !== "string" || id === "" || typeof label !== "string" || label === "") return null;
   if (typeof kind !== "string" || !RECENT_KINDS.includes(kind)) return null;
   const isPlace = kind === "place" || kind === "zip";
-  if (isPlace && !isPoint(point)) return null;
+  const isAddress = kind === "address";
+  if ((isPlace || isAddress) && !isPoint(point)) return null;
   if (!isPlace && (typeof lookup !== "string" || lookup === "")) return null;
   return {
     id,
     kind: kind as RecentKind,
     label,
     ...(typeof detail === "string" ? { detail } : {}),
-    ...(isPlace && isPoint(point) ? { point: { lat: point.lat, lng: point.lng } } : {}),
+    ...((isPlace || isAddress) && isPoint(point)
+      ? { point: { lat: point.lat, lng: point.lng } }
+      : {}),
     ...(!isPlace && typeof lookup === "string" ? { lookup } : {}),
   };
 }
@@ -136,11 +139,26 @@ export const loadSaved = (): SavedSearch[] => readList(SAVED_KEY, parseSaved, MA
  *  (disabled address options, options without a centre or lookup value). */
 export function toRecent(option: SearchOption): RecentSearch | null {
   if (option.disabled === true) return null;
+  if (option.kind === "address") {
+    // A chosen address is re-run without the API: it keeps the property and its coordinates.
+    if (option.property === undefined) return null;
+    const { propertyCid, lat, lng } = option.property;
+    return parseRecent({ ...option, lookup: propertyCid, point: { lat, lng } });
+  }
   return parseRecent(option);
 }
 
 /** The option a recent entry stands for, so it can go through the live selection handler. */
 export function recentToOption(entry: RecentSearch): SearchOption {
+  if (entry.kind === "address" && entry.lookup !== undefined && entry.point !== undefined) {
+    return {
+      id: entry.id,
+      kind: "address",
+      label: entry.label,
+      ...(entry.detail === undefined ? {} : { detail: entry.detail }),
+      property: { propertyCid: entry.lookup, lat: entry.point.lat, lng: entry.point.lng },
+    };
+  }
   return {
     id: entry.id,
     kind: entry.kind,

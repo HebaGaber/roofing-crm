@@ -172,6 +172,38 @@ export interface PropertiesPage {
   noTenure: number;
 }
 
+/** One street-address match: the address exactly as TCAD prints it, and where the map centres. */
+export interface AddressMatch {
+  propertyCid: string;
+  requestIdentifier: string;
+  address: string;
+  lat: number;
+  lng: number;
+}
+
+/** `indexed: false` = the served index predates Run 3.1 and has no `unnormalizedAddress` column. */
+export type AddressPage =
+  | { indexed: false }
+  | { indexed: true; rows: AddressMatch[]; total: number };
+
+/** Most matches counted for `total` (a street line shared by many units stays bounded). */
+export const ADDRESS_TOTAL_CAP = 1000;
+
+/**
+ * Address normalisation, as one DuckDB expression (the query literal and the stored column go
+ * through the SAME expression, so they cannot disagree): uppercase; '#' unit marks become spaces;
+ * everything except letters, digits, commas and whitespace is removed; whitespace runs collapse;
+ * spaces around commas are tidied to ", "; leading/trailing spaces and commas are trimmed.
+ * Nothing else is rewritten: "DR" is not "DRIVE", "N" is not "NORTH" (exact, not fuzzy).
+ */
+export function normalisedAddressSql(expr: string): string {
+  const upper = `replace(upper(${expr}), '#', ' ')`;
+  const stripped = `regexp_replace(${upper}, '[^\\p{L}\\p{N},\\s]', '', 'g')`;
+  const collapsed = `regexp_replace(${stripped}, '\\s+', ' ', 'g')`;
+  const commas = `regexp_replace(${collapsed}, ' ?, ?', ', ', 'g')`;
+  return `regexp_replace(${commas}, '^[ ,]+|[ ,]+$', '', 'g')`;
+}
+
 export interface PermitsPage {
   rows: PermitResult[];
   /** Exact number of matching permits before the page limit. */
@@ -253,6 +285,11 @@ export interface LeadIndex {
    *  `routers/agent.ts`'s `confirmLead` both used to pull the whole table into memory to find one
    *  row). Returns `undefined` when no property in the promoted run has this requestIdentifier. */
   getPropertyByRequestIdentifier(requestIdentifier: string): Promise<PropertyResult | undefined>;
+  /** Exact street-address search (search box). A stored address matches when its normalised form
+   *  equals the normalised query, or starts with it at a comma boundary (see
+   *  `normalisedAddressSql`): so a street line alone matches every city that has it. Optional on
+   *  the port so test doubles need no stub; the service then reports the column as absent. */
+  searchByAddress?(query: { value: string; limit: number }): Promise<AddressPage>;
   /** Which of these request identifiers exist in the promoted run (AC-5 presence check). */
   presentRequestIdentifiers(ids: readonly string[]): Promise<Set<string>>;
   /** Run identifier (provenance `runId`) of the promoted run; undefined when it has no rows. */
@@ -758,6 +795,61 @@ export class DuckDbParquetLeadIndex implements LeadIndex {
     const n = (reader.getRowObjectsJS()[0] as unknown as { n: number }).n;
     this.tenureColumn.set(manifestCid, n > 0);
     return n > 0;
+  }
+
+  /** Whether this index carries the stored `unnormalizedAddress` column (cached per manifest). */
+  private readonly addressColumn = new Map<string, boolean>();
+  private async hasAddressColumn(
+    connection: DuckDBConnection,
+    manifestCid: string,
+  ): Promise<boolean> {
+    const known = this.addressColumn.get(manifestCid);
+    if (known !== undefined) return known;
+    const reader = await this.runBounded(
+      connection,
+      `SELECT count(*)::INTEGER AS n FROM information_schema.columns
+       WHERE table_name = 'crm_property' AND column_name = 'unnormalizedAddress'`,
+    );
+    const n = (reader.getRowObjectsJS()[0] as unknown as { n: number }).n;
+    this.addressColumn.set(manifestCid, n > 0);
+    return n > 0;
+  }
+
+  async searchByAddress(query: { value: string; limit: number }): Promise<AddressPage> {
+    return withObservabilityOperation(this.obs, "LeadIndex.searchByAddress", async () => {
+      const { manifestCid } = await this.indexInfo();
+      const { connection } = await this.ensureLoaded(manifestCid);
+      if (!(await this.hasAddressColumn(connection, manifestCid))) return { indexed: false };
+      const limit = Math.min(10, Math.max(1, Math.floor(query.limit)));
+      // Cheap pre-filter: when the query opens with a house number, only rows whose raw address
+      // starts with those digits are normalised (a plain prefix test, not a regexp over every
+      // row). A stored address with leading punctuation before its number would be skipped.
+      const house = /^\s*(\d+)\s/.exec(query.value)?.[1];
+      const prefilter =
+        house === undefined ? "" : `AND starts_with(ltrim("unnormalizedAddress"), '${house}')`;
+      const reader = await this.runBounded(
+        connection,
+        `WITH q AS (SELECT ${normalisedAddressSql(`'${sqlEscapeString(query.value)}'`)} AS v),
+         cand AS (
+           SELECT "propertyCid", "requestIdentifier", "unnormalizedAddress" AS address,
+                  "latitude" AS lat, "longitude" AS lng,
+                  ${normalisedAddressSql(`"unnormalizedAddress"`)} AS n
+           FROM crm_property
+           WHERE "unnormalizedAddress" IS NOT NULL AND "latitude" IS NOT NULL
+             AND "longitude" IS NOT NULL ${prefilter}
+         )
+         SELECT cand."propertyCid", cand."requestIdentifier", cand.address, cand.lat, cand.lng,
+                (count(*) OVER ())::INTEGER AS "__total"
+         FROM cand, q
+         WHERE q.v <> '' AND (cand.n = q.v OR starts_with(cand.n, q.v || ', '))
+         ORDER BY cand.address, cand."requestIdentifier"
+         LIMIT ${String(limit)}`,
+      );
+      const raw = reader.getRowObjectsJS() as unknown as (AddressMatch & { __total: number })[];
+      const total = Math.min(raw[0]?.__total ?? 0, ADDRESS_TOTAL_CAP);
+      const rows = raw.map(({ __total: _t, ...row }) => row);
+      return { indexed: true, rows, total };
+    });
   }
 
   async searchProperties(query: SearchPropertiesQuery): Promise<PropertyResult[]> {

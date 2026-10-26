@@ -17,6 +17,7 @@ import {
 import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import {
   countyOverview as countyOverviewService,
+  searchByAddress as searchByAddressService,
   CountyOverviewUnavailableError,
   searchPermits as searchPermitsService,
   searchProperties as searchPropertiesService,
@@ -168,6 +169,25 @@ export const searchRouter = router({
           runId,
           traceId: ctx.requestId,
         };
+      } catch (error) {
+        mapIndexNotReady(error);
+      }
+    }),
+
+  // Search box: exact street address (TCAD's unnormalized_address, Run 3.1). The matching rule is
+  // documented on `normalisedAddressSql` in the adapter. Read-only; a miss names the run searched.
+  byAddress: publicProcedure
+    .input(
+      z.object({
+        value: z.string().trim().min(3).max(200),
+        limit: z.number().int().min(1).max(10).default(5),
+      }),
+    )
+    .query(async ({ input, ctx }) => {
+      const leadIndex = requireLeadIndex(ctx);
+      try {
+        const result = await searchByAddressService(leadIndex, input);
+        return { ...result, traceId: ctx.requestId };
       } catch (error) {
         mapIndexNotReady(error);
       }
