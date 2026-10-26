@@ -148,7 +148,7 @@ export class CrmApiStack extends Stack {
         // index rebuilt under the same manifest CID is only read after the function changes: this
         // value changing is what gives a deploy fresh sandboxes. 2 = built year, last sale, tenure
         // years and source URLs (2026-10-26); 3 = situs address and owner mailing ZIP/state (Run 3.1).
-        INDEX_SCHEMA_VERSION: "3",
+        INDEX_SCHEMA_VERSION: "4",
         // B-09: apps/api/src/agent/{rateLimiter,spendCap}.ts read this (never a hard-coded table
         // name, architecture-constitution.md §9's module-boundary table).
         CRM_AGENT_USAGE_TABLE_NAME: props.agentUsageTableName,
