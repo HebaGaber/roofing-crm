@@ -1030,19 +1030,12 @@ function tryParsePlan(text: string): { ok: true; plan: QueryPlan } | { ok: false
 }
 
 /** Filters this search path cannot honour: the plan may carry them, but no search applies them,
- *  so an answer must never imply they ran. Owner location (`owner_area_class`) is `not_in_export`
- *  for the served data, so a filter on it can only ever return "none" for the wrong reason; the
- *  roof-age confidence floor and the residential/commercial kind are accepted by the plan but not
+ *  so an answer must never imply they ran. Owner location (`owner_area_class`) was listed here while
+ *  Task A published no owner mailing ZIP; since Run 3.1 it is published for every property with an
+ *  owner mailing ZIP and the search applies it, so it is no longer dropped. The roof-age confidence floor and the residential/commercial kind are accepted by the plan but not
  *  passed to the property search. Removing an entry here (once the search applies it) is all it
  *  takes to stop dropping it. */
 const UNPUBLISHED_FILTERS = [
-  {
-    key: "ownerAreaClass",
-    constraint: "owners outside the area",
-    plain: "owner location is not published in this data",
-    label: "owner location",
-    match: /owner/i,
-  },
   {
     key: "roofConfidenceMin",
     constraint: "roof age confidence level",
