@@ -43,6 +43,8 @@ test.describe("Drawer actions fit the screen and are tappable", () => {
     // The lead check answers after a lookup. The fixture may already be a lead (shared with the
     // B-07 suite), in which case the same slot holds "Open lead"; the test never creates one.
     await expect(createLead).toBeVisible({ timeout: 20_000 });
+    const label = (await createLead.innerText()).trim();
+    expect(["Create lead", "Open lead"], `lead slot says "${label}"`).toContain(label);
     for (const [name, locator] of [
       ["Create lead", createLead],
       ["Contractor block", contractor],
@@ -56,6 +58,9 @@ test.describe("Drawer actions fit the screen and are tappable", () => {
         name === "Contractor block" ? 1 : MIN_TAP,
       );
     }
+    // BBB link: a short text link may be narrower than a tap target only if its text is.
+    const bbbBox = await settledBox(bbb);
+    expect(bbbBox.width, "BBB link width").toBeGreaterThanOrEqual(MIN_TAP);
     const lead = await settledBox(createLead);
     expect(lead.width, "Create lead width").toBeGreaterThanOrEqual(MIN_TAP);
   });
