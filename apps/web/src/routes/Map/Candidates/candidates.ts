@@ -14,7 +14,12 @@ import {
 } from "@crm/domain";
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import type { LeadStatus } from "@crm/shared";
-import { permitStatusShortLabel, roofAgeConfidenceLabel } from "../../../format/index.js";
+import {
+  permitStatusShortLabel,
+  propertySubtitle,
+  propertyTitle,
+  roofAgeConfidenceLabel,
+} from "../../../format/index.js";
 
 export type CandidateSort = "roof" | "open" | "near";
 export type PermitStatusFilter = "any" | "open" | "stalled";
@@ -157,9 +162,10 @@ export function hasOwnerFilter(filters: CandidateFilters): boolean {
   return filters.tenureYearsMin !== undefined || filters.outOfArea === true;
 }
 
-/** Why "Out-of-area" cannot match anything yet: shown under the chip and in the empty state. */
+/** What "Out-of-area" matches: shown under the chip and in the empty state. It is true whether or
+ *  not the index carries the owner mailing ZIPs (contract v1.2). */
 export const OUT_OF_AREA_UNPUBLISHED =
-  "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.";
+  "Out-of-area compares the owner's mailing ZIP with the county; owners with no mailing ZIP on record are not matched.";
 
 /** "tenure 10+ yrs and out-of-area owners" (empty only when no owner filter is on). */
 export function ownerFilterPhrase(filters: CandidateFilters): string {
@@ -360,18 +366,19 @@ export function whyChips(candidate: Candidate, filters: CandidateFilters): strin
   return chips;
 }
 
-/** The candidate's title (E-93): TCAD account id, never an invented street address. */
+/** The candidate's title: its street address as TCAD prints it, else the TCAD account id. */
 export function candidateTitle(property: CandidateProperty): string {
-  return `TCAD ${property.requestIdentifier}`;
+  return propertyTitle(property);
 }
 
-/** "Address not published in this run · 30.39655, -97.67912". */
+/** "TCAD 0206074282 · 30.39655, -97.67912" when the row has an address; else the reason it has
+ *  none ("Address not published · …") and the coordinates. */
 export function candidateSubtitle(property: CandidateProperty, digits = 5): string {
   const coords =
     property.latitude === null || property.longitude === null
       ? ""
       : ` · ${property.latitude.toFixed(digits)}, ${property.longitude.toFixed(digits)}`;
-  return `Address not published in this run${coords}`;
+  return `${propertySubtitle(property)}${coords}`;
 }
 
 /** Roof presets shared with the filters (10, 13, 15, 20, 25). */

@@ -11,7 +11,8 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 
 | Design attribute                              | Status                                                                                   |
 | --------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Street address, city, ZIP                     | Blocked on Run 3.1 (`unnormalized_address`, `city_name`, `postal_code`: `not_in_export`) |
+| Street address                                | Shown (`unnormalized_address`; 21 properties carry `source_missing`)                     |
+| City, ZIP of the situs                        | Not in published data (`source_missing`; not split from the address text)                |
 | TCAD id (shown in place of the address)       | Shown                                                                                    |
 | Distance and bearing from the pin             | Shown                                                                                    |
 | Roof age, basis, confidence                   | Shown (pill pair on the collapsed row; cells when expanded)                              |
@@ -27,7 +28,7 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 
 | Design attribute                                          | Status                                                                     |
 | --------------------------------------------------------- | -------------------------------------------------------------------------- |
-| Header: address, city, ZIP                                | Blocked on Run 3.1 (shows "Address not published in this run")             |
+| Header: address as the title, then the TCAD id            | Shown (city and ZIP: not in published data, `source_missing`)              |
 | Create lead, Open lead, lineage link, Ask about it        | Shown                                                                      |
 | Roof: age, confidence, basis                              | Shown                                                                      |
 | Roof basis "Year built 1995"                              | Shown now (when basis is built_year and the year exists)                   |
@@ -35,8 +36,8 @@ publish it); **Not in published data** (contract reason named); **Design only** 
 | "Reroof permit not counted: never finaled" note           | Shown (worded "A roofing permit exists but was never finaled")             |
 | Street View / imagery                                     | Shown as a disabled "Coming soon" row (no imagery in the contract)        |
 | Owner name, kind                                          | Shown                                                                      |
-| Owner mailing location (city, state, ZIP)                 | Blocked on Run 3.1 (`owner_mailing_postal_code`, `_state_code`)            |
-| Owner area (in county, regional, out of area)             | Shown; unknown carries its reason. Blocked on Run 3.1 for most rows        |
+| Owner mailing location (state, ZIP, Local / Out-of-area)  | Shown (city: not in published data)                                        |
+| Owner area (in county, regional, out of area)             | Shown; unknown carries its reason                                          |
 | Last sale                                                 | Shown now (the date; reason `no_dated_sale` when null)                     |
 | Tenure "22 yrs"                                           | Shown now (reason `no_dated_sale` when null); tenure basis line kept       |
 | Owner merged from N records                               | Shown as a disabled "Coming soon" row (no merge data in the contract)      |

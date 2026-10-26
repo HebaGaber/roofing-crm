@@ -11,7 +11,11 @@ import {
   groupMissing,
   missingReasonText,
   openDurationText,
+  mailingLocation,
+  ownerAreaPill,
   permitsSourceLabel,
+  propertySubtitle,
+  propertyTitle,
   tenureBandLabel,
 } from "../../src/format/index.js";
 
@@ -83,6 +87,74 @@ describe("addressLine", () => {
         missingReasons: [{ field: "unnormalized_address", reason: "not_in_export" }],
       }),
     ).toBe("1 Main St");
+  });
+});
+
+describe("addressLine with an empty field", () => {
+  it.each([undefined, null, "", "   "])("treats %j as no address", (value) => {
+    expect(addressLine({ unnormalizedAddress: value, missingReasons: [] })).toBe(
+      ADDRESS_NOT_PUBLISHED,
+    );
+    expect(propertyTitle({ unnormalizedAddress: value, requestIdentifier: "42" })).toBe("TCAD 42");
+  });
+});
+
+describe("propertyTitle and propertySubtitle", () => {
+  it("title is the address and the subtitle is the TCAD id", () => {
+    const p = {
+      unnormalizedAddress: " 2725 WOODALL DR 1401, CEDAR PARK, TX 78613 ",
+      requestIdentifier: "0206074282",
+      missingReasons: [],
+    };
+    expect(propertyTitle(p)).toBe("2725 WOODALL DR 1401, CEDAR PARK, TX 78613");
+    expect(propertySubtitle(p)).toBe("TCAD 0206074282");
+  });
+
+  it("without an address the title is the TCAD id and the subtitle says why", () => {
+    const p = {
+      requestIdentifier: "7",
+      missingReasons: [{ field: "unnormalized_address", reason: "source_missing" as const }],
+    };
+    expect(propertyTitle(p)).toBe("TCAD 7");
+    expect(propertySubtitle(p)).toBe("Address not published · Not on the source record");
+  });
+});
+
+describe("mailingLocation", () => {
+  it("pairs state and ZIP when the counts match", () => {
+    expect(
+      mailingLocation({ ownerMailingStateCode: "TX", ownerMailingPostalCode: "78660" }),
+    ).toEqual({ text: "TX 78660" });
+    expect(
+      mailingLocation({ ownerMailingStateCode: "CA; TX", ownerMailingPostalCode: "90210; 78660" }),
+    ).toEqual({ text: "CA 90210; TX 78660" });
+  });
+
+  it("lists each separately when the counts differ or one is missing", () => {
+    expect(
+      mailingLocation({ ownerMailingStateCode: "TX", ownerMailingPostalCode: "78660; 90210" }),
+    ).toEqual({ text: "State TX; ZIP 78660, 90210" });
+    expect(mailingLocation({ ownerMailingStateCode: "TX", ownerMailingPostalCode: null })).toEqual({
+      text: "State TX",
+    });
+  });
+
+  it("is null for undefined, null, empty and blank values", () => {
+    expect(mailingLocation({})).toBeNull();
+    expect(
+      mailingLocation({ ownerMailingStateCode: null, ownerMailingPostalCode: " " }),
+    ).toBeNull();
+  });
+});
+
+describe("ownerAreaPill", () => {
+  it("words each class, and gives nothing for unknown, null or absent", () => {
+    expect(ownerAreaPill("in_county")?.text).toBe("Local");
+    expect(ownerAreaPill("regional")?.text).toBe("Regional");
+    expect(ownerAreaPill("out_of_area")).toEqual({ text: "Out-of-area", status: "warning" });
+    expect(ownerAreaPill("unknown")).toBeNull();
+    expect(ownerAreaPill(null)).toBeNull();
+    expect(ownerAreaPill(undefined)).toBeNull();
   });
 });
 

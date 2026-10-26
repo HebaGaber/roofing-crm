@@ -21,7 +21,7 @@ export const WHAT_CAN_I_ASK_STORAGE_KEY = "crm.whatCanIAsk.v1";
 export const WHAT_CAN_I_ASK_PATH = `/?${FIRST_VISIT_PARAM}=1`;
 
 /** One line on what the data is: only what Task A publishes (review-log rows 1, 2 and 4). */
-export const WHAT_CAN_I_ASK_INTRO = `Roofing leads from Task A's published ${COUNTY_NAME} run: roof age, permits, and contractors where published. Street addresses and BBB ratings may be missing; every missing value says why. Every answer shows its sources.`;
+export const WHAT_CAN_I_ASK_INTRO = `Roofing leads from Task A's published ${COUNTY_NAME} run: roof age, permits, and contractors where published. BBB ratings and some addresses may be missing; every missing value says why. Every answer shows its sources.`;
 
 /** Three example questions, verbatim from tests/agent/golden.json (G1, G3, G4): each one the
  *  agent is graded on, so none promises something it cannot answer. */

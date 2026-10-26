@@ -11,6 +11,7 @@ import { mainLeadPermit } from "@crm/shared";
 import { Icon, StatusPill } from "@crm/ui";
 import { useState, type ReactElement } from "react";
 import { Link } from "react-router";
+import { propertyTitle } from "../../format/index.js";
 import { useUndoCreateLead } from "../Map/Candidates/candidatesApi.js";
 import { undoOneText, type UndoAnswer } from "../Map/Candidates/undoCopy.js";
 import { LeadBanner } from "./LeadBanner.js";
@@ -48,7 +49,7 @@ export function toCreateInput(
   return {
     fips: TRAVIS_FIPS,
     requestIdentifier: property.requestIdentifier,
-    address: `TCAD ${property.requestIdentifier}`,
+    address: propertyTitle(property),
     lat: property.latitude,
     lon: property.longitude,
     signals: {

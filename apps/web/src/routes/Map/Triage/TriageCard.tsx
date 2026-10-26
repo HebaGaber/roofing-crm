@@ -11,6 +11,7 @@ import { useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElem
 import {
   contractorResolutionLabel,
   propertyKind,
+  propertySubtitle,
   roofAgeBucket,
   roofAgeConfidenceLabel,
   missingReasonText,
@@ -150,7 +151,7 @@ export function TriageCard({
         )}
       </header>
       <p className={styles.sub}>
-        {`Address not published in this run${
+        {`${propertySubtitle(property)}${
           property.latitude === null || property.longitude === null
             ? ""
             : ` · ${property.latitude.toFixed(4)}, ${property.longitude.toFixed(4)}`

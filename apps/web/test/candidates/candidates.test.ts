@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCandidates,
+  candidateSubtitle,
+  candidateTitle,
   emptyStateCopy,
   hasOwnerFilter,
   OUT_OF_AREA_UNPUBLISHED,
@@ -268,7 +270,7 @@ describe("owner filters in the candidate model", () => {
     const c = emptyStateCopy({ ...base, outOfArea: true });
     expect(c.title).toContain("out-of-area owners");
     expect(c.text).toBe(
-      "Owner area is not published in Run 3 (mailing ZIP arrives with Run 3.1), so no property can be matched as out-of-area yet.",
+      "Out-of-area compares the owner's mailing ZIP with the county; owners with no mailing ZIP on record are not matched.",
     );
     expect(c.text).toBe(OUT_OF_AREA_UNPUBLISHED);
   });
@@ -298,5 +300,20 @@ describe("owner filters in the candidate model", () => {
       tenureYearsMin: 10,
       outOfArea: true,
     });
+  });
+});
+
+describe("candidate title and subtitle", () => {
+  it("title is the street address and the subtitle the TCAD id", () => {
+    const p = property(1, { unnormalizedAddress: "100 MAIN ST, AUSTIN, TX 78701" });
+    expect(candidateTitle(p)).toBe("100 MAIN ST, AUSTIN, TX 78701");
+    expect(candidateSubtitle(p)).toMatch(/^TCAD 0201885121 · /);
+    expect(candidateSubtitle(p)).not.toContain("not published");
+  });
+
+  it("falls back to the TCAD id and says why the address is missing", () => {
+    const p = property(2, { unnormalizedAddress: null });
+    expect(candidateTitle(p)).toBe(`TCAD ${p.requestIdentifier}`);
+    expect(candidateSubtitle(p)).toContain("Address not published");
   });
 });

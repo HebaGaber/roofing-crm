@@ -12,6 +12,7 @@ import {
   roofAgeBucket,
   roofAgeConfidenceLabel,
   roofAgeGapLabel,
+  propertySubtitle,
 } from "../../../format/index.js";
 import { STATUS_LABEL } from "../../Leads/LeadFilters.js";
 import { candidateTitle, shortBasis, permitSignalText, type Candidate } from "./candidates.js";
@@ -149,7 +150,7 @@ export function CandidateRow({
       <td className={styles.cAddress}>
         <span className={styles.title}>{title}</span>
         <span className={styles.sub}>
-          Address not published in this run
+          {propertySubtitle(property)}
           {property.latitude === null || property.longitude === null ? null : (
             <span className={styles.narrowOnly}>
               {` · ${property.latitude.toFixed(4)}, ${property.longitude.toFixed(4)}`}

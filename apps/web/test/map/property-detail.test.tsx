@@ -338,6 +338,17 @@ describe("PropertyDetail drawer · near {place} (E-93)", () => {
     expect(heading.textContent).not.toContain(" in Pflugerville");
   });
 
+  it("with a street address: address title, then 'TCAD {id} · near {place}'", () => {
+    renderDrawer({
+      ...withPlace,
+      property: { ...withPlace.property, unnormalizedAddress: "100 MAIN ST, AUSTIN, TX 78701" },
+    } as PropertyDetailData);
+    const heading = screen.getByRole("heading", { level: 3 });
+    expect(heading.textContent).toContain("100 MAIN ST, AUSTIN, TX 78701");
+    expect(heading.textContent).toContain("TCAD 192820 · near Pflugerville");
+    expect(heading.textContent).not.toContain("Address not published");
+  });
+
   it("shows the gazetteer as the place's provenance on hover", () => {
     renderDrawer(withPlace);
     const place = document.querySelector('[data-field="near_place"]');
