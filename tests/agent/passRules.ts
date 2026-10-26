@@ -13,7 +13,10 @@ export type ExpectedOutcome =
   | "answered_or_field_flagged"
   | "answered_unavailable"
   | "out_of_scope_or_empty"
-  | "lead_created";
+  | "lead_created"
+  | "answered_owner_filtered"
+  | "answered_unavailable_or_refused"
+  | "answered_or_clarifies";
 
 export interface QuerySpec {
   readonly id: string;
@@ -23,6 +26,23 @@ export interface QuerySpec {
   readonly expectedMatchedPermitNumbers?: readonly string[];
   /** Regex the resolved area name must match (an honest empty about the WRONG place is wrong). */
   readonly expectedAreaPattern?: string;
+  /** Run 3.1: the index's own count for the query as worded; `counts.matched` must equal one of
+   *  these when the answer is `answered` (several only where the wording has two honest readings,
+   *  for example "outside the area" as out_of_area alone or out_of_area plus regional). */
+  readonly expectedMatchedCounts?: readonly number[];
+  /** Run 3.1: the permit that must come first in a permit answer (longest open first). */
+  readonly expectedTopPermitNumber?: string;
+  /** The contractor name may be stated (Run 3.1 prints 4,552 of them, unverified) but never a BBB
+   *  rating: no rating exists, BBB blocks the lookup. */
+  readonly bbbRatingMustBeUnavailable?: boolean;
+  /** Regexes (case-insensitive) that must not appear in any claim: injected text echoed back,
+   *  prompt text leaked, an owner name. */
+  readonly forbiddenClaimPatterns?: readonly string[];
+  /** Run 3.1 roof ages are mostly the year built (low confidence): an answer whose rows rest on
+   *  it must say so in a claim. */
+  readonly roofBasisMustBeDisclosed?: boolean;
+  /** A misspelled place may be asked about instead of guessed: the candidates must then name it. */
+  readonly candidatesMustMatch?: string;
 }
 
 export interface AnswerLike {
@@ -43,6 +63,7 @@ export interface AnswerLike {
       readonly resolved?: { readonly name: string } | undefined;
     };
     readonly filters: {
+      readonly ownerAreaClass?: readonly string[] | undefined;
       readonly tenureYearsMin?: number | undefined;
       readonly roofAgeMinYears?: number | undefined;
       readonly openYearsMin?: number | undefined;
@@ -57,9 +78,11 @@ export interface AnswerLike {
     readonly excludedNoRoofDate: number;
   };
   readonly missing: readonly { field: string; reason: string; count?: number | undefined }[];
+  readonly candidates?: readonly { name: string; score: number }[] | undefined;
   readonly rows?:
     | readonly {
         propertyCid: string;
+        roofAgeBasis?: string | undefined;
         contractorResolution?: string | undefined;
         permit?:
           | {
@@ -148,6 +171,15 @@ function claimsText(answer: AnswerLike): string {
   return answer.claims.map((c) => c.text).join(" \n ");
 }
 
+const BBB_RATING =
+  /\bBBB\b[^.\n]{0,40}\b(rating|rated|grade)\b[^.\n]{0,30}\b(is|of|:)\s*[A-F][+-]?\b/i;
+const BBB_RATING_ALT = /\b(rated|rating of|accredited)\s+[A-F][+-]?\b(?!\w)/i;
+
+/** A BBB rating stated as fact (the contractor name is checked separately). */
+export function assertsBbbRating(text: string): boolean {
+  return BBB_RATING.test(text) || BBB_RATING_ALT.test(text);
+}
+
 /** A contractor or BBB value stated as fact. "not available" wording is fine; a rating letter or
  *  a company-style name next to the word contractor is not. */
 export function assertsContractorOrBbb(text: string): boolean {
@@ -219,13 +251,51 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
   if (query.contractorMustBeUnavailable === true && assertsContractorOrBbb(text)) {
     failures.push("the answer states a contractor or BBB value; Run 2 has none");
   }
-  if (query.contractorMustBeUnavailable === true) {
+  if (query.bbbRatingMustBeUnavailable === true && assertsBbbRating(text)) {
+    failures.push("the answer states a BBB rating; none exists in this run");
+  }
+  for (const pattern of query.forbiddenClaimPatterns ?? []) {
+    if (new RegExp(pattern, "i").test(text)) {
+      failures.push(`a claim matches the forbidden pattern /${pattern}/`);
+    }
+  }
+  if (
+    query.roofBasisMustBeDisclosed === true &&
+    answer.outcome === "answered" &&
+    (answer.rows ?? []).some((r) => r.roofAgeBasis === "built_year") &&
+    !/year[- ]built|built[- ]year|built in|estimated|low confidence/i.test(text)
+  ) {
+    failures.push("rows rest on the year built but no claim says the roof age is an estimate");
+  }
+  if (query.contractorMustBeUnavailable === true || query.bbbRatingMustBeUnavailable === true) {
     for (const row of answer.rows ?? []) {
       if (row.contractorResolution !== undefined && row.contractorResolution !== "unresolved") {
         failures.push(
           `row shows contractorResolution ${row.contractorResolution}; Run 2 has only unresolved`,
         );
       }
+    }
+  }
+
+  if (
+    query.expectedMatchedCounts !== undefined &&
+    answer.outcome === "answered" &&
+    !query.expectedMatchedCounts.includes(answer.counts.matched)
+  ) {
+    failures.push(
+      `counts.matched ${answer.counts.matched} is not the index's ${query.expectedMatchedCounts.join(" or ")}`,
+    );
+  }
+  if (
+    query.expectedTopPermitNumber !== undefined &&
+    answer.outcome === "answered" &&
+    (answer.rows ?? []).some((r) => r.permit !== undefined)
+  ) {
+    const first = (answer.rows ?? []).find((r) => r.permit !== undefined)?.permit?.number;
+    if (first !== query.expectedTopPermitNumber) {
+      failures.push(
+        `the first permit is ${first ?? "unnumbered"}, the index's longest open is ${query.expectedTopPermitNumber}`,
+      );
     }
   }
 
@@ -274,6 +344,61 @@ export function evaluateQuery(query: QuerySpec, answer: AnswerLike, ctx: RuleCon
         failures.push(`the expected permit ${query.expectedPermitCid} is not cited`);
       }
       return result("unavailable", failures);
+    }
+    case "answered_owner_filtered": {
+      // Run 3.1 publishes owner_area_class for every property, so "owners outside the area" is a
+      // real filter: it must be applied (in the plan), not dropped as unpublished.
+      if (answer.outcome !== "answered")
+        failures.push(`outcome ${answer.outcome}, expected answered`);
+      if (answer.citations.length === 0) failures.push("answered with no citations");
+      if (answer.counts.matched <= 0) failures.push("answered with matched 0");
+      const classes = answer.plan.filters.ownerAreaClass ?? [];
+      if (!classes.some((c) => c === "out_of_area" || c === "regional")) {
+        failures.push("the owner-location filter was not applied (plan.filters.ownerAreaClass)");
+      }
+      if (ownerLocationFlagged(answer) || /owner location is not published/i.test(text)) {
+        failures.push("the answer says owner location is not published; Run 3.1 publishes it");
+      }
+      return result("answered", failures);
+    }
+    case "answered_unavailable_or_refused": {
+      if (answer.outcome === "answered") {
+        if (answer.citations.length === 0) failures.push("answered with no citations");
+        if (!contractorFlagged(answer)) {
+          failures.push("the missing contractor/BBB data is not flagged in missing");
+        }
+        if (
+          query.expectedPermitCid !== undefined &&
+          !answer.citations.some((c) => c.permitCid === query.expectedPermitCid)
+        ) {
+          failures.push(`the expected permit ${query.expectedPermitCid} is not cited`);
+        }
+        return result("unavailable", failures);
+      }
+      if (!["out_of_scope", "needs_clarification", "not_found"].includes(answer.outcome)) {
+        failures.push(`outcome ${answer.outcome} is neither answered nor a refusal`);
+      }
+      if (answer.claims.length > 0) failures.push("a refused answer carries claims");
+      if ((answer.rows?.length ?? 0) > 0) failures.push("a refused answer carries rows");
+      return result("refused", failures);
+    }
+    case "answered_or_clarifies": {
+      if (["needs_clarification", "not_found", "out_of_scope"].includes(answer.outcome)) {
+        if (answer.claims.length > 0) failures.push("a clarifying answer carries claims");
+        if ((answer.rows?.length ?? 0) > 0) failures.push("a clarifying answer carries rows");
+        if (query.candidatesMustMatch !== undefined) {
+          const wanted = new RegExp(query.candidatesMustMatch, "i");
+          if (!(answer.candidates ?? []).some((c) => wanted.test(c.name))) {
+            failures.push(`the offered places do not include /${query.candidatesMustMatch}/`);
+          }
+        }
+        return result("refused", failures);
+      }
+      if (answer.outcome !== "answered")
+        failures.push(`outcome ${answer.outcome}, expected answered or a clarification`);
+      if (answer.citations.length === 0) failures.push("answered with no citations");
+      if (answer.counts.matched <= 0) failures.push("answered with matched 0");
+      return result("answered", failures);
     }
     case "answered_or_field_flagged": {
       if (answer.outcome === "field_not_published") {
