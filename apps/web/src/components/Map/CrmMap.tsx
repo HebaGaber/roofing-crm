@@ -28,7 +28,8 @@ import {
   type MapMouseEvent,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { AnswerPin } from "@crm/shared";
+import type { AnswerPin, LeadStatus } from "@crm/shared";
+import { leadRing } from "./leadRing.js";
 import {
   forwardRef,
   useCallback,
@@ -198,6 +199,9 @@ export interface RoofMarkerPoint {
   /** Published roof age, years; null when not published (the marker and hexagon say so by
    *  using the neutral "no roof age" colour, explained in the legend). */
   readonly roofAgeYears?: number | null;
+  /** Set when the property is already a lead (Layers → "My leads"): the marker gets a ring whose
+   *  line style carries the status. Absent = no lead, or the layer is off. */
+  readonly leadStatus?: LeadStatus;
 }
 
 /** A permit shown as a Layers → "Open and stalled permits" marker (E-72): coloured by
@@ -218,6 +222,8 @@ export interface PermitMarkerPoint {
 export interface CrmMapLayers {
   readonly roofs: boolean;
   readonly permits: boolean;
+  /** "My leads": ring the markers of properties that are already leads. Default on. */
+  readonly leads?: boolean;
 }
 
 export interface CrmMapHandle {
@@ -321,6 +327,7 @@ export function dot(
   shape: "round" | "diamond" = "round",
   triage = false,
   activate?: { readonly label: string; readonly run: () => void },
+  leadStatus?: LeadStatus,
 ): HTMLDivElement {
   const el = document.createElement("div");
   if (activate !== undefined) {
@@ -359,6 +366,15 @@ export function dot(
   // 24px hit area around the 14px visible dot (CRM-HANDOFF §10 fix 3: markers keep their 14px
   // look with a 24px hit area).
   el.style.outline = "5px solid transparent";
+  if (leadStatus !== undefined) {
+    // Already a lead: an outer ring, its line style by status (the dot's fill stays visible).
+    const ring = leadRing(leadStatus);
+    el.dataset.leadStatus = leadStatus;
+    el.style.outlineStyle = ring.style;
+    el.style.outlineWidth = "3px";
+    el.style.outlineColor = ring.color;
+    el.style.outlineOffset = "2px";
+  }
   return el;
 }
 
@@ -797,20 +813,29 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
     roofMarkerRefs.current = [];
     if (map === null || !styleReady || !layers.roofs || overview) return;
     for (const point of roofMarkers) {
+      const leadStatus = layers.leads === false ? undefined : point.leadStatus;
       const marker = new Marker({
-        element: dot(roofMarkerColor(point), false, "round", point.propertyCid === triageCid, {
-          label:
-            point.roofAgeYears == null
-              ? "Open this property · no roof age published"
-              : `Open this property · roof ${String(point.roofAgeYears)} yrs`,
-          run: () => onPropertySelectRef.current?.(point.propertyCid),
-        }),
+        element: dot(
+          roofMarkerColor(point),
+          false,
+          "round",
+          point.propertyCid === triageCid,
+          {
+            label:
+              (point.roofAgeYears == null
+                ? "Open this property · no roof age published"
+                : `Open this property · roof ${String(point.roofAgeYears)} yrs`) +
+              (leadStatus === undefined ? "" : ` · lead: ${leadRing(leadStatus).label}`),
+            run: () => onPropertySelectRef.current?.(point.propertyCid),
+          },
+          leadStatus,
+        ),
       })
         .setLngLat([point.lng, point.lat])
         .addTo(map);
       roofMarkerRefs.current.push(marker);
     }
-  }, [roofMarkers, layers.roofs, styleReady, overview, triageCid]);
+  }, [roofMarkers, layers.roofs, layers.leads, styleReady, overview, triageCid]);
 
   // E-72 Layers: open/stalled permit markers, ringed when `isLongOpen` already flagged the
   // permit ("Open > 5 yrs" — the flag itself comes from `packages/domain`'s `isLongOpen` via the

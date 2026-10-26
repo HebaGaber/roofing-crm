@@ -150,6 +150,8 @@ let searchResult: {
 let permitsReply: { permits: unknown[]; total?: number; truncated?: boolean } = { permits: [] };
 const permitInputs: unknown[] = [];
 let detailWithoutCoords = false;
+let presenceReply: { leadKey: string; leadId: string; status: string }[] = [];
+const presenceCalls: { requestIdentifiers: string[] }[] = [];
 
 const RUN = "travis-202609-permits-20261021t103516z";
 function overviewFor(input: { zoom: number; permits?: boolean }) {
@@ -195,6 +197,17 @@ const opts = (key: string, fn: () => unknown) => (input: unknown) => ({
 
 vi.mock("@crm/api-client/react", () => ({
   useTRPC: () => ({
+    leads: {
+      presence: {
+        queryOptions: (input: { requestIdentifiers: string[] }) => ({
+          queryKey: ["leads.presence", input],
+          queryFn: async () => {
+            presenceCalls.push(input);
+            return presenceReply;
+          },
+        }),
+      },
+    },
     search: {
       properties: {
         queryOptions: opts("search.properties", () => {
@@ -264,6 +277,8 @@ afterEach(() => {
   lastTriageProps = null;
   permitsReply = { permits: [] };
   permitInputs.length = 0;
+  presenceReply = [];
+  presenceCalls.length = 0;
   placeAtCenter.mockReset();
   showCounty.mockReset();
   lastMapProps = {};
@@ -1366,6 +1381,38 @@ describe("Map route centres the map on a selected property", () => {
     fireEvent.click(within(list).getAllByRole("button")[0] as HTMLElement);
     await vi.waitFor(() => expect(focusProperty).toHaveBeenCalledTimes(1));
     expect(focusProperty.mock.calls[0]?.[0]).toEqual(at);
+  });
+
+  it("hands the map the lead status of a property that is already a lead (My leads layer)", async () => {
+    stubWide(false);
+    presenceReply = [
+      { leadKey: `48453:tcad:${property.requestIdentifier}`, leadId: "l1", status: "contacted" },
+    ];
+    renderAt(URL_PIN);
+    await screen.findByTestId("search-results");
+    await vi.waitFor(() => {
+      const markers = (lastMapProps as { roofMarkers?: { leadStatus?: string }[] }).roofMarkers;
+      expect(markers?.[0]?.leadStatus).toBe("contacted");
+    });
+    expect(presenceCalls[0]?.requestIdentifiers).toEqual([property.requestIdentifier]);
+  });
+
+  it("marks nothing and reads no presence when the My leads layer is off", async () => {
+    stubWide(false);
+    presenceReply = [
+      { leadKey: `48453:tcad:${property.requestIdentifier}`, leadId: "l1", status: "new" },
+    ];
+    renderAt(URL_PIN);
+    await screen.findByTestId("search-results");
+    await vi.waitFor(() => expect(presenceCalls.length).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("button", { name: "Layers" }));
+    presenceCalls.length = 0;
+    fireEvent.click(screen.getByRole("checkbox", { name: /My leads/ }));
+    await vi.waitFor(() => {
+      const markers = (lastMapProps as { roofMarkers?: { leadStatus?: string }[] }).roofMarkers;
+      expect(markers?.[0]?.leadStatus).toBeUndefined();
+    });
+    expect(presenceCalls).toEqual([]);
   });
 
   it("a property without coordinates is not centred, and the map is left alone", async () => {

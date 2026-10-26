@@ -11,12 +11,17 @@ import { Icon } from "@crm/ui";
 import { PERMIT_OPEN_BUCKETS, ROOF_AGE_BUCKETS } from "../../format/buckets.js";
 import type { MapViewMode } from "./CrmMap.js";
 import { useLegendDocked, useLegendOpen } from "./legendState.js";
+import { LEAD_RING_LEGEND } from "./leadRing.js";
 import styles from "./MapLegend.module.css";
 
 export interface MapLegendProps {
   readonly mode: MapViewMode;
   readonly roofs: boolean;
   readonly permits: boolean;
+  /** "My leads" layer on: adds the ring line. */
+  readonly leads?: boolean;
+  /** Why some lead rings may be missing (read failed / ring too large); null when all are there. */
+  readonly leadsNote?: string | null;
   /** Properties the current search loaded (what the fallback hexagons summarise). */
   readonly loadedCount: number;
   /** The whole-county overview's state; absent = not requested (hexagons from loaded results). */
@@ -139,6 +144,8 @@ export function MapLegend({
   mode,
   roofs,
   permits,
+  leads = false,
+  leadsNote = null,
   loadedCount,
   county,
   toggle = "button",
@@ -247,6 +254,16 @@ export function MapLegend({
               ? "Stronger hexagon fill = more properties · circle = open or stalled permits, sized by count · click a hexagon to search there, or a circle to zoom in"
               : "● roof · ◆ open or stalled permit · dark ring = open over 5 yrs"}
           </p>
+          {leads ? (
+            <section className={styles.block} data-legend-leads="">
+              <p className={styles.line}>{LEAD_RING_LEGEND}</p>
+              {leadsNote === null || leadsNote === undefined ? null : (
+                <p className={styles.note} data-leads-note="" role="status">
+                  {leadsNote}
+                </p>
+              )}
+            </section>
+          ) : null}
           {overview ? (
             county === undefined ? (
               <p className={styles.note}>{loadedNote(loadedCount)}</p>

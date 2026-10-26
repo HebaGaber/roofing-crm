@@ -6,7 +6,7 @@ import { LayersPopover, type LayersState } from "../../../src/components/Map/Lay
 
 afterEach(cleanup);
 
-const ON: LayersState = { roofs: true, permits: true, gaps: false };
+const ON: LayersState = { roofs: true, permits: true, leads: true, gaps: false };
 
 function open(): void {
   fireEvent.click(screen.getByRole("button", { name: "Layers" }));
@@ -47,9 +47,17 @@ describe("LayersPopover", () => {
     expect((gaps as HTMLInputElement).disabled).toBe(true);
     expect((gaps as HTMLInputElement).checked).toBe(false);
     expect(screen.getByText(/publishes no permit-coverage areas/)).not.toBeNull();
-    const leads = screen.getByRole("checkbox", { name: /My leads/ });
-    expect((leads as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getByText(/not drawn on the map yet/)).not.toBeNull();
+  });
+
+  it("has a live My leads switch, on by default, that turns the ring off", () => {
+    const onChange = vi.fn();
+    render(<LayersPopover value={ON} onChange={onChange} />);
+    open();
+    const leads = screen.getByRole("checkbox", { name: /My leads/ }) as HTMLInputElement;
+    expect(leads.disabled).toBe(false);
+    expect(leads.checked).toBe(true);
+    fireEvent.click(leads);
+    expect(onChange).toHaveBeenCalledWith({ ...ON, leads: false });
   });
 
   it("is one button with the layers icon and the word Layers", () => {

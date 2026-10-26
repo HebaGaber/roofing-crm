@@ -64,7 +64,13 @@ import { WhatCanIAsk } from "../../components/Onboarding/WhatCanIAsk.js";
 import { parseMapQuery, patchMapParams, RADIUS_BOUNDS } from "./ExploreFilters.state.js";
 import { FilterSheet, type PermitStatusFilter } from "./FilterSheet.js";
 import { CandidateList, patchMapView, useMapViewParam } from "./Candidates/index.js";
-import { emptyStateCopy, permitNote, permitQueryInput } from "./Candidates/candidates.js";
+import {
+  emptyStateCopy,
+  leadsNote,
+  permitNote,
+  permitQueryInput,
+} from "./Candidates/candidates.js";
+import { useLeadMarks } from "./Candidates/useLeadMarks.js";
 import { runLabel } from "./whyLead.js";
 import { usePrefetchLeadsList } from "../Leads/leadsApi.js";
 import { PropertyDetail, type PropertyDetailData } from "./PropertyDetail/PropertyDetail.js";
@@ -83,7 +89,8 @@ import styles from "./Map.module.css";
 
 const WIDEN_STEP_MI = 1; // Round 1 decision (2026-10-23): fixed +1 mi steps, never doubling.
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
-const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, gaps: false };
+const DEFAULT_LAYERS: LayersState = { roofs: true, permits: true, leads: true, gaps: false };
+const NO_PROPERTIES: readonly { readonly requestIdentifier: string }[] = [];
 /** The map opens on the whole county at this zoom (CrmMap's COUNTY_ZOOM). */
 const COUNTY_ZOOM_STEP = 9;
 /** The county overview changes only with a new promoted run; refetching it on every focus is waste. */
@@ -537,18 +544,28 @@ export function Component(): ReactElement {
     [setSearchParams],
   );
 
+  // "My leads" layer: which of the ring's properties are already leads (the List view's read, same
+  // cache entries). Off, nothing is fetched.
+  const leadMarks = useLeadMarks(query.data?.properties ?? NO_PROPERTIES, layers.leads);
+
   const roofMarkers = useMemo(
     () =>
       listProperties
         .filter((p) => p.latitude !== null && p.longitude !== null)
-        .map((p) => ({
-          propertyCid: p.propertyCid,
-          lat: p.latitude as number,
-          lng: p.longitude as number,
-          roofAgeConfidence: p.roofAgeConfidence,
-          roofAgeYears: p.roofAgeYears,
-        })),
-    [listProperties],
+        .map((p) => {
+          const leadStatus = layers.leads
+            ? leadMarks.marks.get(p.requestIdentifier)?.status
+            : undefined;
+          return {
+            propertyCid: p.propertyCid,
+            lat: p.latitude as number,
+            lng: p.longitude as number,
+            roofAgeConfidence: p.roofAgeConfidence,
+            roofAgeYears: p.roofAgeYears,
+            ...(leadStatus === undefined ? {} : { leadStatus }),
+          };
+        }),
+    [listProperties, layers.leads, leadMarks.marks],
   );
 
   const permitMarkers = useMemo(() => {
@@ -843,6 +860,8 @@ export function Component(): ReactElement {
                   mode={viewMode}
                   roofs={layers.roofs}
                   permits={layers.permits}
+                  leads={layers.leads}
+                  leadsNote={leadsNote(leadMarks.reason)}
                   loadedCount={roofMarkers.length}
                   county={countyStatus}
                   toggle="none"
