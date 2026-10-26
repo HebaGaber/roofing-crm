@@ -184,3 +184,76 @@ export function narrowedPlace(query: string): string | undefined {
   if (found.status !== "found" || found.kind !== "place") return undefined;
   return gazetteer.listPlaceNames().find((n) => n.toLowerCase() === rest.toLowerCase());
 }
+
+/** Cities outside Travis County that reps ask about in lower case or without a capital; a name
+ *  here is always a named place, never a stray word after "near". */
+const KNOWN_OUTSIDE = [
+  "houston",
+  "dallas",
+  "san antonio",
+  "fort worth",
+  "el paso",
+  "corpus christi",
+  "waco",
+  "san marcos",
+  "new braunfels",
+  "georgetown",
+  "killeen",
+  "temple",
+];
+
+const NOT_A_PLACE = new Set([
+  "travis",
+  "texas",
+  "tx",
+  "county",
+  "the",
+  "a",
+  "an",
+  "my",
+  "our",
+  "here",
+  "there",
+  "this",
+  "that",
+  "me",
+  "us",
+  "town",
+  "city",
+  "total",
+  "general",
+]);
+
+const OWNER_CONTEXT = /\b(?:owners?|owned|live[sd]?|living|resid\w*|mailing|based|moved)\b[^.?]*$/i;
+
+/**
+ * The place the rep typed after a distance or proximity cue ("within 5 miles of Houston", "near
+ * Dallas", "roofs in San Antonio"), whether or not the gazetteer holds it. The gate uses it to
+ * notice an area the plan swapped for another place. Owner phrasing ("owners who live in Dallas")
+ * is skipped: that names where an owner lives, not the search area. Undefined when no place is
+ * named, so a question without one keeps its existing default behaviour.
+ */
+export function scanQuestionForNamedPlace(question: string): string | undefined {
+  const cue =
+    /(?:\b(?:mi|miles?|km)\s+(?:of|from|around|outside(?:\s+of)?)|\b(?:near|around|outside(?:\s+of)?|in|from|of))\s+/gi;
+  for (const m of question.matchAll(cue)) {
+    const rest = question.slice(m.index + m[0].length);
+    // Only the weak cues can mean where an owner lives; "near" and "miles of" name the search area.
+    const weak = /^(?:in|from|of)\s/i.test(m[0]);
+    if (weak && OWNER_CONTEXT.test(question.slice(0, m.index))) continue;
+    const lower = rest.toLowerCase();
+    const outside = KNOWN_OUTSIDE.find((c) => new RegExp(`^${c}(?![\\p{L}])`, "u").test(lower));
+    if (outside !== undefined) {
+      return rest.slice(0, outside.length).replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    const words = /^([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,2})/.exec(rest)?.[1];
+    if (words === undefined) continue;
+    const kept: string[] = [];
+    for (const w of words.split(/\s+/)) {
+      if (NOT_A_PLACE.has(w.toLowerCase().replace(/[.']/g, ""))) break;
+      kept.push(w);
+    }
+    if (kept.length > 0) return kept.join(" ");
+  }
+  return undefined;
+}
