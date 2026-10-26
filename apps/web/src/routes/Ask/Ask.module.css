@@ -61,8 +61,12 @@
   background: var(--md-sys-color-surface);
 }
 
+/* The text area suppresses its own outline (below), so the card draws the 3 px focus ring, as the
+   search box does: a border colour change alone is not a visible focus indicator. */
 .composer:focus-within {
   border-color: var(--md-sys-color-primary);
+  outline: 3px solid var(--md-sys-color-primary);
+  outline-offset: 2px;
 }
 
 .input {

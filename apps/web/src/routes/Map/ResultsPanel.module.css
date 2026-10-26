@@ -64,8 +64,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--space-9);
+  height: var(--space-9);
   padding: 0;
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
@@ -103,8 +103,8 @@
   display: none;
   align-items: center;
   justify-content: center;
-  width: 48px;
-  height: 48px;
+  width: var(--space-9);
+  height: var(--space-9);
   padding: 0;
   border: none;
   border-radius: var(--md-sys-shape-corner-full);
@@ -128,8 +128,8 @@
 
 @media (min-width: 768px) {
   .triage {
-    width: 48px;
-    min-width: 48px;
+    width: var(--space-9);
+    min-width: var(--space-9);
     padding: 0;
     justify-content: center;
     background: transparent;

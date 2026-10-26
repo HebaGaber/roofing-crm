@@ -356,13 +356,16 @@ function signInAs(claims: Record<string, unknown>): void {
 describe("top bar below 840 px (CrmShellApps768)", () => {
   it("drops the county label below 840 px and keeps Apps from 600 px", () => {
     const bar = css("ShellTopBar.module.css");
-    expect(bar).toMatch(/@media \(max-width: 839px\)\s*{\s*\.county\s*{\s*display: none;/);
+    // Mobile first: hidden by default, shown from the breakpoint (styles-mobile-first.test.ts).
+    expect(bar).toMatch(/\.county \{\s*display: none;/);
+    expect(bar).toMatch(/@media \(min-width: 840px\)\s*{\s*\.county\s*{\s*display: inline-flex;/);
     expect(bar).toMatch(/@media \(max-width: 599px\)\s*{\s*\.apps,\s*\.help\s*{\s*display: none;/);
   });
 
   it("swaps the long data label for the short run label below 840 px", () => {
     const chip = css("DataChip.module.css");
-    expect(chip).toMatch(/@media \(max-width: 839px\)\s*{\s*\.long\s*{\s*display: none;/);
+    expect(chip).toMatch(/\.long \{\s*display: none;/);
+    expect(chip).toMatch(/@media \(min-width: 840px\)\s*{\s*\.long\s*{\s*display: inline;/);
     expect(chip).toMatch(/\.short\s*{\s*display: inline;/);
   });
 
