@@ -219,3 +219,23 @@ describe("BBB link", () => {
     expect(document.querySelector("a[data-field='bbb_url']")).toBeNull();
   });
 });
+
+describe("WhyPanel scroll", () => {
+  it("scrolls the list's scrolling container back to the top and takes focus", () => {
+    const sheet = document.createElement("div");
+    sheet.style.overflowY = "auto";
+    Object.defineProperty(sheet, "scrollHeight", { value: 800, configurable: true });
+    Object.defineProperty(sheet, "clientHeight", { value: 400, configurable: true });
+    sheet.scrollTop = 86;
+    document.body.appendChild(sheet);
+    render(
+      <WhyPanel property={property} permits={[permit()]} onBack={vi.fn()} onDetails={vi.fn()} />,
+      {
+        container: sheet.appendChild(document.createElement("div")),
+      },
+    );
+    expect(sheet.scrollTop).toBe(0);
+    expect(document.activeElement).toBe(document.querySelector("[data-why-panel]"));
+    sheet.remove();
+  });
+});

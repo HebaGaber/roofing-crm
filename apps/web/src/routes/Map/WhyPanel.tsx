@@ -32,11 +32,21 @@ export function WhyPanel({
 }: WhyPanelProps): ReactElement {
   const links = useShellAppLinks();
   const ref = useRef<HTMLElement>(null);
-  // The panel replaces the list, which was scrolled to the row that was opened: take focus so the
-  // browser brings the panel's top (Back, title) into view, and keyboard and screen-reader users
-  // land on it.
+  // The panel replaces the list, which was scrolled to the row that was opened, in a scrolling
+  // sheet or pane that keeps its scroll position: scroll that container back to the top so the
+  // panel's title and Back are on screen, and take focus (without the browser scrolling anything
+  // else) so keyboard and screen-reader users land on it.
   useEffect(() => {
-    ref.current?.focus();
+    const panel = ref.current;
+    if (panel === null) return;
+    panel.focus({ preventScroll: true });
+    for (let el = panel.parentElement; el !== null; el = el.parentElement) {
+      const overflowY = getComputedStyle(el).overflowY;
+      if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+        el.scrollTop = 0;
+        break;
+      }
+    }
   }, []);
   const countyLens = links.data?.countyLensUrl?.replace(/\/$/, "");
   const why = whyLead({ property, permits, center, radiusMi, centreLabel });
