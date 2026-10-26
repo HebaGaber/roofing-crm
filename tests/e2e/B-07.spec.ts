@@ -158,7 +158,10 @@ async function loadFacts(page: Page, cid: string): Promise<Facts> {
     roofAgeYears: p.roofAgeYears,
     roofAgeBasis: p.roofAgeBasis,
     sourceManifestCid: p.sourceManifestCid,
-    hasOpenPermit: open !== undefined,
+    // The Open filter means open or stalled (a stalled permit is open and not progressing).
+    hasOpenPermit: data.permits.some(
+      (permit) => permit.statusClass === "open" || permit.statusClass === "stalled",
+    ),
     openPermit:
       open?.permitNumber == null
         ? null
@@ -264,7 +267,13 @@ async function setLeadArea(page: Page, lat: number, lng: number, miles: string):
   await page.getByLabel("Radius, mi").selectOption(miles);
 }
 const leadLink = (page: Page, f: Facts): Locator =>
-  page.getByRole("link", { name: leadTitle(f.requestIdentifier) });
+  // A lead keeps the title it was created with: the street address, or "TCAD {id}" for a lead an
+  // earlier run created before the address was published. Either names the same lead.
+  page.getByRole("link", {
+    name: new RegExp(
+      `(${leadTitle(f.requestIdentifier).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}|TCAD ${f.requestIdentifier})`,
+    ),
+  });
 
 /** Screenshot to docs/evidence/img/B-07-TC-{nnn}-{step}.png, attached to the report. */
 async function shot(page: Page, tc: string, step: string): Promise<void> {
@@ -670,10 +679,13 @@ test.describe("B-07 leads", () => {
         timeout: FILTERED_LIST_MS,
       });
     } else {
-      await expect(leadCount(page)).toHaveText(
-        `${expected.length} ${expected.length === 1 ? "lead" : "leads"}`,
-        { timeout: FILTERED_LIST_MS },
-      );
+      // Other leads in the same area (for example one made by hand on the live app) may also pass
+      // the filters, so the list must hold every expected fixture lead and at least that many
+      // rows; the fixture leads that must NOT match are checked below.
+      await expect(async () => {
+        const text = (await leadCount(page).textContent()) ?? "";
+        expect(Number(/^(\d+)/.exec(text)?.[1] ?? 0)).toBeGreaterThanOrEqual(expected.length);
+      }).toPass({ timeout: FILTERED_LIST_MS });
       for (const f of expected) await expect(leadLink(page, f)).toHaveCount(1);
     }
     for (const f of [P_5_52, P_AGE48, P_5_89].map(factsOf).filter((x) => !expected.includes(x))) {
@@ -839,10 +851,9 @@ test.describe("B-07 leads", () => {
       "aria-pressed",
       "false",
     );
-    await expect(page.getByText("No leads match these filters")).toBeVisible({
-      timeout: FILTERED_LIST_MS,
-    });
-    await expect(leadLink(page, f)).toHaveCount(0);
+    // Other leads that really have a permit open for years may stay in the list (one made by hand
+    // on the live app does), so the check is that this fixture's 37-day permit drops out.
+    await expect(leadLink(page, f)).toHaveCount(0, { timeout: FILTERED_LIST_MS });
 
     await group.getByRole("button", { name: "Any", exact: true }).click();
     await expect(page).not.toHaveURL(/permitOpen=/);
