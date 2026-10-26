@@ -170,16 +170,15 @@ describe("MapLegend", () => {
   });
 
   describe("the Legend button and card", () => {
-    it("is collapsed behind a named Legend button until opened on a phone (below 600 px)", () => {
+    it("is open by default on a phone too, closes with its control and opens again from the Legend button", () => {
       stubWidth(false);
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
+      expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close legend" }));
+      expect(screen.queryByText("Median roof age per hexagon, yrs")).toBeNull();
       const button = screen.getByRole("button", { name: "Legend" });
       expect(button.getAttribute("aria-expanded")).toBe("false");
-      expect(screen.queryByText("Median roof age per hexagon, yrs")).toBeNull();
       fireEvent.click(button);
-      expect(screen.getByRole("button", { name: "Legend" }).getAttribute("aria-expanded")).toBe(
-        "true",
-      );
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
     });
 
@@ -192,6 +191,7 @@ describe("MapLegend", () => {
 
     it("closes with its button, with Escape, and with a tap outside; the choice is remembered", () => {
       stubWidth(false);
+      writeLegendChoice(false);
       render(
         <div>
           <MapLegend mode="overview" roofs permits loadedCount={0} />
@@ -236,6 +236,7 @@ describe("MapLegend", () => {
 
     it("with toggle none it has no Legend button of its own and follows the shared state", () => {
       stubWidth(false);
+      writeLegendChoice(false);
       render(<MapLegend mode="overview" roofs permits loadedCount={0} toggle="none" />);
       expect(screen.queryByRole("button", { name: "Legend" })).toBeNull();
       expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
@@ -247,13 +248,14 @@ describe("MapLegend", () => {
 
     it("a tap inside the card does not close it", () => {
       stubWidth(false);
+      writeLegendChoice(false);
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
       fireEvent.click(screen.getByRole("button", { name: "Legend" }));
       fireEvent.pointerDown(screen.getByText("Median roof age per hexagon, yrs"));
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
     });
 
-    it("follows the viewport when nothing was chosen, and works without storage", () => {
+    it("is open when nothing was chosen at any width, and works without storage", () => {
       stubWidth(false);
       vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
         throw new Error("blocked");
@@ -262,8 +264,9 @@ describe("MapLegend", () => {
         throw new Error("blocked");
       });
       render(<MapLegend mode="overview" roofs permits loadedCount={0} />);
-      fireEvent.click(screen.getByRole("button", { name: "Legend" }));
       expect(screen.getByRole("region", { name: "Map legend" })).not.toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Close legend" }));
+      expect(screen.queryByRole("region", { name: "Map legend" })).toBeNull();
       vi.restoreAllMocks();
     });
   });

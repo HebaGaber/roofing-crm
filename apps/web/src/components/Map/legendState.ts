@@ -1,11 +1,11 @@
 // Whether the map legend card is open. One shared state so the Layers button's "Legend" switch and
-// the card itself always agree. From 600 px (tablets and up, where the legend has its own corner of
-// the map) it opens by itself; on phones it stays collapsed until asked, because open it covers a
-// large part of a small map. A person's own choice (kept for the session) wins over the default;
-// with no choice the default follows the live viewport.
+// the card itself always agree. It is open by default at every width (the PO's call, 2026-10-26:
+// the legend explains the hexagons, rings and permit colours, so it should be there from the first
+// look); from 600 px it has its own corner of the map, on a phone it floats over it and the Layers
+// switch turns it off. A person's own choice (kept for the session) wins over the default.
 import { useCallback, useSyncExternalStore } from "react";
 
-/** From here the legend card is in its own corner of the map and opens by default. */
+/** From here the legend card is in its own corner of the map (below it, it floats over the map). */
 export const LEGEND_OPEN_QUERY = "(min-width: 600px)";
 const LEGEND_KEY = "crm.legend.v1";
 
@@ -55,7 +55,7 @@ function subscribe(onChange: () => void): () => void {
 export function useLegendOpen(): readonly [boolean, (open: boolean) => void] {
   const open = useSyncExternalStore(
     subscribe,
-    () => readLegendChoice() ?? matchesMedia(LEGEND_OPEN_QUERY, true),
+    () => readLegendChoice() ?? true,
     () => true,
   );
   const set = useCallback((next: boolean) => writeLegendChoice(next), []);

@@ -75,7 +75,7 @@ test.describe("Map: results list, Layers and hexagons", () => {
   }) => {
     await openSearch(page);
     const legend = page.getByRole("region", { name: "Map legend" });
-    // Open by default from 600 px; its own close button is "Close legend".
+    // Open by default at every width; its own close button is "Close legend".
     await expect(legend).toBeVisible();
     await expect(page.getByRole("button", { name: "Legend", exact: true })).toHaveCount(0);
 
