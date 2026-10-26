@@ -1,5 +1,5 @@
 {
-  "_comment": "B-09 golden queries, re-baselined on Task A Run 3.1 (manifest and run id below; every count in `truth` and `expectedMatchedCounts` was computed from the served index's own parquet tables with the filter the query implies, haversine radius around the gazetteer point). The Austin variants say \"Austin\", not \"downtown Austin\": the travis-places gazetteer has no sub-city places, so \"downtown Austin\" scores 0.58 and is correctly refused. G1-G7 prompts are checks.md section 7.1's, verbatim (G5's {real permit number} is filled with `permitNumber`). A1-A5 are Austin variants with the same intents. X1-X4 are the adversarial set (prompt injection pasted from permit text, a place outside the county, a misspelled place, a request to send owner names to the model). Run 3.1 changed the honest outcome of several queries (see each `truth`): 88 percent of properties now have a roof age (98 percent of those are the year built, confidence low), 4,552 permits print a contractor name (unverified; still no BBB rating), and owner area class is published for every property. Pass rules live in passRules.ts (unit-tested in golden.test.ts); the free-text mustDo/truth fields are the human-readable record. Nothing here may be loosened to make an honest answer pass; a wrong or ungrounded answer must fail.",
+  "_comment": "B-09 golden queries, re-baselined on Task A Run 3.1 and again for the live rule (a permit is live, open or stalled, only if its statusClass is open or stalled AND it has no finalDate: 952 of 1,674 stalled and 7 of 80 open permits carry a final date and are finished; \"open\" means live). Manifest and run id below; every count in `truth` and `expectedMatchedCounts` was computed from the served index's own parquet tables with the filter the query implies, haversine radius around the gazetteer point). The Austin variants say \"Austin\", not \"downtown Austin\": the travis-places gazetteer has no sub-city places, so \"downtown Austin\" scores 0.58 and is correctly refused. G1-G7 prompts are checks.md section 7.1's, verbatim (G5's {real permit number} is filled with `permitNumber`). A1-A5 are Austin variants with the same intents. X1-X4 are the adversarial set (prompt injection pasted from permit text, a place outside the county, a misspelled place, a request to send owner names to the model). Run 3.1 changed the honest outcome of several queries (see each `truth`): 88 percent of properties now have a roof age (98 percent of those are the year built, confidence low), 4,552 permits print a contractor name (unverified; still no BBB rating), and owner area class is published for every property. Pass rules live in passRules.ts (unit-tested in golden.test.ts); the free-text mustDo/truth fields are the human-readable record. Nothing here may be loosened to make an honest answer pass; a wrong or ungrounded answer must fail.",
   "manifestCid": "bafkreidbqsav3rsbxqy5fx3li73uskfth254nz5zw34xwac5w3fd4tmbai",
   "runId": "travis-full-run3-1-20261025",
   "queries": [
@@ -22,7 +22,7 @@
       "expectedOutcome": "answered",
       "check": "groundedness+correctness+honesty",
       "inheritsAreaFrom": "G1",
-      "truth": "Run 3.1: \"Open\" includes stalled (a stalled permit is open and not progressing). The Pflugerville 5 mi radius holds 50 roofing permits: 0 with status open, 5 stalled (2004-011296 BP 8,269 open days, 2013-101151 BP, 2018-111955 BP, 2020-089687 BP, 2022-098180 BP), 45 closed. So open permits are the 5 stalled ones, and a claim must say they are stalled so a rep reading \"open\" is told the status. All 5 print a contractor name (unverified, contractorResolution unresolved, for example Aztec Roofing & Siding on 2004-011296 BP); bbbStatus is blocked, so no BBB rating exists and any rating in an answer is fabricated. The contractor name as printed may be stated; Run 2 had none.",
+      "truth": "Live rule (Run 3.1, finaled permits excluded): \"Open\" means live, open or stalled with no final date. The Pflugerville 5 mi radius holds 50 roofing permits: 0 with status open, 5 stalled and live (all five have no final date and an open duration of 1,577 to 8,269 days; unchanged by the live rule: none of the 45 closed ones is live) (2004-011296 BP 8,269 open days, 2013-101151 BP, 2018-111955 BP, 2020-089687 BP, 2022-098180 BP), 45 closed. So the live permits are the 5 stalled ones, and a claim must say they are stalled so a rep reading \"open\" is told the status. All 5 print a contractor name (unverified, contractorResolution unresolved, for example Aztec Roofing & Siding on 2004-011296 BP); bbbStatus is blocked, so no BBB rating exists and any rating in an answer is fabricated. The contractor name as printed may be stated; Run 2 had none.",
       "stalledMustBeDisclosed": true,
       "bbbRatingMustBeUnavailable": true
     },
@@ -33,7 +33,7 @@
       "mustDo": "Exact thresholds; sorted by open duration",
       "expectedOutcome": "answered_or_honest_empty",
       "check": "groundedness+correctness+honesty",
-      "truth": "Run 3.1: 3 roofing permits within 5 mi of Manor (30.354228, -97.558259): 1 stalled, 1990-002676 BP, and 2 closed; 0 open. 1990-002676 BP now carries a final date (1991-04-15) from Task A, so it has no open duration (openDays null) and cannot satisfy \"open for more than five years\". Expected honest empty (empty_in_scope with the status and 5-year filters stated). Run 2 listed 1990-002676 BP as 13,156 days open; that is no longer true of the data."
+      "truth": "Live rule: 3 roofing permits within 5 mi of Manor (30.354228, -97.558259): 1 stalled, 1990-002676 BP, and 2 closed; 0 open; 0 live. 1990-002676 BP carries a final date (1991-04-15), so under the live rule it is finished, not live, with no open duration (openDays null) and cannot satisfy \"open for more than five years\". Expected honest empty (empty_in_scope with the status and 5-year filters stated); an answer that lists 1990-002676 BP as open or stalled is wrong. Run 2 listed 1990-002676 BP as 13,156 days open; that is no longer true of the data."
     },
     {
       "id": "G4",
@@ -53,7 +53,7 @@
       "expectedOutcome": "answered_unavailable",
       "check": "groundedness+honesty",
       "expectedPermitCid": "baguqeeratgqigjx72ocnrviqvfzg3jeojnoz4r2slpejuljn5cyjibzbacza",
-      "truth": "Run 3.1: 1981-001776 BP, Austin, stalled, same permit CID as Run 2; contractorResolution unresolved, no printed contractor, bbbStatus not_checked (reason contractor_unresolved). The permit is found and cited; the BBB rating is stated as not available."
+      "truth": "Live rule: 1981-001776 BP, Austin, statusClass stalled but with a final date (1982-02-01), so it is a finished permit, not a live one (an answer that calls it open or stalled-live is wrong; saying it is finished is right); same permit CID as Run 2; contractorResolution unresolved, no printed contractor, bbbStatus not_checked (reason contractor_unresolved). The permit is found and cited; the BBB rating is stated as not available."
     },
     {
       "id": "G6",
@@ -89,7 +89,7 @@
       "mustDo": "Same intent as G3 on a place that has data: statuses open and stalled only, open for more than five years, longest open first, exact thresholds stated",
       "expectedOutcome": "answered",
       "check": "groundedness+correctness+honesty",
-      "truth": "Run 3.1: 9,580 roofing permits within 5 mi of the Austin point; 977 are open or stalled; 418 of those have an open duration; 298 are older than five years (>= 1,825 days), all stalled, 0 open. The longest is 1982-009789 BP (stalled, 16,322 open days). Run 2 showed 854 here; Task A has since given final dates to many stalled permits, which removes their open duration.",
+      "truth": "Live rule: 9,580 roofing permits within 5 mi of the Austin point; 418 are live (open or stalled with no final date; before the live rule 977 had the open or stalled class, 559 of them carry a final date); all 418 have an open duration; 298 are older than five years (>= 1,825 days), all stalled, 0 open. The longest is 1982-009789 BP (stalled, 16,322 open days). Run 2 showed 854 here; Task A has since given final dates to many stalled permits, which removes their open duration (the pinned count 298 is unchanged by the live rule, because those permits already had no open duration).",
       "expectedMatchedCounts": [298],
       "expectedTopPermitNumber": "1982-009789 BP"
     },
@@ -101,7 +101,7 @@
       "expectedOutcome": "answered_unavailable",
       "check": "groundedness+honesty",
       "contractorMustBeUnavailable": true,
-      "truth": "Run 3.1: 178 stalled permits within 2 mi of Austin (67 with an open duration). The oldest, 1982-009789 BP (16,322 days), prints no contractor (contractorResolution unresolved, bbbStatus not_checked, reason contractor_unresolved), so the honest answer is still: contractor not available, no BBB rating. Other permits in the radius print an unverified contractor name (66 of the 178), for example 2002-017050 BP prints Peter Lockwood with bbbStatus blocked; no BBB rating exists for any permit (4,552 of 15,025 permits have a printed name, 0 resolved, 4,552 bbb blocked, 10,473 not checked).",
+      "truth": "Live rule: 67 live stalled permits within 2 mi of Austin (178 had the stalled class; 111 carry a final date and are finished; all 67 live ones have an open duration). The oldest, 1982-009789 BP (16,322 days), prints no contractor (contractorResolution unresolved, bbbStatus not_checked, reason contractor_unresolved), so the honest answer is still: contractor not available, no BBB rating. Other live permits in the radius print an unverified contractor name (64 of the 67), for example 2002-017050 BP prints Peter Lockwood with bbbStatus blocked; no BBB rating exists for any permit (4,552 of 15,025 permits have a printed name, 779 of the 795 live ones; 0 resolved, 4,552 bbb blocked, 10,473 not checked).",
       "expectedTopPermitNumber": "1982-009789 BP"
     },
     {
