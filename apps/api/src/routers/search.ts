@@ -32,6 +32,19 @@ const LatLngInput = z.object({
   lng: z.number().min(-180).max(180),
 });
 
+/** Where an exact lookup (permit number, TCAD account) lands: the property and its coordinates, or
+ *  a plain "not found" naming the run searched (the search box says so, never guesses). */
+const ExactLookupInput = z.object({ value: z.string().trim().min(1).max(40) });
+type ExactHit = {
+  found: true;
+  propertyCid: string;
+  lat: number;
+  lng: number;
+  runId: string | null;
+  traceId: string;
+};
+type ExactMiss = { found: false; runId: string | null; traceId: string };
+
 const SearchPropertiesInput = z.object({
   center: LatLngInput,
   // FR-001/data-model.md: inclusive 0.5-25 mi, a Zod error outside it — never silently clamped.
@@ -76,6 +89,69 @@ export const searchRouter = router({
         const { sort: _sort, ...rest } = input;
         const result = await searchPermitsService(leadIndex, rest);
         return { ...result, traceId: ctx.requestId };
+      } catch (error) {
+        mapIndexNotReady(error);
+      }
+    }),
+
+  // Search box (Map top bar): an exact permit number, with or without the " BP" suffix the stored
+  // numbers carry. Read-only; the radius is irrelevant to an exact lookup (the service ignores it).
+  byPermitNumber: publicProcedure
+    .input(ExactLookupInput)
+    .query(async ({ input, ctx }): Promise<ExactHit | ExactMiss> => {
+      const leadIndex = requireLeadIndex(ctx);
+      try {
+        const runId = (await leadIndex.currentRunId()) ?? null;
+        const candidates = /^\d{4}-\d{6}$/.test(input.value)
+          ? [`${input.value} BP`, input.value]
+          : [input.value];
+        for (const permitNumber of candidates) {
+          const { permits } = await searchPermitsService(leadIndex, {
+            center: { lat: 0, lng: 0 },
+            radiusMi: MIN_RADIUS_MI,
+            permitNumber,
+            limit: 1,
+          });
+          const hit = permits[0];
+          if (hit === undefined) continue;
+          const property = await leadIndex.getProperty(hit.propertyCid);
+          if (property === null || property.latitude === null || property.longitude === null) {
+            continue;
+          }
+          return {
+            found: true,
+            propertyCid: property.propertyCid,
+            lat: property.latitude,
+            lng: property.longitude,
+            runId,
+            traceId: ctx.requestId,
+          };
+        }
+        return { found: false, runId, traceId: ctx.requestId };
+      } catch (error) {
+        mapIndexNotReady(error);
+      }
+    }),
+
+  // Search box: a TCAD account number (the property's requestIdentifier), via the indexed lookup.
+  byTcadId: publicProcedure
+    .input(ExactLookupInput)
+    .query(async ({ input, ctx }): Promise<ExactHit | ExactMiss> => {
+      const leadIndex = requireLeadIndex(ctx);
+      try {
+        const runId = (await leadIndex.currentRunId()) ?? null;
+        const property = await leadIndex.getPropertyByRequestIdentifier(input.value);
+        if (property === undefined || property.latitude === null || property.longitude === null) {
+          return { found: false, runId, traceId: ctx.requestId };
+        }
+        return {
+          found: true,
+          propertyCid: property.propertyCid,
+          lat: property.latitude,
+          lng: property.longitude,
+          runId,
+          traceId: ctx.requestId,
+        };
       } catch (error) {
         mapIndexNotReady(error);
       }

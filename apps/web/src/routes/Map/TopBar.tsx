@@ -1,18 +1,15 @@
-// B-03 map search/context bar (CRM-HANDOFF §4.2, boards CrmMap390/1440, CrmMapPin390). A search
-// field isn't wired to anything yet — address/place/permit search is B-09's agent — so this is
-// the Atlas-styled bar only: a decorative search box plus the "Travis County" coverage context,
-// matching the prototype's visual weight. Render-only, no state of its own.
+// B-03 map search/context bar (CRM-HANDOFF §4.2, boards CrmMap390/1440, CrmMapPin390): the search
+// combobox (SearchBox) plus the "Travis County" coverage context. Render-only; the search
+// callbacks come from the Map route.
 import type { ReactElement } from "react";
 import { Icon } from "@crm/ui";
+import { SearchBox, type SearchBoxProps } from "./SearchBox.js";
 import styles from "./TopBar.module.css";
 
-export function TopBar(): ReactElement {
+export function TopBar(search: SearchBoxProps): ReactElement {
   return (
     <div className={styles.bar}>
-      <div className={styles.search} role="search">
-        <Icon name="search" size="medium" />
-        <span className={styles.placeholder}>Search an address, place, ZIP or permit</span>
-      </div>
+      <SearchBox {...search} />
       <span className={styles.county}>
         <Icon name="location_on" size="small" />
         Travis County

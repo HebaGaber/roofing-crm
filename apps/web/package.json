@@ -16,6 +16,7 @@
     "@crm/domain": "workspace:*",
     "@crm/index-schema": "workspace:*",
     "@crm/oracle-contract": "workspace:*",
+    "@crm/oracle-views": "workspace:*",
     "@crm/shared": "workspace:*",
     "@crm/ui": "workspace:*",
     "@tanstack/react-query": "5.104.5",
