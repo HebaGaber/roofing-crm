@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { SUGGESTIONS } from "../../src/routes/Ask/askCopy";
 import { join } from "node:path";
 // B-09 T039/T040 + review fixes (CR-B-09 finding 16/finding 20): the Ask screen. `askApi`'s hooks are mocked
 // (same pattern as test/leads/LeadDetail.test.tsx mocking leadsApi) so these tests exercise only
@@ -594,10 +595,10 @@ describe("Ask screen", () => {
 
     it("a suggestion fills the box and asks nothing by itself", () => {
       renderAsk();
-      const first = screen.getByRole("list", { name: "Suggestions" }).querySelector("button");
+      const first = screen.getByRole("list", { name: "Try one of these" }).querySelector("button");
       fireEvent.click(first as HTMLButtonElement);
       const box = screen.getByLabelText(QUESTION_LABEL) as HTMLTextAreaElement;
-      expect(box.value).toMatch(/^Show me open roofing permits/);
+      expect(box.value).toBe(SUGGESTIONS[0]);
       expect(askMutate).not.toHaveBeenCalled();
     });
 
@@ -1025,7 +1026,7 @@ describe("composer collapses once there is an answer (K1, CrmAsk768)", () => {
     renderAsk();
     expect(askRoot().getAttribute("data-composer")).toBe("open");
     expect(screen.getByLabelText(QUESTION_LABEL)).toBeTruthy();
-    expect(screen.getByRole("list", { name: "Suggestions" })).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Try one of these" })).toBeTruthy();
   });
 
   it("an answer collapses the composer into a one-line question header and drops Suggestions", () => {
@@ -1033,7 +1034,7 @@ describe("composer collapses once there is an answer (K1, CrmAsk768)", () => {
     expect(askRoot().getAttribute("data-state")).toBe("answer");
     expect(askRoot().getAttribute("data-composer")).toBe("collapsed");
     expect(screen.queryByLabelText(QUESTION_LABEL)).toBeNull();
-    expect(screen.queryByRole("list", { name: "Suggestions" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Try one of these" })).toBeNull();
     const header = screen.getByTestId("ask-question-header");
     expect(header.textContent).toContain("roofs near Pflugerville");
     expect(within(header).getByRole("button", { name: "Edit" })).toBeTruthy();

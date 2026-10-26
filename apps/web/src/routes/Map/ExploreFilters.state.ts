@@ -160,3 +160,107 @@ export function overviewFilterNote(
   if (permitActive) return PERMIT_OVERVIEW_NOTE;
   return ownerActive ? OWNER_OVERVIEW_NOTE : undefined;
 }
+
+/** One tap that sets the roof, permit and owner filters together. Each preset names every one of
+ *  those filters, so applying it replaces whatever was set before (the place and radius are not
+ *  touched). Modelled on CountyLens's Filters tab "Suggestions" (the PO's reference); every
+ *  criterion is a filter this panel already has, none is new. */
+export interface FilterPreset {
+  readonly id: string;
+  /** Plain words, naming the criteria. */
+  readonly label: string;
+  /** A threshold, or `ROOF_ANY` (an explicit "no roof filter"). */
+  readonly roof: number | typeof ROOF_ANY;
+  /** "open" includes stalled (a stalled permit is an open one that is not progressing). */
+  readonly permit: "open" | "stalled" | null;
+  readonly permitYrs: number | null;
+  readonly tenure: number | null;
+  readonly ooa: boolean;
+}
+
+export const FILTER_PRESETS: readonly FilterPreset[] = [
+  {
+    id: "old-roof-live-permit",
+    label: "Roofs 20+ years, open or stalled permit",
+    roof: 20,
+    permit: "open",
+    permitYrs: null,
+    tenure: null,
+    ooa: false,
+  },
+  {
+    id: "long-open-permit",
+    label: "Open permit for 5+ years, roof 15+",
+    roof: 15,
+    permit: "open",
+    permitYrs: 5,
+    tenure: null,
+    ooa: false,
+  },
+  {
+    id: "out-of-area-old-roof",
+    label: "Out-of-area owners, roof 20+",
+    roof: 20,
+    permit: null,
+    permitYrs: null,
+    tenure: null,
+    ooa: true,
+  },
+  {
+    id: "long-tenure",
+    label: "Owners for 10+ years, roof 15+",
+    roof: 15,
+    permit: null,
+    permitYrs: null,
+    tenure: 10,
+    ooa: false,
+  },
+  {
+    id: "stalled-3yrs",
+    label: "Stalled permits for 3+ years",
+    roof: ROOF_ANY,
+    permit: "stalled",
+    permitYrs: 3,
+    tenure: null,
+    ooa: false,
+  },
+  {
+    id: "oldest-roofs",
+    label: "Roofs 25+ years",
+    roof: 25,
+    permit: null,
+    permitYrs: null,
+    tenure: null,
+    ooa: false,
+  },
+];
+
+/** The URL patch that applies a preset: every roof/permit/owner key is written or removed. */
+export function presetPatch(preset: FilterPreset): MapQueryPatch {
+  return {
+    roof: preset.roof,
+    permit: preset.permit,
+    permitYrs: preset.permitYrs,
+    tenure: preset.tenure,
+    ooa: preset.ooa ? true : null,
+  };
+}
+
+export interface PresetFilterState {
+  readonly roofAgeMinYears: number | undefined;
+  readonly permitStatus: PermitStatusParam;
+  readonly permitOpenYrs: number | undefined;
+  readonly tenureYearsMin: number | undefined;
+  readonly outOfArea: boolean;
+}
+
+/** True while the filters still equal the preset exactly (the pressed state). */
+export function presetMatches(preset: FilterPreset, state: PresetFilterState): boolean {
+  return (
+    state.roofAgeMinYears === (preset.roof === ROOF_ANY ? undefined : preset.roof) &&
+    state.permitStatus === (preset.permit ?? "any") &&
+    state.permitOpenYrs === (preset.permitYrs ?? undefined) &&
+    state.tenureYearsMin === (preset.tenure ?? undefined) &&
+    state.outOfArea === preset.ooa
+  );
+}

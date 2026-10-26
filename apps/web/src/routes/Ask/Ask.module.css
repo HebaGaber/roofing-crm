@@ -35,6 +35,7 @@
 .suggestions,
 .suggestionList,
 .suggestionList > li,
+.suggestionGroup,
 .composer {
   min-width: 0;
 }
@@ -160,11 +161,23 @@
   outline-offset: 2px;
 }
 
+/* Long questions wrap (they are the whole prompt), they are not cut with an ellipsis. */
 .suggestionText {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.suggestionGroup {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.suggestionGroupLabel {
+  color: var(--md-sys-color-on-surface-variant);
+  font-family: var(--md-sys-typescale-label-large-font);
+  font-size: var(--md-sys-typescale-label-large-size);
+  font-weight: var(--md-sys-typescale-label-large-weight);
 }
 
 .input:read-only {

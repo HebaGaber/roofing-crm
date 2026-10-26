@@ -346,8 +346,9 @@ describe("composerNote (the run the answers cite)", () => {
 });
 
 describe("SUGGESTIONS", () => {
-  it("is example questions only, the first being the README's own", () => {
-    expect(SUGGESTIONS[0]).toMatch(/^Show me open roofing permits older than five years/);
+  it("is example questions only", () => {
+    expect(SUGGESTIONS.length).toBeGreaterThanOrEqual(5);
+    expect(SUGGESTIONS.length).toBeLessThanOrEqual(6);
     expect(SUGGESTIONS.every((q) => q.length <= 500)).toBe(true);
   });
 });

@@ -208,12 +208,76 @@ export function composerNote(runId: string | null | undefined): string {
     : `Signed in · answers cite CountyLens run ${runId}`;
 }
 
-/** The composer's suggestions (CrmAsk1440 "Suggestions"): example questions only — choosing one
- *  fills the box, it never asks by itself. The first is the README's own example. */
-export const SUGGESTIONS: readonly string[] = [
-  "Show me open roofing permits older than five years within five miles of Pflugerville",
-  "Which properties within three miles of Manor have roofs older than 20 years?",
+/** One example question. `golden` is the id in tests/agent/golden.json whose `prompt` it repeats
+ *  verbatim, so every suggestion is wording already run against the live agent. */
+export interface AskSuggestion {
+  readonly golden: string;
+  readonly text: string;
+}
+
+export interface AskSuggestionGroup {
+  readonly label: string;
+  readonly items: readonly AskSuggestion[];
+}
+
+/** The composer's "Try one of these" examples (CrmAsk1440 "Suggestions"; the PO's CountyLens Ask
+ *  tab reference). Choosing one fills the box, it never asks by itself (every ask spends the cap).
+ *
+ *  Provenance: all six are the `prompt` of a tested golden query, copied verbatim and only ones that
+ *  are single-turn (no "that area"), so they read on their own: G1 and A1 (roofs), A2 (permits),
+ *  G4 and A4 (owners), A3 (what is not published: the contractor and BBB rating are honestly
+ *  unavailable in this run). test/ask/askSuggestions.test.ts keeps them equal to golden.json. */
+export const SUGGESTION_GROUPS: readonly AskSuggestionGroup[] = [
+  {
+    label: "Roofs",
+    items: [
+      {
+        golden: "G1",
+        text: "Which properties in Travis County within five miles of Pflugerville have roofs older than 15 years?",
+      },
+      {
+        golden: "A1",
+        text: "Which properties within 3 miles of Austin have roofs older than 20 years?",
+      },
+    ],
+  },
+  {
+    label: "Permits",
+    items: [
+      {
+        golden: "A2",
+        text: "Show me open or stalled roofing permits older than five years within five miles of Austin, sorted by open duration",
+      },
+    ],
+  },
+  {
+    label: "Owners",
+    items: [
+      {
+        golden: "G4",
+        text: "Which homes near Lakeway haven't changed owners in 10+ years and have owners outside the area?",
+      },
+      {
+        golden: "A4",
+        text: "Which properties within 2 miles of Austin haven't changed owners in 10 years or more?",
+      },
+    ],
+  },
+  {
+    label: "What is not published",
+    items: [
+      {
+        golden: "A3",
+        text: "Who is the listed contractor on the oldest stalled roofing permit within 2 miles of Austin, and what is their BBB rating?",
+      },
+    ],
+  },
 ];
+
+/** The same questions as a flat list (the first-visit card and tests read it). */
+export const SUGGESTIONS: readonly string[] = SUGGESTION_GROUPS.flatMap((g) =>
+  g.items.map((i) => i.text),
+);
 
 export interface TimeFormat {
   readonly locale?: string;
