@@ -23,6 +23,7 @@ import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test, type APIResponse, type Locator, type Page } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "./lib/atlas-tokens.js";
+import { requirePassword } from "./lib/auth.js";
 import { EVIDENCE_IMG_DIR } from "./lib/evidence.js";
 import {
   LEAD_FIXTURES,
@@ -293,8 +294,10 @@ function milesBetween(a: { lat: number; lng: number }, b: { lat: number; lng: nu
 }
 
 test.describe("B-07 leads", () => {
-  test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
   test.describe.configure({ mode: "serial" });
+  test.beforeEach(() => {
+    requirePassword();
+  });
 
   test.beforeAll(async ({ browser }, testInfo) => {
     if (!SEEDED_PASSWORD) return;
