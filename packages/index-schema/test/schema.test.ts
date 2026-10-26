@@ -62,6 +62,30 @@ describe("CrmProperty", () => {
   });
 });
 
+describe("additive source and sale fields", () => {
+  it("accepts rows without them (index built earlier), with values, or with null", () => {
+    const old = CrmProperty.parse(baseProperty());
+    expect(old.structureBuiltYear).toBeUndefined();
+    const full = CrmProperty.parse(
+      baseProperty({
+        structureBuiltYear: 1995,
+        lastSaleDate: "2004-06-30",
+        tenureYears: 22,
+        sourceUrl: "https://example.test/x",
+      }),
+    );
+    expect(full).toMatchObject({
+      structureBuiltYear: 1995,
+      lastSaleDate: "2004-06-30",
+      tenureYears: 22,
+    });
+    expect(
+      CrmProperty.parse(baseProperty({ structureBuiltYear: null, tenureYears: null })).tenureYears,
+    ).toBeNull();
+    expect(CrmProperty.safeParse(baseProperty({ structureBuiltYear: 1995.5 })).success).toBe(false);
+  });
+});
+
 describe("CrmPermit", () => {
   it("rejects a row with no sourceManifestCid", () => {
     const row = {

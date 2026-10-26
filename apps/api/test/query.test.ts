@@ -64,6 +64,10 @@ const PROPERTY_TYPES: Record<string, string> = {
   isLongTenure: "BOOLEAN",
   tenureBasis: "VARCHAR",
   ownerName: "VARCHAR",
+  structureBuiltYear: "INTEGER",
+  lastSaleDate: "VARCHAR",
+  tenureYears: "INTEGER",
+  sourceUrl: "VARCHAR",
   ownerKind: "VARCHAR",
   ownerAreaClass: "VARCHAR",
   ownerIsOutOfArea: "BOOLEAN",
@@ -94,6 +98,7 @@ const PERMIT_TYPES: Record<string, string> = {
   bbbStatus: "VARCHAR",
   bbbStatusReason: "VARCHAR",
   bbbUrl: "VARCHAR",
+  sourceUrl: "VARCHAR",
   sourceManifestCid: "VARCHAR",
   missingReasons: MISSING_TYPE,
   capturedAt: "VARCHAR",
@@ -124,6 +129,10 @@ const PROPERTY_ROWS: Record<string, Cell>[] = [
     isLongTenure: true,
     tenureBasis: "sale_date",
     ownerName: null,
+    structureBuiltYear: 1995,
+    lastSaleDate: "2004-06-30",
+    tenureYears: 22,
+    sourceUrl: "https://example.test/tcad/1",
     ownerKind: "person",
     ownerAreaClass: "in_county",
     ownerIsOutOfArea: false,
@@ -200,6 +209,7 @@ const PERMIT_ROWS: Record<string, Cell>[] = [
     bbbStatus: "not_checked",
     bbbStatusReason: "contractor_unresolved",
     bbbUrl: null,
+    sourceUrl: "https://data.austintexas.gov/resource/3syk-w9eu.json?permit_number=P-1",
   },
   {
     ...base,
@@ -533,7 +543,7 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       "{propertyCid: 'VARCHAR', requestIdentifier: 'VARCHAR', latitude: 'DOUBLE', " +
       "longitude: 'DOUBLE', coordinateSource: 'VARCHAR', propertyType: 'VARCHAR', " +
       "propertyUsageType: 'VARCHAR', roofAgeYears: 'INTEGER', roofAgeBasis: 'VARCHAR', " +
-      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', tenureBasis: 'VARCHAR', ownerName: 'VARCHAR', ownerKind: 'VARCHAR', " +
+      "roofAgeConfidence: 'VARCHAR', isLongTenure: 'BOOLEAN', tenureBasis: 'VARCHAR', ownerName: 'VARCHAR', structureBuiltYear: 'INTEGER', lastSaleDate: 'VARCHAR', tenureYears: 'INTEGER', sourceUrl: 'VARCHAR', ownerKind: 'VARCHAR', " +
       "ownerAreaClass: 'VARCHAR', ownerIsOutOfArea: 'BOOLEAN', sourceManifestCid: 'VARCHAR', " +
       `missingReasons: '${MISSING_STRUCT_LIST}', capturedAt: 'VARCHAR', cid: 'VARCHAR', runId: 'VARCHAR'}`;
     const permitColumns =
@@ -541,7 +551,7 @@ describe("LeadIndex port over promoted Parquet (DuckDbParquetLeadIndex)", () => 
       "permitNumber: 'VARCHAR', improvementType: 'VARCHAR', improvementAction: 'VARCHAR', " +
       "improvementStatus: 'VARCHAR', statusClass: 'VARCHAR', issueDate: 'VARCHAR', " +
       "finalDate: 'VARCHAR', permitCloseDate: 'VARCHAR', finalInspectionDate: 'VARCHAR', " +
-      "openDays: 'INTEGER', contractorResolution: 'VARCHAR', contractorCompanyCid: 'VARCHAR', contractorNameAsPrinted: 'VARCHAR', bbbStatus: 'VARCHAR', bbbStatusReason: 'VARCHAR', bbbUrl: 'VARCHAR', " +
+      "openDays: 'INTEGER', contractorResolution: 'VARCHAR', contractorCompanyCid: 'VARCHAR', contractorNameAsPrinted: 'VARCHAR', bbbStatus: 'VARCHAR', bbbStatusReason: 'VARCHAR', bbbUrl: 'VARCHAR', sourceUrl: 'VARCHAR', " +
       `sourceManifestCid: 'VARCHAR', missingReasons: '${MISSING_STRUCT_LIST}', capturedAt: 'VARCHAR', cid: 'VARCHAR', runId: 'VARCHAR'}`;
 
     const jsonDir = mkdtempSync(join(tmpdir(), "crm-json-index-"));
