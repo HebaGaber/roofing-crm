@@ -575,3 +575,36 @@
     width: 440px;
   }
 }
+
+/* One overlay at a time (CRM-HANDOFF rule 11). While the first-visit "What can I ask?" card is up,
+   the map's own floating pieces step aside so nothing stacks under it or behind the results sheet.
+   Hidden with `visibility`, not removed, so the layout does not jump when the card closes.
+   Below 600 px the card is full width over the map: the Layers button, legend, chip, radius card
+   and the "Whole county" hint all step aside, and the card leaves room for the results sheet that
+   floats over the bottom of the map (the most it can take: 25% of the page with only a notice,
+   40% with results). */
+@media (max-width: 599.98px) {
+  .page[data-welcome="open"] .overlay,
+  .page[data-welcome="open"] .countyCard {
+    visibility: hidden;
+  }
+
+  .page[data-welcome="open"] .mapArea {
+    --welcome-reserve: 40dvh;
+  }
+
+  .page[data-welcome="open"][data-sheet-peek="compact"] .mapArea {
+    --welcome-reserve: 25dvh;
+  }
+}
+
+/* 600 to 1279 px: the Layers button stays (the card sits beside it), but the legend, the chip and
+   the status cards that share the card's corner step aside; the docked results panel is below the
+   map, so the card needs no reserve there. */
+@media (min-width: 600px) and (max-width: 1279.98px) {
+  .page[data-welcome="open"] .legendSlot,
+  .page[data-welcome="open"] .chip,
+  .page[data-welcome="open"] .statusStack {
+    visibility: hidden;
+  }
+}

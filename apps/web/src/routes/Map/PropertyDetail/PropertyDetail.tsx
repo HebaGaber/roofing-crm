@@ -15,7 +15,7 @@
 import type { CrmPermit, CrmProperty, Provenanced } from "@crm/index-schema";
 import { CidDisplay, IconButton, MissingReason, Provenance, StatusPill, formatUtc } from "@crm/ui";
 import type { MissingReason as Reason } from "@crm/oracle-contract";
-import { useEffect, useId, useRef, type ReactElement } from "react";
+import { forwardRef, useEffect, useId, useRef, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   BBB_SOURCE_LABEL,
@@ -657,6 +657,53 @@ function MetadataSection({
   );
 }
 
+/** The drawer for a `sel` that names no property in the data run being served: a CID the run does
+ *  not hold (`property.get` answers with a null property) or an id that is not a property id at all
+ *  (`property.get` answers 400). Either way the rep is told why nothing opened and how to go on. */
+export const PropertyNotInRun = forwardRef<
+  HTMLElement,
+  {
+    readonly onClose: () => void;
+    /** "unavailable": the lookup itself failed (not that the property is missing). */
+    readonly reason?: "not-in-run" | "unavailable";
+    readonly onRetry?: () => void;
+  }
+>(function PropertyNotInRun({ onClose, reason = "not-in-run", onRetry }, ref) {
+  const titleId = useId();
+  const unavailable = reason === "unavailable";
+  return (
+    <aside
+      ref={ref}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className={styles.drawer}
+      data-testid={unavailable ? "property-unavailable" : "not-in-run"}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
+      <header className={styles.drawerHead}>
+        <h3 id={titleId} className={styles.drawerTitle}>
+          {unavailable ? "Property details unavailable" : "Property not in this run"}
+        </h3>
+        <IconButton icon="close" label="Close" onClick={onClose} />
+      </header>
+      <p className={styles.drawerNote}>
+        {unavailable
+          ? "The lead index didn’t answer, so this property could not be opened. Your leads and notes still open."
+          : "This link names a property that is not in the data run being served, so there is nothing to show. The link may be from an older run, or the property id may be mistyped. Close this panel to go back to the map."}
+      </p>
+      {unavailable && onRetry !== undefined ? (
+        <button type="button" className={styles.drawerRetry} onClick={onRetry}>
+          Retry
+        </button>
+      ) : null}
+    </aside>
+  );
+});
+
 export function PropertyDetail({
   data,
   onClose,
@@ -671,26 +718,7 @@ export function PropertyDetail({
   }, [propertyCid]);
 
   if (data.property === null) {
-    return (
-      <aside
-        ref={ref}
-        role="dialog"
-        aria-modal="false"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        className={styles.drawer}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
-        }}
-      >
-        <header className={styles.drawerHead}>
-          <h3 id={titleId} className={styles.drawerTitle}>
-            Property not in this run
-          </h3>
-          <IconButton icon="close" label="Close" onClick={onClose} />
-        </header>
-      </aside>
-    );
+    return <PropertyNotInRun onClose={onClose} ref={ref} />;
   }
 
   const { property } = data;

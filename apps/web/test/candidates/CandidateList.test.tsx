@@ -349,6 +349,19 @@ describe("CandidateList", () => {
     expect(screen.getByText(/No centre chosen yet/)).toBeTruthy();
   });
 
+  it("with no centre and a permit filter, says to choose a centre and never prints a county count", () => {
+    result = ready({ status: "idle", candidates: [] });
+    mount({
+      filters: { ...FILTERS, permitStatus: "open" },
+      originLabel: "the county",
+    });
+    expect(screen.getByText(/Choose a centre or drop a pin to search permits/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("within 5 mi of the county");
+    expect(document.body.textContent).not.toMatch(/\b0 within/);
+    expect(document.body.textContent).toContain("No centre chosen");
+    expect(document.body.textContent).toContain("open permit");
+  });
+
   it("Open details and Show on map report the property", () => {
     const onSelect = vi.fn();
     const onShowOnMap = vi.fn();

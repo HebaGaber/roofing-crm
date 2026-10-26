@@ -152,6 +152,8 @@ let searchResult: {
 let permitsReply: { permits: unknown[]; total?: number; truncated?: boolean } = { permits: [] };
 const permitInputs: unknown[] = [];
 let detailWithoutCoords = false;
+/** When set, property.get rejects the way the API does for an id that is not a property id. */
+let detailError: { code: string } | null = null;
 let presenceReply: { leadKey: string; leadId: string; status: string }[] = [];
 const presenceCalls: { requestIdentifiers: string[] }[] = [];
 
@@ -241,15 +243,18 @@ vi.mock("@crm/api-client/react", () => ({
     },
     property: {
       get: {
-        queryOptions: opts("property.get", () => ({
-          property: detailWithoutCoords
-            ? { ...property, latitude: null, longitude: null }
-            : property,
-          permits: [],
-          bbbStatus: null,
-          bbbStatusReason: null,
-          lineageUrl: "https://example.com/lineage",
-        })),
+        queryOptions: opts("property.get", () => {
+          if (detailError !== null) throw Object.assign(new Error("bad id"), { data: detailError });
+          return {
+            property: detailWithoutCoords
+              ? { ...property, latitude: null, longitude: null }
+              : property,
+            permits: [],
+            bbbStatus: null,
+            bbbStatusReason: null,
+            lineageUrl: "https://example.com/lineage",
+          };
+        }),
       },
     },
   }),
@@ -280,6 +285,7 @@ afterEach(() => {
   fitPins.mockReset();
   focusProperty.mockReset();
   detailWithoutCoords = false;
+  detailError = null;
   sessionStorage.clear();
   lastTriageProps = null;
   permitsReply = { permits: [] };
@@ -1532,5 +1538,94 @@ describe("Map route owner filters (tenure, out-of-area)", () => {
     expect(bar.textContent).toContain("Owner filters apply once you pick an area");
     expect(bar.querySelector("[data-match-total]")).toBeNull();
     expect(overviewCalls.every((c) => !("tenureYearsMin" in (c as object)))).toBe(true);
+  });
+});
+
+describe("Map route permit filters are part of the shareable URL", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const PIN = "/?lat=30.4394&lng=-97.62&r=5";
+
+  it("choosing a permit status writes it to the URL, beside the roof age", async () => {
+    renderAt(`${PIN}&roof=15`);
+    await screen.findByTestId("search-results");
+    fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+    const group = screen.getByRole("group", { name: "Permit status" });
+    fireEvent.click(within(group).getByRole("button", { name: "Open" }));
+    await vi.waitFor(() => {
+      const url = new URLSearchParams(screen.getByTestId("url-search").textContent ?? "");
+      expect(url.get("roof")).toBe("15");
+      expect(url.get("permit")).toBe("open");
+    });
+    fireEvent.click(within(group).getByRole("button", { name: "Any" }));
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("url-search").textContent ?? "").not.toContain("permit"),
+    );
+  });
+
+  it("a URL with the permit filter restores it in the search request after a reload", async () => {
+    renderAt(`${PIN}&roof=15&permit=open`);
+    await screen.findByTestId("search-results");
+    await vi.waitFor(() =>
+      expect(propertyInputs.at(-1)).toMatchObject({
+        roofAgeMinYears: 15,
+        permitStatusClass: ["open", "stalled"],
+      }),
+    );
+    cleanup();
+    propertyInputs.length = 0;
+    renderAt(`${PIN}&permit=stalled&permitYrs=3`);
+    await screen.findByTestId("search-results");
+    await vi.waitFor(() =>
+      expect(propertyInputs.at(-1)).toMatchObject({ permitStatusClass: ["stalled"] }),
+    );
+  });
+});
+
+describe("Map route county overview cannot count a permit filter", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("with a permit filter and no centre: no county number, an honest line with the reason", async () => {
+    stubWide(true);
+    renderAt("/?permit=open");
+    const bar = await vi.waitFor(() => {
+      const el = document.querySelector("[data-match-bar]") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(bar.textContent).toContain("Choose a centre or drop a pin to search permits");
+    expect(bar.textContent).toContain("can't count permit filters");
+    expect(bar.querySelector("[data-match-total]")).toBeNull();
+    expect(bar.textContent).not.toContain("county-wide");
+  });
+
+  it("without a permit filter the county count is still shown", async () => {
+    stubWide(true);
+    renderAt("/");
+    const total = await vi.waitFor(() => {
+      const el = document.querySelector("[data-match-total]") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(total.textContent).toBe("125");
+  });
+});
+
+describe("Map route deep link to a property that is not in the run", () => {
+  it("a rejected id opens the drawer with the not-in-this-run state and a reason", async () => {
+    detailError = { code: "BAD_REQUEST" };
+    renderAt("/?sel=not-a-cid");
+    const state = await screen.findByTestId("not-in-run");
+    expect(within(state).getByRole("heading", { level: 3 }).textContent).toBe(
+      "Property not in this run",
+    );
+    expect(state.textContent).toContain("not in the data run being served");
+  });
+
+  it("a failed lookup (not a bad id) says it is unavailable and offers Retry", async () => {
+    detailError = { code: "INTERNAL_SERVER_ERROR" };
+    renderAt("/?sel=bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaq4xa");
+    const state = await screen.findByTestId("property-unavailable", {}, { timeout: 4000 });
+    expect(state.textContent).toContain("Property details unavailable");
+    expect(within(state).getByRole("button", { name: "Retry" })).not.toBeNull();
   });
 });

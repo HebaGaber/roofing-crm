@@ -41,6 +41,7 @@ import {
 import { ConfirmSheet, type ConfirmRow } from "./ConfirmSheet.js";
 import { Snackbar, SnackbarAction } from "./Snackbar.js";
 import { UndoStatusRow } from "./UndoStatusRow.js";
+import { PERMIT_OVERVIEW_NOTE } from "../ExploreFilters.state.js";
 import styles from "./CandidateList.module.css";
 
 export const DEFAULT_PAGE_SIZE = 20;
@@ -77,8 +78,18 @@ interface Result {
   readonly message: string;
 }
 
-function headerSummary(count: number, filters: CandidateFilters, originLabel: string): string {
-  const parts = [`${String(count)} within ${String(filters.radiusMi)} mi of ${originLabel}`];
+function headerSummary(
+  count: number,
+  filters: CandidateFilters,
+  originLabel: string,
+  hasCentre = true,
+): string {
+  // With no centre nothing was searched: no "0 within 5 mi of the county", just the filters.
+  const parts = [
+    hasCentre
+      ? `${String(count)} within ${String(filters.radiusMi)} mi of ${originLabel}`
+      : "No centre chosen",
+  ];
   if (filters.roofAgeMinYears !== undefined)
     parts.push(`roof ≥ ${String(filters.roofAgeMinYears)} yrs`);
   if (filters.tenureYearsMin !== undefined)
@@ -225,10 +236,13 @@ export function CandidateList({
 
   let body: ReactElement;
   if (data.status === "idle") {
+    const permitFilter =
+      (filters.permitStatus ?? "any") !== "any" || filters.permitOpenYrs !== undefined;
     body = (
       <p className={styles.state} data-state="CrmCandidatesIdle">
-        No centre chosen yet, so no candidates. Drop a pin on the map or use your location to list
-        properties within a radius.
+        {permitFilter
+          ? `${PERMIT_OVERVIEW_NOTE}, so no candidates are listed yet. Drop a pin on the map or use your location to search permits within a radius.`
+          : "No centre chosen yet, so no candidates. Drop a pin on the map or use your location to list properties within a radius."}
       </p>
     );
   } else if (data.status === "loading") {
@@ -369,8 +383,16 @@ export function CandidateList({
   return (
     <section className={styles.list} aria-label="Candidate list" data-candidate-list="">
       <header className={styles.head}>
-        <p className={styles.summary} title={headerSummary(headerCount, filters, originLabel)}>
-          {headerSummary(data.status === "ready" ? headerCount : 0, filters, originLabel)}
+        <p
+          className={styles.summary}
+          title={headerSummary(headerCount, filters, originLabel, data.status !== "idle")}
+        >
+          {headerSummary(
+            data.status === "ready" ? headerCount : 0,
+            filters,
+            originLabel,
+            data.status !== "idle",
+          )}
         </p>
         <button
           type="button"
