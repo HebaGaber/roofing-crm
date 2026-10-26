@@ -2,8 +2,28 @@
 // options are reached with aria-activedescendant). Places and ZIPs come from the vendored Travis
 // gazetteer; a permit number or TCAD account is looked up by the API when chosen (lazily, so
 // nothing is requested while typing); street addresses are a disabled option until Run 3.1.
+// The empty box lists Recent searches, Saved searches and the "Try" samples; Recent and Saved are
+// kept in this browser only (recentSearches.ts).
 import { Icon } from "@crm/ui";
 import { useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
+import {
+  MAX_SAVED,
+  clearRecent,
+  defaultSavedName,
+  loadRecent,
+  loadSaved,
+  pushRecent,
+  pushSaved,
+  recentToOption,
+  removeRecent,
+  removeSaved,
+  savedId,
+  toRecent,
+  viewDetail,
+  type MapView,
+  type RecentSearch,
+  type SavedSearch,
+} from "./recentSearches.js";
 import {
   GAZETTEER_PROVENANCE,
   SEARCH_SAMPLES,
@@ -29,17 +49,38 @@ export interface SearchBoxProps {
   readonly onOpenProperty: (propertyCid: string, point: { lat: number; lng: number }) => void;
   /** Exact lookup through the API; only called when a permit/TCAD option is chosen. */
   readonly lookup: (kind: "permit" | "tcad", value: string) => Promise<ExactLookupResult>;
+  /** The Map's current centre, radius and roof filter (from the URL); null while there is no
+   *  centre, which disables "Save this search". */
+  readonly current?: MapView | null;
+  /** A saved search was chosen: put its centre, radius and roof filter back in the URL. */
+  readonly onApplySaved?: (view: MapView) => void;
 }
+
+type Group = "recent" | "saved" | "try";
 
 interface Row {
   readonly option: SearchOption;
+  /** Chosen from the empty-box lists: the text box takes the value (samples, recent). */
   readonly sample: boolean;
+  readonly group?: Group;
+  readonly saved?: SavedSearch;
 }
 
+const GROUP_TITLE: Record<Group, string> = { recent: "Recent", saved: "Saved", try: "Try" };
+const NOTE_LOCAL = "Recent and saved stay in this browser.";
 const PROVENANCE_EXACT = "Exact match against the current run index";
 const PROVENANCE_SAMPLES = `Places and ZIPs: ${GAZETTEER_PROVENANCE}. Permits and accounts: current run index.`;
 
-export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps): ReactElement {
+const samePoint = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): boolean =>
+  Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
+
+export function SearchBox({
+  onCentre,
+  onOpenProperty,
+  lookup,
+  current = null,
+  onApplySaved,
+}: SearchBoxProps): ReactElement {
   const uid = useId();
   const listId = `${uid}-list`;
   const inputRef = useRef<HTMLInputElement>(null);
@@ -48,15 +89,40 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
   const [active, setActive] = useState(-1);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [recent, setRecent] = useState<RecentSearch[]>(loadRecent);
+  const [saved, setSaved] = useState<SavedSearch[]>(loadSaved);
+  // The last place or ZIP chosen here: names a saved search while the centre is still that place.
+  const [lastPlace, setLastPlace] = useState<{ label: string; lat: number; lng: number } | null>(
+    null,
+  );
 
   const empty = text.trim() === "";
   const rows: Row[] = empty
-    ? SEARCH_SAMPLES.flatMap((s) =>
-        optionsFor(s.query).map((option) => ({
-          option: { ...option, label: s.label },
+    ? [
+        ...recent.map((r) => ({
+          option: recentToOption(r),
           sample: true,
+          group: "recent" as const,
         })),
-      )
+        ...saved.map((s) => ({
+          option: {
+            id: `saved-${s.id}`,
+            kind: "place" as const,
+            label: s.name,
+            detail: viewDetail(s),
+          },
+          sample: true,
+          group: "saved" as const,
+          saved: s,
+        })),
+        ...SEARCH_SAMPLES.flatMap((s) =>
+          optionsFor(s.query).map((option) => ({
+            option: { ...option, label: s.label },
+            sample: true,
+            group: "try" as const,
+          })),
+        ),
+      ]
     : optionsFor(text).map((option) => ({ option, sample: false }));
   const showNoMatch = !empty && rows.length === 0;
   const expanded = open && (rows.length > 0 || showNoMatch || notice !== null || busy);
@@ -72,9 +138,22 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
   const choose = async (row: Row): Promise<void> => {
     const { option } = row;
     if (option.disabled === true) return;
+    if (row.saved !== undefined) {
+      setText("");
+      setOpen(false);
+      setLastPlace(null);
+      onApplySaved?.(row.saved);
+      return;
+    }
+    const remember = (): void => {
+      const entry = toRecent(option);
+      if (entry !== null) setRecent(pushRecent(entry));
+    };
     if (option.point !== undefined) {
       setText(option.label);
       setOpen(false);
+      setLastPlace({ label: option.label, ...option.point });
+      remember();
       onCentre(option.point);
       return;
     }
@@ -87,6 +166,7 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
         const result = await lookup(option.kind, value);
         if (result.found) {
           setOpen(false);
+          remember();
           onOpenProperty(result.propertyCid, { lat: result.lat, lng: result.lng });
         } else {
           const what = option.kind === "permit" ? "permit" : "TCAD account";
@@ -98,6 +178,23 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
         setBusy(false);
       }
     }
+  };
+
+  const removeRow = (row: Row): void => {
+    setActive(-1);
+    if (row.saved !== undefined) setSaved(removeSaved(row.saved.id));
+    else if (row.group === "recent") setRecent(removeRecent(row.option.id));
+  };
+
+  const savedHere = current === null ? undefined : saved.find((s) => s.id === savedId(current));
+  const toggleSaved = (): void => {
+    if (current === null) return;
+    if (savedHere !== undefined) {
+      setSaved(removeSaved(savedHere.id));
+      return;
+    }
+    const place = lastPlace !== null && samePoint(lastPlace, current) ? lastPlace.label : undefined;
+    setSaved(pushSaved(current, defaultSavedName(current, place)));
   };
 
   const step = (dir: 1 | -1): void => {
@@ -118,6 +215,13 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
       event.preventDefault();
       if (!open) setOpen(true);
       step(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Delete" && empty && expanded && active >= 0) {
+      // Keyboard shortcut for the per-item remove button, with focus staying in the input.
+      const row = rows[active];
+      if (row !== undefined && (row.group === "recent" || row.group === "saved")) {
+        event.preventDefault();
+        removeRow(row);
+      }
     } else if (event.key === "Enter") {
       event.preventDefault();
       const target = active >= 0 ? rows[active] : rows.find((r) => r.option.disabled !== true);
@@ -148,7 +252,14 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
         : null;
 
   return (
-    <div className={styles.root} role="search">
+    <div
+      className={styles.root}
+      role="search"
+      onBlur={(e) => {
+        // Focus moving between the input and the list's buttons keeps the list open.
+        if (!e.currentTarget.contains(e.relatedTarget)) setOpen(false);
+      }}
+    >
       <div className={styles.field}>
         <Icon name="search" size="medium" />
         <input
@@ -168,7 +279,6 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
           value={text}
           onChange={(e) => change(e.target.value)}
           onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
           onKeyDown={onKeyDown}
         />
         {text !== "" ? (
@@ -185,31 +295,90 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
             <Icon name="close" size="medium" />
           </button>
         ) : null}
+        <button
+          type="button"
+          className={styles.save}
+          aria-label="Save this search"
+          aria-pressed={savedHere !== undefined}
+          disabled={current === null || (savedHere === undefined && saved.length >= MAX_SAVED)}
+          title={
+            current === null
+              ? "Pick a place or drop a pin first"
+              : savedHere !== undefined
+                ? "Saved in this browser. Press to remove."
+                : "Save this centre, radius and roof filter in this browser"
+          }
+          onClick={toggleSaved}
+        >
+          <Icon name={savedHere === undefined ? "bookmark_add" : "bookmark_added"} size="medium" />
+        </button>
       </div>
       <div className={styles.popup} hidden={!expanded}>
-        {empty ? <p className={styles.group}>Try</p> : null}
         <ul id={listId} role="listbox" aria-label="Search suggestions" className={styles.list}>
-          {rows.map((row, i) => (
-            <li
-              key={`${row.sample ? "s" : "o"}-${row.option.id}`}
-              id={optionId(i)}
-              role="option"
-              aria-selected={i === active}
-              aria-disabled={row.option.disabled === true ? true : undefined}
-              data-kind={row.option.kind}
-              className={styles.option}
-              onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => {
-                if (row.option.disabled !== true) setActive(i);
-              }}
-              onClick={() => void choose(row)}
-            >
-              <span className={styles.label}>{row.option.label}</span>
-              {row.option.detail !== undefined ? (
-                <span className={styles.detail}>{row.option.detail}</span>
-              ) : null}
-            </li>
-          ))}
+          {rows.map((row, i) => {
+            const startsGroup = row.group !== undefined && rows[i - 1]?.group !== row.group;
+            const removable = row.group === "recent" || row.group === "saved";
+            return (
+              <li key={`${row.group ?? "o"}-${row.option.id}`} role="presentation">
+                {startsGroup && row.group !== undefined ? (
+                  <div className={styles.groupRow}>
+                    <p className={styles.group}>{GROUP_TITLE[row.group]}</p>
+                    {row.group === "recent" ? (
+                      <button
+                        type="button"
+                        className={styles.groupAction}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setRecent(clearRecent());
+                          setActive(-1);
+                          inputRef.current?.focus();
+                        }}
+                      >
+                        Clear recent
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className={styles.item}>
+                  <div
+                    id={optionId(i)}
+                    role="option"
+                    aria-selected={i === active}
+                    aria-disabled={row.option.disabled === true ? true : undefined}
+                    data-kind={row.saved !== undefined ? "saved" : row.option.kind}
+                    className={styles.option}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => {
+                      if (row.option.disabled !== true) setActive(i);
+                    }}
+                    onClick={() => void choose(row)}
+                  >
+                    <span className={styles.label}>
+                      {row.option.label}
+                      {row.saved !== undefined ? <span className={styles.badge}>Saved</span> : null}
+                    </span>
+                    {row.option.detail !== undefined ? (
+                      <span className={styles.detail}>{row.option.detail}</span>
+                    ) : null}
+                  </div>
+                  {removable ? (
+                    <button
+                      type="button"
+                      className={styles.remove}
+                      aria-label={`Remove ${row.option.label} from ${row.group === "saved" ? "saved" : "recent"}`}
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        removeRow(row);
+                        inputRef.current?.focus();
+                      }}
+                    >
+                      <Icon name="close" size="medium" />
+                    </button>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
           {showNoMatch ? (
             <li role="option" aria-disabled="true" aria-selected="false" className={styles.option}>
               <span className={styles.label}>No place or ZIP in Travis County matches</span>
@@ -227,6 +396,7 @@ export function SearchBox({ onCentre, onOpenProperty, lookup }: SearchBoxProps):
             </li>
           ) : null}
         </ul>
+        {empty ? <p className={styles.note}>{NOTE_LOCAL}</p> : null}
         {provenance !== null ? <p className={styles.provenance}>{provenance}</p> : null}
       </div>
     </div>

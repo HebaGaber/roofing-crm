@@ -347,6 +347,36 @@ export function Component(): ReactElement {
     },
     [setSearchParams],
   );
+  // Saved searches: the box saves the URL's centre, radius and roof filter, and a chosen one is
+  // put back through the URL like a pin drop (the open property is closed).
+  const searchCurrent = useMemo(
+    () =>
+      center === null ? null : { lat: center.lat, lng: center.lng, radiusMi, roofAgeMinYears },
+    [center, radiusMi, roofAgeMinYears],
+  );
+  const searchApplySaved = useCallback(
+    (view: {
+      lat: number;
+      lng: number;
+      radiusMi: number;
+      roofAgeMinYears?: number | undefined;
+    }) => {
+      setFromHex(false);
+      setPinMode(false);
+      setAccuracyM(null);
+      setFromGps(false);
+      setSearchParams((prev) =>
+        patchMapParams(prev, {
+          lat: view.lat,
+          lng: view.lng,
+          r: view.radiusMi,
+          roof: view.roofAgeMinYears ?? null,
+          sel: null,
+        }),
+      );
+    },
+    [setSearchParams],
+  );
   // Called only when a permit/TCAD option is chosen, so nothing is requested while typing.
   const searchLookup = useCallback(
     (kind: "permit" | "tcad", value: string): Promise<ExactLookupResult> =>
@@ -691,7 +721,13 @@ export function Component(): ReactElement {
       className={styles.page}
     >
       <div className={styles.top}>
-        <TopBar onCentre={searchCentre} onOpenProperty={searchOpenProperty} lookup={searchLookup} />
+        <TopBar
+          onCentre={searchCentre}
+          onOpenProperty={searchOpenProperty}
+          lookup={searchLookup}
+          current={searchCurrent}
+          onApplySaved={searchApplySaved}
+        />
       </div>
       <div
         className={styles.controls}
