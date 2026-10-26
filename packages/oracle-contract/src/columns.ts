@@ -302,7 +302,7 @@ const V_PROPERTY: readonly Column[] = [
     "string",
     V,
     true,
-    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+    "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
     "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
     "no_owner_record",
   ),
@@ -330,6 +330,35 @@ const V_PROPERTY: readonly Column[] = [
     "manifest profiles[] (travis-places)",
     "Digest of the ZIP and regional lists",
     null,
+  ),
+  // v1.2 (additive, Run 3.1, PO 2026-10-26): the address fields, now emitted by export-tables
+  // with the oneOf-columns patch (pipeline/publish/patches/elephant-cli-export-oneof.patch).
+  col(
+    "unnormalized_address",
+    "string",
+    V,
+    true,
+    "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+    "Property (situs) address as printed",
+    "source_missing",
+  ),
+  col(
+    "owner_mailing_postal_code",
+    "string",
+    V,
+    true,
+    "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+    "Owner mailing ZIP",
+    "no_mailing_address",
+  ),
+  col(
+    "owner_mailing_state_code",
+    "string",
+    V,
+    true,
+    "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+    "Owner mailing state",
+    "no_mailing_address",
   ),
   ...PROVENANCE_COLUMNS,
 ];
@@ -458,7 +487,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
   enumCol(
     "contractor_resolution",
     false,
-    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+    "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
     "Contractor identity state (AD-24)",
     null,
   ),
@@ -471,13 +500,13 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "Contractor company as printed (unverified; resolved only with a registry id)",
     "contractor_unresolved",
   ),
-  // v1.1 (additive, ERR-32, PO 2026-10-25)
+  // v1.1 (additive, ERR-66, PO 2026-10-25)
   col(
     "contractor_name_as_printed",
     "string",
     V,
     true,
-    "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+    "company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity)",
     "Contractor as printed on the permit (unverified)",
     "contractor_unresolved",
   ),
@@ -491,7 +520,7 @@ const V_ROOFING_PERMIT: readonly Column[] = [
     "Why there is no BBB rating",
     null,
   ),
-  // v1.1 (additive, ERR-32): no BBB rating is published; the link is a search URL we build
+  // v1.1 (additive, ERR-66): no BBB rating is published; the link is a search URL we build
   col(
     "bbb_rating",
     "string",
@@ -705,7 +734,6 @@ export interface UncarriedField {
   fallback: string;
 }
 
-const NOT_EMITTED = "address is a top-level oneOf; export-tables emits none of its properties";
 const NO_PERMIT_CARRIER = "no property_improvement property (ADR-0002)";
 
 /**
@@ -716,34 +744,18 @@ const NO_PERMIT_CARRIER = "no property_improvement property (ADR-0002)";
 export const UNCARRIED = {
   v_property: [
     {
-      field: "unnormalized_address",
-      reason: "not_in_export",
-      carrier: `address.unnormalized_address via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column; latitude/longitude come from geometry",
-    },
-    {
       field: "city_name",
-      reason: "not_in_export",
-      carrier: `address.city_name via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
+      reason: "source_missing",
+      carrier:
+        "address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city",
+      fallback: "the city is inside unnormalized_address (v1.2)",
     },
     {
       field: "postal_code",
-      reason: "not_in_export",
-      carrier: `address.postal_code via property_has_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
-    },
-    {
-      field: "owner_mailing_postal_code",
-      reason: "not_in_export",
-      carrier: `address.postal_code via *_has_mailing_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column; owner_area_class = unknown, owner_is_out_of_area = null",
-    },
-    {
-      field: "owner_mailing_state_code",
-      reason: "not_in_export",
-      carrier: `address.state_code via *_has_mailing_address (${NOT_EMITTED})`,
-      fallback: "not a v1 column",
+      reason: "source_missing",
+      carrier:
+        "address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP",
+      fallback: "the ZIP is inside unnormalized_address (v1.2)",
     },
   ],
   v_roofing_permit: [

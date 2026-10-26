@@ -49,6 +49,12 @@ export const CrmProperty = z
     // amended 2026-10-25 (PO): shown on the property screen, still never sent to the model. Null
     // carries its missing reason (owner_unparsed, owner_confidential, no_owner_record, ...).
     ownerName: z.string().nullable(),
+    // contract v1.2 (Run 3.1): the situs as TCAD prints it (one line: street, city, state, ZIP), and the
+    // current owners' mailing ZIP (5 digits) and state, "; "-separated when co-owners differ. Optional:
+    // an index built before Run 3.1 has no such columns. Situs city and ZIP are NOT separate fields.
+    unnormalizedAddress: z.string().nullable().optional(),
+    ownerMailingPostalCode: z.string().nullable().optional(),
+    ownerMailingStateCode: z.string().nullable().optional(),
     // contract v1.1 views carry these too; added to the index afterwards (additive), so rows from
     // an index built earlier lack them: optional on read, nullable when present. A null carries its
     // missing reason (source_missing, no_dated_sale).

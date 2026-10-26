@@ -199,7 +199,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
-        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+        "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
         "missingReason": "no_owner_record"
       },
       {
@@ -234,6 +234,33 @@
         "meaning": "Digest of the ZIP and regional lists",
         "source": "manifest profiles[] (travis-places)",
         "missingReason": null
+      },
+      {
+        "name": "unnormalized_address",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Property (situs) address as printed",
+        "source": "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+        "missingReason": "source_missing"
+      },
+      {
+        "name": "owner_mailing_postal_code",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Owner mailing ZIP",
+        "source": "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+        "missingReason": "no_mailing_address"
+      },
+      {
+        "name": "owner_mailing_state_code",
+        "type": "VARCHAR",
+        "kind": "string",
+        "nullable": true,
+        "meaning": "Owner mailing state",
+        "source": "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+        "missingReason": "no_mailing_address"
       },
       {
         "name": "cid",
@@ -468,7 +495,7 @@
           "unresolved"
         ],
         "meaning": "Contractor identity state (AD-24)",
-        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+        "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
         "missingReason": null
       },
       {
@@ -486,7 +513,7 @@
         "kind": "string",
         "nullable": true,
         "meaning": "Contractor as printed on the permit (unverified)",
-        "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+        "source": "company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity)",
         "missingReason": "contractor_unresolved"
       },
       {
@@ -1067,7 +1094,7 @@
         "unresolved"
       ],
       "meaning": "Contractor identity state (AD-24)",
-      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32)",
+      "source": "derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66)",
       "missingReason": null
     },
     {
@@ -1085,7 +1112,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Contractor as printed on the permit (unverified)",
-      "source": "company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity)",
+      "source": "company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity)",
       "missingReason": "contractor_unresolved"
     },
     {
@@ -1416,7 +1443,7 @@
       "kind": "string",
       "nullable": true,
       "meaning": "Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review",
-      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale)",
+      "source": "person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale)",
       "missingReason": "no_owner_record"
     },
     {
@@ -1451,6 +1478,33 @@
       "meaning": "Digest of the ZIP and regional lists",
       "source": "manifest profiles[] (travis-places)",
       "missingReason": null
+    },
+    {
+      "name": "unnormalized_address",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Property (situs) address as printed",
+      "source": "address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP)",
+      "missingReason": "source_missing"
+    },
+    {
+      "name": "owner_mailing_postal_code",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Owner mailing ZIP",
+      "source": "address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated",
+      "missingReason": "no_mailing_address"
+    },
+    {
+      "name": "owner_mailing_state_code",
+      "type": "VARCHAR",
+      "kind": "string",
+      "nullable": true,
+      "meaning": "Owner mailing state",
+      "source": "address.state_code of the same mailing addresses; distinct values sorted, '; '-separated",
+      "missingReason": "no_mailing_address"
     },
     {
       "name": "property_source_url",

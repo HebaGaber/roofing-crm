@@ -76,7 +76,7 @@ such as InProgress) it is null and the row lists `{field: "status_class", reason
 `final_date` and `open_days` then also give `needs_review`, and a null `improvement_status`
 gives `needs_review` instead of `enum_lacks_value`.
 
-**Open duration (ERR-29).** `status_class` is the class of the source status; it does not say the
+**Open duration (ERR-70).** `status_class` is the class of the source status; it does not say the
 work is still going. An Austin permit with status Expired (stalled) very often has a `final_date`:
 the work was finished and the permit lapsed administratively. `open_days` (as_of − issue_date) is
 therefore counted only for an open or stalled permit with **no** `final_date`. A plausible
@@ -93,9 +93,10 @@ permit whose `improvement_status` is null, whose `source_http_request` host is a
 ## Location, ZIP search and value
 
 The Travis export reaches a property's point only through **property_has_parcel → parcel_has_geometry → geometry**
-(the TCAD point). There is no `address_has_geometry` and no `property_has_tax` in the export, and
-`address` properties are not emitted, so there is no situs text, situs ZIP or owner mailing
-address in v1. A ZIP or place search therefore uses the travis-places gazetteer point of the ZIP
+(the TCAD point). There is no `address_has_geometry` and no `property_has_tax` in the export.
+From v1.2 (Run 3.1) the situs text (`unnormalized_address`) and the owner mailing ZIP/state are
+columns, but there is no separate situs ZIP column (TCAD prints the situs as one line). A ZIP or
+place search therefore uses the travis-places gazetteer point of the ZIP
 or place and a bounding box around it over `latitude`/`longitude`; it never matches a ZIP
 column. Market value is absent: no assessed or market value is published in v1.
 
@@ -114,7 +115,7 @@ history (caveat `partial_history`, in the manifest).
 ## Owner
 
 The current owners are read through the property: the persons and companies linked to it by
-`person_has_property` and `company_has_property` (ERR-28), independent of any sale, so a
+`person_has_property` and `company_has_property` (ERR-69), independent of any sale, so a
 property with no dated sale still has an owner. `owner_kind` is `company` when any company is
 linked, else `person`, else `unknown`; `owner_name` lists the persons (by last, first name) and
 then the companies (by name), each once, separated by `; `. A property with no owner lists
@@ -141,10 +142,14 @@ run published before Run 3 binds them as null with a reason. The permit's printe
 with the permit's own request as provenance and **no** `sunbiz_document_number` (PO decision
 2026-10-25). It is **as printed, unverified**: a name is evidence, not identity, so
 `contractor_resolution` stays `unresolved` (it becomes `resolved` only when the company carries an
-official registry id, which no Austin permit prints). No person, phone or address is published; a
-permit that prints only a person name has no contractor.
+official registry id, which no Austin permit prints). No phone or address is published. From Run
+3.1 (PO decision 2026-10-26, ERR-72), a permit that prints no company but prints a contractor
+person (`contractor_full_name`) publishes that person's name the same way, as `company.name` as
+printed (the lexicon links a permit's contractor to a company only, so no person record is
+written); a printed company always wins. `company.name` can therefore hold an individual's name.
+No column changes, so this stays v1.1.
 
-On `v_roofing_permit`: `contractor_name_as_printed` (the company name, null with
+On `v_roofing_permit`: `contractor_name_as_printed` (the printed contractor name, null with
 `contractor_unresolved`), `bbb_status` = `blocked` with `bbb_status_reason` = `bbb_blocked` when a
 name exists (else `not_checked` / `contractor_unresolved`), `bbb_rating` always null (missing
 reason `bbb_blocked`; the UI says "BBB rating not published (BBB blocked the lookup)"), and `bbb_url`,
@@ -153,7 +158,26 @@ contractor"; null with `source_missing` when there is no name). The link is neve
 (A-01: HTTP 403 challenge); its shape is **unverified until a human clicks one example**.
 `contractor_company_cid` now means the company as printed. `contractor_name_raw` is replaced by
 `contractor_name_as_printed`. Not published (still `no_lexicon_carrier`): `status_raw`,
-`expiry_date`. Details: `docs/defects/ERR-32-contractor-name-and-bbb-link-missing.md`.
+`expiry_date`. Details: `docs/defects/ERR-66-contractor-name-and-bbb-link-missing.md`.
+
+### v1.2 (additive): property address and owner mailing ZIP
+
+Backward compatible: three new nullable `v_property` columns, every earlier column unchanged.
+`unnormalized_address` is the situs as TCAD prints it, one line with street, city, state and ZIP
+(`address.unnormalized_address` via `property_has_address`). `owner_mailing_postal_code` and
+`owner_mailing_state_code` are the current owners' mailing ZIP (first 5 digits) and state
+(`address.postal_code` / `address.state_code` via `person_has_mailing_address` /
+`company_has_mailing_address`), distinct values sorted and `; `-separated when co-owners mail from
+different places; the same ZIPs now drive `owner_area_class`. The fields come from the published
+`address` table: from Run 3.1, `export-tables` runs with a small patch
+(`pipeline/publish/patches/elephant-cli-export-oneof.patch`) that gives the top-level `oneOf`
+`address` class the columns of its two shapes; the CAR files are unchanged. An earlier run binds
+the three columns as null with `not_in_export`. The situs `city_name` and `postal_code` stay gaps
+with `source_missing`: TCAD prints the situs as one line, so they are inside
+`unnormalized_address`. This reason now applies to every run, including runs bound before v1.2
+(they read `not_in_export` before), because the cause is the source, not the export. An owner with
+a mailing address that lacks a ZIP or state reads `source_missing`; `no_mailing_address` means the
+owner has none. Details: `docs/defects/ERR-74-address-not-in-tables.md`.
 
 ## Manifest coverage and profiles for consumers
 
@@ -192,11 +216,8 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 
 | Field | Reason in `missing` | View | Why there is no carrier | Fallback |
 | --- | --- | --- | --- | --- |
-| `unnormalized_address` | `not_in_export` | v_property | address.unnormalized_address via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column; latitude/longitude come from geometry |
-| `city_name` | `not_in_export` | v_property | address.city_name via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
-| `postal_code` | `not_in_export` | v_property | address.postal_code via property_has_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
-| `owner_mailing_postal_code` | `not_in_export` | v_property | address.postal_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column; owner_area_class = unknown, owner_is_out_of_area = null |
-| `owner_mailing_state_code` | `not_in_export` | v_property | address.state_code via *_has_mailing_address (address is a top-level oneOf; export-tables emits none of its properties) | not a v1 column |
+| `city_name` | `source_missing` | v_property | address.city_name via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate city | the city is inside unnormalized_address (v1.2) |
+| `postal_code` | `source_missing` | v_property | address.postal_code via property_has_address: TCAD prints the situs as one unnormalized line, so the record has no separate ZIP | the ZIP is inside unnormalized_address (v1.2) |
 | `status_raw` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | Expired is published as improvement_status null → status_class stalled (D-4a) |
 | `expiry_date` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | not published |
 | `description` | `no_lexicon_carrier` | v_roofing_permit | no property_improvement property (ADR-0002) | the profile classifies it before export; improvement_type/action carry the result |
@@ -206,11 +227,12 @@ These fields are **not columns** in v1. Each one appears in every row's `missing
 
 Two further notes from the pilot export:
 
-- **`address` properties are not emitted.** The lexicon `address` class is a top-level `oneOf`,
-  and `export-tables` writes only `cid`, `property_cid`, `data_group_cid` and
-  `request_identifier` for it. Situs text, city, ZIP and the owner mailing ZIP/state are therefore
-  not v1 columns (`not_in_export`); `owner_area_class` is `unknown` and `owner_is_out_of_area`
-  is null with reason `not_in_export`. Coordinates come from `geometry` (`coordinate_source = gis_centroid`).
+- **`address` properties in the pilot export.** The lexicon `address` class is a top-level
+  `oneOf`, and the unpatched `export-tables` writes only `cid`, `property_cid`,
+  `data_group_cid` and `request_identifier` for it, so on the pilot (and Runs 1 to 3) the v1.2
+  address columns are null with `not_in_export`, `owner_area_class` is `unknown` and
+  `owner_is_out_of_area` is null with reason `not_in_export`. From Run 3.1 the tables are
+  exported with the oneOf-columns patch and carry them (v1.2). Coordinates come from `geometry`.
 - **`property_cid`** is the property record's CID (`property.cid`, the `from_cid` of every
   `property_has_*` edge). The export's extra column also named `property_cid` is the Seed root
   CID, a different value; it is not used.
@@ -235,9 +257,9 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
 | `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
@@ -270,10 +292,13 @@ Two further notes from the pilot export:
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
+| `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `property_source_url` | `VARCHAR` | yes | The property's uRL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
 | `property_captured_at` | `TIMESTAMP WITH TIME ZONE` | no | The property's when that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
 | `property_table` | `VARCHAR` | no | The property's the export table the row's main record came from | export table name | never empty |
@@ -302,10 +327,13 @@ Two further notes from the pilot export:
 | `tenure_basis` | `VARCHAR` | no | Evidence behind tenure_years (`sale_date`, `deed_date`, `unknown`) | derived: deed_date when the latest transfer is a TCAD transfer deed, sale_date when it is a TCAD sale, else unknown | never empty |
 | `is_long_tenure` | `BOOLEAN` | yes | Long tenure flag | derived: tenure_years > 10; null when unknown | `no_dated_sale` |
 | `owner_kind` | `VARCHAR` | no | Owner kind (`person`, `company`, `unknown`) | derived from person_has_property / company_has_property (the current owners of the property): company when any company, else person, else unknown | never empty |
-| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-28; independent of any sale) | `no_owner_record` |
+| `owner_name` | `VARCHAR` | yes | Owner display name; reason owner_unparsed, owner_confidential, no_owner_record or needs_review | person.first_name + last_name (by last, first name), then company.name (by name), each once, '; '-separated, read through person_has_property / company_has_property (ERR-69; independent of any sale) | `no_owner_record` |
 | `owner_area_class` | `VARCHAR` | no | Owner mailing area class (`in_county`, `regional`, `out_of_area`, `unknown`) | derived: the current owners' mailing ZIP (address.postal_code via person_has_mailing_address / company_has_mailing_address) against the travis-places area lists; most local class among co-owners; unknown with reason no_mailing_address, zip_not_zcta, out_of_scope (no area list in the run) or not_in_export (the export emits no address.postal_code, ADR-0002, true of Run 2) | never empty |
 | `owner_is_out_of_area` | `BOOLEAN` | yes | Owner mails from outside Travis | derived: true for regional/out_of_area, false for in_county, null for unknown | `not_in_export` |
 | `area_list_sha256` | `VARCHAR` | no | Digest of the ZIP and regional lists | manifest profiles[] (travis-places) | never empty |
+| `unnormalized_address` | `VARCHAR` | yes | Property (situs) address as printed | address.unnormalized_address via property_has_address: the situs as TCAD prints it, one line (street, city, state, ZIP) | `source_missing` |
+| `owner_mailing_postal_code` | `VARCHAR` | yes | Owner mailing ZIP | address.postal_code (first 5 digits) of the current owners' mailing addresses via person_has_property / company_has_property and person_has_mailing_address / company_has_mailing_address; distinct values sorted, '; '-separated | `no_mailing_address` |
+| `owner_mailing_state_code` | `VARCHAR` | yes | Owner mailing state | address.state_code of the same mailing addresses; distinct values sorted, '; '-separated | `no_mailing_address` |
 | `cid` | `VARCHAR` | no | The record's CID | export extra column `cid` | never empty |
 | `source_url` | `VARCHAR` | yes | URL of the request that fetched the record's source page | source_http_request: url + its multiValueQueryString (URL-encoded); else the data group's manifest sources[].url (no missing entry for the fallback) | `not_in_export` |
 | `captured_at` | `TIMESTAMP WITH TIME ZONE` | no | When that source was captured (source-level, not per record) | manifest sources[].captured_at of the source whose url the record's request uses, else of the data group's source (source-level: the latest successful receipt) | never empty |
@@ -335,9 +363,9 @@ Two further notes from the pilot export:
 | `permit_close_date` | `DATE` | yes | Close date | property_improvement.permit_close_date | `source_missing` |
 | `final_inspection_date` | `DATE` | yes | Final inspection date | property_improvement.final_inspection_date | `source_missing` |
 | `open_days` | `INTEGER` | yes | Days open (never counted for a finished permit) | derived: as_of − issue_date for open and stalled permits that have no final_date; null when final_date is set (finished, reason not_open) or implausible (before issue_date or after as_of, reason needs_review) | `not_open` |
-| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-32) | never empty |
+| `contractor_resolution` | `VARCHAR` | no | Contractor identity state (AD-24) (`resolved`, `unresolved`) | derived: resolved only when the contractor company carries an official registry id (company.sunbiz_document_number); a company published from the printed permit name has none, so it stays unresolved (v1.1, ERR-66) | never empty |
 | `contractor_company_cid` | `VARCHAR` | yes | Contractor company as printed (unverified; resolved only with a registry id) | to_cid of the only property_improvement_has_contractor edge | `contractor_unresolved` |
-| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the company the permit prints, AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
+| `contractor_name_as_printed` | `VARCHAR` | yes | Contractor as printed on the permit (unverified) | company.name via the only property_improvement_has_contractor edge: the contractor the permit prints (the company, else the contractor person, ERR-72), AS PRINTED, UNVERIFIED (not a registry identity) | `contractor_unresolved` |
 | `bbb_status` | `VARCHAR` | no | BBB lookup state (`rated`, `not_found`, `blocked`, `not_checked`) | blocked when the permit prints a contractor name (BBB is never contacted, A-01 403 challenge), else not_checked | never empty |
 | `bbb_status_reason` | `VARCHAR` | yes | Why there is no BBB rating | bbb_blocked when a contractor name is printed, else contractor_unresolved | never empty |
 | `bbb_rating` | `VARCHAR` | yes | BBB rating not published (BBB blocked the lookup) | always null: BBB blocks the lookup (A-01), no rating is published | `bbb_blocked` |
