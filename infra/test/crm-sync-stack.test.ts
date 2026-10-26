@@ -103,6 +103,27 @@ describe("CrmSync (T038)", () => {
     });
   });
 
+  it("routes a failed BuildIndex, Validate, Promote or Plan step to one named Fail state", () => {
+    const [machine] = Object.values(template.findResources("AWS::StepFunctions::StateMachine"));
+    const body = JSON.stringify(machine);
+    expect(body).toContain("SyncFailed");
+    expect(body).toContain("CrmSyncFailed");
+    // Plan, BuildIndex, Validate and Promote each catch States.ALL into it.
+    expect(body.match(/"Next\\":\\"SyncFailed\\"/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+  });
+
+  it("alarms when BuildIndex uses more than 85 percent of its memory", () => {
+    template.hasResourceProperties("AWS::CloudWatch::Alarm", {
+      AlarmName: "crm-sync-build-index-memory-high",
+      Threshold: 2560,
+    });
+    template.hasResourceProperties("AWS::Logs::MetricFilter", {
+      MetricTransformations: [
+        Match.objectLike({ MetricName: "BuildIndexMaxMemoryUsedMb", MetricValue: "$maxmem" }),
+      ],
+    });
+  });
+
   it("creates the crm-sync Step Functions state machine", () => {
     template.resourceCountIs("AWS::StepFunctions::StateMachine", 1);
     template.hasResourceProperties("AWS::StepFunctions::StateMachine", {

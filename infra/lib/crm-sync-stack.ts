@@ -564,6 +564,20 @@ export class CrmSyncStack extends Stack {
       )
       .otherwise(fetchPartsMap.next(buildIndexTask).next(validateTask).next(validateResultChoice));
 
+    // A step that throws (BuildIndex out of memory or timeout, a Validate crash, a failed Promote)
+    // ends in one named Fail state, so the execution list and the failed-run alarm show a clear
+    // cause rather than the raw task error. Lambda service errors are retried before this
+    // (LambdaInvoke's default retry); the previous index keeps serving either way.
+    const syncFailed = new sfn.Fail(this, "SyncFailed", {
+      error: "CrmSyncFailed",
+      cause:
+        "A crm-sync step failed after its retries; the index was not promoted and the previous " +
+        "index keeps serving. See the failing state's error in the execution history.",
+    });
+    for (const step of [planTask, buildIndexTask, validateTask, promoteTask]) {
+      step.addCatch(syncFailed, { errors: ["States.ALL"], resultPath: "$.error" });
+    }
+
     const definition = planTask.next(planResultChoice);
 
     const stateMachineLogGroup = new logs.LogGroup(this, "StateMachineLogs", {
@@ -613,6 +627,53 @@ export class CrmSyncStack extends Stack {
         executionAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
         executionAlarm.addOkAction(new cloudwatchActions.SnsAction(alarmTopic));
       }
+    }
+
+    // BuildIndex memory headroom: DuckDB is limited to 2600 MB inside a 3008 MB Lambda, and the
+    // run that crosses the Lambda limit dies without warning. Lambda's own REPORT line carries
+    // "Max Memory Used"; this filter turns it into a metric and the alarm fires at 85 % of the
+    // function's memory (2,560 MB), the signal to move BuildIndex to Fargate (docs/runbook.md).
+    const buildIndexMemory = new logs.MetricFilter(this, "BuildIndexMaxMemoryFilter", {
+      logGroup: buildIndexFn.logGroup,
+      metricNamespace: "CrmSync",
+      metricName: "BuildIndexMaxMemoryUsedMb",
+      filterPattern: logs.FilterPattern.spaceDelimited(
+        "type",
+        "rl",
+        "rid",
+        "dl",
+        "dur",
+        "dms",
+        "bl1",
+        "bl2",
+        "bd",
+        "bms",
+        "ml1",
+        "ml2",
+        "mem",
+        "mmb",
+        "xl1",
+        "xl2",
+        "xl3",
+        "maxmem",
+        "xmb",
+        "...",
+      ).whereString("type", "=", "REPORT"),
+      metricValue: "$maxmem",
+    });
+    const buildIndexMemoryAlarm = new cloudwatch.Alarm(this, "BuildIndexMemoryAlarm", {
+      alarmName: "crm-sync-build-index-memory-high",
+      alarmDescription:
+        "BuildIndex used more than 85 % of its 3,008 MB (2,560 MB). The next larger run may run out of memory; move BuildIndex to Fargate (docs/runbook.md, BuildIndex memory).",
+      metric: buildIndexMemory.metric({ period: Duration.minutes(5), statistic: "Maximum" }),
+      threshold: 2560,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    if (alarmTopic !== undefined) {
+      buildIndexMemoryAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alarmTopic));
+      buildIndexMemoryAlarm.addOkAction(new cloudwatchActions.SnsAction(alarmTopic));
     }
 
     // A held run (cost gate, digest mismatch, lineage fork, unverified part, unexplained diff)
