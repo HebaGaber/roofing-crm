@@ -1,7 +1,7 @@
 // Map search box logic (pure, no React): what the typed text is, and which suggestions the vendored
-// Travis gazetteer gives for it. Exact permit / TCAD lookups go through the API (search.byPermitNumber,
-// search.byTcadId); street addresses are not published in Run 3, so that path is a disabled option
-// behind one seam (`addressSource`).
+// Travis gazetteer gives for it. Exact permit / TCAD / street-address lookups go through the API
+// (search.byPermitNumber, search.byTcadId, search.byAddress); `addressOptions` turns the address
+// answer into listbox options.
 import { gazetteer } from "@crm/oracle-views";
 
 export type QueryKind = "empty" | "place" | "zip" | "permit" | "tcad" | "address";
@@ -20,12 +20,34 @@ export interface SearchOption {
   readonly point?: { readonly lat: number; readonly lng: number };
   /** Permit and TCAD options: the value sent to the API. */
   readonly lookup?: string;
+  /** Address matches: the property to open and where the map centres (no further lookup). */
+  readonly property?: { readonly propertyCid: string; readonly lat: number; readonly lng: number };
 }
+
+/** The answer of search.byAddress, as the box needs it. */
+export type AddressLookupResult =
+  | {
+      readonly found: true;
+      readonly matches: readonly {
+        readonly propertyCid: string;
+        readonly requestIdentifier: string;
+        readonly address: string;
+        readonly lat: number;
+        readonly lng: number;
+      }[];
+      readonly total: number;
+      readonly runId: string | null;
+    }
+  | {
+      readonly found: false;
+      readonly runId: string | null;
+      readonly reason?: "address_not_in_index";
+    };
 
 /** Shown under the gazetteer options. */
 export const GAZETTEER_PROVENANCE = `Census 2024 Gazetteer · ${gazetteer.GAZETTEER_VERSION}`;
 
-export const ADDRESS_UNAVAILABLE_REASON = "Street addresses are not published yet";
+export const ADDRESS_NOT_IN_INDEX = "Street addresses are not in this index yet";
 
 const PERMIT_RE = /^\d{4}-\d{6}(?:\s*BP)?$/i;
 const ZIP_RE = /^(?:zip\s*)?\d{3,5}$/i;
@@ -96,11 +118,28 @@ export function suggestFromGazetteer(query: string): SearchOption[] {
   return [];
 }
 
-/** The one seam for street-address search. Run 3 publishes no street addresses and the CRM index
- *  has no address column, so this returns nothing. When Run 3.1 publishes `unnormalized_address`,
- *  return real matches here (and drop the disabled option in `optionsFor`). */
-export function addressSource(_query: string): SearchOption[] {
-  return [];
+/** What the box shows for an address answer: the matching properties as options (address text,
+ *  then the TCAD account), or one plain disabled line saying why there are none. The run label
+ *  comes from the answer; nothing is invented when it is missing. */
+export function addressOptions(
+  result: AddressLookupResult,
+  runName: (runId: string) => string,
+): { options: SearchOption[]; note: string | null } {
+  if (result.found) {
+    return {
+      options: result.matches.map((m) => ({
+        id: `address-${m.propertyCid}`,
+        kind: "address" as const,
+        label: m.address,
+        detail: `TCAD ${m.requestIdentifier}`,
+        property: { propertyCid: m.propertyCid, lat: m.lat, lng: m.lng },
+      })),
+      note: null,
+    };
+  }
+  if (result.reason === "address_not_in_index") return { options: [], note: ADDRESS_NOT_IN_INDEX };
+  const run = result.runId === null ? "the current run" : runName(result.runId);
+  return { options: [], note: `No property at that address in ${run}` };
 }
 
 /** Everything the listbox shows for typed text (not the exact-lookup results, which are async). */
@@ -134,19 +173,18 @@ export function optionsFor(query: string): SearchOption[] {
     }
     case "tcad":
       return [tcadOption(q)];
-    case "address": {
-      const found = addressSource(q);
-      if (found.length > 0) return found;
+    case "address":
+      // Typed addresses are answered by the API (the box debounces and calls search.byAddress);
+      // this entry is only what a "Try" sample stands for: type it into the box.
       return [
         {
-          id: "address-unavailable",
+          id: `address-sample-${q}`,
           kind: "address",
           label: q,
-          detail: ADDRESS_UNAVAILABLE_REASON,
-          disabled: true,
+          detail: "Search this street address",
+          lookup: q,
         },
       ];
-    }
   }
 }
 
@@ -177,11 +215,18 @@ export interface SearchSample {
  *  - 78660: a Travis ZCTA in the same gazetteer (same test).
  *  - 2026-121002 BP: an open Roofing permit read from the live Run 3 index via property.get on
  *    2026-10-25 (tests/e2e/lib/run-fixtures.ts, OPEN_PERMIT_NUMBER).
- *  - 138273: the requestIdentifier (TCAD account) of that same property (LEAD_FIXTURES.openPermit). */
+ *  - 138273: the requestIdentifier (TCAD account) of that same property (LEAD_FIXTURES.openPermit).
+ *  - 2725 WOODALL DR 1401, CEDAR PARK, TX 78613: taken from Task A's Run 3.1 evidence (a real
+ *    `unnormalized_address`); confirm against the promoted Run 3.1 index when it is live. */
 export const SEARCH_SAMPLES: readonly SearchSample[] = [
   { label: "Pflugerville", query: "Pflugerville", verified: "gazetteer place" },
   { label: "78660", query: "78660", verified: "gazetteer ZCTA" },
   { label: "Round Rock", query: "Round Rock", verified: "gazetteer place" },
   { label: "Permit 2026-121002 BP", query: "2026-121002 BP", verified: "Run 3 live index" },
   { label: "TCAD account 138273", query: "138273", verified: "Run 3 live index" },
+  {
+    label: "2725 WOODALL DR 1401",
+    query: "2725 WOODALL DR 1401, CEDAR PARK, TX 78613",
+    verified: "Task A Run 3.1 evidence",
+  },
 ];

@@ -1,6 +1,6 @@
 // The Map search box on the hosted app at phone, tablet and desktop widths: it is editable, suggests
 // places and ZIPs from the gazetteer, finds a permit number and a TCAD account in the live index,
-// says plainly that street addresses wait for Run 3.1, and the results-header info popover stays
+// finds a street address from Run 3.1, and the results-header info popover stays
 // inside the screen. Read-only browsing as the seeded admin.
 import { expect, test, type Page } from "@playwright/test";
 import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "./lib/auth.js";
@@ -58,14 +58,12 @@ test.describe("Search box (responsive)", () => {
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 30_000 });
     await shot(page, "3-permit-opened", project);
 
-    // A street address says plainly why it cannot be searched yet; it does not fake a result.
-    await box.fill("2725 Woodall Dr");
-    await expect(
-      page.getByRole("option", { name: /Street addresses are not published/ }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("option", { name: /Street addresses are not published/ }),
-    ).toHaveAttribute("aria-disabled", "true");
+    // A street address (Run 3.1, TCAD's printed situs) lists its matching properties. This step
+    // passes only on the hosted app once Run 3.1 is the promoted index.
+    await box.fill("2725 WOODALL DR 1401");
+    await expect(page.getByRole("option", { name: /WOODALL/ }).first()).toBeVisible({
+      timeout: 30_000,
+    });
     await shot(page, "4-address", project);
 
     // Escape closes the list; the clear button empties the box.

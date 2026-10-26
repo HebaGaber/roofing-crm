@@ -457,6 +457,12 @@ export function Component(): ReactElement {
     [queryClient, trpc],
   );
 
+  const searchAddress = useCallback(
+    (value: string) =>
+      queryClient.fetchQuery(trpc.search.byAddress.queryOptions({ value, limit: 5 })),
+    [queryClient, trpc],
+  );
+
   const closeDetail = useCallback(() => {
     setSearchParams((prev) => patchMapParams(prev, { sel: null }));
   }, [setSearchParams]);
@@ -818,6 +824,7 @@ export function Component(): ReactElement {
           onCentre={searchCentre}
           onOpenProperty={searchOpenProperty}
           lookup={searchLookup}
+          lookupAddress={searchAddress}
           current={searchCurrent}
           onApplySaved={searchApplySaved}
         />

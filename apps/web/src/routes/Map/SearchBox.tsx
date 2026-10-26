@@ -1,11 +1,12 @@
 // Map search box: an accessible combobox (WAI-ARIA 1.2 list autocomplete, focus stays in the input,
 // options are reached with aria-activedescendant). Places and ZIPs come from the vendored Travis
 // gazetteer; a permit number or TCAD account is looked up by the API when chosen (lazily, so
-// nothing is requested while typing); street addresses are a disabled option until Run 3.1.
+// nothing is requested while typing); a street address is looked up after a short pause in typing
+// and its matches are listed as options.
 // The empty box lists Recent searches, Saved searches and the "Try" samples; Recent and Saved are
 // kept in this browser only (recentSearches.ts).
 import { Icon } from "@crm/ui";
-import { useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   MAX_SAVED,
   clearRecent,
@@ -27,10 +28,13 @@ import {
 import {
   GAZETTEER_PROVENANCE,
   SEARCH_SAMPLES,
+  addressOptions,
   classifyQuery,
   optionsFor,
+  type AddressLookupResult,
   type SearchOption,
 } from "./searchSuggest.js";
+import { runLabel } from "./whyLead.js";
 import styles from "./SearchBox.module.css";
 
 export type ExactLookupResult =
@@ -42,6 +46,11 @@ export type ExactLookupResult =
     }
   | { readonly found: false; readonly runId: string | null };
 
+export type { AddressLookupResult };
+
+/** Pause after the last keystroke before a typed street address is sent to the API. */
+export const ADDRESS_DEBOUNCE_MS = 250;
+
 export interface SearchBoxProps {
   /** A place or ZIP was chosen: centre the radius search there. */
   readonly onCentre: (point: { lat: number; lng: number }) => void;
@@ -49,6 +58,8 @@ export interface SearchBoxProps {
   readonly onOpenProperty: (propertyCid: string, point: { lat: number; lng: number }) => void;
   /** Exact lookup through the API; only called when a permit/TCAD option is chosen. */
   readonly lookup: (kind: "permit" | "tcad", value: string) => Promise<ExactLookupResult>;
+  /** Exact street-address lookup through the API; called after a short pause in typing. */
+  readonly lookupAddress: (value: string) => Promise<AddressLookupResult>;
   /** The Map's current centre, radius and roof filter (from the URL); null while there is no
    *  centre, which disables "Save this search". */
   readonly current?: MapView | null;
@@ -69,7 +80,7 @@ interface Row {
 const GROUP_TITLE: Record<Group, string> = { recent: "Recent", saved: "Saved", try: "Try" };
 const NOTE_LOCAL = "Recent and saved stay in this browser.";
 const PROVENANCE_EXACT = "Exact match against the current run index";
-const PROVENANCE_SAMPLES = `Places and ZIPs: ${GAZETTEER_PROVENANCE}. Permits and accounts: current run index.`;
+const PROVENANCE_SAMPLES = `Places and ZIPs: ${GAZETTEER_PROVENANCE}. Permits, accounts and street addresses: current run index.`;
 
 const samePoint = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): boolean =>
   Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
@@ -78,6 +89,7 @@ export function SearchBox({
   onCentre,
   onOpenProperty,
   lookup,
+  lookupAddress,
   current = null,
   onApplySaved,
 }: SearchBoxProps): ReactElement {
@@ -97,6 +109,46 @@ export function SearchBox({
   );
 
   const empty = text.trim() === "";
+  const typed = text.trim().replace(/\s+/g, " ");
+  const kind = empty ? "empty" : classifyQuery(text);
+  // The latest street-address answer; only used while it is for the text now in the box.
+  const [addressAnswer, setAddressAnswer] = useState<{
+    readonly query: string;
+    readonly result: AddressLookupResult | "failed";
+  } | null>(null);
+
+  useEffect(() => {
+    if (kind !== "address") return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      lookupAddress(typed).then(
+        (result) => {
+          if (!cancelled) setAddressAnswer({ query: typed, result });
+        },
+        () => {
+          if (!cancelled) setAddressAnswer({ query: typed, result: "failed" });
+        },
+      );
+    }, ADDRESS_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [kind, typed, lookupAddress]);
+
+  const answer = kind === "address" && addressAnswer?.query === typed ? addressAnswer.result : null;
+  const fromAddress =
+    answer === null || answer === "failed"
+      ? { options: [] as SearchOption[], note: null }
+      : addressOptions(answer, runLabel);
+  const addressNote =
+    kind !== "address"
+      ? null
+      : answer === null
+        ? "Looking up the address…"
+        : answer === "failed"
+          ? "The address lookup failed. Check your connection and try again."
+          : fromAddress.note;
   const rows: Row[] = empty
     ? [
         ...recent.map((r) => ({
@@ -123,9 +175,13 @@ export function SearchBox({
           })),
         ),
       ]
-    : optionsFor(text).map((option) => ({ option, sample: false }));
-  const showNoMatch = !empty && rows.length === 0;
-  const expanded = open && (rows.length > 0 || showNoMatch || notice !== null || busy);
+    : (kind === "address" ? fromAddress.options : optionsFor(text)).map((option) => ({
+        option,
+        sample: false,
+      }));
+  const showNoMatch = !empty && rows.length === 0 && kind !== "address";
+  const expanded =
+    open && (rows.length > 0 || showNoMatch || notice !== null || busy || addressNote !== null);
   const optionId = (i: number): string => `${uid}-opt-${i}`;
 
   const change = (value: string): void => {
@@ -155,6 +211,19 @@ export function SearchBox({
       setLastPlace({ label: option.label, ...option.point });
       remember();
       onCentre(option.point);
+      return;
+    }
+    if (option.kind === "address") {
+      if (option.property !== undefined) {
+        const { propertyCid, lat, lng } = option.property;
+        setText(option.label);
+        setOpen(false);
+        remember();
+        onOpenProperty(propertyCid, { lat, lng });
+      } else if (option.lookup !== undefined) {
+        // A "Try" sample: put the address in the box; the lookup runs like typed text.
+        change(option.lookup);
+      }
       return;
     }
     if ((option.kind === "permit" || option.kind === "tcad") && option.lookup !== undefined) {
@@ -241,7 +310,6 @@ export function SearchBox({
     }
   };
 
-  const kind = empty ? "empty" : classifyQuery(text);
   const hasGazetteer = rows.some((r) => r.option.kind === "place" || r.option.kind === "zip");
   const provenance = empty
     ? PROVENANCE_SAMPLES
@@ -249,7 +317,9 @@ export function SearchBox({
       ? GAZETTEER_PROVENANCE
       : kind === "permit" || kind === "tcad"
         ? PROVENANCE_EXACT
-        : null;
+        : kind === "address" && rows.length > 0
+          ? PROVENANCE_EXACT
+          : null;
 
   return (
     <div
@@ -388,6 +458,11 @@ export function SearchBox({
           {busy ? (
             <li role="option" aria-disabled="true" aria-selected="false" className={styles.option}>
               <span className={styles.label}>Looking up…</span>
+            </li>
+          ) : null}
+          {addressNote !== null ? (
+            <li role="option" aria-disabled="true" aria-selected="false" className={styles.option}>
+              <span className={styles.label}>{addressNote}</span>
             </li>
           ) : null}
           {notice !== null ? (

@@ -39,6 +39,7 @@ function setup(
       onOpenProperty={onOpenProperty}
       onApplySaved={onApplySaved}
       lookup={lookup}
+      lookupAddress={vi.fn()}
       current={options.current ?? null}
     />,
   );
@@ -64,7 +65,7 @@ describe("SearchBox recent searches", () => {
     expect(screen.getByText("Recent")).toBeTruthy();
     expect(screen.getByText("Try")).toBeTruthy();
     expect(labels()[0]).toBe("Pflugerville");
-    expect(screen.getAllByRole("option")).toHaveLength(6);
+    expect(screen.getAllByRole("option")).toHaveLength(7);
   });
 
   it("orders the groups Recent, Saved, Try", () => {
@@ -124,6 +125,31 @@ describe("SearchBox recent searches", () => {
     expect(loadRecent()).toEqual([]);
   });
 
+  it("a recent address reopens its property without asking the API again", () => {
+    pushRecent({
+      id: "address-cid-9",
+      kind: "address",
+      label: "9 OAK ST, AUSTIN, TX 78701",
+      detail: "TCAD R-9",
+      lookup: "cid-9",
+      point: { lat: 30.27, lng: -97.7 },
+    });
+    const { input, onOpenProperty, lookup } = setup();
+    fireEvent.focus(input);
+    fireEvent.click(screen.getByRole("option", { name: /9 OAK ST/ }));
+    expect(onOpenProperty).toHaveBeenCalledWith("cid-9", { lat: 30.27, lng: -97.7 });
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it("drops a stored address entry that lacks its coordinates", () => {
+    localStorage.setItem(
+      "crm.search.recent.v1",
+      JSON.stringify({ v: 1, items: [{ id: "a", kind: "address", label: "x", lookup: "c" }] }),
+    );
+    resetSearchMemory();
+    expect(loadRecent()).toEqual([]);
+  });
+
   it("removes one recent with its X button", () => {
     pushRecent({ id: "place-a", kind: "place", label: "Alpha", point: { lat: 30.1, lng: -97.1 } });
     pushRecent({ id: "place-b", kind: "place", label: "Beta", point: { lat: 30.2, lng: -97.2 } });
@@ -157,7 +183,7 @@ describe("SearchBox recent searches", () => {
     // A sample ("Try") item is never removable.
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Delete" });
-    expect(screen.getAllByRole("option")).toHaveLength(5);
+    expect(screen.getAllByRole("option")).toHaveLength(6);
   });
 
   it("keeps arrow-key navigation, Enter and Escape working across the new groups", () => {
@@ -229,6 +255,7 @@ describe("SearchBox saved searches", () => {
         onCentre={onCentre}
         onOpenProperty={vi.fn()}
         lookup={vi.fn()}
+        lookupAddress={vi.fn()}
         current={{ ...point, radiusMi: 5 }}
       />,
     );

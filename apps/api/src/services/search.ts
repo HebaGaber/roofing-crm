@@ -11,6 +11,7 @@ import {
   MAX_PROPERTY_ROWS as DOMAIN_MAX_PROPERTY_ROWS,
 } from "@crm/domain";
 import type {
+  AddressMatch,
   CountyOverview,
   CountyOverviewQuery,
   LeadIndex,
@@ -307,4 +308,29 @@ export async function similarProperties(
     limit: input.limit,
   });
   return { found: true, similar, reason: similar.length === 0 ? "none_found" : null };
+}
+
+export type AddressSearchResult =
+  | {
+      found: true;
+      matches: AddressMatch[];
+      /** Matches in the run (capped at `ADDRESS_TOTAL_CAP`); may exceed `matches.length`. */
+      total: number;
+      runId: string | null;
+    }
+  | { found: false; runId: string | null; reason?: "address_not_in_index" };
+
+/** Exact street-address search. No fuzzy fallback: no match is `found: false` with the run id; an
+ *  index built before Run 3.1 (no `unnormalizedAddress` column) says `address_not_in_index`. */
+export async function searchByAddress(
+  leadIndex: LeadIndex,
+  input: { value: string; limit: number },
+): Promise<AddressSearchResult> {
+  const runId = (await leadIndex.currentRunId()) ?? null;
+  const page = leadIndex.searchByAddress
+    ? await leadIndex.searchByAddress(input)
+    : ({ indexed: false } as const);
+  if (!page.indexed) return { found: false, runId, reason: "address_not_in_index" };
+  if (page.rows.length === 0) return { found: false, runId };
+  return { found: true, matches: page.rows, total: page.total, runId };
 }
