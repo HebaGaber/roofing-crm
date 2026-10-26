@@ -30,7 +30,7 @@ let indexState: QueryState<{
   permitCount: number;
   traceId: string;
 }>;
-let linksState: QueryState<{ countyLensUrl: string; landingPageUrl: string | null }>;
+let linksState: QueryState<{ countyLensUrl: string | null; landingPageUrl: string | null }>;
 
 vi.mock("../../../src/components/AppShell/shellApi", () => ({
   useShellIndexInfo: () => indexState,
@@ -124,10 +124,14 @@ describe("top bar", () => {
     expect(panel?.textContent).toContain("The lead index is built from the CountyLens manifest");
     expect(panel?.textContent).toContain("2026-10-21 10:35:16 UTC");
     expect(panel?.textContent).toContain("The CRM reads only published CountyLens data.");
-    expect(panel?.textContent).toContain(`Index serving run ${RUN_ID}`);
+    expect(panel?.textContent).toContain(`Index up to date · Run 21 Oct 2026`);
     expect(panel.querySelector(`[data-cid="${MANIFEST}"]`)).not.toBeNull();
-    const link = within(panel).getByRole("link", { name: /Open CountyLens/ });
-    expect(link?.getAttribute("href")).toBe("https://countylens.example.test");
+    const link = within(panel).getByRole("link", { name: /CountyLens Data/ });
+    expect(link?.getAttribute("href")).toBe("https://countylens.example.test/data/manifest");
+    const verify = within(panel).getByRole("link", { name: "Verify this run" });
+    expect(verify.getAttribute("href")).toBe(
+      `https://countylens.example.test/data/verify/${MANIFEST}`,
+    );
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog", { name: "Data source" })).toBeNull();
     expect(document.activeElement).toBe(chip);
@@ -179,6 +183,23 @@ describe("top bar", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu", { name: "Apps" })).toBeNull();
     expect(document.activeElement).toBe(apps);
+  });
+
+  it("Apps menu says CountyLens is not available yet when EXPLORER_BASE_URL is unset", () => {
+    linksState = { ...linksState, data: { countyLensUrl: null, landingPageUrl: null } };
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: "Apps" }));
+    const items = within(screen.getByRole("menu", { name: "Apps" })).getAllByRole("menuitem");
+    expect(items[0]?.textContent).toBe("CountyLensNot available yet");
+    expect(items[0]?.getAttribute("href")).toBeNull();
+  });
+
+  it("the data panel shows no CountyLens links when the URL is not configured", () => {
+    linksState = { ...linksState, data: { countyLensUrl: null, landingPageUrl: null } };
+    renderShell();
+    fireEvent.click(screen.getByRole("button", { name: `Data: CountyLens run ${RUN_ID}` }));
+    const panel = screen.getByRole("dialog", { name: "Data source" });
+    expect(within(panel).queryByRole("link")).toBeNull();
   });
 
   it("Apps menu links the landing page when it is configured", () => {
@@ -345,18 +366,22 @@ describe("top bar below 840 px (CrmShellApps768)", () => {
     expect(chip).toMatch(/\.short\s*{\s*display: inline;/);
   });
 
-  it("shortRunLabel: a short run id as is, a dated id as its day and month, else its tail", () => {
+  it("shortRunLabel: a run number first, else a dated id as its day and month, else its tail", () => {
     expect(shortRunLabel("3")).toBe("Run 3");
+    expect(shortRunLabel("travis-full-run3-20261025")).toBe("Run 3");
+    expect(shortRunLabel("20261024")).toBe("24 Oct");
     expect(shortRunLabel("travis-2026-10-21-permits")).toBe("21 Oct");
     expect(shortRunLabel("travis-202609-permits-20261021t103516z")).toBe("21 Oct");
-    expect(shortRunLabel("travis-full-run2-20261024")).toBe("24 Oct");
+    expect(shortRunLabel("travis-full-run2-20261024")).toBe("Run 2");
     expect(shortRunLabel("travis-run-9999")).toBe("Run …n-9999");
-    expect(shortRunLabel("travis-full-run2-20261399")).toBe("Run …261399");
+    expect(shortRunLabel("travis-full-run2-20261399")).toBe("Run 2");
     expect(shortRunLabel(null)).toBe("Data");
   });
 
-  it("longRunLabel: Run and the date with its year when the id carries one", () => {
-    expect(longRunLabel("travis-full-run2-20261024")).toBe("Run 24 Oct 2026");
+  it("longRunLabel: the run number with its date, a date-only id as a dated run, else the tail", () => {
+    expect(longRunLabel("travis-full-run3-20261025")).toBe("Run 3 · 25 Oct 2026");
+    expect(longRunLabel("travis-full-run2-20261399")).toBe("Run 2");
+    expect(longRunLabel("20261024")).toBe("Run 24 Oct 2026");
     expect(longRunLabel("3")).toBe("Run 3");
     expect(longRunLabel("travis-run-abcdefghijk")).toBe("Run …fghijk");
     expect(longRunLabel(null)).toBeNull();

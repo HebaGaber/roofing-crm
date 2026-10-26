@@ -7,8 +7,12 @@ import { withObservability } from "@crm/observability";
 /** ADR-05's three independent thresholds; exceeding any one holds the run. */
 export const COST_GATE_THRESHOLDS = {
   maxSpendUsd: 1.0,
-  // Run 3 added `parcels_published` (441,961) to the coverage entries this sums, so a full-county
-  // run counts about 848k (Run 2: about 406k). 1M keeps the gate a real ceiling with headroom.
+  // The document count is the SUM of every coverage counter in the manifest (see
+  // `estimateCostFromManifest`), not a count of distinct documents: it double-counts rows and
+  // permit diagnostics that appear under more than one counter. Run 3 (full county) sums to
+  // 848,164 (Run 2: about 406k), because Run 3 added `parcels_published` (441,961). The limit is
+  // 1,000,000: about 18% headroom over Run 3, still a real ceiling for a run twice the size.
+  // It was 600,000 until 2026-10-25.
   maxDocCount: 1_000_000,
   maxBytes: 2 * 1024 * 1024 * 1024, // 2 GB
 } as const;

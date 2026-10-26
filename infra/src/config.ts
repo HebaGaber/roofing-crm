@@ -11,6 +11,14 @@ export interface CrmAppConfig extends RuntimeConfig {
   /** cdk.json context `crm:alarmEmail`: the SNS email subscriber for the FetchPart DLQ alarm and
    *  the citation-groundedness alarm (ARD-B §13's SNS-instead-of-PagerDuty deviation). */
   readonly alarmEmail: string;
+  /** cdk.json context `crm:explorerBaseUrl`: CountyLens's origin, set on the API Lambda as
+   *  `EXPLORER_BASE_URL` (the lineage link and the Apps menu). The API has no built-in default. */
+  readonly explorerBaseUrl: string;
+  /** cdk.json context `crm:taskACloudFrontBaseUrl`: Task A's CloudFront host, the first gateway
+   *  CrmSync's Plan and FetchPart try (ADR-02). */
+  readonly taskACloudFrontBaseUrl: string;
+  /** cdk.json context `crm:domainName`: the custom domain CrmDomain associates with the web app. */
+  readonly domainName: string;
   /** Changes on every synth unless pinned via `CRM_DEPLOY_NONCE`: CrmSync's deploy-time
    *  StartExecution is named `{manifestCid}-{deployNonce}`, so every deploy re-attempts the sync
    *  (a failed first sync of a CID is retried; A→B→A re-syncs A) and Plan's AlreadyPromoted
@@ -39,6 +47,15 @@ function withAiProviderDefaults(env: LoadConfigEnv): LoadConfigEnv {
 /** Deliberately loose (a typo'd domain is not caught here) — it only refuses values that are
  *  clearly not an address at all; SNS itself confirms the subscription by email. */
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** An https origin with no path (`https://host`); a trailing slash is dropped. */
+function originFrom(getContext: ContextGetter, key: string): string {
+  const value = getContext(key);
+  if (typeof value !== "string" || !/^https:\/\/[^\s/]+\/?$/.test(value)) {
+    throw new Error(`cdk.json context ${key} is required and must be an https origin`);
+  }
+  return value.replace(/\/$/, "");
+}
+
 /** Step Functions execution names allow [A-Za-z0-9_-]; 16 chars keeps `{59-char CID}-{nonce}`
  *  inside the 80-char limit. */
 const DEPLOY_NONCE_PATTERN = /^[A-Za-z0-9_-]{1,16}$/;
@@ -71,6 +88,12 @@ export function loadConfig(
   if (typeof alarmEmail !== "string" || !EMAIL_PATTERN.test(alarmEmail)) {
     throw new Error("cdk.json context crm:alarmEmail is required and must be an email address");
   }
+  const explorerBaseUrl = originFrom(getContext, "crm:explorerBaseUrl");
+  const taskACloudFrontBaseUrl = originFrom(getContext, "crm:taskACloudFrontBaseUrl");
+  const domainName = getContext("crm:domainName");
+  if (typeof domainName !== "string" || !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domainName)) {
+    throw new Error("cdk.json context crm:domainName is required and must be a host name");
+  }
   const additionalBranchesRaw = getContext("crm:additionalBranches");
   const additionalBranches = Array.isArray(additionalBranchesRaw)
     ? additionalBranchesRaw.filter((b): b is string => typeof b === "string")
@@ -81,6 +104,9 @@ export function loadConfig(
     githubRef,
     additionalBranches,
     alarmEmail,
+    explorerBaseUrl,
+    taskACloudFrontBaseUrl,
+    domainName,
     deployNonce: deployNonceFrom(env, now),
     ...(env.CDK_DEFAULT_ACCOUNT === undefined ? {} : { account: env.CDK_DEFAULT_ACCOUNT }),
   };

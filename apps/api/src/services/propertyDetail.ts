@@ -32,32 +32,38 @@ export function bbbFor(
   };
 }
 
-/** Task A ships as CountyLens at `countylens.aldarraj.com` (docs/02-design.md). Since A-13 its
+/** Task A ships as CountyLens (docs/02-design.md). Since A-13 its
  *  Explorer lives at `/tx/travis/explore` (the earlier `/explore` answers 404 — that was this
  *  link's defect). The Explorer opens a property's panel from `sel` only when the property is
  *  among the search results, and it searches the default place (Austin, 5 mi) unless told
  *  otherwise, so the link also centres the search on the property (`at=lat,lon`, `r=1`, nearest
  *  first): the property is then always the first row. Without coordinates (a property the index
- *  holds no point for) only `sel` can be sent. `EXPLORER_BASE_URL` overrides the host for a
- *  non-default deploy; this never falls back to a placeholder — the path and parameters are
- *  fixed by Task A's own route (contracts/ui-routes.md: `at`, `r`, `sel`). */
+ *  holds no point for) only `sel` can be sent. The host comes only from `EXPLORER_BASE_URL`
+ *  (set by infra from cdk context `crm:explorerBaseUrl`); when it is unset the link is null
+ *  (the drawer and Apps menu then say it is not available) — there is no default host and never a
+ *  placeholder. The path and parameters are fixed by Task A's own route (contracts/ui-routes.md:
+ *  `at`, `r`, `sel`). */
 export function lineageUrl(
   propertyCid: string,
   at?: { readonly lat: number | null; readonly lng: number | null },
-): string {
+): string | null {
+  const base = countyLensBaseUrl();
+  if (base === null) return null;
   const params = new URLSearchParams();
   if (at?.lat != null && at.lng != null) {
     params.set("at", `${String(at.lat)},${String(at.lng)}`);
     params.set("r", "1");
   }
   params.set("sel", propertyCid);
-  return `${countyLensBaseUrl()}/tx/travis/explore?${params.toString().replace(/%2C/g, ",")}`;
+  return `${base}/tx/travis/explore?${params.toString().replace(/%2C/g, ",")}`;
 }
 
 /** CountyLens's origin (no trailing slash): the one config read shared by the lineage link and
- *  the shell's Apps menu (routers/shell.ts), so both always point at the same deploy. */
-export function countyLensBaseUrl(): string {
-  const base = process.env.EXPLORER_BASE_URL ?? "https://countylens.aldarraj.com";
+ *  the shell's Apps menu (routers/shell.ts), so both always point at the same deploy. Null when
+ *  `EXPLORER_BASE_URL` is unset or empty (same rule as `LANDING_PAGE_URL`). */
+export function countyLensBaseUrl(): string | null {
+  const base = process.env.EXPLORER_BASE_URL;
+  if (base === undefined || base === "") return null;
   return base.replace(/\/$/, "");
 }
 
@@ -66,7 +72,8 @@ export interface PropertyDetailResult {
   permits: PermitResult[];
   bbbStatus: BbbStatus | null;
   bbbStatusReason: string | null;
-  lineageUrl: string;
+  /** Null when `EXPLORER_BASE_URL` is not configured. */
+  lineageUrl: string | null;
   manifestCid: string;
   /** The nearest travis-places@1.0.0 place centroid to the property's coordinates, for the
    *  drawer header "TCAD {id} · near {place}" (E-93). Absent when the property is not in this

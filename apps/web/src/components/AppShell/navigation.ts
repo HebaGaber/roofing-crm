@@ -53,6 +53,12 @@ export const DESTINATIONS: readonly Destination[] = [
   { to: "/?mode=ai", route: "/", modes: ["ai"], label: "Ask", icon: "smart_toy", where: "bar" },
 ];
 
+/** The live top-level sections by name (Map, Leads), read from DESTINATIONS so the Coming-soon
+ *  page never states a different set than the navigation draws. */
+export const LIVE_SECTION_LABELS: readonly string[] = DESTINATIONS.filter(
+  (d) => d.where !== "bar" && d.nested !== true,
+).map((d) => d.label);
+
 /** Reads the map mode out of a query string; anything else is the map. */
 export function shellModeOf(search: string): ShellMode {
   const mode = new URLSearchParams(search).get("mode");
@@ -78,5 +84,7 @@ export const ROADMAP_NAV: readonly RoadmapNavItem[] = ROADMAP_SECTIONS.map(
   ({ section, label }) => ({ section, label, ...ROADMAP_ICON_AND_LINE[section] }),
 );
 
-/** The one county the CRM serves (CountyLens publishes Travis only). */
-export const COUNTY_LABEL = "Travis County, TX";
+/** The one county the CRM serves (CountyLens publishes Travis only): the name for sentences and
+ *  the label with its state for headers. Every screen imports these; none repeats the literal. */
+export const COUNTY_NAME = "Travis County";
+export const COUNTY_LABEL = `${COUNTY_NAME}, TX`;

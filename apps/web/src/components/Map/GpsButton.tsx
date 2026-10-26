@@ -10,6 +10,7 @@ import { useCallback, useId, useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@crm/ui";
 import { MapStatusCard, type MapStatusAction } from "./MapStatusCard.js";
+import { COUNTY_NAME } from "../AppShell/navigation.js";
 import styles from "./GpsButton.module.css";
 
 export interface LatLng {
@@ -207,7 +208,7 @@ export function GpsButton({
               ? []
               : [
                   {
-                    label: "Go to Travis County",
+                    label: `Go to ${COUNTY_NAME}`,
                     onClick: () => {
                       setState("idle");
                       onGoToCounty();
@@ -217,7 +218,7 @@ export function GpsButton({
           }
           onClose={close}
         >
-          You are outside Travis County. The CRM covers Travis County only.
+          You are outside {COUNTY_NAME}. The CRM covers {COUNTY_NAME} only.
         </MapStatusCard>
       );
     }

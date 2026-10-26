@@ -58,7 +58,8 @@ export interface PropertyDetailData {
   readonly permits: Provenanced<CrmPermit>[];
   readonly bbbStatus: BbbStatus | null;
   readonly bbbStatusReason: string | null;
-  readonly lineageUrl: string;
+  /** Null when the API has no CountyLens host configured (EXPLORER_BASE_URL unset). */
+  readonly lineageUrl: string | null;
   /** The nearest travis-places@1.0.0 place centroid, computed server-side by `property.get`;
    *  absent when the property has no coordinates. */
   readonly nearPlace?: NearPlace;
@@ -648,15 +649,21 @@ export function PropertyDetail({
       <div className={styles.primaryAction}>
         <LeadCreateAction property={property} permits={data.permits} />
         <div className={styles.linkRow}>
-          <a
-            href={data.lineageUrl}
-            className={styles.link}
-            target="_blank"
-            rel="noopener noreferrer"
-            data-lineage-link=""
-          >
-            View lineage in Explorer
-          </a>
+          {data.lineageUrl === null ? (
+            <span className={styles.link} data-lineage-link="" aria-disabled="true">
+              Lineage in Explorer: not available yet
+            </span>
+          ) : (
+            <a
+              href={data.lineageUrl}
+              className={styles.link}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-lineage-link=""
+            >
+              View lineage in Explorer
+            </a>
+          )}
           <Link to={{ search: askSearch }} className={styles.link} data-ask-about="">
             Ask about it
           </Link>

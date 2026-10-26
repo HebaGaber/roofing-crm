@@ -3,7 +3,8 @@
 // promoted-run pointer every search/property response is stamped with (LeadIndex.indexInfo +
 // currentRunId) — never a hard-coded run. `appLinks` feeds the Apps menu from config: CountyLens
 // from EXPLORER_BASE_URL (the lineage link's own setting), the landing page from LANDING_PAGE_URL
-// (null when unset, so the menu says it is not available instead of guessing a URL).
+// (null when unset, so the menu says it is not available instead of guessing a URL). CountyLens
+// is null too when EXPLORER_BASE_URL is unset (infra sets it from cdk context crm:explorerBaseUrl).
 import { z } from "zod";
 import { mapIndexNotReady, publicProcedure, requireLeadIndex, router } from "../trpc.js";
 import { countyLensBaseUrl } from "../services/propertyDetail.js";
@@ -19,7 +20,7 @@ export const ShellIndexInfoOutput = z.object({
 });
 
 export const ShellAppLinksOutput = z.object({
-  countyLensUrl: z.string().url(),
+  countyLensUrl: z.string().url().nullable(),
   landingPageUrl: z.string().url().nullable(),
 });
 

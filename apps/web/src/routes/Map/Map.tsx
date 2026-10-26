@@ -87,6 +87,7 @@ import { MapViewToggle, type MapViewChoice } from "./MapViewToggle.js";
 import { PaneHandle } from "./PaneHandle.js";
 import { usePaneCollapsed } from "./paneState.js";
 import { newThreadId, patchMapMode, readThreadId, useMapMode } from "./mapMode.js";
+import { COUNTY_NAME } from "../../components/AppShell/navigation.js";
 import styles from "./Map.module.css";
 
 const [, MAX_RADIUS_MI] = RADIUS_BOUNDS;
@@ -1073,12 +1074,12 @@ export function Component(): ReactElement {
                   icon="wrong_location"
                   actions={[
                     {
-                      label: "Go to Travis County",
+                      label: `Go to ${COUNTY_NAME}`,
                       onClick: () => mapHandleRef.current?.showCounty(),
                     },
                   ]}
                 >
-                  This pin is outside Travis County. The CRM covers Travis County only.
+                  This pin is outside {COUNTY_NAME}. The CRM covers {COUNTY_NAME} only.
                 </MapStatusCard>,
                 statusHost,
               )

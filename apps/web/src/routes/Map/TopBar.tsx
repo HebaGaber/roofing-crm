@@ -3,6 +3,7 @@
 // callbacks come from the Map route.
 import type { ReactElement } from "react";
 import { Icon } from "@crm/ui";
+import { COUNTY_NAME } from "../../components/AppShell/navigation.js";
 import { SearchBox, type SearchBoxProps } from "./SearchBox.js";
 import styles from "./TopBar.module.css";
 
@@ -12,7 +13,7 @@ export function TopBar(search: SearchBoxProps): ReactElement {
       <SearchBox {...search} />
       <span className={styles.county}>
         <Icon name="location_on" size="small" />
-        Travis County
+        {COUNTY_NAME}
       </span>
     </div>
   );

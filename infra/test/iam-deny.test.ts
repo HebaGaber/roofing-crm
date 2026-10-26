@@ -36,6 +36,7 @@ function build() {
       indexBucketName: "crm-index",
       leadsTableName: "crm-leads",
       dataManifestCid: "bafkreife3vk3cgcod3v6tue2xes3hvl2vndqoshbhrhsnjtriskihpcute",
+      taskACloudFrontBaseUrl: "https://taska.example.test",
       deployNonce: "iamdenytest",
     }),
   );

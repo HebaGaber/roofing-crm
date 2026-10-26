@@ -88,6 +88,13 @@ describe("shell.appLinks", () => {
     expect(links.landingPageUrl).toBeNull();
   });
 
+  it("returns a null CountyLens URL (no built-in default host) when EXPLORER_BASE_URL is unset", async () => {
+    delete process.env.EXPLORER_BASE_URL;
+    const caller = createCaller({ requestId: "req-5b" });
+    const links = await caller.shell.appLinks();
+    expect(links.countyLensUrl).toBeNull();
+  });
+
   it("returns the landing page URL only when it is configured", async () => {
     process.env.LANDING_PAGE_URL = "https://landing.example.test";
     const caller = createCaller({ requestId: "req-6" });

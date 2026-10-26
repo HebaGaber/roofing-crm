@@ -5,24 +5,18 @@
 // Layout follows the CRM boards CrmComingSoon390/768/1440: a centred card "{Section} is coming
 // soon", its purpose and "planned for the Roofing CRM but not part of this release", a
 // provenance line and a filled Back to Map button (no skeleton: the boards draw none). The
-// purpose lines are the nav tooltips of design/docs/CRM-HANDOFF.md "Coming-soon items".
+// sections, titles and purpose lines come from ROADMAP_NAV (components/AppShell/navigation.ts),
+// the same table the navigation draws; the route is /coming-soon/:section (App.tsx).
 import type { ReactElement } from "react";
 import { Link, useParams } from "react-router";
-import { Icon } from "../components/Icon.js";
-import { comingSoonItem } from "../content/coming-soon.js";
+import { Icon } from "@crm/ui";
+import { LIVE_SECTION_LABELS, ROADMAP_NAV } from "../components/AppShell/navigation.js";
 import styles from "./ComingSoon.module.css";
-
-const PURPOSE: Readonly<Record<string, string>> = {
-  campaigns: "Plan outreach to groups of leads.",
-  estimates: "Price a roof from the lead.",
-  jobs: "Schedule and track roofing work.",
-  invoices: "Bill completed jobs.",
-  outreach: "Email and SMS to owners.",
-};
 
 const PLANNED =
   "It is planned for the Roofing CRM but not part of this release, so there is nothing to open yet.";
-const LIVE_SECTIONS = "Roofing CRM · Map, Filters and AI search, plus leads";
+
+const LIVE_SECTIONS = `Roofing CRM · ${LIVE_SECTION_LABELS.join(" and ")}`;
 
 interface CardProps {
   readonly state: "ready" | "not-found";
@@ -70,15 +64,15 @@ function ComingSoonCard({
 
 export function Component(): ReactElement {
   const { section } = useParams();
-  const item = section === undefined ? undefined : comingSoonItem(section);
+  const item = ROADMAP_NAV.find((entry) => entry.section === section);
 
-  if (item === undefined || !item.linked) {
+  if (item === undefined) {
     return (
       <ComingSoonCard
         state="not-found"
         label="Section not found"
         title="There’s no section here"
-        body="This link doesn’t match a CRM section. The live sections are Map and Leads."
+        body={`This link doesn’t match a CRM section. The live sections are ${LIVE_SECTION_LABELS.join(" and ")}.`}
         provenance={`Roofing CRM · unknown section “${String(section ?? "").slice(0, 24)}”`}
       />
     );
@@ -87,10 +81,10 @@ export function Component(): ReactElement {
   return (
     <ComingSoonCard
       state="ready"
-      label={`${item.title} (coming soon)`}
-      itemId={item.id}
-      title={`${item.title} is coming soon`}
-      body={`${PURPOSE[item.id] ?? item.sentence} ${PLANNED}`}
+      label={`${item.label} (coming soon)`}
+      itemId={item.section}
+      title={`${item.label} is coming soon`}
+      body={`${item.line} ${PLANNED}`}
       provenance={LIVE_SECTIONS}
     />
   );

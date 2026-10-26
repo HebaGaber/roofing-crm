@@ -60,6 +60,8 @@ export interface CrmSyncStackProps extends StackProps {
    *  StartExecution below gets a new name and new custom-resource properties each time — every
    *  deploy re-attempts the sync of `dataManifestCid`. */
   readonly deployNonce: string;
+  /** Task A's CloudFront host (cdk context `crm:taskACloudFrontBaseUrl`): ADR-02's first gateway. */
+  readonly taskACloudFrontBaseUrl: string;
 }
 
 /** Step Functions execution names: 1–80 chars of [A-Za-z0-9_-]. */
@@ -139,8 +141,10 @@ const FETCH_PART_MAP_CONCURRENCY = 3;
  *  specs/002-lead-index/run-log.md Stage 0 A1: `{this host}/{cid}` → 200). CR-B-02 finding #2:
  *  this was never wired into either PlanFunction or FetchPartFunction's environment, so
  *  productionFetchers()/manifestGatewayUrls() always fell straight to Filebase/Pinata — the
- *  fallback order ADR-02 names as second and third, silently promoted to first and second. */
-const TASK_A_CLOUDFRONT_BASE_URL = "https://d2xsqoqv09bd0q.cloudfront.net";
+ *  fallback order ADR-02 names as second and third, silently promoted to first and second.
+ *  The host is config, not a literal: cdk context `crm:taskACloudFrontBaseUrl` (infra/cdk.json),
+ *  passed in as `props.taskACloudFrontBaseUrl`; this names the variable the handlers read it from. */
+const TASK_A_CLOUDFRONT_ENV_VAR = "GATEWAY_CLOUDFRONT_BASE_URL";
 
 /**
  * FetchPart's DLQ and its one self-resolving CloudWatch alarm (constitution Article VII; tasks.md
@@ -336,7 +340,7 @@ export class CrmSyncStack extends Stack {
         // ADR-02: CloudFront first for the one lightweight fetch Plan does (the manifest JSON).
         // plan.ts's manifestGatewayUrls() falls back to Filebase/Pinata's public defaults when
         // this is unset (local dev, tests), so this is additive, not a required env var.
-        GATEWAY_CLOUDFRONT_BASE_URL: TASK_A_CLOUDFRONT_BASE_URL,
+        [TASK_A_CLOUDFRONT_ENV_VAR]: props.taskACloudFrontBaseUrl,
       },
       "planHandler",
     );
@@ -352,7 +356,7 @@ export class CrmSyncStack extends Stack {
         // one-line path-shape fix, not a redesign. Found live (before this fix): these three were
         // never all wired together, so productionFetchers() silently promoted Filebase/Pinata to
         // first/second instead of second/third.
-        GATEWAY_CLOUDFRONT_BASE_URL: TASK_A_CLOUDFRONT_BASE_URL,
+        [TASK_A_CLOUDFRONT_ENV_VAR]: props.taskACloudFrontBaseUrl,
         GATEWAY_FILEBASE_BASE_URL: "https://ipfs.filebase.io",
         GATEWAY_PINATA_BASE_URL: "https://gateway.pinata.cloud",
       },

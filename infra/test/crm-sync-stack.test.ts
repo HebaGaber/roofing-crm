@@ -39,6 +39,7 @@ function build(
       indexBucketName: "crm-index",
       leadsTableName: "crm-leads",
       dataManifestCid,
+      taskACloudFrontBaseUrl: "https://taska.example.test",
       deployNonce,
     }),
   );

@@ -23,6 +23,11 @@ import type { Construct } from "constructs";
 import { NagSuppressions } from "cdk-nag";
 import { taskADenyStatement } from "./task-a-deny.js";
 
+/** Escapes a literal for use inside a cdk-nag `appliesTo` regex. */
+function escapeRegex(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+}
+
 /** ADR-06 §6.1 nested timeouts: 23 s server abort < 28 s Lambda < 30 s HTTP API. The 23 s is
  *  `@crm/shared`'s `AGENT_TURN_LIMIT_MS`; infra/test/crm-api-stack.agent.test.ts asserts this
  *  value nests around it (limit + margin <= Lambda <= HTTP API). */
@@ -55,6 +60,10 @@ export interface CrmApiStackProps extends StackProps {
    *  string-only pattern as crm-sync-stack.ts's indexBucketName (imported via fromBucketName,
    *  not passed as a construct, so this stack's own tests don't need a real CrmDataStack). */
   readonly indexBucketName: string;
+  /** CountyLens's origin, set as `EXPLORER_BASE_URL` on the API Lambda (cdk context
+   *  `crm:explorerBaseUrl`). Omitted: the variable is not set and the API reports the lineage link
+   *  and the Apps menu's CountyLens entry as not available. */
+  readonly explorerBaseUrl?: string;
   /** B-07's leads table name, for the META#index pointer read (ADR-05) — same string-only
    *  pattern as crm-sync-stack.ts's leadsTableName (no real table construct exists yet). */
   readonly leadsTableName: string;
@@ -147,6 +156,10 @@ export class CrmApiStack extends Stack {
         // provider or model id anywhere else).
         AI_PROVIDER: props.aiProvider,
         AGENT_MODEL_ID: props.agentModelId,
+        // The lineage link and the Apps menu read this; the API has no built-in default host.
+        ...(props.explorerBaseUrl === undefined
+          ? {}
+          : { EXPLORER_BASE_URL: props.explorerBaseUrl }),
       },
       logRetention: logs.RetentionDays.ONE_MONTH,
       bundling: {
@@ -335,8 +348,7 @@ export class CrmApiStack extends Stack {
             "B-07: Query on crm-leads' GSI1 (assignee) and GSI2 (status) is authorised only on the index ARN, so the grant is table/crm-leads/index/*, scoped to this one table's own indexes. The actions are read plus PutItem/UpdateItem/ConditionCheckItem; DeleteItem is granted separately on the table ARN only, never on the indexes (see the grant comments above).",
           appliesTo: [
             {
-              regex:
-                "/^Resource::arn:aws:dynamodb:eu-north-1:(<AWS::AccountId>|[0-9]{12}):table\\/crm-leads\\/index\\/\\*$/",
+              regex: `/^Resource::arn:aws:dynamodb:${escapeRegex(this.region)}:(<AWS::AccountId>|[0-9]{12}):table\\/crm-leads\\/index\\/\\*$/`,
             },
           ],
         },
