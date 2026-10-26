@@ -29,6 +29,7 @@ import {
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { AnswerPin, LeadStatus } from "@crm/shared";
+import { RADIUS_BOUNDS } from "../../routes/Map/ExploreFilters.state.js";
 import { leadRing } from "./leadRing.js";
 import {
   forwardRef,
@@ -86,6 +87,7 @@ const RADIUS_RING_LINE_LAYER_ID = "crm-radius-ring-line";
 const RING_POINTS = 64;
 const EARTH_RADIUS_M = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
+const [MIN_RADIUS_MI, MAX_RADIUS_MI] = RADIUS_BOUNDS;
 const HEX_SOURCE_ID = "crm-hex";
 const HEX_FILL_LAYER_ID = "crm-hex-fill";
 const HEX_LINE_LAYER_ID = "crm-hex-line";
@@ -234,6 +236,11 @@ export interface CrmMapHandle {
   readonly recenter: () => void;
   /** From the overview, zooms in to the individual-marker view (the "Zoom in" chip). */
   readonly zoomToDetail: () => void;
+  /** The area on screen as a search: the map's centre and the radius (miles, in the radius control's
+   *  steps and bounds) of the circle that fits the smaller side of the view. `null` before the map
+   *  is ready. Zooming into the county hexagons uses it to search what is in view, as a hexagon
+   *  click would. */
+  readonly viewportSearch: () => { lat: number; lng: number; radiusMi: number } | null;
   /** Pin mode at touch widths ("Place pin here"): drops the pin at the map's centre, under the
    *  crosshair. */
   readonly placeAtCenter: () => void;
@@ -1121,6 +1128,24 @@ export const CrmMap = forwardRef<CrmMapHandle, CrmMapProps>(function CrmMap(
           padding: 24,
           duration: prefersReducedMotion() ? 0 : 400,
         });
+      },
+      viewportSearch: () => {
+        const map = mapRef.current;
+        if (map === null) return null;
+        const bounds = map.getBounds();
+        const at = map.getCenter();
+        const rad = Math.PI / 180;
+        const halfNorthSouthMi =
+          ((bounds.getNorth() - at.lat) * rad * EARTH_RADIUS_M) / METERS_PER_MILE;
+        const halfEastWestMi =
+          ((bounds.getEast() - at.lng) * rad * Math.cos(at.lat * rad) * EARTH_RADIUS_M) /
+          METERS_PER_MILE;
+        const fitMi = Math.ceil(Math.min(halfNorthSouthMi, halfEastWestMi) * 2) / 2;
+        return {
+          lat: at.lat,
+          lng: at.lng,
+          radiusMi: Math.min(MAX_RADIUS_MI, Math.max(MIN_RADIUS_MI, fitMi)),
+        };
       },
       zoomToDetail: () => {
         const map = mapRef.current;

@@ -43,6 +43,7 @@ const fitPins = vi.fn();
 const focusProperty = vi.fn();
 let lastTriageProps: Record<string, unknown> | null = null;
 let reportedMode: "overview" | "detail" = "overview";
+const viewportSearch = vi.fn(() => ({ lat: 30.3, lng: -97.7, radiusMi: 2 }));
 /** What the route last handed the map for the overview (null = client binning fallback). */
 let lastOverviewCells: readonly { id: string; count: number }[] | null | undefined;
 let lastOverviewPermits: readonly { permits: number }[] | null | undefined;
@@ -82,6 +83,7 @@ vi.mock("../../src/components/Map/CrmMap.js", () => ({
       showCounty,
       fitPins,
       focusProperty,
+      viewportSearch,
     }));
     useEffect(() => props.onViewModeChange?.(reportedMode), [props]);
     return <div data-testid="crm-map" />;
@@ -266,6 +268,7 @@ import { Component as MapRoute } from "../../src/routes/Map/Map";
 afterEach(() => {
   cleanup();
   zoomToDetail.mockReset();
+  viewportSearch.mockClear();
   reportedMode = "overview";
   searchResult = { properties: [property] };
   lastListProps = null;
@@ -369,6 +372,26 @@ describe("Map route layout", () => {
     await screen.findByTestId("search-results");
     expect(screen.queryByText("Click a hexagon to search there")).toBeNull();
     expect(screen.getByText("Roof age, yrs")).not.toBeNull();
+  });
+
+  it("zooming into the hexagons without a click searches what is in view, as a hexagon click would", async () => {
+    reportedMode = "detail";
+    renderAt("/");
+    await vi.waitFor(() => {
+      const search = screen.getByTestId("url-search").textContent ?? "";
+      expect(search).toContain("lat=30.3");
+      expect(search).toContain("lng=-97.7");
+      expect(search).toContain("r=2");
+    });
+    expect(viewportSearch).toHaveBeenCalledTimes(1);
+    await screen.findByTestId("search-results");
+  });
+
+  it("stays in the overview while zoomed out, and does not search again after the search is cleared", async () => {
+    renderAt("/");
+    await screen.findByTestId("crm-map");
+    expect(screen.getByTestId("url-search").textContent).toBe("");
+    expect(viewportSearch).not.toHaveBeenCalled();
   });
 
   it("sel opens the drawer (aside[data-property-cid]) in its own slot, outside the results sheet", async () => {

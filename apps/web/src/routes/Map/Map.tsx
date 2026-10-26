@@ -267,6 +267,51 @@ export function Component(): ReactElement {
     [hasRadiusParam, radiusMi, setSearchParams],
   );
 
+  // Zooming into the county hexagons without clicking one searches what is in view, as a hexagon
+  // click would: the view's centre becomes the search centre, the radius fits the view, and Escape
+  // or Back returns to the overview. It runs once per zoom-in: clearing the search (Escape, Back,
+  // Recentre) suppresses it until the map has zoomed back out to the overview, so it cannot
+  // re-trigger while the camera is still flying out.
+  const autoSearchSuppressedRef = useRef(false);
+  const previousCentreRef = useRef(center);
+  const [autoSearched, setAutoSearched] = useState(false);
+  useEffect(() => {
+    if (previousCentreRef.current !== null && center === null) {
+      autoSearchSuppressedRef.current = true;
+      setAutoSearched(false);
+    }
+    previousCentreRef.current = center;
+  }, [center]);
+  useEffect(() => {
+    if (viewMode === "overview") autoSearchSuppressedRef.current = false;
+  }, [viewMode]);
+  useEffect(() => {
+    if (
+      viewMode !== "detail" ||
+      center !== null ||
+      autoSearchSuppressedRef.current ||
+      pinMode ||
+      sel !== null ||
+      ai ||
+      triage ||
+      view !== "map"
+    )
+      return;
+    const found = mapHandleRef.current?.viewportSearch();
+    if (found === null || found === undefined) return;
+    autoSearchSuppressedRef.current = true;
+    setAutoSearched(true);
+    setFromHex(true);
+    setSearchParams((prev) =>
+      patchMapParams(prev, { lat: found.lat, lng: found.lng, r: found.radiusMi }),
+    );
+  }, [viewMode, center, pinMode, sel, ai, triage, view, setSearchParams]);
+  // A search the person changes themselves (radius, roof age, permits, owner) re-focuses on the new
+  // results like any other; only the first, automatic one keeps the camera where they put it.
+  useEffect(() => {
+    setAutoSearched(false);
+  }, [radiusMi, roofAgeMinYears, permitStatus, permitOpenYrs]);
+
   // A pin dropped, placed or dragged by hand: ends pin mode, and is not a GPS fix.
   const placePoint = useCallback(
     (point: LatLng) => {
@@ -924,7 +969,7 @@ export function Component(): ReactElement {
             onPinSelect={setFocusedCitation}
             onHexSelect={selectHex}
             onPropertySelect={selectProperty}
-            focusResults={!ai && !triage && sel === null && view === "map"}
+            focusResults={!ai && !triage && sel === null && view === "map" && !autoSearched}
             selectedPoint={selectedPoint}
           />
           <MapControls
