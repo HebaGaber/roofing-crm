@@ -11,7 +11,7 @@
 // never attached to a report, and is never uploaded by CI (only `playwright-report/` is).
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /** Repository root: tests/e2e/lib → tests/e2e → tests → root. */
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..", "..", "..");
@@ -25,6 +25,17 @@ export const EMPTY_STORAGE_STATE = { cookies: [], origins: [] } as const;
 export const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 export const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
 export const NO_PASSWORD_REASON = "CRM_TEST_PASSWORD not set (Secrets Manager only)";
+
+/**
+ * Call at the top of a spec's `beforeEach` (or test) that needs the seeded password. Locally an
+ * unset CRM_TEST_PASSWORD skips the test; on CI (`CI` set) it FAILS, so a missing secret can never
+ * turn a whole signed-in suite into a green run of skipped tests.
+ */
+export function requirePassword(): void {
+  if (SEEDED_PASSWORD !== undefined) return;
+  if (process.env.CI) throw new Error(`${NO_PASSWORD_REASON}; refusing to skip on CI`);
+  test.skip(true, NO_PASSWORD_REASON);
+}
 
 /** The real sign-in form, waiting until the Map screen proves the session landed. */
 export async function signInThroughForm(

@@ -4,7 +4,7 @@
 // RUNTIME_URL by TZ03 once TZ02 deploys. config-guard.spec.ts enforces RUNTIME_URL is never
 // localhost for that later run — this file does not special-case localhost itself.
 import { expect, test } from "@playwright/test";
-import { AUTH_STATE_PATH, openSignedIn } from "./lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, requirePassword } from "./lib/auth.js";
 
 const SEEDED_USERNAME = process.env.CRM_TEST_USERNAME ?? "admin@roofing-crm.test";
 const SEEDED_PASSWORD = process.env.CRM_TEST_PASSWORD; // Never hard-coded (constitution Article XII).
@@ -29,7 +29,7 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
   });
 
   test("signing in with the seeded credentials lands on the Map screen", async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await signIn(page, SEEDED_PASSWORD);
     await expect(page.locator('[data-route="map"]')).toBeVisible();
@@ -37,7 +37,7 @@ test.describe("AC-1: sign in and land on the Travis County map", () => {
   });
 
   test("the session survives a reload (stays on the Map screen)", async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await signIn(page, SEEDED_PASSWORD);
     // Wait for sign-in to actually land (the SRP round trip + lockout-gate Lambda take a few
@@ -58,7 +58,7 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
   test.use({ storageState: AUTH_STATE_PATH });
 
   test("health.ping responds from the Map screen within 3s of load", async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     // Listen before navigating: with the saved session the Map screen (and its ping) loads
     // straight from `/`, with no sign-in round trip in between.
@@ -75,7 +75,7 @@ test.describe("AC-2: map bounds and health.ping trace", () => {
   // this — try to zoom out past the computed minZoom and confirm MapLibre itself clamps it,
   // never actually dropping below full-county visibility.
   test("zooming out never drops below the county's minimum zoom", async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await openSignedIn(page);
     await page.waitForFunction(() => {
@@ -153,7 +153,7 @@ test.describe("Tile-failure edge case (closes the spec.md gap flagged at G5)", (
   test("aborting tile-host requests renders CrmMapFailed390 with a Retry action", async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     // B-03: CrmMap.tsx's DEFAULT_STYLE moved from demotiles.maplibre.org to
     // tiles.openfreemap.org (the former had no detail at city-level zoom, found live) — this
@@ -176,7 +176,7 @@ test.describe("AC-4: disabled roadmap rows", () => {
   const SECTIONS = ["Campaigns", "Estimates", "Jobs", "Invoices", "Outreach"];
 
   test("all 5 rows are aria-disabled with a Coming soon tooltip", async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await openSignedIn(page);
     // Found deploying (same cause as the "survives a reload" fix above): `moreTrigger.isVisible()`
@@ -206,7 +206,7 @@ test.describe("AC-5: a disabled row opens Coming Soon, never a 404", () => {
   test('tapping "Campaigns" opens Coming Soon with a working Back to Map action', async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, "CRM_TEST_PASSWORD not set (Secrets Manager only)");
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await openSignedIn(page);
     // Same fix as AC-4 above: wait for the SRP round trip to actually land before checking for

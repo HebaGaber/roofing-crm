@@ -8,14 +8,14 @@
 // or navigation business logic, which B-01.spec.ts's AC-1/AC-4/AC-5 cases already cover.
 import { expect, test } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "../lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, requirePassword } from "../lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); this file tests layout, not sign-in.
 test.use({ storageState: AUTH_STATE_PATH });
 
 test.describe("Responsive design: Map screen and navigation shell", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await openSignedIn(page);
     await page.evaluate(() => document.fonts.ready);
   });

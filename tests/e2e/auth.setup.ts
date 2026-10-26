@@ -8,9 +8,9 @@ import { test } from "@playwright/test";
 import {
   AUTH_STATE_PATH,
   EMPTY_STORAGE_STATE,
-  NO_PASSWORD_REASON,
   SEEDED_PASSWORD,
   signInThroughForm,
+  requirePassword,
 } from "./lib/auth.js";
 
 test("sign in once and save the session", async ({ page }) => {
@@ -18,7 +18,7 @@ test("sign in once and save the session", async ({ page }) => {
   // Always replace the previous run's file first: a stale signed-in state must never outlive
   // the password that produced it.
   writeFileSync(AUTH_STATE_PATH, JSON.stringify(EMPTY_STORAGE_STATE));
-  test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+  requirePassword();
   if (!SEEDED_PASSWORD) return;
   await signInThroughForm(page, SEEDED_PASSWORD);
   await page.context().storageState({ path: AUTH_STATE_PATH });

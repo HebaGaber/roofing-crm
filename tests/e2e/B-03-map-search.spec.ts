@@ -13,7 +13,7 @@
 // already enforce "never localhost" for any RUNTIME_URL that IS set).
 import { expect, test } from "@playwright/test";
 import { EAST_TRAVIS, GEORGETOWN, ZERO_THEN_WIDEN } from "./lib/run-fixtures.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, openSignedIn, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, openSignedIn, SEEDED_PASSWORD, requirePassword } from "./lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); sign-in itself is B-01's job.
 test.use({ storageState: AUTH_STATE_PATH });
@@ -105,7 +105,7 @@ test.describe("AC-1: radius search from a pin (B-03-TC-001, B-03-TC-004)", () =>
   test("pin in east Travis County: 5 mi lists real properties inside the ring; 6 mi never loses any", async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await openSignedIn(page);
     await waitForMapReady(page);
@@ -150,7 +150,7 @@ test.describe("AC-1 edge case: zero results widen to a wider radius (B-03-TC-006
   test('0.5 mi in an empty pocket shows "widen to {n} mi"; widening finds results', async ({
     page,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     // Opened by URL, not by a click: see ZERO_THEN_WIDEN in lib/run-fixtures.ts.
     await openSignedIn(
@@ -188,7 +188,7 @@ test.describe("AC-1 edge case: GPS outside Travis County shows an explicit state
     page,
     context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     await context.grantPermissions(["geolocation"]);
     await context.setGeolocation({ latitude: GEORGETOWN.lat, longitude: GEORGETOWN.lng });
@@ -208,7 +208,7 @@ test.describe("AC-2: GPS denied falls back to pin-drop with an explicit state (B
     page,
     context: _context,
   }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     if (!SEEDED_PASSWORD) return;
     // No grantPermissions call: geolocation stays denied by default in a fresh context.
     await openSignedIn(page);

@@ -14,7 +14,7 @@
 // logic (filters, status updates, notes) — that's tests/e2e/B-07.spec.ts's job.
 import { expect, test } from "@playwright/test";
 import { atlasTokenAudit, AUDITED_PROPERTIES } from "../lib/atlas-tokens.js";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "../lib/auth.js";
+import { AUTH_STATE_PATH, requirePassword } from "../lib/auth.js";
 
 // Signed in once by the `setup` project (tests/e2e/lib/auth.ts); this file tests layout, not sign-in.
 test.use({ storageState: AUTH_STATE_PATH });
@@ -27,7 +27,7 @@ async function gotoLeadsList(page: import("@playwright/test").Page): Promise<voi
 
 test.describe("Responsive design: LeadsList screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await gotoLeadsList(page);
   });
 
@@ -92,7 +92,7 @@ test.describe("Responsive design: LeadsList screen", () => {
 
 test.describe("Responsive design: LeadDetail screen", () => {
   test.beforeEach(async ({ page }) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     await gotoLeadsList(page);
   });
 

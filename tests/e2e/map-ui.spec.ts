@@ -4,7 +4,7 @@
 // session; nothing is created. One project (desktop-1440) is enough: the viewport is set per case
 // where a width matters.
 import { expect, test, type Page } from "@playwright/test";
-import { AUTH_STATE_PATH, NO_PASSWORD_REASON, SEEDED_PASSWORD } from "./lib/auth.js";
+import { AUTH_STATE_PATH, requirePassword } from "./lib/auth.js";
 import { LAYOUT_SEARCH_PATH } from "./lib/run-fixtures.js";
 
 test.use({ storageState: AUTH_STATE_PATH });
@@ -22,7 +22,7 @@ async function openSearch(page: Page, width = 1440): Promise<void> {
 test.describe("Map: results list, Layers and hexagons", () => {
   // eslint-disable-next-line no-empty-pattern
   test.beforeEach(async ({}, testInfo) => {
-    test.skip(SEEDED_PASSWORD === undefined, NO_PASSWORD_REASON);
+    requirePassword();
     test.skip(testInfo.project.name !== "desktop-1440", "viewport is set per case; run once");
   });
 
